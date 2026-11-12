@@ -113,6 +113,13 @@ export type ElementwiseScopeParameters = {
   suffix?: string;
 };
 
+export type ExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+};
+
 export type FeatureDescription = {
   name: string;
   slots: Array<string>;
@@ -220,10 +227,22 @@ export type MonitorSummary = {
   created_at?: string | null;
 };
 
+export type MuteParameters = {
+  condition: string;
+};
+
 export type ObservedDetector = {
   detector_id: string;
   score: number | null;
   surprise: number | null;
+};
+
+export type OnlineExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+  forgetting?: number;
 };
 
 export type OnlinePCAParameters = {
@@ -273,6 +292,31 @@ export type PipelineBindingMetadata = {
   collection_generation: string;
   collection_fingerprint: string;
   readings: Array<PipelineReadingMetadata>;
+};
+
+export type PipelineBlockCreate = {
+  name: string;
+  description?: string;
+  steps: Array<PipelineBlockStep>;
+};
+
+export type PipelineBlockList = {
+  items: Array<PipelineBlockView>;
+};
+
+export type PipelineBlockStep = {
+  component: string;
+  contract_version?: number;
+  params?: Record<string, unknown>;
+  label?: string | null;
+};
+
+export type PipelineBlockView = {
+  id: string;
+  name: string;
+  description: string;
+  steps: Array<PipelineBlockStep>;
+  created_at: string;
 };
 
 export type PipelineCatalog = {
@@ -665,6 +709,7 @@ export type PreparationState = {
   required: number;
   rejected: number;
   held_back?: number;
+  muted?: number;
 };
 
 export type PrepareScopeParameters = {
@@ -743,8 +788,9 @@ export type SmoothParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string | null;
-  method?: "exponential" | "rolling";
+  method?: "exponential" | "rolling" | "time_constant";
   window_size?: number;
+  time_constant?: number;
 };
 
 export type StandardScalerParameters = {
@@ -754,4 +800,13 @@ export type StandardScalerParameters = {
   with_std?: boolean;
 };
 
-export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4 } as const;
+export type TimeParameters = {
+  elapsed?: boolean;
+  hour?: boolean;
+  weekday?: boolean;
+  daily_cycle?: boolean;
+  weekly_cycle?: boolean;
+  timezone?: string;
+};
+
+export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4, blockSteps: 16 } as const;

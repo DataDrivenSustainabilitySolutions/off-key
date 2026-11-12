@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     BaseModel,
@@ -43,6 +44,10 @@ MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
 # Detectors that can feed one policy, and how the policy combines them.
 MAX_DETECTORS = 4
 FusionMode = Literal["max", "mean"]
+# A block is a short chain of steps; the library lists every block at once.
+MAX_BLOCKS = 100
+MAX_BLOCK_STEPS = 16
+MAX_BLOCK_BYTES = 16 * 1024
 
 
 class PipelineModel(BaseModel):
@@ -524,6 +529,52 @@ class PipelineView(PipelineModel):
     updated_at: datetime
 
 
+class PipelineBlockStep(PipelineModel):
+    """One step of a block: a component with its settings and its title."""
+
+    component: str = Field(min_length=1, max_length=160)
+    contract_version: int = Field(default=1, ge=1)
+    params: dict[str, Any] = Field(default_factory=dict)
+    label: str | None = Field(default=None, max_length=120)
+
+
+class PipelineBlockCreate(PipelineModel):
+    """A chain of steps to keep under a name; each step feeds the next."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    steps: list[PipelineBlockStep] = Field(min_length=1, max_length=MAX_BLOCK_STEPS)
+
+    @field_validator("name")
+    @classmethod
+    def nonblank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Enter a block name")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def bounded_settings(self) -> "PipelineBlockCreate":
+        if not fits_json_budget(self.steps, MAX_BLOCK_BYTES):
+            raise ValueError(
+                f"A block holds at most {MAX_BLOCK_BYTES // 1024} KiB of settings"
+            )
+        return self
+
+
+class PipelineBlockView(PipelineModel):
+    id: str
+    name: str
+    description: str
+    steps: list[PipelineBlockStep] = Field(max_length=MAX_BLOCK_STEPS)
+    created_at: datetime
+
+
+class PipelineBlockList(PipelineModel):
+    """Every block of the library, by name."""
+
+    items: list[PipelineBlockView] = Field(max_length=MAX_BLOCKS)
+
+
 class PipelineActivationRequest(PipelineModel):
     revision_id: str
     bindings: dict[str, str]
@@ -840,6 +891,8 @@ class PreparationState(PipelineModel):
     rejected: int
     held_back: int = 0
     """Observations a Gate held back from learning and scoring."""
+    muted: int = 0
+    """Observations scored while a Mute alarms step's condition held."""
 
 
 class AdaptiveLearningState(PipelineModel):
@@ -1056,15 +1109,31 @@ def _window(
     )
 
 
+# Thirty days, in seconds.
+MAX_TIME_CONSTANT = 2_592_000
+
+
 class SmoothParameters(PrepareScopeParameters):
-    method: Literal["exponential", "rolling"] = Field(
+    method: Literal["exponential", "rolling", "time_constant"] = Field(
         default="exponential",
         description=(
             "Exponential weighs recent values more, with alpha = 2 / (window + 1). "
-            "Rolling takes the plain mean of the window."
+            "Rolling takes the plain mean of the window. Time constant weighs "
+            "values by the seconds since they arrived, so readings every second "
+            "and every ten are smoothed alike."
         ),
     )
     window_size: int = _window(10, "Observations to smooth over.")
+    time_constant: float = Field(
+        default=60.0,
+        gt=0,
+        le=MAX_TIME_CONSTANT,
+        title="Time constant",
+        description=(
+            "Seconds until a lasting change shows to 63% in the result; after "
+            "three times as long it shows to 95%."
+        ),
+    )
 
 
 class DespikeParameters(PrepareScopeParameters):
@@ -1252,6 +1321,80 @@ class CalculateParameters(PipelineModel):
     )
 
 
+class TimeParameters(PipelineModel):
+    """Features of the time an observation was measured at."""
+
+    elapsed: bool = Field(
+        default=True,
+        title="Seconds since the previous observation",
+        description=(
+            "Adds dt. The first observation has none before it, so the step is "
+            "ready after two."
+        ),
+    )
+    hour: bool = Field(
+        default=False,
+        title="Hour of day",
+        description=(
+            "Adds hour, from 0 at midnight up to 24, with minutes as a fraction."
+        ),
+    )
+    weekday: bool = Field(
+        default=False,
+        title="Day of week",
+        description="Adds weekday, from 1 for Monday to 7 for Sunday.",
+    )
+    daily_cycle: bool = Field(
+        default=False,
+        title="Daily cycle",
+        description=(
+            "Adds hour_sin and hour_cos, the time of day on a circle, where "
+            "23:59 lies next to 0:00."
+        ),
+    )
+    weekly_cycle: bool = Field(
+        default=False,
+        title="Weekly cycle",
+        description=(
+            "Adds weekday_sin and weekday_cos, the time of week on a circle, "
+            "where Sunday night lies next to Monday morning."
+        ),
+    )
+    timezone: str = Field(
+        default="UTC",
+        min_length=1,
+        max_length=64,
+        title="Time zone",
+        description=(
+            "The clock the hour and the weekday follow, such as Europe/Berlin, "
+            "with its daylight saving time."
+        ),
+    )
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value: str) -> str:
+        if value == "UTC":
+            return value
+        try:
+            ZoneInfo(value)
+        except (KeyError, ValueError, OSError):
+            raise ValueError(
+                "Unknown time zone. Write a name such as Europe/Berlin, or UTC."
+            ) from None
+        return value
+
+    @model_validator(mode="after")
+    def some_feature(self):
+        if not any(getattr(self, name) for name in TIME_SETTINGS):
+            raise ValueError("Choose at least one time feature.")
+        return self
+
+
+# The settings of a Time features step that each add features, in output order.
+TIME_SETTINGS = ("elapsed", "hour", "weekday", "daily_cycle", "weekly_cycle")
+
+
 class MathParameters(PrepareScopeParameters):
     function: Literal["log", "log1p", "sqrt", "abs", "square", "linear"] = Field(
         default="log",
@@ -1414,6 +1557,22 @@ class GateParameters(PipelineModel):
     )
 
 
+class MuteParameters(PipelineModel):
+    """Raise no alarm for the observations a condition accepts."""
+
+    condition: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Condition",
+        description=(
+            "Observations where it is true are learned and scored as usual, and "
+            "an alarm for one of them is kept as muted instead of raised, such "
+            "as speed < 100. Compare with < <= > >= == != and join with and, or "
+            "and not."
+        ),
+    )
+
+
 class ConstantParameters(PipelineModel):
     name: str | None = _combined_name("constant")
     value: float = Field(
@@ -1446,5 +1605,55 @@ class SetFeatureParameters(PipelineModel):
             "Compute this feature from the incoming values. Replace only the named "
             "feature if it exists, or add it. All other features stay unchanged. "
             "Use if(condition, when_true, when_false) to choose a value."
+        ),
+    )
+
+
+class ExpectedValueParameters(ScopeParameters):
+    """How far one feature lies from the value the other features imply.
+
+    The step fits the target as a weighted sum of the other features and a
+    constant, and gives the residual: the target minus that expected value.
+    """
+
+    target: str = Field(
+        min_length=1,
+        max_length=120,
+        title="Target",
+        description="The feature whose value is expected from the others.",
+    )
+    apply_to: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        title="Expected from",
+        description=(
+            "The features the target is expected from. Leave unset to use every "
+            "other feature."
+        ),
+    )
+    result: Literal["replace", "add"] = Field(
+        default="replace",
+        title="Result",
+        description=(
+            "Replace the target and the features it is expected from with the "
+            "residual, or keep them and add it."
+        ),
+    )
+    name: str | None = _combined_name("<target>_residual")
+
+
+class OnlineExpectedValueParameters(ExpectedValueParameters):
+    """The fit follows every observation, by recursive least squares."""
+
+    forgetting: float = Field(
+        default=1.0,
+        gt=0,
+        le=1,
+        description=(
+            "How much earlier observations count at every update. 1 weighs every "
+            "observation alike; 0.999 remembers roughly the last 1,000, so the "
+            "fit follows slow drift. Below 1, readings that stop varying for "
+            "long make the fit unstable, so keep 1 for readings that rest."
         ),
     )

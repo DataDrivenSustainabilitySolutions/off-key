@@ -51,6 +51,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | --- | --- | --- |
 | `monitoring_pipelines` | `id` | Pipeline designs and templates with their editable draft |
 | `monitoring_pipeline_revisions` | `id` | Immutable compiled revisions of a pipeline |
+| `monitoring_pipeline_blocks` | `id` | Named chains of steps the composer copies into a design. `name` is unique, and no design, revision or run refers to a block |
 | `monitoring_pipeline_runs` | `id` | A revision bound to inputs and running as one monitoring service |
 | `monitoring_pipeline_activations` | `id` | Idempotent activation requests and their phase through preflight, start and heartbeat |
 | `monitoring_pipeline_run_events` | `id` | A run's lifecycle events (setup phases, stage changes, data gaps, worker crashes, end), kept after its service is purged |
@@ -126,6 +127,11 @@ Use this page when mapping API behaviour to persisted entities and relationships
   around the feature in **Detector inputs**. Migration
   `026_evidence_forecasts.sql` adds the column with an empty default, so
   earlier rows and designs without a forecaster step have none.
+- `muted` is true when the detection rule fired and a Mute alarms step kept the
+  alarm from being raised; `alarm` is then false and no alarm is stored. A
+  martingale tracker says the same of its own crossing as `alarm_muted` in
+  `tracker_results`. Migration `030_evidence_muted.sql` adds the column with a
+  default of false, so earlier rows are not muted.
 
 ### Monitoring workload intent
 

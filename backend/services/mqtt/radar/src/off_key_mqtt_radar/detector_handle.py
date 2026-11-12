@@ -21,6 +21,7 @@ class DetectionService(Protocol):
         data: dict[str, float],
         topic: str | None = None,
         charger_id: str | None = None,
+        timestamp: float | None = None,
     ) -> AnomalyResult: ...
 
     def get_model_info(self) -> dict[str, Any]: ...
@@ -59,9 +60,14 @@ class DetectorHandle:
         data: dict[str, float],
         topic: str | None = None,
         charger_id: str | None = None,
+        timestamp: float | None = None,
     ) -> AnomalyResult:
+        """Score one observation; timestamp is when it was measured, in seconds
+        since the epoch, for the steps that read time."""
         try:
-            return self.primary_service.process_data_point(data, topic, charger_id)
+            return self.primary_service.process_data_point(
+                data, topic, charger_id, timestamp
+            )
         except (FatalExecutionError, ObservationRejected):
             raise
         except Exception as error:

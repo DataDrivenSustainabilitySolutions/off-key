@@ -60,7 +60,7 @@ export function CombinedName({ node, component, features, issues, readOnly, onCh
     <small className="pl-help" id={`${id}-name-help`}>
       {node.component === "prepare.set"
         ? `The feature to add or replace. Other features stay unchanged. Leave empty for ${fallback}.`
-        : `The computed feature, in letters, digits and underscores. Leave empty for ${fallback}.`}
+        : `The computed feature, in letters, digits and underscores.${fallback ? ` Leave empty for ${fallback}.` : ""}`}
     </small>
     <Errors id={`${id}-name-errors`} issues={errors} />
   </div>;
@@ -81,6 +81,7 @@ type Text = {
 /** Where a step keeps what is written in this editor; a step not listed writes a formula. */
 const TEXTS: Record<string, Text> = {
   "prepare.gate": { field: "condition", condition: true },
+  "prepare.mute": { field: "condition", condition: true, label: "Mute while", placeholder: "speed < 100" },
   "prepare.condition": { field: "condition", condition: true },
   "prepare.accumulate": { field: "reset_when", condition: true, label: "Reset when", placeholder: "dc_current < 1", optional: true },
   "prepare.hold": { field: "update_when", condition: true, label: "Update when" },

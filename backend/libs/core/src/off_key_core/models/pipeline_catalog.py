@@ -83,7 +83,7 @@ def pipeline_components() -> list[PipelineComponent]:
             "prepare.smooth",
             "transform",
             "Smooth",
-            "Average recent values, exponentially or over a window.",
+            "Average recent values: exponentially, over a window or over time.",
         ),
         (
             "prepare.despike",
@@ -134,6 +134,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "Learn and score only the observations where a condition holds.",
         ),
         (
+            "prepare.mute",
+            "transform",
+            "Mute alarms",
+            "Raise no alarm while a condition holds. Learning and scoring go on.",
+        ),
+        (
             "prepare.constant",
             "transform",
             "Constant",
@@ -176,6 +182,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "Compute several named features in order, one formula per line.",
         ),
         (
+            "prepare.time",
+            "transform",
+            "Time features",
+            "Add the seconds since the previous observation, the hour or the weekday.",
+        ),
+        (
             "static.standard_scaler",
             "transform",
             "Standard scaling",
@@ -206,6 +218,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "A seeded fixed random projection.",
         ),
         (
+            "static.expected_value",
+            "transform",
+            "Expected value",
+            "Fit one feature from the others on training data; give its residual.",
+        ),
+        (
             "adaptive.standard_scaler",
             "transform",
             "Online standard scaling",
@@ -234,6 +252,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "transform",
             "Random projection",
             "A seeded fixed random projection.",
+        ),
+        (
+            "adaptive.expected_value",
+            "transform",
+            "Online expected value",
+            "Expect one feature from the others with the previous fit, then update.",
         ),
         (
             FIXED_SPLIT,
@@ -342,7 +366,8 @@ def pipeline_components() -> list[PipelineComponent]:
                 id=detector_component(identifier),
                 kind="detector",
                 label=model["name"],
-                description=(
+                description=model.get("description")
+                or (
                     "Scores a feature by how far it misses its forecast."
                     if "forecaster_id" in model
                     else "Adaptive score-before-learn anomaly detector."

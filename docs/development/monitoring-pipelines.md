@@ -135,13 +135,49 @@ score and surprise (`ObservedDetector`); each detector's own preview outputs its
 score. The live inspector lists them for the policy, and the chart tooltip lists
 an evidence row's `detector_results`.
 
+A block is a named chain of `transform` steps that the library keeps
+(`monitoring_pipeline_blocks`, migration `031_pipeline_blocks.sql`) and the
+editor copies into a design. No design, revision or run refers to a block, so
+the compiler, RADAR and activation know nothing of blocks, and deleting one
+changes nothing that runs. `PipelineBlockCreate` bounds a block to
+`MAX_BLOCK_STEPS` (16) steps and `MAX_BLOCK_BYTES` (16 KiB) of settings, and the
+library holds `MAX_BLOCKS` (100), so `GET /pipeline-blocks` returns every block
+and the menus need no paging. `require_block_steps()` in
+`models/pipeline_blocks.py` accepts the components the catalog offers at the
+saved contract version with kind `transform`; each takes features and gives
+features, so any of them can follow any other. It does not check settings: a
+block has no inputs to check them against, and the design's validation checks
+the copied steps where they land. `PipelineBlocks` (TACTIC
+`services/pipelines/blocks.py`) writes under `begin_library_write()`, the
+guards the template library uses, so blocks are read-only while authoring is
+off. Names are unique (`uq_pipeline_block_name`). A block is saved and deleted,
+never updated.
+
+In the editor, `blocks.ts` holds the operations. `blockChain()` gives the steps
+a card's **Save as block** can hold and `blockSteps()` their settings and
+titles without ids or positions. `placeBlock()` adds a block as a chain of its
+own, `insertBlock()` on a connection and `addBlockAfter()` after a card: on the
+card's one connection out when the block fits there, otherwise as a branch.
+Each returns a `BlockOutcome`, the changed document with the id of the first
+new step or the reason the block cannot be added, and `blockChoices()` pairs
+every block with its outcome, so the menus list all blocks and say why one does
+not fit. Steps are added with `addComponent(..., exact = true)`, which keeps
+the saved settings, feature names included, where a new step's names are made
+unique. On a connection, a learned step that `insertBlocker()` refuses is
+exchanged through `counterpartBefore()` for the counterpart that learns as the
+detectors after the connection do, the exchange `changeDetector()` makes.
+`useBlocks()` reads the library once per editor that can change its design; a
+failed read leaves the menus without blocks. `PIPELINE_LIMITS.blockSteps` comes
+from `MAX_BLOCK_STEPS` through the type generator.
+
 ## Monitoring history
 
 The service Evidence tab presents one timeline for its recorded inputs and joint
 detector result. Readings retain independent scales and units; the raw anomaly
 score (or logarithmic static evidence) appears once below them. A dashed line
 shows the threshold, red input lines mark service alarms, and score dots mark
-alarms from the selected detector. The view works with multivariate models such
+alarms from the selected detector. An alarm a Mute alarms step held back is an
+open dot, and the key names open dots only when the chart shows one. The view works with multivariate models such
 as online isolation forest and does not infer per-sensor attribution or a baseline.
 
 Up to six input tracks may be displayed simultaneously. Changing that selection
@@ -215,6 +251,30 @@ strategies. Robust scaling uses scikit-learn's `RobustScaler` on training data
 and Aberrant's `RollingRobustScaler` online; both use linear quartiles and scale
 by 1 when a feature's interquartile range is zero.
 
+Expected value steps (`static.expected_value` and `adaptive.expected_value`,
+`EXPECTATIONS` in `pipeline_scope.py`) are always scoped. `target` names the
+feature to expect and `apply_to` the features it is expected from, unset for
+every other feature. `step_scope` lists the target first and gives the
+residual's name, `name` or `<target>_residual`, as the scope's added feature. A
+replacing step drops the target and the features it is expected from and appends
+the residual, whose lineage is the slots of all of them. The compiler reports an
+unknown target, a target among `apply_to`, a step that only the target reaches
+and a name that repeats a feature that stays, each with its parameter path, and
+refuses a static step whose training window holds no more observations than the
+fit has coefficients. `ExpectedValue` (`pipelines/expected.py`) solves centred
+least squares with NumPy on the training window; inputs that are constant or
+repeat each other get the minimum-norm weights, so a fit never fails.
+`OnlineExpectedValue` wraps Aberrant's `RLSRegressor`, with one coefficient per
+input and a constant. It is ready after one observation per coefficient and one
+more, and its learning transaction restores a deep copy of the regressor when a
+later step rejects the observation. Scoring reads the fit before the
+observation is learned; in a learning pass Aberrant transforms after the update,
+as for every online step, so the detector learns the residual of the updated
+fit. `forgetting` defaults to 1, because the covariance of a fit that forgets
+grows without bound while its inputs stop varying. `STATE_ESTIMATORS` counts a
+weight and a centre per used feature for the static step and eight covariance
+matrices for the online one.
+
 Prepare steps (`pipeline_prepare.py`) are deterministic kernels that run once
 per observation, in arrival order, before anything learns. `stage_split()` takes
 every Prepare node and its ancestors, except the source, as the stage. Its
@@ -222,15 +282,19 @@ frontier is the stage nodes, and the source, whose features a later node uses, i
 compiled order. RADAR's `PrepareStage` runs the stage on the bound observation and
 passes the frontier's features, keyed `<node>.<feature>`, to the learned stage:
 static graphs fit and score those columns, and adaptive graphs read them through
-`Prepared` input nodes. Designs without Prepare steps keep their runtime shape,
-so existing checkpoints load unchanged.
+`Prepared` input nodes. With several detectors, each detector's graph gets the
+`Prepared` nodes its own steps read across the cut (`adaptive_graph`), not every
+frontier node among its ancestors: a detector behind a Prepare step reads that
+step alone, also when another detector reads the source. Designs without
+Prepare steps keep their runtime shape, so existing checkpoints load unchanged.
 
 Each kernel advances an immutable state per feature and returns a value, or none
 while its window fills. The stage commits an observation only when every step
 succeeds. A step that cannot use a value raises `PrepareRejected`, an
 `ObservationRejected`: every state stays as it was, the observation becomes a
 `pipeline_observation_rejected` coverage gap, and the run continues. Rejections
-are counted per node by reason (`non_finite`, `out_of_domain`, `out_of_range`).
+are counted per node by reason (`non_finite`, `out_of_domain`, `out_of_range`,
+`out_of_order`).
 A kernel with lead L outputs from its (L+1)-th value, so the stage is ready at
 one plus the largest sum of leads along a chain. Until then the detectors return
 `preparing` results, the run stage reads `N/M observations prepared` and no
@@ -317,6 +381,48 @@ kernel; a `PrepareFailure` in it skips the observation like any other.
 Conditions are checked like a Gate's: names and kinds as `formula` issues on
 the setting, and `values` warns where a condition is always or never true.
 
+Two steps read the time an observation was measured at (`reads_time()`).
+`MessageProcessor` passes the observation time of the aligned vector, the
+latest of its `input_timestamps`, through `DetectorHandle.process()` and
+`process_data_point(..., timestamp)` to `PrepareStage.run(bound, diagnostics,
+timestamp)`; Dojo's `Replay` passes the recorded time, and a caller without
+one gets the worker's clock. The stage keeps `times[step]`, when each such
+step last used an observation, and hands the step a `Clock(now, elapsed)`
+(`pipeline_time.py`). `times` commits and rolls back with the kernel states,
+so an observation that is skipped, or that a Gate before the step holds back,
+leaves it alone and the next `elapsed` spans it. An observation not later than
+the step's previous one is rejected as `out_of_order`: alignment already
+refuses regressing readings, so this only meets a checkpoint that is ahead of
+the stream. `elapsed` is therefore above 0, and the compiler gives `dt` the
+minimum `POSITIVE`, the smallest positive float, so `a / dt` draws no
+division warning. `rangeText()` reads a bound that close to 0 as *above 0*.
+
+- `prepare.time` (`TimeFeatures`, a row step) appends the features its
+  settings switch on, in the order of `TIME_FEATURES`: `dt`; `hour` in
+  [0, 24] and `weekday` in [1, 7]; `hour_sin`, `hour_cos`, `weekday_sin` and
+  `weekday_cos` in [-1, 1]. The calendar follows `timezone` through
+  `zoneinfo`, validated when the design is checked; `UTC` needs no zone
+  database. With `elapsed` the step has a lead of 1 (`step_lead()`), since
+  the first observation has no `dt`. A name that already arrives is a `scope`
+  issue on the setting that would add it, and a step that adds nothing is
+  refused. `timezone` is left out of the normalized parameters while no
+  calendar feature reads it. The features carry no slots, and the inspector
+  lists them as *From no reading*.
+- `prepare.smooth` with `method: time_constant` (`Decay`) moves its level
+  towards each value by 1 - exp(-elapsed / time_constant), computed with
+  `expm1`, and starts at the first value. State is `(seen, level)`, the lead
+  is 0 and the suffix names the seconds: `smooth60s`, `smooth2p5s`.
+  Normalization drops `window_size` for this method and `time_constant` for
+  the others, so earlier designs keep their fingerprints.
+
+Prepare checkpoints stay at version 1 and gain `times`, which must name
+exactly the time-reading steps that have used an observation; a checkpoint
+from before has none and loads as long as the design has no such step that
+already ran. `PipelineTime.tsx` is the editor of `prepare.time`: one checkbox
+per setting in the classes of **Applies to**, the last one locked, and a
+**Time zone** field with the browser's zone names as suggestions, shown once
+the hour or the weekday is added.
+
 `prepare.constant`, `prepare.condition` and `prepare.set` are stateless row
 operations on the existing numeric feature stream. Constant and Condition append
 a named feature and reject collisions; a condition emits 0.0 or 1.0 without
@@ -342,8 +448,8 @@ applies a fix to the right line. `calculateLine()` in `formula.ts` gives the
 editor the names written above the caret and whether the caret is still in
 the name, where only features are offered.
 
-Aggregate, Formula and Gate (`pipeline_combine.py`) work on the whole row, keep no
-state and have output from the first observation. A recursive-descent parser in
+Aggregate, Formula, Gate and Mute alarms (`pipeline_combine.py`) work on the whole
+row, keep no state and have output from the first observation. A recursive-descent parser in
 `pipeline_formula.py` reads formulas and conditions, never `eval`. Its tree serves
 the compiler, which checks names and kinds and infers ranges by interval
 arithmetic, and RADAR, which compiles it into closures once per run. An
@@ -404,6 +510,34 @@ Stage readiness follows each step's own update count, so observations held back
 before a window do not fill it: a step needs the observations its predecessors
 still need, then its own warm-up. The stage state counts `held_back`; checkpoints
 without the count load it as 0.
+
+A Mute alarms step (`prepare.mute`, `Mute` in `pipeline_combine.py`) passes the
+row on unchanged and reads its condition. The compiler checks the condition like
+a Gate's with the verdicts turned round: always true is an error, because no
+alarm would ever be raised, and never true a warning. `PrepareStage.run` sets
+`muting` when a step's condition holds and the observation reaches the learned
+stage; an observation that is withheld has no alarm to mute. The stage state
+counts such observations as `muted`, `revert` takes the count back, and
+checkpoints without it load it as 0. A condition that cannot be read rejects the
+observation as any step's failure does.
+
+The detection rule sees a muted observation as any other, so calibration,
+adapting thresholds and consecutive counts go on. Each service asks
+`_raised(fired)` (`PipelineExecutionMixin`) where it decides an alarm: the
+adaptive and mixed services on the score threshold and the boundary service on
+its judgement. While the stage is muting, a fired alarm is not raised: the
+result is no anomaly, the context carries `alarm_muted`, and the evidence row
+keeps `alarm` false and `muted` true (migration `030_evidence_muted.sql`). Those
+rules judge every observation anew, so an alarm that still stands when the mute
+ends is raised then. A martingale tracker fires once, where its statistic
+crosses the threshold, so `MartingaleTrackerController.update(p_value,
+muted=True)` holds a muted crossing in `_held_alarm`: it is raised at the first
+observation that is not muted while the statistic is still above the threshold,
+and dropped when the statistic falls back first. The tracker's result carries
+`alarm_muted` at the crossing, and pickles from before the field load it as
+false. A Dojo replay that compares calibration methods records no method alarm
+for a muted observation. `tests/pipelines/test_mute_alarms.py` holds each
+service to these rules.
 
 A failure in the learned stage costs one observation too, when no learned state
 changed. Aberrant's `GraphPipeline.score_one` only reads committed state, and
@@ -582,7 +716,8 @@ The compiler checks schema 2 designs by learning mode instead of by lane
 (`_validate_learning`):
 
 - `learning`: a step reads a learned step that learns differently. A batch
-  detector reads batch or stateless steps, an online one online or stateless steps.
+  detector reads batch or stateless steps, an online one online or stateless
+  steps, and a pretrained or rule detector stateless steps only.
 - `calibration`: the martingale policy needs exact p-values, so no step in front
   of it may keep learning after calibration (no online step). A policy also has
   to fit its calibration step: the martingale and the score threshold need the
@@ -593,9 +728,30 @@ The compiler checks schema 2 designs by learning mode instead of by lane
 The rules leave one policy for a design. A calibration step that adapts alarms
 by the exceedance rule. Under the fixed split, detectors that are all fitted
 once alarm with the martingale, and a design with a detector that takes in
-every observation (one that learns continuously or a pretrained forecaster)
-alarms on the score threshold; the compiler reports the threshold behind
+every observation (one that learns continuously, a pretrained forecaster or
+a rule detector) alarms on the score threshold; the compiler reports the threshold behind
 detectors that are all fitted once as `calibration`.
+
+A rule detector is the component `rule.score` (`RULE_DETECTOR`). It learns
+nothing, so its learning is `none`, and it scores every observation as it
+arrives, so `streams()` in `pipeline_versions.py` is true for it as for an
+online or pretrained detector: the compiler checks its input like theirs,
+`derived_strategy()` counts it towards the adaptive lane, and RADAR runs it
+among the streaming detectors. Like a pretrained forecaster it is RADAR's own
+and not in `adaptive_catalog.json`: `RULE_DETECTORS` in `models/adaptive.py`
+describes it beside the generated models, with no settings and exactly one
+feature, bound as `key`. `resolved_detector_config()` resolves it through
+`rules.resolve_rule_detector()` to a `FeatureScore`, an Aberrant model whose
+`score_one` returns that feature's value and whose `learn_one` does nothing,
+so it sits at the end of an Aberrant graph like any other detector. In the
+compiler `_learned()` lists it as `rule`: a step that learns can't feed it
+(`learning`), and the martingale policy does not run on it (`calibration`). A
+run whose detectors all follow a rule (`_learns_nothing()`) starts in
+`calibrating` instead of `warmup` and reports a warm-up requirement of 0;
+beside a detector that learns, the run warms up as that detector needs.
+TACTIC's `available_models()`, which `/v1/detectors` serves to the setup form,
+leaves it out: a rule needs a step before it, and the rollback rehearsal
+expects settings for every model that field discovery lists.
 
 No design stores a lane. `PipelineDefinition.lane` is derived: the strategy all
 a design's learned steps share, or none. Routing and the schema 1 written form
@@ -689,8 +845,8 @@ The composer has no strategy switch and no `strategy.ts`. `learning.ts` holds
 what replaced it:
 
 - A card says how its step learns (`learningLabel`: *Learns continuously*,
-  *Fitted once*, *Pretrained*), and the add-step menu lists every step with that
-  tag. `learningBlocker()` refuses a step in front of a detector that learns
+  *Fitted once*, *Pretrained*, and *No training* for a detector that learns
+  nothing), and the add-step menu lists every step with that tag. `learningBlocker()` refuses a step in front of a detector that learns
   differently, with the compiler's reason, before the step is added.
 - **Detector model** lists the models by how they learn. Choosing one that
   learns differently (`changeDetector`) moves the learned steps only that
@@ -707,6 +863,9 @@ what replaced it:
 - Service settings name their first window after what the detectors do with it:
   *Training observations*, *Detector learning updates before calibration*, or
   both for a design that mixes them. `startupPhases()` takes the same view.
+  A design whose detectors all follow a rule has no such window
+  (`learningWindow()` is `none`): the setting is left out and the estimate
+  starts with calibration.
 
 `normalizeDefinition()` drops a strategy and stamps `schema_version: 2` on what
 the editor sends. A layout saved before the calibration step had a card gets one
@@ -1000,9 +1159,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`f02a9201a4aad4bdeacd196062246cc48f883505`, the commit that adds bearer-token
-revocation and the Dojo metrics cache through migrations 028
-(`access_token_revocation`) and 029 (`dojo_metrics_cache`). It shares the current
+`197cc239119b8bfb7df1b6921828dbb690adcd7f`, the commit that adds the composer's
+saved blocks and their table through migration 031
+(`pipeline_blocks`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -1010,7 +1169,9 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `535b29cd`, has neither migration 028 nor 029;
+The previous reference, `efe30f4a`, has no migration 031;
+`f02a9201` has no migration 030;
+`535b29cd` has neither migration 028 nor 029;
 `934f8f93` has no migration 027; `cbe2d839` before it
 has no migration 026, `ad919d98` returns a design with its lane and without
 its calibration step, where the current release returns it as the editor
@@ -1018,7 +1179,7 @@ reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
 has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
 1.4.0, so the rehearsal accepts none of them.
 Releases before
-migrations 028 and 029 refuse a database that has applied them. Rolling back past
+migration 031 refuse a database that has applied it. Rolling back past
 this schema boundary means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.

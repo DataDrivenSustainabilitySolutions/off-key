@@ -42,7 +42,7 @@ const normalized = {
   },
 };
 /** Satisfies every normalizer, so the routing rows can share one response. */
-const wire = { draft: definition, definition, components: [], templates: [] };
+const wire = { draft: definition, definition, components: [], templates: [], items: [], steps: [] };
 
 const reads: Array<[string, () => Promise<unknown>, string, object]> = [
   [
@@ -99,6 +99,7 @@ const reads: Array<[string, () => Promise<unknown>, string, object]> = [
     "/v1/pipeline-activations/op%2F1",
     optional,
   ],
+  ["blocks", () => pipelinesApi.blocks(signal), "/v1/pipeline-blocks", optional],
 ];
 
 describe("pipelines API", () => {
@@ -127,11 +128,14 @@ describe("pipelines API", () => {
     await pipelinesApi.metadata("line/1", { name: "Renamed" } as never);
     await pipelinesApi.saveLayout("svc/1", { nodes: {} });
     await pipelinesApi.cancel("op/1");
+    await pipelinesApi.createBlock({ name: "Scale", steps: [] });
+    await pipelinesApi.deleteBlock("block/1");
 
     expect(mockPost.mock.calls).toEqual([
       ["/v1/pipelines/apply", { service_id: "svc" }],
       ["/v1/pipelines", { name: "Line", definition }],
       ["/v1/pipeline-activations/op%2F1/cancel"],
+      ["/v1/pipeline-blocks", { name: "Scale", steps: [] }],
     ]);
     expect(mockPut.mock.calls).toEqual([
       ["/v1/pipelines/line%2F1/draft", request],
@@ -141,7 +145,20 @@ describe("pipelines API", () => {
       "/v1/pipelines/line%2F1",
       { name: "Renamed" },
     );
-    expect(mockDelete).not.toHaveBeenCalled();
+    expect(mockDelete).toHaveBeenCalledExactlyOnceWith("/v1/pipeline-blocks/block%2F1");
+  });
+
+  it("reads blocks with every step's settings filled in and no empty title", async () => {
+    const stored = { id: "b", name: "Scale", description: "", created_at: "2026-11-12T09:00:00Z" };
+    mockGet.mockResolvedValueOnce({ items: [{ ...stored, steps: [
+      { component: "prepare.formula", contract_version: 1, params: { name: "power" }, label: "Power" },
+      { component: "static.standard_scaler", label: null },
+    ] }] });
+
+    expect(await pipelinesApi.blocks()).toEqual([{ ...stored, steps: [
+      { component: "prepare.formula", contract_version: 1, params: { name: "power" }, label: "Power" },
+      { component: "static.standard_scaler", contract_version: 1, params: {} },
+    ] }]);
   });
 
   it("validates a draft and falls back to the submitted definition", async () => {

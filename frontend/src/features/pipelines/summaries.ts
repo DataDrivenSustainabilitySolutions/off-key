@@ -3,7 +3,9 @@ import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
 import { detectorIds } from "./model";
 import { writtenNames } from "./formula";
-import { addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import {
+  addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope, timeFeatures,
+} from "./scope";
 import { coverage } from "./learning";
 import { fusionChoice } from "./steps";
 
@@ -100,8 +102,16 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
   };
   switch (node.component) {
     case "prepare.smooth": {
+      if (value("method") === "time_constant") return `Time constant ${number(amount("time_constant", 60))} s`;
       const window = number(amount("window_size", 10));
       return value("method") === "rolling" ? `Mean of last ${window}` : `Exponential over ${window}`;
+    }
+    case "prepare.time": {
+      const chosen = timeFeatures(node, component);
+      if (!chosen.length) return "No time feature yet";
+      // Only the hour and the weekday follow a clock; dt is the same everywhere.
+      const zone = chosen.some(([name]) => name !== "elapsed") ? ` · ${value("timezone") || "UTC"}` : "";
+      return `Adds ${listed(chosen.flatMap(([, names]) => names))}${zone}`;
     }
     case "prepare.despike":
       return `Window ${number(amount("window_size", 11))} · limit ${number(amount("threshold", 3))} MAD`;
@@ -176,6 +186,10 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const condition = written(value("condition"));
       return condition ? `Only when ${condition}` : "No condition yet";
     }
+    case "prepare.mute": {
+      const condition = written(value("condition"));
+      return condition ? `No alarm while ${condition}` : "No condition yet";
+    }
   }
 }
 
@@ -241,6 +255,12 @@ function settingsSummary(
     case "adaptive.uncentered_pca":
     case "adaptive.random_projection":
       return { text: count(typeof params.n_components === "number" ? params.n_components : 1, "component") };
+    case "static.expected_value":
+    case "adaptive.expected_value": {
+      if (typeof params.target !== "string" || !params.target) return { text: "No target yet" };
+      const from = strings(params.apply_to);
+      return { text: `Expects ${params.target} from ${from.length ? listed(from) : "the other features"}` };
+    }
     case "policy.quantile": {
       // The threshold freezes at this quantile of the calibration scores.
       const quantile = typeof params.quantile === "number" ? params.quantile : 1;

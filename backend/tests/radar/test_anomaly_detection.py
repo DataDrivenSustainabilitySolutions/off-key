@@ -35,7 +35,7 @@ class _DetectorDouble:
         self.error = error
         self.refresh_background_state = MagicMock()
 
-    def process_data_point(self, _data, _topic=None, _charger_id=None):
+    def process_data_point(self, _data, _topic=None, _charger_id=None, _timestamp=None):
         if self.error is not None:
             raise self.error
         return self.result

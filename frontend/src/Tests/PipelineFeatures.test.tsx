@@ -15,6 +15,7 @@ import {
   rowPlacement,
   rowSteps,
 } from "@/features/pipelines/features";
+import { pipelinesApi } from "@/features/pipelines/api";
 import type { GraphDocument } from "@/features/pipelines/model";
 import { PipelineFeatures } from "@/features/pipelines/PipelineFeatures";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
@@ -37,6 +38,7 @@ const components = [
   component("prepare.range", "transform", scoped, "Range check"),
   component("prepare.formula", "transform", [], "Formula"),
   component("prepare.gate", "transform", [], "Gate"),
+  component("prepare.mute", "transform", [], "Mute alarms"),
   component("adaptive.standard_scaler", "transform", scoped, "Standard scaling"),
   component("features.select", "transform", [], "Select"),
   component("features.merge", "merge", [], "Merge"),
@@ -240,17 +242,23 @@ describe("the Features view on screen", () => {
     expect(screen.queryByRole("button", { name: "Add a step for a" })).toBeNull();
   });
 
-  it("lists the Gates that decide which observations count", () => {
-    const gated = document([transform("gate", "prepare.gate", { condition: "a > 1" })],
-      [{ source: "input", target: "gate" }, { source: "gate", target: "model" }]);
-    const report = { features: { input: chainReport.features.input,
-      gate: [{ name: "a", slots: ["a"], previous: "input.a" }, { name: "b", slots: ["b"], previous: "input.b" },
-        { name: "c", slots: ["c"], previous: "input.c" }] } } as unknown as PipelineValidation;
+  it("lists the Gates and Mute alarms steps, which decide and change no feature", () => {
+    const gated = document([transform("gate", "prepare.gate", { condition: "a > 1" }),
+      transform("mute", "prepare.mute", { condition: "b < 100" })],
+    [{ source: "input", target: "gate" }, { source: "gate", target: "mute" }, { source: "mute", target: "model" }]);
+    const passed = (from: string) => ["a", "b", "c"].map((name) => ({ name, slots: [name], previous: `${from}.${name}` }));
+    const report = { features: { input: chainReport.features.input, gate: passed("input"), mute: passed("gate") },
+    } as unknown as PipelineValidation;
     const selections: (string | undefined)[] = [];
     render(<PipelineFeatures document={gated} components={components} report={report}
       onSelect={(id) => { selections.push(id); }} onChange={() => {}} />);
-    fireEvent.click(within(screen.getByRole("group", { name: "Gates" })).getByRole("button", { name: "Only when a > 1" }));
-    expect(selections).toEqual(["gate"]);
+    const decisions = within(screen.getByRole("group", { name: "Gates and mutes" }));
+    fireEvent.click(decisions.getByRole("button", { name: "Only when a > 1" }));
+    fireEvent.click(decisions.getByRole("button", { name: "No alarm while b < 100" }));
+    expect(selections).toEqual(["gate", "mute"]);
+    // Neither step is a chip in a feature's row.
+    expect(decisions.getAllByRole("button")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /Only when|No alarm while/ })).toHaveLength(2);
   });
 });
 
@@ -276,6 +284,8 @@ describe("the inspector of a Prepare step", () => {
 describe("the Graph and Features switch", () => {
   it("shows the same design as one row per feature", async () => {
     const { PipelineWorkbench } = await import("@/features/pipelines/PipelineWorkbench");
+    // The editor reads the block library when it opens; this one never answers.
+    vi.spyOn(pipelinesApi, "blocks").mockReturnValue(new Promise(() => {}));
     render(<PipelineWorkbench catalog={catalog} document={chain} validation={checked} onSelect={() => {}}
       onChange={() => {}} onAdd={() => {}} />);
     const views = screen.getByRole("group", { name: "View" });

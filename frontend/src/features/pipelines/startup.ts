@@ -1,4 +1,5 @@
 import type { PipelineDefinition } from "./contracts";
+import type { LearningWindow } from "./learning";
 
 export type StartupPhase = {
   id: "preparing" | "learning" | "calibration";
@@ -10,12 +11,19 @@ export type StartupPhase = {
 /** What a service sees before it can raise its first alarm: Prepare windows filling,
  * as the last check counted them, then learning and calibration. Learned steps upstream
  * of the detector may need a few observations of their own first, so this is a lower bound.
- * `fitted` says every detector is fitted once, which makes the learning phase a training. */
-export function startupPhases(definition: PipelineDefinition, preparation = 0, fitted = false): StartupPhase[] {
+ * When every detector is fitted once the learning phase is a training, and when none
+ * learns anything there is no such phase. */
+export function startupPhases(
+  definition: PipelineDefinition,
+  preparation = 0,
+  window: LearningWindow = "continuous",
+): StartupPhase[] {
   const { training_window_size: learning, calibration_window_size: calibration } = definition.settings;
+  const fitted = window === "fitted";
   return [
     ...(preparation > 0 ? [{ id: "preparing", label: "Preparing", verb: "prepare", observations: preparation } as const] : []),
-    { id: "learning", label: fitted ? "Training" : "Detector learning", verb: fitted ? "train" : "learn", observations: learning },
+    ...(window === "none" ? []
+      : [{ id: "learning", label: fitted ? "Training" : "Detector learning", verb: fitted ? "train" : "learn", observations: learning } as const]),
     { id: "calibration", label: "Calibration", verb: "calibrate", observations: calibration },
   ];
 }
@@ -57,9 +65,9 @@ export function startupEstimate(
   definition: PipelineDefinition,
   intervals: ReadonlyArray<number | null | undefined>,
   preparation = 0,
-  fitted = false,
+  window: LearningWindow = "continuous",
 ): Startup {
-  const phases = startupPhases(definition, preparation, fitted);
+  const phases = startupPhases(definition, preparation, window);
   return {
     phases,
     observations: phases.reduce((total, phase) => total + phase.observations, 0),

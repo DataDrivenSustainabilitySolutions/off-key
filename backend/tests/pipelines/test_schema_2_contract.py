@@ -190,9 +190,10 @@ def test_every_detector_gives_scores_and_the_calibration_step_p_values():
         for item in components.values()
         if item.kind == "detector" and "forecast" in item.id
     } == {"forecasts"}
+    # A rule detector learns nothing.
     assert {
         item.learning for item in components.values() if item.kind == "detector"
-    } == {"batch", "online", "pretrained"}
+    } == {"batch", "online", "pretrained", "none"}
     fixed = components["calibrate.fixed_split"]
     assert (fixed.input_type, fixed.output_type) == ("scores", "p_values")
     assert {

@@ -2,16 +2,18 @@
 
 They keep no state and have output from the first observation. Aggregate and
 Formula compute one feature, which follows the features they keep; Gate holds
-back the observations its condition rejects. A Formula for each feature runs
+back the observations its condition rejects, and Mute alarms marks the ones
+whose alarm is not raised. A Formula for each feature runs
 its expression once per chosen feature, with x standing for that feature, and
 adds or replaces one feature each. A Calculate step writes several features,
 one line each, and every line reads the lines above it. The compiler names
 and bounds their features here, checks the values Prepare steps will skip,
 and RADAR runs the steps built here.
 
-Some per-feature steps read the row as well: whether a condition holds, or
-the feature they compare with. They get that value from here, because
-formulas build on the per-feature steps and not the other way round.
+Some per-feature steps read more than their feature: whether a condition
+holds, the feature they compare with, or the seconds since their previous
+observation. They get that value from here, because formulas build on the
+per-feature steps and not the other way round.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from ..schemas.pipelines import (
     FORMULA_VARIABLE,
     MAX_CALCULATION_LINES,
     FeatureDescription,
+    TimeParameters,
 )
 from .pipeline_formula import (
     Expression,
@@ -39,8 +42,9 @@ from .pipeline_formula import (
     interval,
     parse,
 )
-from .pipeline_prepare import PREPARE_MODELS, Bounds, PrepareFailure
+from .pipeline_prepare import PREPARE_MODELS, Bounds, PrepareFailure, reads_time
 from .pipeline_scope import MAX_FEATURE_NAME_LENGTH, ScopeError, adds, step_scope
+from .pipeline_time import Clock, TimeFeatures, time_columns
 
 Row = Mapping[str, float]
 Columns = list[FeatureDescription]
@@ -50,7 +54,9 @@ _DEFAULT_NAMES = {
     "prepare.condition": "condition",
     "prepare.set": "feature",
 }
-_CONDITIONS = frozenset({"prepare.gate", "prepare.condition"})
+_CONDITIONS = frozenset({"prepare.gate", "prepare.mute", "prepare.condition"})
+# Steps that decide by a condition and pass every feature on as it arrived.
+_DECISIONS = frozenset({"prepare.gate", "prepare.mute"})
 NAMED_COMPONENTS = frozenset({"prepare.constant", "prepare.condition", "prepare.set"})
 # Per-feature steps that read a condition from the row, by the setting it is in.
 LANE_CONDITIONS = {"prepare.accumulate": "reset_when", "prepare.hold": "update_when"}
@@ -188,17 +194,20 @@ def lane_condition(
 
 def lane_context(
     component: str, params: Mapping[str, Any], names: Sequence[str]
-) -> Callable[[Row], tuple[Any, ...]] | None:
-    """What a per-feature step reads from the row besides its own feature:
-    whether its condition holds, or the value it compares with."""
+) -> Callable[[Row, Clock | None], tuple[Any, ...]] | None:
+    """What a per-feature step reads besides its own feature: whether its
+    condition holds, the value it compares with, or the seconds since its
+    previous observation. A step that reads time gets a clock."""
     if component == "prepare.relation":
         against = params["against"]
-        return lambda row: (row[against],)
+        return lambda row, _clock: (row[against],)
+    if reads_time(component, dict(params)):
+        return lambda _row, clock: (clock.elapsed if clock else None,)
     parsed = lane_condition(component, params, names)
     if parsed is None:
         return None
     holds = evaluator(parsed)
-    return lambda row: (bool(holds(row)),)
+    return lambda row, _clock: (bool(holds(row)),)
 
 
 @dataclass(frozen=True)
@@ -391,6 +400,18 @@ class Gate:
 
 
 @dataclass(frozen=True)
+class Mute:
+    """Mutes the alarm of an observation its condition accepts; features pass
+    unchanged, and the observation is learned and scored as any other."""
+
+    expression: Expression
+    evaluate: Callable[[Row], Any]
+
+    def holds(self, row: Row) -> bool:
+        return bool(self.evaluate(row))
+
+
+@dataclass(frozen=True)
 class NamedValue:
     """Write one feature; dictionary assignment keeps an existing field's order."""
 
@@ -417,7 +438,16 @@ class Calculation:
         return output
 
 
-RowStep = Aggregate | Formula | FormulaForEach | Gate | NamedValue | Calculation
+RowStep = (
+    Aggregate
+    | Formula
+    | FormulaForEach
+    | Gate
+    | Mute
+    | NamedValue
+    | Calculation
+    | TimeFeatures
+)
 
 
 def row_step(
@@ -442,9 +472,13 @@ def row_step(
                 for item in assignments(params, inputs)
             )
         )
+    if component == "prepare.time":
+        return TimeFeatures(TimeParameters.model_validate(dict(params)))
     parsed = _checked(component, params, inputs)
     if component == "prepare.gate":
         return Gate(parsed, evaluator(parsed))
+    if component == "prepare.mute":
+        return Mute(parsed, evaluator(parsed))
     if component in NAMED_COMPONENTS:
         return NamedValue(combined_name(component, params), evaluator(parsed))
     if for_each(component, params):
@@ -500,7 +534,7 @@ def _hull(bounds: list[Bounds], function: str) -> Bounds:
 def combined_columns(
     component: str, params: Mapping[str, Any], columns: Columns
 ) -> Columns:
-    """The features after a stateless row operation."""
+    """The features after a row step."""
     names = [item.name for item in columns]
     if component in NAMED_COMPONENTS:
         return _named_columns(component, params, columns)
@@ -514,9 +548,11 @@ def combined_columns(
                 columns,
             )
         return columns
-    if component == "prepare.gate":
+    if component in _DECISIONS:
         _checked(component, params, names)
         return columns
+    if component == "prepare.time":
+        return time_columns(params, columns)
     if for_each(component, params):
         return _each_columns(params, columns)
     name = combined_name(component, params)
@@ -664,6 +700,7 @@ def value_issues(
     if component in {
         "prepare.formula",
         "prepare.gate",
+        "prepare.mute",
         "prepare.condition",
         "prepare.set",
     }:
@@ -743,6 +780,22 @@ def _expression_issues(
             ValueIssue(
                 "warning",
                 "The condition is always true, so the gate holds nothing back.",
+                parameter,
+            )
+        )
+    elif component == "prepare.mute" and analysis.truth:
+        issues.append(
+            ValueIssue(
+                "error",
+                "The condition is always true, so no alarm would ever be raised.",
+                parameter,
+            )
+        )
+    elif component == "prepare.mute" and analysis.truth is False:
+        issues.append(
+            ValueIssue(
+                "warning",
+                "The condition is never true, so the step mutes no alarm.",
                 parameter,
             )
         )
@@ -858,6 +911,7 @@ VALUE_CHECKED = frozenset(
         "prepare.change",
         "prepare.formula",
         "prepare.gate",
+        "prepare.mute",
         "prepare.condition",
         "prepare.set",
         "prepare.calculate",
@@ -875,6 +929,7 @@ __all__ = [
     "Formula",
     "FormulaForEach",
     "Gate",
+    "Mute",
     "RowStep",
     "ValueIssue",
     "assignments",

@@ -21,6 +21,14 @@ const strings = (value: JsonValue | undefined) =>
 export const hasScope = (component?: PipelineComponent) =>
   component?.id !== "prepare.formula" && !!component?.fields.some((field) => field.name === "apply_to");
 
+/** Steps that expect one feature, the target, from the others and give its residual. */
+export const isExpectation = (component: string) => component.endsWith(".expected_value");
+
+/** The setting that names the one feature a step sets apart from those it uses: what a
+ * Rolling relation compares with, or what an Expected value expects. */
+export const apartField = (component: string) =>
+  component === "prepare.relation" ? "against" : isExpectation(component) ? "target" : undefined;
+
 /** The name that stands for each feature in a Formula for each feature. */
 export const EACH_VARIABLE = "x";
 
@@ -43,21 +51,36 @@ const CHANGE_SUFFIXES: Record<string, string> = { difference: "diff", percent: "
 const ACCUMULATE_SUFFIXES: Record<string, string> = { sum: "total", min: "running_min", max: "running_max", count: "count" };
 const RELATION_SUFFIXES: Record<string, string> = { correlation: "corr", covariance: "cov", slope: "beta", residual: "resid" };
 
-/** A quantile as a percentage in suffix characters, as core writes it: 0.9 is 90, 0.999 is 99p9. */
-const quantileLabel = (quantile: number) =>
-  (quantile * 100).toFixed(6).replace(/\.?0+$/, "").replace(".", "p");
+/** A number in suffix characters, as core writes it, to six decimals: 90 is 90, 99.9 is 99p9. */
+const numberLabel = (value: number) => value.toFixed(6).replace(/\.?0+$/, "").replace(".", "p");
+
+/** The features each setting of a Time features step adds, in output order, as core names them. */
+export const TIME_FEATURES: [setting: string, names: string[]][] = [
+  ["elapsed", ["dt"]],
+  ["hour", ["hour"]],
+  ["weekday", ["weekday"]],
+  ["daily_cycle", ["hour_sin", "hour_cos"]],
+  ["weekly_cycle", ["weekday_sin", "weekday_cos"]],
+];
+
+/** The settings of a Time features step that are switched on, with what each adds. */
+export const timeFeatures = (node: PipelineNode, component?: PipelineComponent) =>
+  TIME_FEATURES.filter(([name]) => setting(node, component, name) === true);
 
 /** The short name a Prepare step gives added features, following its settings, as core
- * names them: smooth10, diff1, mean60, q90_60, corr60, log. Other steps carry theirs in the catalog. */
+ * names them: smooth10, smooth60s, diff1, mean60, q90_60, corr60, log. Other steps carry theirs in the catalog. */
 export function defaultSuffix(node: PipelineNode, component?: PipelineComponent): string | undefined {
   const value = (name: string) => setting(node, component, name);
   switch (node.component) {
-    case "prepare.smooth": return `smooth${value("window_size")}`;
+    case "prepare.smooth": return value("method") === "time_constant"
+      // Seconds, where the other methods count observations: smooth60s beside smooth10.
+      ? `smooth${numberLabel(Number(value("time_constant") ?? 60))}s`
+      : `smooth${value("window_size")}`;
     case "prepare.despike": return "despiked";
     case "prepare.change": return `${CHANGE_SUFFIXES[String(value("mode"))] ?? "diff"}${value("lag")}`;
     case "prepare.rolling": return value("statistic") === "quantile"
       // Two quantiles of one window keep apart: q10_60 and q90_60.
-      ? `q${quantileLabel(Number(value("quantile") ?? 0.5))}_${value("window_size")}`
+      ? `q${numberLabel(Number(value("quantile") ?? 0.5) * 100)}_${value("window_size")}`
       : `${value("statistic")}${value("window_size")}`;
     case "prepare.accumulate": return ACCUMULATE_SUFFIXES[String(value("function"))] ?? "total";
     case "prepare.hold": return "held";
@@ -79,6 +102,9 @@ export function combinedName(node: PipelineNode, component?: PipelineComponent):
   if (node.component === "prepare.condition") return "condition";
   if (node.component === "prepare.set") return "feature";
   if (node.component === "prepare.aggregate") return String(setting(node, component, "function") ?? "mean");
+  // The residual is named after its target, so it has no name before one is chosen.
+  if (isExpectation(node.component) && typeof node.params.target === "string" && node.params.target)
+    return `${node.params.target}_residual`;
 }
 
 const FORMULA_KEYWORDS = new Set(["and", "or", "not"]);

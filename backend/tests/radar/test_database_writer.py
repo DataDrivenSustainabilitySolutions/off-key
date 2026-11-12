@@ -256,6 +256,7 @@ def test_build_evidence_record_preserves_static_inference_context(
             "forecasts": [],
             "threshold": 100.0,
             "alarm": False,
+            "muted": False,
         }
     ]
 
@@ -310,7 +311,7 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
     assert evidence["p_value"] is None
     assert evidence["anomaly_score"] == 7.5
     assert evidence["threshold"] == 5.0
-    assert evidence["alarm"] is True
+    assert (evidence["alarm"], evidence["muted"]) == (True, False)
     assert anomaly["value_type"] == "anomaly_score"
     assert anomaly["anomaly_type"] == "ml_adaptive_stream_multivariate"
     assert anomaly["anomaly_value"] == 7.5
@@ -432,6 +433,57 @@ def test_build_evidence_record_preserves_generic_tracker_results(
     assert stored_tracker["threshold_window_position"] == 9
     assert stored_tracker["threshold_window_reset"] is False
     assert record["threshold"] == 25.0
+
+
+def test_evidence_keeps_which_tracker_had_its_crossing_muted(
+    db_config, sample_anomaly_result
+):
+    def tracker(tracker_id, **flags):
+        return {
+            "tracker_id": tracker_id,
+            "betting_function": "power",
+            "alarm_statistic": "restarted_martingale",
+            "threshold": 25.0,
+            **flags,
+        }
+
+    result = replace(
+        sample_anomaly_result,
+        context=_with_input_reference(
+            sample_anomaly_result,
+            {
+                "static_conformal": {
+                    "phase": "ready",
+                    "p_value": 0.01,
+                    "e_value": 2.0,
+                    "e_value_is_infinite": False,
+                    "log_e_value": 0.69,
+                    "restarted_martingale": 40.0,
+                    "restarted_martingale_is_infinite": False,
+                    "log_restarted_martingale": 3.69,
+                    "threshold": 25.0,
+                    "alarm_fired": False,
+                    "alarm_muted": True,
+                    "tested_count": 9,
+                    "tracker_results": [
+                        tracker("primary", alarm_muted=True, alarm_active=True),
+                        tracker("slow", alarm_muted=False),
+                        # A tracker result from before Mute alarms steps.
+                        tracker("older"),
+                    ],
+                }
+            },
+        ),
+    )
+
+    record = DatabaseWriter(
+        db_config, session_factory=AsyncMock(), service_id="svc-ensemble"
+    ).projector._build_evidence_records([result])[0]
+
+    assert (record["alarm"], record["muted"]) == (False, True)
+    assert [
+        (item["tracker_id"], item["alarm_muted"]) for item in record["tracker_results"]
+    ] == [("primary", True), ("slow", False), ("older", False)]
 
 
 @pytest.mark.asyncio

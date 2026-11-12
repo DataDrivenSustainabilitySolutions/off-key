@@ -1,5 +1,5 @@
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { hasScope, SCOPE_FIELDS, setting } from "./scope";
+import { hasScope, SCOPE_FIELDS, setting, TIME_FEATURES } from "./scope";
 
 export type StepFamily =
   "prepare" | "combine" | "normalize" | "reduce" | "route" | "transform" | "input" | "forecaster" | "detector"
@@ -23,8 +23,9 @@ export const STEP_FAMILIES: { id: StepFamily; label: string }[] = [
   { id: "output", label: "Evidence output" },
 ];
 
-// A Gate decides whether an observation goes on, so it sits with the routes.
-const ROUTES = new Set(["features.select", "features.rename", "features.passthrough", "prepare.gate"]);
+// A Gate decides whether an observation goes on and Mute alarms whether it may alarm,
+// so they sit with the routes.
+const ROUTES = new Set(["features.select", "features.rename", "features.passthrough", "prepare.gate", "prepare.mute"]);
 /** Steps that compute one feature from the features that arrive. */
 const COMBINE_STEPS = new Set([
   "prepare.aggregate", "prepare.formula", "prepare.constant", "prepare.condition", "prepare.set", "prepare.calculate",
@@ -46,7 +47,8 @@ export function stepFamily(kind: PipelineNode["kind"], component: string): StepF
   if (COMBINE_STEPS.has(component)) return "combine";
   if (isPrepare(component)) return "prepare";
   if (/(standard|min_max|robust)_scaler$/.test(component)) return "normalize";
-  if (/(pca|random_projection)$/.test(component)) return "reduce";
+  // An Expected value leaves one residual in place of the features it uses.
+  if (/(pca|random_projection|expected_value)$/.test(component)) return "reduce";
   return "transform";
 }
 
@@ -60,7 +62,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "features.rename": "Give features new names.",
   "features.passthrough": "Forward features unchanged.",
   "features.merge": "Join branches into one feature list.",
-  "prepare.smooth": "Average recent values to calm noise.",
+  "prepare.smooth": "Average recent values to calm noise, over observations or over time.",
   "prepare.despike": "Replace sudden spikes with the recent median.",
   "prepare.change": "Add the change since earlier observations.",
   "prepare.rolling": "Add a sum, quantile, spread, trend, shape or score of recent values.",
@@ -72,10 +74,12 @@ const DESCRIPTIONS: Record<string, string> = {
   "prepare.aggregate": "Combine features into their mean, sum, extreme, spread or range.",
   "prepare.formula": "Compute a feature from others, such as dc_voltage * dc_current.",
   "prepare.gate": "Learn and score only while a condition holds.",
+  "prepare.mute": "Raise no alarm while a condition holds; learning and scoring go on.",
   "prepare.constant": "Add a named constant to use in later steps.",
   "prepare.condition": "Turn a comparison or Boolean condition into a 1 or 0 feature.",
   "prepare.set": "Calculate or replace one feature, keeping the others.",
   "prepare.calculate": "Calculate several named features, one formula per line.",
+  "prepare.time": "Add the seconds since the previous observation, the hour or the weekday.",
   "static.standard_scaler": "Center and scale with training statistics.",
   "adaptive.standard_scaler": "Center and scale with running statistics.",
   "static.min_max_scaler": "Scale to 0 to 1 with training bounds.",
@@ -86,6 +90,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "adaptive.uncentered_pca": "Keep the main directions, updated as data arrives.",
   "static.random_projection": "Fewer dimensions through a fixed random map.",
   "adaptive.random_projection": "Fewer dimensions through a fixed random map.",
+  "static.expected_value": "Give how far one feature is from what the others imply, by a fit on training data.",
+  "adaptive.expected_value": "Give how far one feature is from what the others imply, by a fit updated as data arrives.",
   "detector:aberrant_seasonal_naive_forecaster": "Expect the value one cycle ago and score the miss.",
   "detector:aberrant_holt_winters_forecaster": "Expect a level, a trend and a repeating cycle, and score the miss.",
   "forecast.timestral": "Expect what a pretrained model forecasts from the recent values and score the miss.",
@@ -99,21 +105,30 @@ const DESCRIPTIONS: Record<string, string> = {
 export const stepDescription = (component: PipelineComponent) =>
   DESCRIPTIONS[component.id] ?? component.description;
 
-/** Settings with controls of their own: the formula editor, For each, Result, Name, Suffix
- * and the feature a Rolling relation compares with. */
+/** Settings with controls of their own: the formula editor, For each, Result, Name, Suffix,
+ * the feature a Rolling relation compares with, an Expected value's target and the list of
+ * time features. */
 const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
   "prepare.gate": new Set(["condition"]),
+  "prepare.mute": new Set(["condition"]),
   "prepare.condition": new Set(["condition", "name"]),
   "prepare.set": new Set(["expression", "name"]),
   "prepare.calculate": new Set(["formulas"]),
   "prepare.accumulate": new Set(["reset_when"]),
   "prepare.hold": new Set(["update_when"]),
   "prepare.relation": new Set(["against"]),
+  "prepare.time": new Set([...TIME_FEATURES.map(([name]) => name), "timezone"]),
+  "static.expected_value": new Set(["target", "name"]),
+  "adaptive.expected_value": new Set(["target", "name"]),
 };
 /** Steps that compute or decide by a formula; it is their main setting. */
-export const FORMULA_STEPS = new Set(["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set", "prepare.calculate"]);
+export const FORMULA_STEPS = new Set([
+  "prepare.formula", "prepare.gate", "prepare.mute", "prepare.condition", "prepare.set", "prepare.calculate",
+]);
+/** Steps that decide by a condition and pass every feature on, so no feature row names them. */
+export const DECISION_STEPS = new Set(["prepare.gate", "prepare.mute"]);
 /** Steps that work on each feature and read a condition as well, below their own settings. */
 export const CONDITION_STEPS = new Set(["prepare.accumulate", "prepare.hold"]);
 // Combine detectors has its own control, shown once the design has two detectors.
@@ -128,14 +143,23 @@ export const FUSION_CHOICES = [
 export const fusionChoice = (node: PipelineNode) =>
   FUSION_CHOICES.find((choice) => choice.value === node.params.fusion) ?? FUSION_CHOICES[0];
 
-/** The settings the inspector lists below Applies to and Result. Scale and offset
- * only mean something to a linear Math step, so they stay hidden otherwise. */
+/** Settings a step does not read as it is set: a quantile unless Rolling takes one, scale and
+ * offset unless Math is linear, and a Smooth's window or time constant, whichever its method leaves. */
+function unread(node: PipelineNode, component: PipelineComponent): string[] {
+  const value = (name: string) => setting(node, component, name);
+  switch (node.component) {
+    case "prepare.rolling": return value("statistic") === "quantile" ? [] : ["quantile"];
+    case "prepare.math": return value("function") === "linear" ? [] : ["scale", "offset"];
+    case "prepare.smooth": return [value("method") === "time_constant" ? "window_size" : "time_constant"];
+  }
+  return [];
+}
+
+/** The settings the inspector lists below Applies to and Result: those without a control
+ * of their own that the step reads as it is set. */
 export function stepFields(node: PipelineNode, component: PipelineComponent) {
   const own = node.kind === "calibration" ? CALIBRATION_CONTROLS : OWN_CONTROLS[node.component];
-  const fields = component.fields.filter((field) =>
-    !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name));
-  if (node.component === "prepare.rolling" && setting(node, component, "statistic") !== "quantile")
-    return fields.filter((field) => field.name !== "quantile");
-  if (node.component !== "prepare.math" || setting(node, component, "function") === "linear") return fields;
-  return fields.filter((field) => field.name !== "scale" && field.name !== "offset");
+  const hidden = unread(node, component);
+  return component.fields.filter((field) =>
+    !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name) && !hidden.includes(field.name));
 }

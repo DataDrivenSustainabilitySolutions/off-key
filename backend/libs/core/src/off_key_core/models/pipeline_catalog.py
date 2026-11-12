@@ -134,6 +134,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "Learn and score only the observations where a condition holds.",
         ),
         (
+            "prepare.mute",
+            "transform",
+            "Mute alarms",
+            "Raise no alarm while a condition holds. Learning and scoring go on.",
+        ),
+        (
             "prepare.constant",
             "transform",
             "Constant",

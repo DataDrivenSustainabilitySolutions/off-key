@@ -256,6 +256,7 @@ def test_build_evidence_record_preserves_static_inference_context(
             "forecasts": [],
             "threshold": 100.0,
             "alarm": False,
+            "muted": False,
         }
     ]
 
@@ -310,7 +311,7 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
     assert evidence["p_value"] is None
     assert evidence["anomaly_score"] == 7.5
     assert evidence["threshold"] == 5.0
-    assert evidence["alarm"] is True
+    assert (evidence["alarm"], evidence["muted"]) == (True, False)
     assert anomaly["value_type"] == "anomaly_score"
     assert anomaly["anomaly_type"] == "ml_adaptive_stream_multivariate"
     assert anomaly["anomaly_value"] == 7.5

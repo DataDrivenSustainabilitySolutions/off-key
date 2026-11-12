@@ -474,6 +474,7 @@ class ResultProjector:
                     "forecasts": _normalize_forecasts(context.get("forecasts")),
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),
+                    "muted": bool(context.get("alarm_muted", False)),
                 }
             )
         return records

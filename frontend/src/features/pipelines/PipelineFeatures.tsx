@@ -6,7 +6,7 @@ import { addForFeature, detectorsAfter, featuresView, rangeText, rowPlacement, r
 import { nodeLabel, nodeOptionLabeler, type GraphDocument } from "./model";
 import { PipelineToolbox } from "./PipelineToolbox";
 import { componentFor } from "./semantics";
-import { stepFamily } from "./steps";
+import { DECISION_STEPS, stepFamily } from "./steps";
 import { nodeSummary } from "./summaries";
 
 type Props = {
@@ -93,7 +93,8 @@ export function PipelineFeatures({ document, components, report, stale, selected
   const optionLabel = nodeOptionLabeler(document, components);
   const labels = new Map(definition.input_slots.map((slot) => [slot.id, slot.label || slot.id]));
   const label = (slot: string) => labels.get(slot) ?? slot;
-  const gates = definition.nodes.filter((node) => node.component === "prepare.gate");
+  // Gates and Mute alarms steps change no feature, so they are listed beside the heading.
+  const decisions = definition.nodes.filter((node) => DECISION_STEPS.has(node.component));
   const readings = view.rows.filter((row) => row.reading !== undefined);
   const derived = view.rows.filter((row) => row.reading === undefined);
   const chip = (id: string) => {
@@ -134,8 +135,8 @@ export function PipelineFeatures({ document, components, report, stale, selected
     aria-busy={stale || undefined}>
     <div className="pl-features-heading">
       <h3>Features the detector receives{view.rows.length ? <span>{view.rows.length}</span> : null}</h3>
-      {gates.length > 0 && <div className="pl-feature-gates" role="group" aria-label="Gates">
-        {gates.map((node) => <button type="button" key={node.id}
+      {decisions.length > 0 && <div className="pl-feature-gates" role="group" aria-label="Gates and mutes">
+        {decisions.map((node) => <button type="button" key={node.id}
           className={`pl-feature-step${selected === node.id ? " is-selected" : ""}`} data-family="route"
           aria-current={selected === node.id ? "true" : undefined} onClick={() => onSelect(node.id)}>
           {nodeSummary(node, componentFor(node, components), definition).text ?? nodeLabel(node, components, layout)}

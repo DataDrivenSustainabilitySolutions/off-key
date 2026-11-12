@@ -511,6 +511,21 @@ that is never true is an error, and one that is always true a warning. **Before
 the first alarm** and **Ready after** then say *at least*, because the
 observations a Gate holds back do not count.
 
+A **Mute alarms** step raises no alarm while its condition holds, such as
+`speed < 100` while a machine runs up. Unlike a Gate it lets every observation
+through: the steps after it, the detectors and the calibration learn and score
+as usual, so the charts keep their line and the detector keeps following the
+process. Only the alarm is held back. An alarm that would have been raised is
+kept as **muted**: the monitor's chart shows it as an open dot where a raised
+alarm is a filled one, hover reads **Alarm: muted**, and no alarm is listed for
+it. When the condition stops holding and the alarm still stands, it is raised
+then. The Prepare summary counts the observations scored with alarms muted, and
+the step's diagnostics say when its condition holds. A condition that is always
+true is an error, because no alarm would ever be raised, and one that is never
+true a warning. In a Dojo run a muted observation counts as no alarm. Choose a
+Gate when the detector should not learn from the readings at all, such as a
+standstill, and Mute alarms when it should and only the alarms would be noise.
+
 A step that chooses features, such as **Select features** or **Applies to**,
 lists the features that arrive once the check has worked them out. When an
 earlier step has an error, the check cannot, and the step names the earlier one
@@ -519,8 +534,8 @@ and its problem instead, with **Go to** to open it.
 **Features** beside **Graph** lists the features the detector receives, one row
 each: the reading it comes from, the steps that change it on the way, and the
 name the detector sees. Features made from several, such as a formula's result,
-follow the readings, and the Gates sit above the rows because they decide which
-observations reach every feature. **Raw** means no step changes the feature, and
+follow the readings, and the Gates and Mute alarms steps sit above the rows
+because they decide for every feature at once. **Raw** means no step changes the feature, and
 selecting a step opens its settings. **+** in a row adds a step for that feature
 alone: a Prepare or Combine step goes in before anything learns, and a learned
 step just before the detector. A feature that a learned step makes, such as a

@@ -18,11 +18,15 @@ class PipelineExecutionMixin:
     diagnostics: PipelineDiagnostics
     prepare: PrepareStage | None
     _execution_failed: bool
+    _alarm_muted: bool
 
     def _init_pipeline_execution(self, config) -> None:
         self.plan = ExecutionPlan(config.pipeline)
         self.diagnostics = PipelineDiagnostics(config.pipeline)
         self._execution_failed = False
+        # The policy fired on the current observation and a Mute alarms step
+        # kept the alarm from being raised.
+        self._alarm_muted = False
         stage = self.plan.stage
         self.prepare = PrepareStage(self.plan) if stage is not None else None
         if stage is not None:
@@ -38,12 +42,28 @@ class PipelineExecutionMixin:
         PrepareRejected and changes no state. timestamp is when the
         observation was measured, for the steps that read time.
         """
+        self._alarm_muted = False
         if self.prepare is None:
             return bound
         prepared = self.prepare.run(bound, self.diagnostics, timestamp)
         if isinstance(prepared, Withheld) and prepared.reason == "preparing":
             self.diagnostics.phase = "preparing"
         return prepared
+
+    @property
+    def _muting(self) -> bool:
+        """Whether a Mute alarms step's condition holds on the current observation."""
+        return self.prepare is not None and self.prepare.muting
+
+    def _raised(self, fired: bool) -> bool:
+        """Whether an alarm the policy fired is raised.
+
+        It is not while a Mute alarms step's condition holds. The policy has
+        counted the observation as any other, and the evidence keeps the alarm
+        as muted.
+        """
+        self._alarm_muted = bool(fired) and self._muting
+        return bool(fired) and not self._alarm_muted
 
     def _skip(
         self,

@@ -141,7 +141,8 @@ The service Evidence tab presents one timeline for its recorded inputs and joint
 detector result. Readings retain independent scales and units; the raw anomaly
 score (or logarithmic static evidence) appears once below them. A dashed line
 shows the threshold, red input lines mark service alarms, and score dots mark
-alarms from the selected detector. The view works with multivariate models such
+alarms from the selected detector. An alarm a Mute alarms step held back is an
+open dot, and the key names open dots only when the chart shows one. The view works with multivariate models such
 as online isolation forest and does not infer per-sensor attribution or a baseline.
 
 Up to six input tracks may be displayed simultaneously. Changing that selection
@@ -388,8 +389,8 @@ applies a fix to the right line. `calculateLine()` in `formula.ts` gives the
 editor the names written above the caret and whether the caret is still in
 the name, where only features are offered.
 
-Aggregate, Formula and Gate (`pipeline_combine.py`) work on the whole row, keep no
-state and have output from the first observation. A recursive-descent parser in
+Aggregate, Formula, Gate and Mute alarms (`pipeline_combine.py`) work on the whole
+row, keep no state and have output from the first observation. A recursive-descent parser in
 `pipeline_formula.py` reads formulas and conditions, never `eval`. Its tree serves
 the compiler, which checks names and kinds and infers ranges by interval
 arithmetic, and RADAR, which compiles it into closures once per run. An
@@ -450,6 +451,34 @@ Stage readiness follows each step's own update count, so observations held back
 before a window do not fill it: a step needs the observations its predecessors
 still need, then its own warm-up. The stage state counts `held_back`; checkpoints
 without the count load it as 0.
+
+A Mute alarms step (`prepare.mute`, `Mute` in `pipeline_combine.py`) passes the
+row on unchanged and reads its condition. The compiler checks the condition like
+a Gate's with the verdicts turned round: always true is an error, because no
+alarm would ever be raised, and never true a warning. `PrepareStage.run` sets
+`muting` when a step's condition holds and the observation reaches the learned
+stage; an observation that is withheld has no alarm to mute. The stage state
+counts such observations as `muted`, `revert` takes the count back, and
+checkpoints without it load it as 0. A condition that cannot be read rejects the
+observation as any step's failure does.
+
+The detection rule sees a muted observation as any other, so calibration,
+adapting thresholds and consecutive counts go on. Each service asks
+`_raised(fired)` (`PipelineExecutionMixin`) where it decides an alarm: the
+adaptive and mixed services on the score threshold and the boundary service on
+its judgement. While the stage is muting, a fired alarm is not raised: the
+result is no anomaly, the context carries `alarm_muted`, and the evidence row
+keeps `alarm` false and `muted` true (migration `030_evidence_muted.sql`). Those
+rules judge every observation anew, so an alarm that still stands when the mute
+ends is raised then. A martingale tracker fires once, where its statistic
+crosses the threshold, so `MartingaleTrackerController.update(p_value,
+muted=True)` holds a muted crossing in `_held_alarm`: it is raised at the first
+observation that is not muted while the statistic is still above the threshold,
+and dropped when the statistic falls back first. The tracker's result carries
+`alarm_muted` at the crossing, and pickles from before the field load it as
+false. A Dojo replay that compares calibration methods records no method alarm
+for a muted observation. `tests/pipelines/test_mute_alarms.py` holds each
+service to these rules.
 
 A failure in the learned stage costs one observation too, when no learned state
 changed. Aberrant's `GraphPipeline.score_one` only reads committed state, and

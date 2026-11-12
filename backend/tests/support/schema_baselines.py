@@ -34,6 +34,7 @@ EXPECTED_MIGRATIONS = (
     "027_dojo_method_alarms.sql",
     "028_access_token_revocation.sql",
     "029_dojo_metrics_cache.sql",
+    "030_evidence_muted.sql",
 )
 
 

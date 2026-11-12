@@ -841,6 +841,8 @@ class PreparationState(PipelineModel):
     rejected: int
     held_back: int = 0
     """Observations a Gate held back from learning and scoring."""
+    muted: int = 0
+    """Observations scored while a Mute alarms step's condition held."""
 
 
 class AdaptiveLearningState(PipelineModel):
@@ -1501,6 +1503,22 @@ class GateParameters(PipelineModel):
             "Observations where it is false are recorded but neither learned nor "
             "scored, such as dc_current > 1. Compare with < <= > >= == != and "
             "join with and, or and not."
+        ),
+    )
+
+
+class MuteParameters(PipelineModel):
+    """Raise no alarm for the observations a condition accepts."""
+
+    condition: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Condition",
+        description=(
+            "Observations where it is true are learned and scored as usual, and "
+            "an alarm for one of them is kept as muted instead of raised, such "
+            "as speed < 100. Compare with < <= > >= == != and join with and, or "
+            "and not."
         ),
     )
 

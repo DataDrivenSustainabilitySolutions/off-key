@@ -186,6 +186,10 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const condition = written(value("condition"));
       return condition ? `Only when ${condition}` : "No condition yet";
     }
+    case "prepare.mute": {
+      const condition = written(value("condition"));
+      return condition ? `No alarm while ${condition}` : "No condition yet";
+    }
   }
 }
 

@@ -105,6 +105,9 @@ APPLIED_CHECKSUMS = {
     "029_dojo_metrics_cache.sql": (
         "41d0fdff33ab16f63f84156780127e7b50a2331adfd873319c357b8a865b2f66"
     ),
+    "030_evidence_muted.sql": (
+        "b759df7fb1a5502c81c8cab3455250f5b639edad54bc938b3db247242894b475"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new

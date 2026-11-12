@@ -473,6 +473,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         )
         self.operational_count += 1
         self.processed_count += 1
+        is_anomaly = self._raised(is_anomaly)
         if is_anomaly:
             self.anomaly_count += 1
         return self._result(
@@ -489,7 +490,9 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         """Let a replay's other calibration methods judge the detector scores
         of the current observation."""
         if self.comparison is not None:
-            self._method_alarms = self.comparison.observe(scores)
+            alarms = self.comparison.observe(scores)
+            # A muted observation raises no alarm under any calibration method.
+            self._method_alarms = 0 if self._muting else alarms
 
     def _expect(self, threshold: float | None) -> None:
         """Keep what each forecaster step expected of the scored observation.
@@ -776,6 +779,8 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                     "anomaly_score": score,
                     "threshold": threshold,
                     "alarm_fired": is_anomaly,
+                    # The policy fired and a Mute alarms step kept the alarm back.
+                    **({"alarm_muted": True} if self._alarm_muted else {}),
                     "feature_keys": list(self.feature_keys),
                     # Each detector's score and surprise, so an alarm names
                     # the detector that drove it.

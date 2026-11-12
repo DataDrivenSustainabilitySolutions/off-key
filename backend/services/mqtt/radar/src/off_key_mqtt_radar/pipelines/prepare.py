@@ -5,7 +5,9 @@ static baseline fits in the background, so the learned stage starts on a
 continuous history. Its output is the learned stage's input: one column per
 feature crossing the cut, named <node>.<feature>. A Gate whose condition fails
 withholds the observation: the steps before it keep what they saw, the steps
-after it see nothing, and nothing learns or scores.
+after it see nothing, and nothing learns or scores. A Mute alarms step whose
+condition holds lets the observation on and marks it: everything learns and
+scores, and the run raises no alarm for it.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from typing import Any
 
 from off_key_core.models.pipeline_combine import (
     Gate,
+    Mute,
     RowStep,
     lane_context,
     row_step,
@@ -63,7 +66,7 @@ class _Step:
     kernel: Kernel | None = None
     """The per-feature step; None for row steps and routes."""
     row: RowStep | None = None
-    """Aggregate, Formula or Gate, which work on the whole row."""
+    """Aggregate, Formula, Gate or Mute alarms, which work on the whole row."""
     context: Callable[[dict[str, float], Clock | None], tuple[Any, ...]] | None = None
     """What a per-feature step reads besides its feature: whether a condition
     holds, the value it compares with, or the seconds since it last ran."""
@@ -87,6 +90,7 @@ class _Undo:
     times: dict[str, float]
     accepted: int
     held_back: int
+    muted: int
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,8 @@ class _Record:
     blocked_by: tuple[str, ...]
     held_back: bool
     """A Gate held the observation back here or before this step."""
+    muting: bool = False
+    """The step is a Mute alarms step and its condition holds."""
 
 
 class PrepareStage:
@@ -136,6 +142,13 @@ class PrepareStage:
         self.accepted = 0
         self.rejected = 0
         self.held_back = 0
+        # Observations the learned stage saw while a Mute alarms step's
+        # condition held.
+        self.muted = 0
+        # Whether the observation run last is one of them.
+        self.muting = False
+        # The Mute alarms steps whose condition holds on the observation in a pass.
+        self._muters: set[str] = set()
         # What the last commit replaced, until the next observation runs.
         self._undo: _Undo | None = None
 
@@ -205,6 +218,7 @@ class PrepareStage:
             "required": self.required,
             "rejected": self.rejected,
             "held_back": self.held_back,
+            "muted": self.muted,
         }
 
     def run(
@@ -221,6 +235,8 @@ class PrepareStage:
         reads time and the observation is not later than its previous one.
         """
         self._undo = None
+        self.muting = False
+        self._muters = set()
         now = None if timestamp is None else float(timestamp)
         if now is None and any(step.timed for step in self.steps):
             now = time()
@@ -249,14 +265,22 @@ class PrepareStage:
             elif output is not None:
                 available[step.id] = output
             elapsed = perf_counter_ns() - started
-            records.append(_Record(step, values, output, elapsed, (), closed))
+            muting = step.id in self._muters
+            records.append(_Record(step, values, output, elapsed, (), closed, muting))
+        withheld = (
+            Withheld("held_back", gate)
+            if gate is not None
+            else Withheld("preparing")
+            if any(key not in available for key in self.frontier)
+            else None
+        )
+        # An observation the learned stage does not see has no alarm to mute.
+        self.muting = withheld is None and bool(self._muters)
         self._commit(staged, records, gate, now)
         if diagnostics is not None:
             self._report(diagnostics, records)
-        if gate is not None:
-            return Withheld("held_back", gate)
-        if any(key not in available for key in self.frontier):
-            return Withheld("preparing")
+        if withheld is not None:
+            return withheld
         return {
             f"{key}.{name}": available[key][name]
             for key in self.frontier
@@ -303,10 +327,12 @@ class PrepareStage:
             dict(self.times),
             self.accepted,
             self.held_back,
+            self.muted,
         )
         self.states.update(staged)
         self.accepted += 1
         self.held_back += gate is not None
+        self.muted += self.muting
         for record in records:
             if record.values is not None:
                 self.updates[record.step.id] += 1
@@ -325,6 +351,7 @@ class PrepareStage:
         self.states.update(undo.states)
         self.updates, self.times = undo.updates, undo.times
         self.accepted, self.held_back = undo.accepted, undo.held_back
+        self.muted, self.muting = undo.muted, False
         self._undo = None
 
     def _reject(
@@ -353,6 +380,10 @@ class PrepareStage:
         try:
             if isinstance(step.row, Gate):
                 return values if step.row.opens(values) else None
+            if isinstance(step.row, Mute):
+                if step.row.holds(values):
+                    self._muters.add(step.id)
+                return values
             if isinstance(step.row, TimeFeatures):
                 assert clock is not None
                 return step.row.apply(values, clock)
@@ -418,6 +449,7 @@ class PrepareStage:
                 required=step.required or None,
                 blocked_by=record.blocked_by,
                 held_back=record.held_back,
+                muting=record.muting,
             )
 
     def export_state(self) -> dict[str, Any]:
@@ -427,6 +459,7 @@ class PrepareStage:
             "accepted": self.accepted,
             "rejected": self.rejected,
             "held_back": self.held_back,
+            "muted": self.muted,
             "updates": dict(self.updates),
             "states": {key: list(value) for key, value in self.states.items()},
             "times": dict(self.times),
@@ -459,12 +492,15 @@ class PrepareStage:
             ):
                 raise ValueError(f"Prepare checkpoint state of {step.id} is invalid")
         times = self._restored_times(state, updates)
-        # Checkpoints from before Gates existed carry no held-back count.
+        # Checkpoints from before Gates existed carry no held-back count, and
+        # those from before Mute alarms steps no muted count.
         held_back = state.get("held_back", 0)
+        muted = state.get("muted", 0)
         counts = [
             state.get("accepted"),
             state.get("rejected"),
             held_back,
+            muted,
             *updates.values(),
         ]
         if not all(isinstance(value, int) and value >= 0 for value in counts):
@@ -475,6 +511,7 @@ class PrepareStage:
         self.accepted = state["accepted"]
         self.rejected = state["rejected"]
         self.held_back = held_back
+        self.muted = muted
 
     def _restored_times(self, state: dict[str, Any], updates) -> dict[str, float]:
         """When each step that reads time last ran: one time for every such step

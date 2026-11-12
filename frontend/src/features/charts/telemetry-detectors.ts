@@ -31,6 +31,8 @@ export interface DetectionObservation {
   value: number | null;
   threshold: number | null;
   alarmActive: boolean;
+  /** The detection rule fired here and a Mute alarms step held the alarm back. */
+  alarmMuted?: boolean;
   logValue: number | null;
   isInfinite: boolean;
   inputTimestamps?: Readonly<Record<string, string>>;
@@ -111,6 +113,13 @@ export const collectMonitoringChartDetectors = (evidence: readonly MonitoringCha
   collectChartDetectors(evidence.map(item => ({ item, time: epochMilliseconds(item.timestamp) }))
     .filter(({ time }) => Number.isFinite(time)), true);
 
+/** Only a muted alarm carries the mark, so other observations stay as they were. */
+const muted = (held: boolean | undefined) => held ? { alarmMuted: true } : {};
+
+/** What a tooltip says of an observation's alarm: a muted alarm is not an active one. */
+export const alarmText = (observation: Pick<DetectionObservation, "alarmActive" | "alarmMuted">) =>
+  observation.alarmMuted ? "muted" : observation.alarmActive ? "active" : "inactive";
+
 function collectChartDetectors(
   rows: Array<{ item: MonitoringChartEvidence; time: number }>,
   includeInputs = false,
@@ -123,7 +132,7 @@ function collectChartDetectors(
       const group = groups.get(id) ?? { id, serviceId: item.monitor_id, name: "Anomaly score", pane: "adaptive", observations: [] };
       group.observations.push({
         sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(item.anomaly_score),
-        threshold: finiteOrNull(item.threshold), alarmActive: item.alarm, logValue: null, isInfinite: false,
+        threshold: finiteOrNull(item.threshold), alarmActive: item.alarm, ...muted(item.muted), logValue: null, isInfinite: false,
         ...(includeInputs ? { inputTimestamps: item.input_timestamps, alarmFired: item.alarm,
           ...(item.detector_results?.length ? { detectors: item.detector_results } : {}) } : {}),
       });
@@ -150,6 +159,8 @@ function collectChartDetectors(
         sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(tracker.statistic_value),
         threshold: threshold !== null && threshold > 0 ? threshold : null,
         alarmActive: tracker.alarm_active, logValue: finiteOrNull(tracker.log_statistic_value),
+        // Each tracker says whether its own crossing was muted; a row without trackers says it once.
+        ...muted("alarm_muted" in tracker ? tracker.alarm_muted : item.muted),
         isInfinite: tracker.statistic_is_infinite,
         ...(includeInputs ? { inputTimestamps: item.input_timestamps,
           alarmFired: "alarm_fired" in tracker ? tracker.alarm_fired : item.alarm,

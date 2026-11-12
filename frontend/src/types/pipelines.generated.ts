@@ -220,6 +220,10 @@ export type MonitorSummary = {
   created_at?: string | null;
 };
 
+export type MuteParameters = {
+  condition: string;
+};
+
 export type ObservedDetector = {
   detector_id: string;
   score: number | null;
@@ -665,6 +669,7 @@ export type PreparationState = {
   required: number;
   rejected: number;
   held_back?: number;
+  muted?: number;
 };
 
 export type PrepareScopeParameters = {

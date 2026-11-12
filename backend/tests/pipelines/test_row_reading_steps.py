@@ -634,6 +634,22 @@ def test_a_rejected_condition_or_formula_leaves_every_state_as_it_was():
         PrepareStage(plan).load_state(broken)
 
 
+def test_a_relation_counts_both_windows_of_each_feature_it_compares():
+    def relation(slots, **params):
+        step = {"against": slots[-1], "window_size": 3600, **params}
+        return checked(("moves", "prepare.relation", step), slots=tuple(slots))
+
+    # Seven features, each with its own window and one of h: 2 * 7 * 3600.
+    message = "Windows hold 50,400 values; the limit is 50,000."
+    over = [("prepare_budget", None, message)]
+    assert issues(relation("abcdefgh", apply_to=list("abcdefg"))) == over
+    assert relation("abcdefgh", apply_to=list("abcdef")).valid
+    # Without Applies to, the feature the others are compared with is not one
+    # of them.
+    assert issues(relation("abcdefgh")) == over
+    assert relation("abcdefg").valid
+
+
 def test_relation_windows_count_toward_the_known_memory():
     def known(steps):
         plan = ExecutionPlan(execution(steps=steps))

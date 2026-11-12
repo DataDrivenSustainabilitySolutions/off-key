@@ -176,7 +176,12 @@ class Kernel:
     lead = 0
     """Values a feature needs before its first output."""
     window = 0
-    """Past values a feature keeps."""
+    """Length of the window of past values a feature keeps."""
+
+    @property
+    def held(self) -> int:
+        """Past values a feature keeps, which count toward MAX_WINDOW_VALUES."""
+        return self.window
 
     def initial(self) -> State:
         return ()
@@ -555,6 +560,11 @@ class Relation(Kernel):
         self.statistic = statistic
         self.lead = size - 1
         self.window = size
+
+    @property
+    def held(self) -> int:
+        """A window of the feature and one of the feature it is compared with."""
+        return 2 * self.window
 
     def initial(self) -> State:
         return (array("d"), array("d"))

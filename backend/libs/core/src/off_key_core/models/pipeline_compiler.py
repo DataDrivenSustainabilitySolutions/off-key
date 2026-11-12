@@ -372,8 +372,11 @@ def _validate_windows(compilation: _Compilation) -> None:
             or len(edges) != 1
         ):
             continue
-        used = node.params.get("apply_to") or compilation.features[edges[0].source]
-        total += kernel(node.component, node.params).window * len(used)
+        names = [item.name for item in compilation.features[edges[0].source]]
+        # The features the step uses: a Rolling relation leaves out the one it
+        # compares the others with.
+        used = step_scope(node.component, node.params, names).selected
+        total += kernel(node.component, node.params).held * len(used)
     if total > MAX_WINDOW_VALUES:
         compilation.error(
             "prepare_budget",

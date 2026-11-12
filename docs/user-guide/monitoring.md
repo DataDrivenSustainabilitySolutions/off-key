@@ -334,7 +334,9 @@ the 11th observation, and its settings say **Ready after 11 observations**.
 **Before the first alarm** counts those observations as
 **Preparing**; meanwhile the service shows how many observations are prepared,
 and nothing learns. A window holds at most 3,600 values per feature,
-and a design's Prepare windows hold at most 50,000 values in all.
+and a design's Prepare windows hold at most 50,000 values in all. A **Rolling
+relation** keeps two windows per feature, its own and one of the feature it is
+compared with.
 
 An observation a Prepare step cannot use is skipped as a whole: a logarithm or
 root outside its domain, a percent change from zero, a result too large to

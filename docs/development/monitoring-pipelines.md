@@ -243,7 +243,8 @@ the first prepared one, which the composer shows as **Preparing** before learnin
 The compiler marks Prepare outputs as derived (`raw=False`) and propagates bounds
 through them. It rejects a Prepare step downstream of a learned one (`stage`)
 and limits all windows to 50,000 values across their features
-(`prepare_budget`). Means use `math.fsum`, standard deviations divide
+(`prepare_budget`), counting `Kernel.held` for each feature a step uses: one
+window, or two for a Rolling relation. Means use `math.fsum`, standard deviations divide
 `math.sumprod` of the deviations by n − 1, and order statistics keep a sorted copy
 updated by bisection; an even window's median averages the middle pair. Despike
 compares against 1.4826 × MAD and leaves a flat window unchanged. Change and

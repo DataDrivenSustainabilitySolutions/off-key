@@ -8,12 +8,13 @@ from off_key_core.db.models import Anomaly
 from off_key_core.schemas.alarms import (
     MULTIVARIATE_TELEMETRY_TYPE,
     Alarm,
+    AlarmQuery,
     AlarmReadingCount,
 )
 from off_key_core.schemas.system import SystemSnapshot
 
 from ...domain import ValidationError
-from ...repositories.anomaly_filters import ReadingScope
+from ...repositories.anomaly_filters import AnomalyFilters, ReadingScope
 from .catalogue_ids import CatalogueIds
 
 
@@ -63,6 +64,28 @@ class AlarmCatalogue:
 
     def scope(self, stream_ids: Iterable[str]) -> tuple[ReadingScope, list[str]]:
         return reading_scope(self._bindings, stream_ids)
+
+    def filters(self, query: AlarmQuery) -> tuple[AnomalyFilters, list[str]]:
+        scope, unknown = (
+            (None, []) if query.reading_ids is None else self.scope(query.reading_ids)
+        )
+        narrowing = (
+            self.narrowing(query.reading_id) if query.reading_id is not None else None
+        )
+        if (
+            query.reading_id is not None
+            and narrowing is not None
+            and not narrowing.pairs
+        ):
+            unknown = sorted({*unknown, query.reading_id})
+        return AnomalyFilters(
+            scope=scope,
+            reading=narrowing,
+            service_id=query.monitor_id,
+            since=query.since,
+            until=query.until,
+            max_p_value=query.max_p_value,
+        ), unknown
 
     def device_scope(self, device_id: str) -> ReadingScope:
         """Every reading of a device; 404 when the catalogue lacks the device."""

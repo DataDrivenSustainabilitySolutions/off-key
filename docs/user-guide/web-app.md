@@ -230,9 +230,17 @@ Open **Monitoring** at `/` to inspect monitoring services. The view refreshes se
    readings without a device, and the readings it is about.
 3. Narrow the events by reading, time range and p-value. With several devices in
    scope, each reading is listed with its device's name.
-4. Follow an event to its **Device readings**, or **Broker readings** for readings
-   without a device.
-5. Remove individual anomaly records when they are no longer required.
+4. Open a source or signal to inspect its readings around the event, or open the
+   detection description for the full anomaly. Multivariate events show their
+   involved signals without attributing a cause to an individual sensor.
+5. Use **Copy link** to share an anomaly with another signed-in member. The event
+   ID remains available under **Technical details** for API requests and logs.
+6. Select individual rows, select all matching events across pages, or choose
+   **Delete all** to clear the current scope and filters. Review the exact count
+   before confirming. New arrivals are excluded, and deletion cannot be undone.
+
+The compact **Latest** status shows recency; hover over it for the exact time.
+Detector results describe statistical evidence, not operational severity.
 
 ## Dojo workflow
 

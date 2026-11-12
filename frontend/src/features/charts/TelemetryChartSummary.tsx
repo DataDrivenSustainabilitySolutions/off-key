@@ -1,13 +1,15 @@
 import { formatChartTime, formatNumber, type TelemetryChartModel } from "./telemetry-chart";
 import { alarmText } from "./telemetry-detectors";
 
-export function TelemetryChartSummary({ model, timeZone, showTelemetry = true }: { model: TelemetryChartModel; timeZone: string; showTelemetry?: boolean }) {
+export function TelemetryChartSummary({ model, timeZone, showTelemetry = true, historical = false }: {
+  model: TelemetryChartModel; timeZone: string; showTelemetry?: boolean; historical?: boolean;
+}) {
   const latestTelemetry = model.telemetry.data[model.telemetry.data.length - 1];
   return (
     <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-border/60 pt-3 text-xs text-muted-foreground">
       {showTelemetry && latestTelemetry && (
         <span>
-          Current {model.telemetry.name}: {latestTelemetry[1]}
+          {historical ? 'Latest in window · ' : 'Current '}{model.telemetry.name}: {formatNumber(latestTelemetry[1])}
           {model.telemetry.unit ? ` ${model.telemetry.unit}` : ""} at{" "}
           {formatChartTime(latestTelemetry[0], timeZone, "tooltip")}
         </span>

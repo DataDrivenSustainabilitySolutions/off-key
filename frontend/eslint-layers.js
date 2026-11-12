@@ -23,6 +23,7 @@ const ALLOWED = {
   'features/workspace': [...SHARED, 'domain', 'features/charts'],
   'features/pipelines': [...SHARED, 'domain', 'features/charts', 'features/workspace'],
   'features/monitoring': [...SHARED, 'domain', 'features/charts', 'features/readings', 'features/workspace', 'features/pipelines'],
+  'features/reporting': [...SHARED, 'domain', 'features/charts', 'features/workspace'],
   'features/catalogue': [...SHARED, 'domain', 'features/charts', 'features/readings', 'features/workspace'],
   'features/dojo': [...SHARED, 'domain', 'features/charts', 'features/workspace', 'features/pipelines'],
 }

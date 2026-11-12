@@ -30,6 +30,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `monitoring_evidence` | `(service_id, timestamp, sequence_number)` | Per-inference strategy evidence used by charts and alarms |
 | `monitoring_evidence_clock` | `id = 1` | Durable watermark serializing evidence creation times through commit, so forward cursors cannot skip late commits |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
+| `alarm_deletions` | `id` | Short-lived exact event selections and committed counts for confirmed, retryable bulk deletion |
 | `remembered_sessions` | `token_hash` | Rotating remember-me refresh tokens grouped by session family |
 | `revoked_access_tokens` | `token_hash` | Hashed access tokens revoked at logout, retained until their expiry |
 
@@ -92,6 +93,10 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 - Stores detector type, value, value semantics, and the exact contributing `sensor_set` when available.
 - `anomaly_identity` gives the UI a stable deletion identifier without changing the time-series primary key.
+- Migration `032_alarm_deletions.sql` adds deletion previews. Each preview freezes
+  the matching event IDs for ten minutes, so new arrivals cannot widen a reviewed
+  selection. A successful deletion clears the IDs and retains its result for
+  retries; subsequent previews remove expired records.
 - Monitor alarms carry their originating `service_id`, so independent monitors can
   report multivariate alarms for the same entity and timestamp. Retrying one
   monitor's result remains idempotent. The API returns this ID for exact chart

@@ -1,4 +1,5 @@
 import { epochMilliseconds } from "@/lib/timestamps";
+import AnomalyInvestigation from '@/features/reporting/AnomalyInvestigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -121,10 +122,13 @@ const freshCursors = (sourceKey: string): DetailsCursors =>
 /** The readings of one device, or of one broker's readings without a device. */
 const Details: React.FC = () => {
   const { deviceId, brokerId } = useParams<{ deviceId?: string; brokerId?: string }>();
+  const [params] = useSearchParams();
   const source = useMemo((): ReadingSource => brokerId !== undefined
     ? { kind: "broker", id: brokerId }
     : { kind: "device", id: deviceId ?? "" }, [deviceId, brokerId]);
   const key = `${source.kind}:${source.id}`;
+  const eventId = params.get('event');
+  if (eventId) return <AnomalyInvestigation eventId={eventId} />;
   return <SourceDetails key={key} source={source} sourceKey={key} />;
 };
 

@@ -7,6 +7,9 @@ import type {
   Alarm,
   AlarmPage,
   AlarmQuery,
+  AlarmDetail,
+  AlarmSelection,
+  AlarmDeletionPreview,
   TelemetryDataPoint,
   TelemetryCursor,
   TelemetryTypeData,
@@ -140,3 +143,10 @@ export const deleteAlarm = async (alarmId: string): Promise<void> => {
   }
   await apiUtils.delete(API_CONFIG.ENDPOINTS.ALARMS.DELETE(alarmId));
 };
+
+export const getAlarm = (id: string, signal?: AbortSignal) =>
+  get<AlarmDetail>(API_CONFIG.ENDPOINTS.ALARMS.ITEM(id), signal);
+export const previewAlarmDeletion = (selection: AlarmSelection) =>
+  apiUtils.post<AlarmDeletionPreview>('/v1/alarms/deletion-preview', selection);
+export const deleteAlarmSelection = (token: string) =>
+  apiUtils.post<{ count: number }>('/v1/alarms/delete', { token });

@@ -39,10 +39,8 @@ export interface Alarm {
   multivariate: boolean;
   alarm_type: string;
   value: number;
-  // 'tail_pvalue': value is a tail probability (0-1, lower = more severe).
-  // 'zscore': value is a z-score (legacy rows, higher = more severe).
-  // null: predates this field.
-  value_type: 'tail_pvalue' | 'conformal_pvalue' | 'zscore' | null;
+  /** The result's scale, not a measure of operational severity. */
+  value_type: 'tail_pvalue' | 'conformal_pvalue' | 'anomaly_score' | 'zscore' | (string & {}) | null;
   /** Historical and manually created alarms have no originating monitor. */
   monitor_id: string | null;
 }
@@ -72,3 +70,11 @@ export interface AlarmPage {
   readings: { reading_id: string; device_id: string | null; device_label: string | null; label: string; count: number }[];
   unknown_reading_ids: string[];
 }
+
+export interface AlarmDetail {
+  alarm: Alarm;
+  evidence: import('./monitoring').MonitoringChartEvidence | null;
+}
+
+export type AlarmSelection = { alarm_ids: string[] } | { query: AlarmQuery; exclude_ids?: string[] };
+export interface AlarmDeletionPreview { token: string; count: number; expires_at: string }

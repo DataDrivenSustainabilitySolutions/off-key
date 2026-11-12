@@ -111,6 +111,9 @@ APPLIED_CHECKSUMS = {
     "031_pipeline_blocks.sql": (
         "151980597246083b6617dd3557b6e84f44340f57cebfc87516ebcdf06681f596"
     ),
+    "032_alarm_deletions.sql": (
+        "233c4d6ad60f9b1119d5b5739ee2e5f843602f9390a68e443aa62f20a64df327"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -138,6 +141,7 @@ LEDGER_TABLES = {
     "025_evidence_cursor.sql": {"monitoring_evidence_clock"},
     "028_access_token_revocation.sql": {"revoked_access_tokens"},
     "031_pipeline_blocks.sql": {"monitoring_pipeline_blocks"},
+    "032_alarm_deletions.sql": {"alarm_deletions"},
 }
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {

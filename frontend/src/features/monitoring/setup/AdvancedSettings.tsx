@@ -175,7 +175,7 @@ export function AdvancedSettings({
                 return (
                   <div
                     key={`${tracker.trackerId}-${index}`}
-                    className="rounded-xl border border-border/70 bg-background/65 p-4"
+                    className="rounded-xl border border-border/70 bg-card/65 p-4"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <h4 className="font-medium">Tracker {index + 1}</h4>
@@ -453,7 +453,7 @@ export function AdvancedSettings({
             {draft.martingaleTrackers.some(
               (tracker) => tracker.thresholdMode === "automatic",
             ) && (
-              <div className="mt-4 rounded-xl border border-border/70 bg-background/65 p-4">
+              <div className="mt-4 rounded-xl border border-border/70 bg-card/65 p-4">
                 <div className="flex items-center gap-1">
                   <h4 className="font-medium">Automatic threshold calibration</h4>
                   <HelpTooltip label="Automatic threshold calibration">

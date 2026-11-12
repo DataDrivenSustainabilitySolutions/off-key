@@ -105,7 +105,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Sign in">
+    <AuthLayout title="Sign in" hideHeading>
       <form onSubmit={handleLogin} className="auth-login-form">
         {/* Email */}
         <div>

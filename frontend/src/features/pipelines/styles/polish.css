@@ -3,7 +3,7 @@
    that layout and hit-testing rely on stay where they are defined. */
 
 .pl-canvas-wrap {
-  --pl-canvas-bg: hsl(220 24% 97.6%);
+  --pl-canvas-bg: hsl(var(--background));
   --pl-grid-dot: hsl(220 16% 62% / 0.75);
   --pl-card-shadow: 0 1px 2px hsl(220 30% 20% / 0.05), 0 4px 14px -4px hsl(220 30% 20% / 0.08);
   --pl-card-shadow-hover: 0 2px 4px hsl(220 30% 20% / 0.06), 0 12px 28px -8px hsl(220 30% 20% / 0.16);
@@ -95,7 +95,7 @@
   padding: 4px;
   border: 1px solid hsl(var(--border) / 0.8);
   border-radius: 12px;
-  background: color-mix(in srgb, hsl(var(--background)) 86%, transparent);
+  background: color-mix(in srgb, hsl(var(--card)) 86%, transparent);
   backdrop-filter: blur(12px) saturate(1.4);
   box-shadow: var(--pl-float-shadow, var(--pl-card-shadow));
 }
@@ -142,7 +142,7 @@
 
 /* Settings: the heading stays put above content that scrolls under it. */
 .pl-stage .pl-settings-panel {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading {
   position: sticky;
@@ -152,7 +152,7 @@
   margin: -16px -16px 12px;
   padding: 12px 12px 10px 16px;
   border-bottom: 1px solid hsl(var(--border) / 0.7);
-  background: color-mix(in srgb, hsl(var(--background)) 88%, transparent);
+  background: color-mix(in srgb, hsl(var(--card)) 88%, transparent);
   backdrop-filter: blur(10px);
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading button {
@@ -202,7 +202,7 @@
   gap: 3px;
   border: 1.5px dashed hsl(var(--muted-foreground) / 0.55);
   border-radius: 8px;
-  background: hsl(var(--background) / 0.6);
+  background: hsl(var(--card) / 0.6);
   color: hsl(var(--muted-foreground));
   font: inherit;
   text-align: left;
@@ -234,7 +234,7 @@
 }
 .pl-canvas-wrap .pl-detector-slot:is(:hover, :focus-visible) {
   border-color: hsl(var(--foreground));
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 
 /* Open work in a step's settings: plain, because an unfinished design is no fault. */

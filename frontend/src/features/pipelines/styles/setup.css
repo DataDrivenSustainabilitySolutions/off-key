@@ -4,7 +4,7 @@
 .pl-name-input { width: min(100%, 560px); margin-left: -8px; padding: 2px 8px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: hsl(var(--foreground)); font: inherit; font-size: var(--text-title2); line-height: var(--leading-title2); font-weight: 600; letter-spacing: -0.015em; }
 .pl-name-input::placeholder { color: hsl(var(--muted-foreground)); font-weight: 500; }
 .pl-name-input:hover:not(:disabled) { border-color: hsl(var(--border)); }
-.pl-name-input:focus-visible { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .2); background: hsl(var(--background)); }
+.pl-name-input:focus-visible { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .2); background: hsl(var(--card)); }
 .pl-name-input[aria-invalid="true"] { border-color: #dc2626; }
 .pl-name-input:disabled { opacity: 1; }
 .pl-setup-identity .pl-field-error { margin: 0; }
@@ -55,7 +55,7 @@
 .pl-spin { animation: pl-spin 1s linear infinite; }
 @keyframes pl-spin { to { transform: rotate(360deg); } }
 .pl-dialog-overlay { position: fixed; inset: 0; z-index: 80; background: #0007; }
-.pl-template-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 81; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; padding: 24px; border: 1px solid hsl(var(--border)); border-radius: 14px; background: hsl(var(--background)); box-shadow: 0 20px 64px #0003; }
+.pl-template-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 81; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; padding: 24px; border: 1px solid hsl(var(--border)); border-radius: 14px; background: hsl(var(--card)); box-shadow: 0 20px 64px #0003; }
 .pl-template-dialog .pl-field { margin: 20px 0; }
 .pl-template-dialog .pl-field small { font-weight: 400; color: hsl(var(--muted-foreground)); }
 .pl-template-dialog-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); }

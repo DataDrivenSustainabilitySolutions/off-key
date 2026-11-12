@@ -68,7 +68,7 @@
   min-width: 0;
   padding: 10px var(--pl-stage-gap) 6px;
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 .pl-stage .pl-setup-header {
   display: flex;
@@ -188,7 +188,7 @@
   padding: 2px;
 }
 .pl-stage .pl-canvas-toolbar .pl-segmented button[aria-pressed="true"] {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
 }
 
@@ -233,7 +233,7 @@
   width: 340px;
   max-width: 100%;
   border-left: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   overflow: hidden;
   pointer-events: auto;
 }

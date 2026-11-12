@@ -21,7 +21,7 @@
   transform: translate(-50%, -50%);
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
   box-shadow: var(--shadow-dialog);
   font-size: var(--text-body);
@@ -133,7 +133,7 @@ dl.app-settings-list .app-settings-row { min-height: 40px; padding-block: 8px; }
 .app-settings-theme input:checked + .app-settings-theme-card { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
 .app-settings-theme input:focus-visible + .app-settings-theme-card { outline: 2px solid hsl(var(--ring)); outline-offset: 4px; }
 .app-settings-theme-preview {
-  --preview-bg: #fafbfc;
+  --preview-bg: hsl(var(--background-light));
   --preview-side: #edf0f3;
   --preview-line: #ced5dc;
   --preview-card: #fff;
@@ -147,7 +147,7 @@ dl.app-settings-list .app-settings-row { min-height: 40px; padding-block: 8px; }
 }
 .app-settings-theme-preview[data-theme="dark"] { --preview-bg: #191e25; --preview-side: #14191f; --preview-line: #414a55; --preview-card: #242b34; }
 .app-settings-theme-preview[data-theme="system"] {
-  --preview-bg: linear-gradient(90deg, #fafbfc 32%, #191e25 32%);
+  --preview-bg: linear-gradient(90deg, hsl(var(--background-light)) 32%, #191e25 32%);
   --preview-line: linear-gradient(90deg, #ced5dc 32%, #414a55 32%);
   --preview-card: linear-gradient(90deg, #fff 32%, #242b34 32%);
 }

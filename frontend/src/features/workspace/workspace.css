@@ -13,7 +13,7 @@
 .app-main :is(.ex-main-content, .app-page-content) { padding-inline: 48px; }
 /* The reopen control sits in the page's top inset without adding a layout row. */
 .app-sidebar-reopen { position: absolute; top: 0; left: 4px; z-index: 40; }
-.app-sidebar-reopen .app-sidebar-toggle { background: var(--ex-bg); }
+.app-sidebar-reopen .app-sidebar-toggle { background: hsl(var(--card)); }
 .app-sidebar-reopen .app-sidebar-toggle:hover { background: var(--ex-hover); }
 
 /* Sidebar */

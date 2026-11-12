@@ -5,33 +5,44 @@ data, a count or a window of past values, and advancing it returns a new state
 without touching the old one. A runtime can therefore stage a whole
 observation and keep or drop it as one, and checkpoints restore the same
 history. Aggregate, Formula and Gate work on the whole row instead and keep no
-state (pipeline_combine.py). The compiler, the validation API and RADAR read
-the steps from here.
+state (pipeline_combine.py). A few per-feature steps also read the row: an
+Accumulate that starts over and a Hold read a condition, and a Rolling
+relation reads the feature it compares with; pipeline_combine.py hands them
+that value. A Smooth by time constant reads the seconds since its previous
+observation, and a Time features step makes features of the observation's time
+(pipeline_time.py). The compiler, the validation API and RADAR read the steps
+from here.
 """
 
 import math
 from array import array
 from bisect import bisect_left, bisect_right, insort
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from ..schemas.pipelines import (
     AccumulateParameters,
     AggregateParameters,
+    CalculateParameters,
     ChangeParameters,
     ConditionParameters,
     ConstantParameters,
     DespikeParameters,
     FormulaParameters,
     GateParameters,
+    HoldParameters,
     MathParameters,
+    MuteParameters,
     PipelineModel,
     PipelineValidation,
     RangeParameters,
+    RelationParameters,
     RollingParameters,
     SetFeatureParameters,
     SmoothParameters,
+    TimeParameters,
 )
 
 PREPARE_MODELS: dict[str, type[PipelineModel]] = {
@@ -44,21 +55,30 @@ PREPARE_MODELS: dict[str, type[PipelineModel]] = {
     "prepare.aggregate": AggregateParameters,
     "prepare.formula": FormulaParameters,
     "prepare.gate": GateParameters,
+    "prepare.mute": MuteParameters,
     "prepare.constant": ConstantParameters,
     "prepare.condition": ConditionParameters,
     "prepare.set": SetFeatureParameters,
     "prepare.accumulate": AccumulateParameters,
+    "prepare.hold": HoldParameters,
+    "prepare.relation": RelationParameters,
+    "prepare.calculate": CalculateParameters,
+    "prepare.time": TimeParameters,
 }
 PREPARE_COMPONENTS = frozenset(PREPARE_MODELS)
-# Steps over the whole row; they keep no state and have output from the start.
+# Steps over the whole row. They keep no state and have output from the start;
+# only a Time features step that adds dt waits for its second observation.
 ROW_COMPONENTS = frozenset(
     {
         "prepare.aggregate",
         "prepare.formula",
         "prepare.gate",
+        "prepare.mute",
         "prepare.constant",
         "prepare.condition",
         "prepare.set",
+        "prepare.calculate",
+        "prepare.time",
     }
 )
 # Steps that map each feature they use to one value, through a Kernel.
@@ -67,8 +87,25 @@ LANE_COMPONENTS = PREPARE_COMPONENTS - ROW_COMPONENTS
 MAX_WINDOW_VALUES = 50_000
 # Scales a median absolute deviation to the standard deviation of normal data.
 MAD_SCALE = 1.4826
-REJECTION_REASONS = ("non_finite", "out_of_domain", "out_of_range")
+REJECTION_REASONS = ("non_finite", "out_of_domain", "out_of_range", "out_of_order")
 _CHANGE_SUFFIXES = {"difference": "diff", "percent": "pct", "lag": "lag"}
+_FIXED_SUFFIXES = {
+    "prepare.despike": "despiked",
+    "prepare.range": "clipped",
+    "prepare.hold": "held",
+}
+_ACCUMULATE_SUFFIXES = {
+    "sum": "total",
+    "min": "running_min",
+    "max": "running_max",
+    "count": "count",
+}
+_RELATION_SUFFIXES = {
+    "correlation": "corr",
+    "covariance": "cov",
+    "slope": "beta",
+    "residual": "resid",
+}
 _ORDERED_STATISTICS = frozenset(
     {
         *("median", "min", "max", "range", "quantile", "iqr", "mad"),
@@ -109,16 +146,25 @@ def _quantile_label(quantile: float) -> str:
     The composer names features the same way (scope.ts), so both round to six
     decimals of a percent.
     """
-    return f"{quantile * 100:.6f}".rstrip("0").rstrip(".").replace(".", "p")
+    return _number_label(quantile * 100)
+
+
+def _number_label(value: float) -> str:
+    """A number in suffix characters, to six decimals: 60 is 60, 2.5 is 2p5."""
+    return f"{value:.6f}".rstrip("0").rstrip(".").replace(".", "p")
 
 
 def default_suffix(component: str, params: dict[str, Any]) -> str:
     """Short name of a step's added features, following its settings."""
+    if component in _FIXED_SUFFIXES:
+        return _FIXED_SUFFIXES[component]
     match component:
         case "prepare.smooth":
+            if reads_time(component, params):
+                # Seconds, not observations: smooth60s beside smooth60.
+                seconds = _setting(component, params, "time_constant")
+                return f"smooth{_number_label(seconds)}s"
             return f"smooth{_setting(component, params, 'window_size')}"
-        case "prepare.despike":
-            return "despiked"
         case "prepare.change":
             mode = _setting(component, params, "mode")
             return f"{_CHANGE_SUFFIXES[mode]}{_setting(component, params, 'lag')}"
@@ -131,23 +177,40 @@ def default_suffix(component: str, params: dict[str, Any]) -> str:
                 return f"q{label}_{window}"
             return f"{statistic}{window}"
         case "prepare.accumulate":
-            function = _setting(component, params, "function")
-            return "total" if function == "sum" else f"running_{function}"
+            return _ACCUMULATE_SUFFIXES[_setting(component, params, "function")]
+        case "prepare.relation":
+            statistic = _setting(component, params, "statistic")
+            window = _setting(component, params, "window_size")
+            return f"{_RELATION_SUFFIXES[statistic]}{window}"
         case "prepare.math":
             function = _setting(component, params, "function")
             return "scaled" if function == "linear" else function
-        case "prepare.range":
-            return "clipped"
     raise ValueError(f"Unsupported prepare step: {component}")
 
 
+def reads_time(component: str, params: dict[str, Any]) -> bool:
+    """Whether a step needs the time of each observation it sees."""
+    if component == "prepare.smooth":
+        return _setting(component, params, "method") == "time_constant"
+    return component == "prepare.time"
+
+
 class Kernel:
-    """One feature's step. advance returns the next state and leaves the old one."""
+    """One feature's step. advance returns the next state and leaves the old one.
+
+    A step that reads more than its feature takes it as further arguments of
+    advance: see lane_context in pipeline_combine.py.
+    """
 
     lead = 0
     """Values a feature needs before its first output."""
     window = 0
-    """Past values a feature keeps."""
+    """Length of the window of past values a feature keeps."""
+
+    @property
+    def held(self) -> int:
+        """Past values a feature keeps, which count toward MAX_WINDOW_VALUES."""
+        return self.window
 
     def initial(self) -> State:
         return ()
@@ -217,6 +280,45 @@ class Exponential(Kernel):
             and isinstance(state[1], float)
             and math.isfinite(state[1])
         )
+
+
+def _held_state(state: State) -> bool:
+    """Whether a state is (seen, value), with no value before the first one."""
+    return (
+        len(state) == 2
+        and isinstance(state[0], bool)
+        and isinstance(state[1], float)
+        and math.isfinite(state[1])
+        and (state[0] or state[1] == 0.0)
+    )
+
+
+class Decay(Kernel):
+    """y = y' + (1 - exp(-dt / tau)) (x - y'), dt seconds after the value before.
+
+    The filter an exponential average approximates when values arrive evenly:
+    a value's weight halves every tau ln 2 seconds, however many values arrive
+    meanwhile. It starts from its first value and has output from then on.
+    """
+
+    def __init__(self, time_constant: float):
+        self.time_constant = time_constant
+
+    def initial(self) -> State:
+        return (False, 0.0)
+
+    def advance(
+        self, state: State, value: float, elapsed: float | None = None
+    ) -> tuple[State, float | None]:
+        seen, level = state
+        if seen and elapsed is not None:
+            weight = -math.expm1(-elapsed / self.time_constant)
+            value = level + weight * (value - level)
+        level = _finite(value)
+        return (True, level), level
+
+    def accepts(self, state: State) -> bool:
+        return _held_state(state)
 
 
 class Rolling(Kernel):
@@ -306,13 +408,9 @@ class Rolling(Kernel):
     def _moment_statistic(self, window: array) -> float:
         """zscore, skewness or excess kurtosis; 0 for a window of one value."""
         size = self.size
-        deviations = _deviations(window)
-        # All three compare deviations with each other, so the largest one
-        # can stand for 1 and no power of them overflows or vanishes.
-        largest = max(map(abs, deviations))
+        unit, largest = _unit_deviations(window)
         if largest == 0:
             return 0.0
-        unit = [item / largest for item in deviations]
         second = math.sumprod(unit, unit) / size
         if self.statistic == "zscore":
             score = unit[-1] / math.sqrt(second * size / (size - 1))
@@ -345,6 +443,20 @@ def _deviations(window) -> list[float]:
     offsets = [item - start for item in window]
     mean = math.fsum(offsets) / len(offsets)
     return [item - mean for item in offsets]
+
+
+def _unit_deviations(window) -> tuple[list[float], float]:
+    """Deviations from the mean with the largest one as 1, and that largest.
+
+    Whatever compares deviations with each other can use these, and no power
+    or product of them overflows or vanishes. A flat window has 0 as its
+    largest deviation.
+    """
+    deviations = _deviations(window)
+    largest = max(map(abs, deviations))
+    if largest == 0:
+        return deviations, 0.0
+    return [item / largest for item in deviations], largest
 
 
 def _root_mean_square(values, divisor: int) -> float:
@@ -429,10 +541,12 @@ def _carried(state: State) -> State:
 
 
 class Accumulate(Kernel):
-    """A constant-size running total or extreme, committed with the observation.
+    """A constant-size running total, extreme or count, committed with the
+    observation.
 
     A total keeps what float addition drops in a second number (Neumaier), so
-    a long run does not drift; the output is their sum.
+    a long run does not drift; the output is their sum. An observation that
+    resets is the first of a new accumulation.
     """
 
     def __init__(self, function: str):
@@ -441,8 +555,12 @@ class Accumulate(Kernel):
     def initial(self) -> State:
         return (False, 0.0, 0.0)
 
-    def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        seen, previous, carry = _carried(state)
+    def advance(
+        self, state: State, value: float, reset: bool = False
+    ) -> tuple[State, float | None]:
+        seen, previous, carry = self.initial() if reset else _carried(state)
+        if self.function == "count":
+            return (True, previous + 1.0, 0.0), previous + 1.0
         if not seen:
             return (True, value, 0.0), value
         if self.function != "sum":
@@ -466,6 +584,95 @@ class Accumulate(Kernel):
             )
             and (state[0] or state[1:] == (0.0, 0.0))
             and (self.function == "sum" or state[2] == 0.0)
+        )
+
+
+class Hold(Kernel):
+    """The value from the last observation its condition held.
+
+    The first observation is always taken, so the step has output from the
+    start and a held value is one the feature really had.
+    """
+
+    def initial(self) -> State:
+        return (False, 0.0)
+
+    def advance(
+        self, state: State, value: float, update: bool = True
+    ) -> tuple[State, float | None]:
+        if update or not state[0]:
+            return (True, value), value
+        return state, state[1]
+
+    def accepts(self, state: State) -> bool:
+        return _held_state(state)
+
+
+class Relation(Kernel):
+    """How a feature moves with another one over their last n pairs of values.
+
+    Deviations from each window's mean are scaled by the largest one before
+    they are multiplied, so no product overflows or vanishes; the scales
+    return in the result. A window where either feature is flat has no
+    direction: its correlation, covariance and slope are 0.
+    """
+
+    def __init__(self, size: int, statistic: str):
+        self.size = size
+        self.statistic = statistic
+        self.lead = size - 1
+        self.window = size
+
+    @property
+    def held(self) -> int:
+        """A window of the feature and one of the feature it is compared with."""
+        return 2 * self.window
+
+    def initial(self) -> State:
+        return (array("d"), array("d"))
+
+    def advance(
+        self, state: State, value: float, other: float | None = None
+    ) -> tuple[State, float | None]:
+        if other is None:
+            raise ValueError("A rolling relation needs the other feature's value")
+        values = _pushed(state[0], value, self.size)
+        others = _pushed(state[1], other, self.size)
+        if len(values) < self.size:
+            return (values, others), None
+        try:
+            return (values, others), _finite(self._statistic(values, others))
+        except OverflowError:
+            raise PrepareFailure(
+                "non_finite", "The result is not a finite number"
+            ) from None
+
+    def _statistic(self, values: array, others: array) -> float:
+        own, scale = _unit_deviations(values)
+        other, other_scale = _unit_deviations(others)
+        if not scale or not other_scale:
+            # The latest value's distance from a flat fit is its distance from
+            # the mean.
+            return own[-1] * scale if self.statistic == "residual" else 0.0
+        together = math.sumprod(own, other)
+        if self.statistic == "correlation":
+            spread = math.sqrt(math.sumprod(own, own) * math.sumprod(other, other))
+            return min(max(together / spread, -1.0), 1.0)
+        if self.statistic == "covariance":
+            return together / (self.size - 1) * scale * other_scale
+        # The slope in scaled units: at most n, since the largest scaled
+        # deviation is 1.
+        slope = together / math.sumprod(other, other)
+        if self.statistic == "slope":
+            return slope * scale / other_scale
+        return (own[-1] - slope * other[-1]) * scale
+
+    def accepts(self, state: State) -> bool:
+        return (
+            len(state) == 2
+            and all(isinstance(item, array) and item.typecode == "d" for item in state)
+            and len(state[0]) == len(state[1]) <= self.size
+            and all(math.isfinite(item) for part in state for item in part)
         )
 
 
@@ -590,28 +797,36 @@ class Bound(Kernel):
         return state, self.low if below else self.high
 
 
+def _smoother(settings: SmoothParameters) -> Kernel:
+    if settings.method == "exponential":
+        return Exponential(settings.window_size)
+    if settings.method == "time_constant":
+        return Decay(settings.time_constant)
+    return Rolling(settings.window_size, "mean")
+
+
+# The step each kind of settings builds.
+_KERNELS: dict[type[PipelineModel], Callable[[Any], Kernel]] = {
+    SmoothParameters: _smoother,
+    DespikeParameters: lambda item: Despike(item.window_size, item.threshold),
+    ChangeParameters: lambda item: Change(item.lag, item.mode),
+    RollingParameters: lambda item: Rolling(
+        item.window_size, item.statistic, item.quantile
+    ),
+    AccumulateParameters: lambda item: Accumulate(item.function),
+    HoldParameters: lambda _item: Hold(),
+    RelationParameters: lambda item: Relation(item.window_size, item.statistic),
+    MathParameters: lambda item: Function(item.function, item.scale, item.offset),
+    RangeParameters: lambda item: Bound(item.low, item.high, item.action),
+}
+
+
 def kernel(component: str, params: dict[str, Any]) -> Kernel:
     """The step one node runs on each feature it uses."""
     if component not in LANE_COMPONENTS:
         raise ValueError(f"Unsupported prepare step: {component}")
-    model = PREPARE_MODELS[component]
-    settings = model.model_validate(params)
-    if isinstance(settings, SmoothParameters):
-        if settings.method == "exponential":
-            return Exponential(settings.window_size)
-        return Rolling(settings.window_size, "mean")
-    if isinstance(settings, DespikeParameters):
-        return Despike(settings.window_size, settings.threshold)
-    if isinstance(settings, ChangeParameters):
-        return Change(settings.lag, settings.mode)
-    if isinstance(settings, RollingParameters):
-        return Rolling(settings.window_size, settings.statistic, settings.quantile)
-    if isinstance(settings, AccumulateParameters):
-        return Accumulate(settings.function)
-    if isinstance(settings, MathParameters):
-        return Function(settings.function, settings.scale, settings.offset)
-    assert isinstance(settings, RangeParameters)
-    return Bound(settings.low, settings.high, settings.action)
+    settings = PREPARE_MODELS[component].model_validate(params)
+    return _KERNELS[type(settings)](settings)
 
 
 def _known(value: float | None) -> float | None:
@@ -715,7 +930,10 @@ def _rolling_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
 
 
 def _accumulated_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
-    if _setting("prepare.accumulate", params, "function") != "sum":
+    function = _setting("prepare.accumulate", params, "function")
+    if function == "count":
+        return 1.0, None
+    if function != "sum":
         return bounds
     low, high = bounds
     return (
@@ -724,29 +942,39 @@ def _accumulated_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
     )
 
 
+def _change_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
+    low, high = bounds
+    mode = _setting("prepare.change", params, "mode")
+    if mode == "lag":
+        return bounds
+    if mode == "difference" and low is not None and high is not None:
+        return low - high, high - low
+    return None, None
+
+
+def _relation_bounds(params: dict[str, Any], _bounds: Bounds) -> Bounds:
+    if _setting("prepare.relation", params, "statistic") == "correlation":
+        return -1.0, 1.0
+    return None, None
+
+
+_BOUNDS: dict[str, Callable[[dict[str, Any], Bounds], Bounds]] = {
+    "prepare.change": _change_bounds,
+    "prepare.rolling": _rolling_bounds,
+    "prepare.accumulate": _accumulated_bounds,
+    "prepare.math": _function_bounds,
+    "prepare.range": _range_bounds,
+    "prepare.relation": _relation_bounds,
+}
+
+
 def prepared_bounds(component: str, params: dict[str, Any], bounds: Bounds) -> Bounds:
     """The range of a step's output for inputs within bounds; None is open."""
-    low, high = bounds
-    result: Bounds = (None, None)
-    match component:
-        case "prepare.smooth" | "prepare.despike":
-            # Means, medians and kept values stay within the input's range.
-            result = bounds
-        case "prepare.change":
-            mode = _setting(component, params, "mode")
-            if mode == "lag":
-                result = bounds
-            elif mode == "difference" and low is not None and high is not None:
-                result = (low - high, high - low)
-        case "prepare.rolling":
-            result = _rolling_bounds(params, bounds)
-        case "prepare.accumulate":
-            result = _accumulated_bounds(params, bounds)
-        case "prepare.math":
-            result = _function_bounds(params, bounds)
-        case "prepare.range":
-            result = _range_bounds(params, bounds)
-    return _known(result[0]), _known(result[1])
+    ranged = _BOUNDS.get(component)
+    # A step without a rule keeps the input's range: a smoothed, despiked or
+    # held value lies within it.
+    low, high = bounds if ranged is None else ranged(params, bounds)
+    return _known(low), _known(high)
 
 
 @dataclass(frozen=True)
@@ -800,15 +1028,20 @@ def stage_split(compiled: PipelineValidation) -> StageSplit | None:
     first_output = {source: 1}
     for identifier in steps:
         node = nodes[identifier]
-        lead = (
-            kernel(node.component, node.params).lead
-            if node.component in LANE_COMPONENTS
-            else 0
-        )
-        first_output[identifier] = lead + max(
+        first_output[identifier] = step_lead(node.component, node.params) + max(
             first_output[parent] for parent in incoming[identifier]
         )
     return StageSplit(steps, frontier, first_output)
+
+
+def step_lead(component: str, params: dict[str, Any]) -> int:
+    """Observations a step sees before the one that gives its first output."""
+    if component in LANE_COMPONENTS:
+        return kernel(component, params).lead
+    if component == "prepare.time":
+        # No observation comes before the first to measure dt from.
+        return int(_setting(component, params, "elapsed"))
+    return 0
 
 
 __all__ = [
@@ -824,5 +1057,7 @@ __all__ = [
     "default_suffix",
     "kernel",
     "prepared_bounds",
+    "reads_time",
     "stage_split",
+    "step_lead",
 ]

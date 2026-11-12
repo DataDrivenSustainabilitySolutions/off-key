@@ -29,7 +29,7 @@ import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
 import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings, suggestedTarget } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
-import { hasFittedDetector, hasStreamingDetector, learningSummary } from "./learning";
+import { hasFittedDetector, learningSummary, learningWindow } from "./learning";
 import { startupEstimate } from "./startup";
 
 export type PipelineSetupProps = {
@@ -135,7 +135,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const startup = startupEstimate(draft.document.definition,
     Object.values(bindings).map((reading) => intervals?.[reading]?.typical_interval_seconds),
     compiledValidation?.preparation_observations,
-    !hasStreamingDetector(draft.document.definition, catalog.components));
+    learningWindow(draft.document.definition, catalog.components));
   const openInput = () => { const id = inputNode(draft.document); if (id) select(id); };
   useUnsavedChanges(dirty && !locked);
 
@@ -278,6 +278,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
       validationError={metadata.error} onRetryValidation={metadata.retry}
       selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
+      onPlace={graph.place}
       onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}
       actions={canAuthor && !locked && <>
         <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title="Undo (Ctrl+Z)" onClick={graph.undo}><Undo2 size={15} /></button>

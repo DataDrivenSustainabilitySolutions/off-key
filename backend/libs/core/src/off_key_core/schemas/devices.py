@@ -78,6 +78,11 @@ class ChartEvidence(BaseModel):
     )
     threshold: float
     alarm: bool
+    muted: bool = Field(
+        default=False,
+        description="The detection rule fired and a Mute alarms step kept the "
+        "alarm from being raised; alarm is then false.",
+    )
     created: datetime = Field(description="When it was stored; part of the cursor.")
 
 
@@ -114,3 +119,8 @@ class Evidence(BaseModel):
     )
     threshold: float
     alarm: bool
+    muted: bool = Field(
+        default=False,
+        description="The detection rule fired and a Mute alarms step kept the "
+        "alarm from being raised; alarm is then false.",
+    )

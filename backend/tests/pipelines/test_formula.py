@@ -251,8 +251,8 @@ def test_more_functions_name_their_problems(text, message):
         ("a * ", "The expression ends too early at character 5."),
         (
             "a > 1",
-            "A formula computes a number; to hold observations back by a "
-            "condition, use a Gate step.",
+            "A formula computes a number. For 1 or 0, write if(condition, 1, 0); "
+            "to hold observations back by a condition, use a Gate step.",
         ),
     ],
 )

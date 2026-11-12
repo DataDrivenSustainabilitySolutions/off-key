@@ -163,7 +163,7 @@ def test_observations_held_back_before_a_window_do_not_fill_it():
         )
     )
     stage = PrepareStage(plan)
-    status = {"ready": False, "observed": 0, "required": 3, "rejected": 0}
+    status = {"ready": False, "observed": 0, "required": 3, "rejected": 0, "muted": 0}
     assert stage.status() == {**status, "held_back": 0}
     assert (
         run(stage, plan, range(1, 6), closed=range(1, 6))

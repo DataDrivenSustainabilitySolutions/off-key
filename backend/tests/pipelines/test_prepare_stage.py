@@ -189,6 +189,7 @@ def test_the_stage_waits_for_its_longest_chain_then_hands_over_its_columns():
         "required": 4,
         "rejected": 0,
         "held_back": 0,
+        "muted": 0,
     }
 
 

@@ -1,5 +1,5 @@
 import type { LineSeriesOption } from "echarts/charts";
-import type { SecondaryChartSeries } from "./telemetry-detectors";
+import { alarmText, type SecondaryChartSeries } from "./telemetry-detectors";
 import { buildThresholdMarkArea } from "./telemetry-thresholds";
 
 export const buildDetectionSeriesOption = (
@@ -51,7 +51,7 @@ export const buildDetectionSeriesOption = (
             boundary === "upper" ? observation.value === null ? "Beyond numeric range" : "Above the plotted range" : "Evidence is below the logarithmic plotting range",
             observation.value !== null ? `Value: ${formatValue(observation.value)}` : observation.logValue === null ? (boundary === "upper" ? "Value: ∞" : "Value unavailable") : `Log evidence: ${formatValue(observation.logValue)}`,
             `Alarm threshold: ${observation.threshold !== null ? formatValue(observation.threshold) : "unavailable"}`,
-            `Alarm: ${observation.alarmActive ? "active" : "inactive"}`,
+            `Alarm: ${alarmText(observation)}`,
           ].join("\n"),
         },
       })),

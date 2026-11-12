@@ -21,15 +21,16 @@ import {
 import { afterGate, featureBlocker, rangeText, readyText } from "./features";
 import {
   calibrationFamily, changeCalibration, changeDetector, changeNotice, coverage, FIXED_SPLIT, fittingPolicy,
-  learningLabel, type Learning,
+  learningLabel, type Learning, UNTRAINED,
 } from "./learning";
 import { usesForecastService, type ForecastModels } from "./forecastModels";
 import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
-import { PipelineScope } from "./PipelineScope";
-import { combinedName, hasScope, isWarning } from "./scope";
+import { PipelineApart, PipelineScope } from "./PipelineScope";
+import { PipelineTime } from "./PipelineTime";
+import { apartField, combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
-import { FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
+import { CONDITION_STEPS, FORMULA_STEPS, FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
 import type { HistoryMode } from "./types";
 
 /** Detector models by how they learn, in the order the picker lists them. */
@@ -37,7 +38,7 @@ const LEARNING_GROUPS: { mode: Learning; label: string }[] = [
   { mode: "online", label: "Learns continuously" },
   { mode: "batch", label: "Fitted once" },
   { mode: "pretrained", label: "Pretrained" },
-  { mode: "none", label: "Other" },
+  { mode: "none", label: UNTRAINED },
 ];
 
 type Props = {
@@ -173,7 +174,7 @@ export function PipelineInspector({
               ) : report.provenance_complete === false ? (
                 "Source provenance omitted"
               ) : (
-                "Source provenance unavailable"
+                "From no reading"
               )}
               {range && ` · ${range}`}
             </small>
@@ -210,6 +211,8 @@ export function PipelineInspector({
   const ready = node && report?.ready_after?.[node.id];
   const computed = node && report?.features[node.id]?.find((feature) => feature.name === combinedName(node, component));
   const scoped = hasScope(component);
+  // The feature a Rolling relation compares with or an Expected value expects.
+  const apart = node && apartField(node.component);
   const changeParams = (params: PipelineNode["params"], changed: string) => {
     if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
   };
@@ -433,11 +436,21 @@ export function PipelineInspector({
             </div>
           )}
           {titleField}
-          {component && scoped && (
-            <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
+          {component && apart && (
+            <PipelineApart field={apart} node={node} features={features} featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
-          {component && ["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set"].includes(node.component) && (
+          {component && node.component === "prepare.time" && (
+            <PipelineTime node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && scoped && (
+            // The feature a step sets apart is never among the ones it uses.
+            <PipelineScope node={node} component={component}
+              features={features.filter((feature) => !apart || feature !== node.params[apart])}
+              featureLabels={featureLabels}
+              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && FORMULA_STEPS.has(node.component) && (
             <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
               readings={readings} featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
               range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />
@@ -457,6 +470,10 @@ export function PipelineInspector({
                 .sort()
                 .join(","))}
             />
+          )}
+          {component && CONDITION_STEPS.has(node.component) && (
+            <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
+              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && forecast && usesForecastService(node.component) && (
             <PipelineForecastModels node={node} component={component} forecast={forecast} />

@@ -1,10 +1,12 @@
-import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeCatalog,
   normalizeDefinition,
   normalizeLayout,
 } from "@/features/pipelines/contracts";
+import { pipelinesApi } from "@/features/pipelines/api";
+import { placeBlock } from "@/features/pipelines/blocks";
 import {
   addBlocker,
   freePosition,
@@ -48,7 +50,16 @@ const pipeline = (): GraphDocument => ({
   layout: normalizeLayout({ nodes: { input: { x: 0, y: 0 }, detector: { x: 288, y: 0 } } }),
 });
 
-beforeEach(() => { clearNavigationDrafts(); });
+const passes = { id: "passes", name: "Pass twice", description: "", created_at: "2026-11-12T09:00:00Z", steps: [
+  { component: "features.passthrough", contract_version: 1, params: {}, label: "First pass" },
+  { component: "features.passthrough", contract_version: 1, params: {} },
+] };
+
+beforeEach(() => {
+  clearNavigationDrafts();
+  // The editor reads the block library when it opens; without a test's own answer it never arrives.
+  vi.spyOn(pipelinesApi, "blocks").mockReturnValue(new Promise(() => {}));
+});
 
 describe("component placement", () => {
   it("places a new component beside its anchor without covering another card", () => {
@@ -125,6 +136,41 @@ describe("graph editing", () => {
     expect(result.current.document.layout.nodes.features_passthrough_1?.x).toBeGreaterThan(0);
     // Connections stay explicit: a palette click never rewires the graph.
     expect(result.current.document.definition.edges).toEqual(pipeline().definition.edges);
+  });
+
+  it("takes a block's steps as one change, selecting and revealing the first of them", () => {
+    const { result } = renderHook(() => useEditor());
+    const placed = placeBlock(result.current.document, passes, components);
+    if ("blocked" in placed) throw new Error(placed.blocked);
+    act(() => result.current.place(placed));
+    expect(result.current.selected).toBe("features_passthrough_1");
+    expect(result.current.reveal?.id).toBe("features_passthrough_1");
+    expect(result.current.document.definition.nodes).toHaveLength(4);
+    act(() => result.current.undo());
+    expect(result.current.document.definition.nodes).toHaveLength(2);
+    expect(result.current.canUndo).toBe(false);
+  });
+
+  it("offers saved blocks under Add step and hands their steps to the editor", async () => {
+    const { PipelineWorkbench } = await import("@/features/pipelines/PipelineWorkbench");
+    vi.mocked(pipelinesApi.blocks).mockResolvedValue([passes]);
+    const onPlace = vi.fn();
+    const props = { catalog, document: pipeline(), onSelect: () => {}, onChange: () => {}, onAdd: () => {}, onPlace };
+    const view = render(<PipelineWorkbench {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add step" }));
+    const steps = within(screen.getByRole("dialog", { name: "Add a step" }));
+    fireEvent.click(await steps.findByRole("button", { name: "Add block Pass twice" }));
+    expect(onPlace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "features_passthrough_1" }));
+    const placed = onPlace.mock.calls[0]![0].document as GraphDocument;
+    expect(placed.layout.nodes.features_passthrough_1?.label).toBe("First pass");
+    expect(placed.definition.edges).toContainEqual({ source: "features_passthrough_1", target: "features_passthrough_2", order: 0 });
+    expect(screen.queryByRole("dialog", { name: "Add a step" })).toBeNull();
+    // A design that is only shown offers no steps and reads no library.
+    view.unmount();
+    vi.mocked(pipelinesApi.blocks).mockClear();
+    render(<PipelineWorkbench {...props} readOnly />);
+    expect(screen.queryByRole("button", { name: "Add step" })).toBeNull();
+    expect(pipelinesApi.blocks).not.toHaveBeenCalled();
   });
 
   it("undoes with Ctrl+Z outside text fields only", async () => {

@@ -81,6 +81,8 @@ class FormulaError(ValueError):
         *,
         fix: tuple[int, int, str] | None = None,
     ):
+        self.message = message
+        self.hint = hint
         self.position = position
         """Index of the first character concerned, from 0."""
         self.parameter: str | None = None
@@ -430,8 +432,8 @@ def parse(text: str, *, condition: bool = False) -> Expression:
     kind = _check_kind(root)
     if kind == "condition" and not condition:
         raise FormulaError(
-            "A formula computes a number; to hold observations back by a "
-            "condition, use a Gate step"
+            "A formula computes a number. For 1 or 0, write if(condition, 1, 0); "
+            "to hold observations back by a condition, use a Gate step"
         )
     if kind == "number" and condition:
         raise FormulaError("Write a condition, such as dc_current > 1")

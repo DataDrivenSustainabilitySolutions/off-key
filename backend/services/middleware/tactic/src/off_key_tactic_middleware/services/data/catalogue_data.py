@@ -148,6 +148,7 @@ class CatalogueDataService:
             "forecasts": row.forecasts or [],
             "threshold": row.threshold,
             "alarm": row.alarm,
+            "muted": bool(row.muted),
             "created": row.created or row.timestamp,
         }
 
@@ -178,4 +179,5 @@ class CatalogueDataService:
             "forecasts": row.forecasts or [],
             "threshold": row.threshold,
             "alarm": row.alarm,
+            "muted": bool(row.muted),
         }

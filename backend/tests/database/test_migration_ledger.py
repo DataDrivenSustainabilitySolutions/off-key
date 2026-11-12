@@ -105,6 +105,12 @@ APPLIED_CHECKSUMS = {
     "029_dojo_metrics_cache.sql": (
         "41d0fdff33ab16f63f84156780127e7b50a2331adfd873319c357b8a865b2f66"
     ),
+    "030_evidence_muted.sql": (
+        "b759df7fb1a5502c81c8cab3455250f5b639edad54bc938b3db247242894b475"
+    ),
+    "031_pipeline_blocks.sql": (
+        "151980597246083b6617dd3557b6e84f44340f57cebfc87516ebcdf06681f596"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -131,6 +137,7 @@ LEDGER_TABLES = {
     "022_dojo_labels.sql": {"dojo_dataset_labels"},
     "025_evidence_cursor.sql": {"monitoring_evidence_clock"},
     "028_access_token_revocation.sql": {"revoked_access_tokens"},
+    "031_pipeline_blocks.sql": {"monitoring_pipeline_blocks"},
 }
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {

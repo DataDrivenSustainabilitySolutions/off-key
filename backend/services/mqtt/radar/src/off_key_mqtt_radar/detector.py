@@ -214,6 +214,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         data: dict[str, float],
         topic: str | None = None,
         charger_id: str | None = None,
+        timestamp: float | None = None,
     ) -> AnomalyResult:
         if self._execution_failed:
             raise FatalExecutionError(
@@ -234,7 +235,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         )
         self.diagnostics.record(self.plan.source_id, bound, bound)
         try:
-            result = self._process(bound, topic, charger_id)
+            result = self._process(bound, topic, charger_id, timestamp)
             result.raw_data = dict(data)
             if result.should_persist:
                 result.processed_features = self.conformal_detector.last_features
@@ -257,12 +258,13 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         data: dict[str, float],
         topic: str | None,
         charger_id: str | None,
+        timestamp: float | None = None,
     ) -> AnomalyResult:
         start_time = time.time()
         self._complete_training_if_ready()
         # Prepare runs in every state, so the baseline starts on a continuous
         # history even after observations were discarded during fitting.
-        prepared = self._prepared(data)
+        prepared = self._prepared(data, timestamp)
         if isinstance(prepared, Withheld):
             self.processed_count += 1
             return self._non_inference_result(
@@ -464,7 +466,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             raise RuntimeError("Static alarm policy has not been initialized")
         started = perf_counter_ns()
         try:
-            context = self.alarm_controller.update(p_value)
+            context = self.alarm_controller.update(p_value, muted=self._muting)
         except Exception as error:
             raise FatalExecutionError(
                 str(error), node_id=self.plan.policy_id

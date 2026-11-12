@@ -118,6 +118,7 @@ def test_tracker_pickles_hold_only_their_own_state(betting_function):
     # Checkpoints pickle these controllers; the attribute set is the contract.
     assert sorted(vars(tracker)) == [
         "_alarm_active",
+        "_held_alarm",
         "_martingale",
         "alarm_count",
         "config",

@@ -170,8 +170,8 @@ def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatc
             restored.process_data_point({"sensor/z": float("nan"), "sensor/a": 2})
         original = restored.alarm_controller.update
 
-        def mutate_then_fail(value):
-            original(value)
+        def mutate_then_fail(value, **options):
+            original(value, **options)
             raise RuntimeError("injected failure after policy mutation")
 
         monkeypatch.setattr(restored.alarm_controller, "update", mutate_then_fail)

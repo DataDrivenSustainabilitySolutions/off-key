@@ -482,6 +482,7 @@ class MonitoringEvidenceRepository:
                 list[dict[str, object]],
                 float,
                 bool,
+                bool,
                 datetime | None,
             ]
         ]
@@ -503,6 +504,7 @@ class MonitoringEvidenceRepository:
             MonitoringEvidence.forecasts,
             MonitoringEvidence.threshold,
             MonitoringEvidence.alarm,
+            MonitoringEvidence.muted,
             MonitoringEvidence.created,
         ).where(_evidence_scope(scope))
 

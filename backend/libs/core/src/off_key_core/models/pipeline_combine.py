@@ -9,9 +9,10 @@ one line each, and every line reads the lines above it. The compiler names
 and bounds their features here, checks the values Prepare steps will skip,
 and RADAR runs the steps built here.
 
-Some per-feature steps read the row as well: whether a condition holds, or
-the feature they compare with. They get that value from here, because
-formulas build on the per-feature steps and not the other way round.
+Some per-feature steps read more than their feature: whether a condition
+holds, the feature they compare with, or the seconds since their previous
+observation. They get that value from here, because formulas build on the
+per-feature steps and not the other way round.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from ..schemas.pipelines import (
     FORMULA_VARIABLE,
     MAX_CALCULATION_LINES,
     FeatureDescription,
+    TimeParameters,
 )
 from .pipeline_formula import (
     Expression,
@@ -39,8 +41,9 @@ from .pipeline_formula import (
     interval,
     parse,
 )
-from .pipeline_prepare import PREPARE_MODELS, Bounds, PrepareFailure
+from .pipeline_prepare import PREPARE_MODELS, Bounds, PrepareFailure, reads_time
 from .pipeline_scope import MAX_FEATURE_NAME_LENGTH, ScopeError, adds, step_scope
+from .pipeline_time import Clock, TimeFeatures, time_columns
 
 Row = Mapping[str, float]
 Columns = list[FeatureDescription]
@@ -188,17 +191,20 @@ def lane_condition(
 
 def lane_context(
     component: str, params: Mapping[str, Any], names: Sequence[str]
-) -> Callable[[Row], tuple[Any, ...]] | None:
-    """What a per-feature step reads from the row besides its own feature:
-    whether its condition holds, or the value it compares with."""
+) -> Callable[[Row, Clock | None], tuple[Any, ...]] | None:
+    """What a per-feature step reads besides its own feature: whether its
+    condition holds, the value it compares with, or the seconds since its
+    previous observation. A step that reads time gets a clock."""
     if component == "prepare.relation":
         against = params["against"]
-        return lambda row: (row[against],)
+        return lambda row, _clock: (row[against],)
+    if reads_time(component, dict(params)):
+        return lambda _row, clock: (clock.elapsed if clock else None,)
     parsed = lane_condition(component, params, names)
     if parsed is None:
         return None
     holds = evaluator(parsed)
-    return lambda row: (bool(holds(row)),)
+    return lambda row, _clock: (bool(holds(row)),)
 
 
 @dataclass(frozen=True)
@@ -417,7 +423,15 @@ class Calculation:
         return output
 
 
-RowStep = Aggregate | Formula | FormulaForEach | Gate | NamedValue | Calculation
+RowStep = (
+    Aggregate
+    | Formula
+    | FormulaForEach
+    | Gate
+    | NamedValue
+    | Calculation
+    | TimeFeatures
+)
 
 
 def row_step(
@@ -442,6 +456,8 @@ def row_step(
                 for item in assignments(params, inputs)
             )
         )
+    if component == "prepare.time":
+        return TimeFeatures(TimeParameters.model_validate(dict(params)))
     parsed = _checked(component, params, inputs)
     if component == "prepare.gate":
         return Gate(parsed, evaluator(parsed))
@@ -500,7 +516,7 @@ def _hull(bounds: list[Bounds], function: str) -> Bounds:
 def combined_columns(
     component: str, params: Mapping[str, Any], columns: Columns
 ) -> Columns:
-    """The features after a stateless row operation."""
+    """The features after a row step."""
     names = [item.name for item in columns]
     if component in NAMED_COMPONENTS:
         return _named_columns(component, params, columns)
@@ -517,6 +533,8 @@ def combined_columns(
     if component == "prepare.gate":
         _checked(component, params, names)
         return columns
+    if component == "prepare.time":
+        return time_columns(params, columns)
     if for_each(component, params):
         return _each_columns(params, columns)
     name = combined_name(component, params)

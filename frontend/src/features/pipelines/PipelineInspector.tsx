@@ -27,6 +27,7 @@ import { usesForecastService, type ForecastModels } from "./forecastModels";
 import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
 import { PipelineAgainst, PipelineScope } from "./PipelineScope";
+import { PipelineTime } from "./PipelineTime";
 import { combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 import { CONDITION_STEPS, FORMULA_STEPS, FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
@@ -173,7 +174,7 @@ export function PipelineInspector({
               ) : report.provenance_complete === false ? (
                 "Source provenance omitted"
               ) : (
-                "Source provenance unavailable"
+                "From no reading"
               )}
               {range && ` · ${range}`}
             </small>
@@ -436,6 +437,9 @@ export function PipelineInspector({
           {component && node.component === "prepare.relation" && (
             <PipelineAgainst node={node} features={features} featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && node.component === "prepare.time" && (
+            <PipelineTime node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && scoped && (
             // A Rolling relation compares the other features with one, which it never uses itself.

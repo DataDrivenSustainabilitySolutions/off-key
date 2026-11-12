@@ -278,6 +278,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         data: dict[str, float],
         topic: str | None = None,
         charger_id: str | None = None,
+        timestamp: float | None = None,
     ) -> AnomalyResult:
         if self._execution_failed or self._pipeline_failed():
             raise FatalExecutionError(
@@ -292,7 +293,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             self.diagnostics.begin, self.processed_count + 1, self.state.value
         )
         try:
-            result = self._process(bound, topic, charger_id)
+            result = self._process(bound, topic, charger_id, timestamp)
             result.raw_data = dict(data)
             result.processed_features = self._scored_features
             self._record_result(result)
@@ -345,11 +346,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         data: dict[str, float],
         topic: str | None,
         charger_id: str | None,
+        timestamp: float | None = None,
     ) -> AnomalyResult:
         # Binding has checked the schema and finiteness; failures stop the run.
         started = time.time()
         self._bound = data
-        prepared = self._prepared(data)
+        prepared = self._prepared(data, timestamp)
         if isinstance(prepared, Withheld):
             self.processed_count += 1
             return self._result(

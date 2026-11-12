@@ -83,7 +83,7 @@ def pipeline_components() -> list[PipelineComponent]:
             "prepare.smooth",
             "transform",
             "Smooth",
-            "Average recent values, exponentially or over a window.",
+            "Average recent values: exponentially, over a window or over time.",
         ),
         (
             "prepare.despike",
@@ -174,6 +174,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "transform",
             "Calculate",
             "Compute several named features in order, one formula per line.",
+        ),
+        (
+            "prepare.time",
+            "transform",
+            "Time features",
+            "Add the seconds since the previous observation, the hour or the weekday.",
         ),
         (
             "static.standard_scaler",

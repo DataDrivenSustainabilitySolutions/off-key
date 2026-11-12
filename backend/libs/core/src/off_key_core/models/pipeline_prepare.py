@@ -8,8 +8,10 @@ history. Aggregate, Formula and Gate work on the whole row instead and keep no
 state (pipeline_combine.py). A few per-feature steps also read the row: an
 Accumulate that starts over and a Hold read a condition, and a Rolling
 relation reads the feature it compares with; pipeline_combine.py hands them
-that value. The compiler, the validation API and RADAR read the steps from
-here.
+that value. A Smooth by time constant reads the seconds since its previous
+observation, and a Time features step makes features of the observation's time
+(pipeline_time.py). The compiler, the validation API and RADAR read the steps
+from here.
 """
 
 import math
@@ -39,6 +41,7 @@ from ..schemas.pipelines import (
     RollingParameters,
     SetFeatureParameters,
     SmoothParameters,
+    TimeParameters,
 )
 
 PREPARE_MODELS: dict[str, type[PipelineModel]] = {
@@ -58,9 +61,11 @@ PREPARE_MODELS: dict[str, type[PipelineModel]] = {
     "prepare.hold": HoldParameters,
     "prepare.relation": RelationParameters,
     "prepare.calculate": CalculateParameters,
+    "prepare.time": TimeParameters,
 }
 PREPARE_COMPONENTS = frozenset(PREPARE_MODELS)
-# Steps over the whole row; they keep no state and have output from the start.
+# Steps over the whole row. They keep no state and have output from the start;
+# only a Time features step that adds dt waits for its second observation.
 ROW_COMPONENTS = frozenset(
     {
         "prepare.aggregate",
@@ -70,6 +75,7 @@ ROW_COMPONENTS = frozenset(
         "prepare.condition",
         "prepare.set",
         "prepare.calculate",
+        "prepare.time",
     }
 )
 # Steps that map each feature they use to one value, through a Kernel.
@@ -78,7 +84,7 @@ LANE_COMPONENTS = PREPARE_COMPONENTS - ROW_COMPONENTS
 MAX_WINDOW_VALUES = 50_000
 # Scales a median absolute deviation to the standard deviation of normal data.
 MAD_SCALE = 1.4826
-REJECTION_REASONS = ("non_finite", "out_of_domain", "out_of_range")
+REJECTION_REASONS = ("non_finite", "out_of_domain", "out_of_range", "out_of_order")
 _CHANGE_SUFFIXES = {"difference": "diff", "percent": "pct", "lag": "lag"}
 _FIXED_SUFFIXES = {
     "prepare.despike": "despiked",
@@ -137,7 +143,12 @@ def _quantile_label(quantile: float) -> str:
     The composer names features the same way (scope.ts), so both round to six
     decimals of a percent.
     """
-    return f"{quantile * 100:.6f}".rstrip("0").rstrip(".").replace(".", "p")
+    return _number_label(quantile * 100)
+
+
+def _number_label(value: float) -> str:
+    """A number in suffix characters, to six decimals: 60 is 60, 2.5 is 2p5."""
+    return f"{value:.6f}".rstrip("0").rstrip(".").replace(".", "p")
 
 
 def default_suffix(component: str, params: dict[str, Any]) -> str:
@@ -146,6 +157,10 @@ def default_suffix(component: str, params: dict[str, Any]) -> str:
         return _FIXED_SUFFIXES[component]
     match component:
         case "prepare.smooth":
+            if reads_time(component, params):
+                # Seconds, not observations: smooth60s beside smooth60.
+                seconds = _setting(component, params, "time_constant")
+                return f"smooth{_number_label(seconds)}s"
             return f"smooth{_setting(component, params, 'window_size')}"
         case "prepare.change":
             mode = _setting(component, params, "mode")
@@ -170,8 +185,19 @@ def default_suffix(component: str, params: dict[str, Any]) -> str:
     raise ValueError(f"Unsupported prepare step: {component}")
 
 
+def reads_time(component: str, params: dict[str, Any]) -> bool:
+    """Whether a step needs the time of each observation it sees."""
+    if component == "prepare.smooth":
+        return _setting(component, params, "method") == "time_constant"
+    return component == "prepare.time"
+
+
 class Kernel:
-    """One feature's step. advance returns the next state and leaves the old one."""
+    """One feature's step. advance returns the next state and leaves the old one.
+
+    A step that reads more than its feature takes it as further arguments of
+    advance: see lane_context in pipeline_combine.py.
+    """
 
     lead = 0
     """Values a feature needs before its first output."""
@@ -251,6 +277,45 @@ class Exponential(Kernel):
             and isinstance(state[1], float)
             and math.isfinite(state[1])
         )
+
+
+def _held_state(state: State) -> bool:
+    """Whether a state is (seen, value), with no value before the first one."""
+    return (
+        len(state) == 2
+        and isinstance(state[0], bool)
+        and isinstance(state[1], float)
+        and math.isfinite(state[1])
+        and (state[0] or state[1] == 0.0)
+    )
+
+
+class Decay(Kernel):
+    """y = y' + (1 - exp(-dt / tau)) (x - y'), dt seconds after the value before.
+
+    The filter an exponential average approximates when values arrive evenly:
+    a value's weight halves every tau ln 2 seconds, however many values arrive
+    meanwhile. It starts from its first value and has output from then on.
+    """
+
+    def __init__(self, time_constant: float):
+        self.time_constant = time_constant
+
+    def initial(self) -> State:
+        return (False, 0.0)
+
+    def advance(
+        self, state: State, value: float, elapsed: float | None = None
+    ) -> tuple[State, float | None]:
+        seen, level = state
+        if seen and elapsed is not None:
+            weight = -math.expm1(-elapsed / self.time_constant)
+            value = level + weight * (value - level)
+        level = _finite(value)
+        return (True, level), level
+
+    def accepts(self, state: State) -> bool:
+        return _held_state(state)
 
 
 class Rolling(Kernel):
@@ -537,13 +602,7 @@ class Hold(Kernel):
         return state, state[1]
 
     def accepts(self, state: State) -> bool:
-        return (
-            len(state) == 2
-            and isinstance(state[0], bool)
-            and isinstance(state[1], float)
-            and math.isfinite(state[1])
-            and (state[0] or state[1] == 0.0)
-        )
+        return _held_state(state)
 
 
 class Relation(Kernel):
@@ -738,6 +797,8 @@ class Bound(Kernel):
 def _smoother(settings: SmoothParameters) -> Kernel:
     if settings.method == "exponential":
         return Exponential(settings.window_size)
+    if settings.method == "time_constant":
+        return Decay(settings.time_constant)
     return Rolling(settings.window_size, "mean")
 
 
@@ -964,15 +1025,20 @@ def stage_split(compiled: PipelineValidation) -> StageSplit | None:
     first_output = {source: 1}
     for identifier in steps:
         node = nodes[identifier]
-        lead = (
-            kernel(node.component, node.params).lead
-            if node.component in LANE_COMPONENTS
-            else 0
-        )
-        first_output[identifier] = lead + max(
+        first_output[identifier] = step_lead(node.component, node.params) + max(
             first_output[parent] for parent in incoming[identifier]
         )
     return StageSplit(steps, frontier, first_output)
+
+
+def step_lead(component: str, params: dict[str, Any]) -> int:
+    """Observations a step sees before the one that gives its first output."""
+    if component in LANE_COMPONENTS:
+        return kernel(component, params).lead
+    if component == "prepare.time":
+        # No observation comes before the first to measure dt from.
+        return int(_setting(component, params, "elapsed"))
+    return 0
 
 
 __all__ = [
@@ -988,5 +1054,7 @@ __all__ = [
     "default_suffix",
     "kernel",
     "prepared_bounds",
+    "reads_time",
     "stage_split",
+    "step_lead",
 ]

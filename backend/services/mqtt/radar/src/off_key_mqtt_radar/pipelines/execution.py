@@ -28,16 +28,19 @@ class PipelineExecutionMixin:
         if stage is not None:
             self.diagnostics.external = frozenset(stage.frontier)
 
-    def _prepared(self, bound: dict[str, float]) -> dict[str, float] | Withheld:
+    def _prepared(
+        self, bound: dict[str, float], timestamp: float | None = None
+    ) -> dict[str, float] | Withheld:
         """The learned stage's input, or why it gets none from this observation.
 
         It gets none while the Prepare stage warms up, and none when a Gate
         holds the observation back. A rejected observation raises
-        PrepareRejected and changes no state.
+        PrepareRejected and changes no state. timestamp is when the
+        observation was measured, for the steps that read time.
         """
         if self.prepare is None:
             return bound
-        prepared = self.prepare.run(bound, self.diagnostics)
+        prepared = self.prepare.run(bound, self.diagnostics, timestamp)
         if isinstance(prepared, Withheld) and prepared.reason == "preparing":
             self.diagnostics.phase = "preparing"
         return prepared

@@ -1,5 +1,5 @@
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { hasScope, SCOPE_FIELDS, setting } from "./scope";
+import { hasScope, SCOPE_FIELDS, setting, TIME_FEATURES } from "./scope";
 
 export type StepFamily =
   "prepare" | "combine" | "normalize" | "reduce" | "route" | "transform" | "input" | "forecaster" | "detector"
@@ -60,7 +60,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "features.rename": "Give features new names.",
   "features.passthrough": "Forward features unchanged.",
   "features.merge": "Join branches into one feature list.",
-  "prepare.smooth": "Average recent values to calm noise.",
+  "prepare.smooth": "Average recent values to calm noise, over observations or over time.",
   "prepare.despike": "Replace sudden spikes with the recent median.",
   "prepare.change": "Add the change since earlier observations.",
   "prepare.rolling": "Add a sum, quantile, spread, trend, shape or score of recent values.",
@@ -76,6 +76,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "prepare.condition": "Turn a comparison or Boolean condition into a 1 or 0 feature.",
   "prepare.set": "Calculate or replace one feature, keeping the others.",
   "prepare.calculate": "Calculate several named features, one formula per line.",
+  "prepare.time": "Add the seconds since the previous observation, the hour or the weekday.",
   "static.standard_scaler": "Center and scale with training statistics.",
   "adaptive.standard_scaler": "Center and scale with running statistics.",
   "static.min_max_scaler": "Scale to 0 to 1 with training bounds.",
@@ -99,8 +100,8 @@ const DESCRIPTIONS: Record<string, string> = {
 export const stepDescription = (component: PipelineComponent) =>
   DESCRIPTIONS[component.id] ?? component.description;
 
-/** Settings with controls of their own: the formula editor, For each, Result, Name, Suffix
- * and the feature a Rolling relation compares with. */
+/** Settings with controls of their own: the formula editor, For each, Result, Name, Suffix,
+ * the feature a Rolling relation compares with and the list of time features. */
 const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
@@ -111,6 +112,7 @@ const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.accumulate": new Set(["reset_when"]),
   "prepare.hold": new Set(["update_when"]),
   "prepare.relation": new Set(["against"]),
+  "prepare.time": new Set([...TIME_FEATURES.map(([name]) => name), "timezone"]),
 };
 /** Steps that compute or decide by a formula; it is their main setting. */
 export const FORMULA_STEPS = new Set(["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set", "prepare.calculate"]);
@@ -128,14 +130,23 @@ export const FUSION_CHOICES = [
 export const fusionChoice = (node: PipelineNode) =>
   FUSION_CHOICES.find((choice) => choice.value === node.params.fusion) ?? FUSION_CHOICES[0];
 
-/** The settings the inspector lists below Applies to and Result. Scale and offset
- * only mean something to a linear Math step, so they stay hidden otherwise. */
+/** Settings a step does not read as it is set: a quantile unless Rolling takes one, scale and
+ * offset unless Math is linear, and a Smooth's window or time constant, whichever its method leaves. */
+function unread(node: PipelineNode, component: PipelineComponent): string[] {
+  const value = (name: string) => setting(node, component, name);
+  switch (node.component) {
+    case "prepare.rolling": return value("statistic") === "quantile" ? [] : ["quantile"];
+    case "prepare.math": return value("function") === "linear" ? [] : ["scale", "offset"];
+    case "prepare.smooth": return [value("method") === "time_constant" ? "window_size" : "time_constant"];
+  }
+  return [];
+}
+
+/** The settings the inspector lists below Applies to and Result: those without a control
+ * of their own that the step reads as it is set. */
 export function stepFields(node: PipelineNode, component: PipelineComponent) {
   const own = node.kind === "calibration" ? CALIBRATION_CONTROLS : OWN_CONTROLS[node.component];
-  const fields = component.fields.filter((field) =>
-    !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name));
-  if (node.component === "prepare.rolling" && setting(node, component, "statistic") !== "quantile")
-    return fields.filter((field) => field.name !== "quantile");
-  if (node.component !== "prepare.math" || setting(node, component, "function") === "linear") return fields;
-  return fields.filter((field) => field.name !== "scale" && field.name !== "offset");
+  const hidden = unread(node, component);
+  return component.fields.filter((field) =>
+    !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name) && !hidden.includes(field.name));
 }

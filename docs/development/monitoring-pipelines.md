@@ -230,7 +230,8 @@ while its window fills. The stage commits an observation only when every step
 succeeds. A step that cannot use a value raises `PrepareRejected`, an
 `ObservationRejected`: every state stays as it was, the observation becomes a
 `pipeline_observation_rejected` coverage gap, and the run continues. Rejections
-are counted per node by reason (`non_finite`, `out_of_domain`, `out_of_range`).
+are counted per node by reason (`non_finite`, `out_of_domain`, `out_of_range`,
+`out_of_order`).
 A kernel with lead L outputs from its (L+1)-th value, so the stage is ready at
 one plus the largest sum of leads along a chain. Until then the detectors return
 `preparing` results, the run stage reads `N/M observations prepared` and no
@@ -316,6 +317,48 @@ kernel; a `PrepareFailure` in it skips the observation like any other.
 
 Conditions are checked like a Gate's: names and kinds as `formula` issues on
 the setting, and `values` warns where a condition is always or never true.
+
+Two steps read the time an observation was measured at (`reads_time()`).
+`MessageProcessor` passes the observation time of the aligned vector, the
+latest of its `input_timestamps`, through `DetectorHandle.process()` and
+`process_data_point(..., timestamp)` to `PrepareStage.run(bound, diagnostics,
+timestamp)`; Dojo's `Replay` passes the recorded time, and a caller without
+one gets the worker's clock. The stage keeps `times[step]`, when each such
+step last used an observation, and hands the step a `Clock(now, elapsed)`
+(`pipeline_time.py`). `times` commits and rolls back with the kernel states,
+so an observation that is skipped, or that a Gate before the step holds back,
+leaves it alone and the next `elapsed` spans it. An observation not later than
+the step's previous one is rejected as `out_of_order`: alignment already
+refuses regressing readings, so this only meets a checkpoint that is ahead of
+the stream. `elapsed` is therefore above 0, and the compiler gives `dt` the
+minimum `POSITIVE`, the smallest positive float, so `a / dt` draws no
+division warning. `rangeText()` reads a bound that close to 0 as *above 0*.
+
+- `prepare.time` (`TimeFeatures`, a row step) appends the features its
+  settings switch on, in the order of `TIME_FEATURES`: `dt`; `hour` in
+  [0, 24] and `weekday` in [1, 7]; `hour_sin`, `hour_cos`, `weekday_sin` and
+  `weekday_cos` in [-1, 1]. The calendar follows `timezone` through
+  `zoneinfo`, validated when the design is checked; `UTC` needs no zone
+  database. With `elapsed` the step has a lead of 1 (`step_lead()`), since
+  the first observation has no `dt`. A name that already arrives is a `scope`
+  issue on the setting that would add it, and a step that adds nothing is
+  refused. `timezone` is left out of the normalized parameters while no
+  calendar feature reads it. The features carry no slots, and the inspector
+  lists them as *From no reading*.
+- `prepare.smooth` with `method: time_constant` (`Decay`) moves its level
+  towards each value by 1 - exp(-elapsed / time_constant), computed with
+  `expm1`, and starts at the first value. State is `(seen, level)`, the lead
+  is 0 and the suffix names the seconds: `smooth60s`, `smooth2p5s`.
+  Normalization drops `window_size` for this method and `time_constant` for
+  the others, so earlier designs keep their fingerprints.
+
+Prepare checkpoints stay at version 1 and gain `times`, which must name
+exactly the time-reading steps that have used an observation; a checkpoint
+from before has none and loads as long as the design has no such step that
+already ran. `PipelineTime.tsx` is the editor of `prepare.time`: one checkbox
+per setting in the classes of **Applies to**, the last one locked, and a
+**Time zone** field with the browser's zone names as suggestions, shown once
+the hour or the weekday is added.
 
 `prepare.constant`, `prepare.condition` and `prepare.set` are stateless row
 operations on the existing numeric feature stream. Constant and Condition append

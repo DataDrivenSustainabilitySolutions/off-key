@@ -3,7 +3,9 @@ import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
 import { detectorIds } from "./model";
 import { writtenNames } from "./formula";
-import { addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import {
+  addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope, timeFeatures,
+} from "./scope";
 import { coverage } from "./learning";
 import { fusionChoice } from "./steps";
 
@@ -100,8 +102,16 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
   };
   switch (node.component) {
     case "prepare.smooth": {
+      if (value("method") === "time_constant") return `Time constant ${number(amount("time_constant", 60))} s`;
       const window = number(amount("window_size", 10));
       return value("method") === "rolling" ? `Mean of last ${window}` : `Exponential over ${window}`;
+    }
+    case "prepare.time": {
+      const chosen = timeFeatures(node, component);
+      if (!chosen.length) return "No time feature yet";
+      // Only the hour and the weekday follow a clock; dt is the same everywhere.
+      const zone = chosen.some(([name]) => name !== "elapsed") ? ` · ${value("timezone") || "UTC"}` : "";
+      return `Adds ${listed(chosen.flatMap(([, names]) => names))}${zone}`;
     }
     case "prepare.despike":
       return `Window ${number(amount("window_size", 11))} · limit ${number(amount("threshold", 3))} MAD`;

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     BaseModel,
@@ -1056,15 +1057,31 @@ def _window(
     )
 
 
+# Thirty days, in seconds.
+MAX_TIME_CONSTANT = 2_592_000
+
+
 class SmoothParameters(PrepareScopeParameters):
-    method: Literal["exponential", "rolling"] = Field(
+    method: Literal["exponential", "rolling", "time_constant"] = Field(
         default="exponential",
         description=(
             "Exponential weighs recent values more, with alpha = 2 / (window + 1). "
-            "Rolling takes the plain mean of the window."
+            "Rolling takes the plain mean of the window. Time constant weighs "
+            "values by the seconds since they arrived, so readings every second "
+            "and every ten are smoothed alike."
         ),
     )
     window_size: int = _window(10, "Observations to smooth over.")
+    time_constant: float = Field(
+        default=60.0,
+        gt=0,
+        le=MAX_TIME_CONSTANT,
+        title="Time constant",
+        description=(
+            "Seconds until a lasting change shows to 63% in the result; after "
+            "three times as long it shows to 95%."
+        ),
+    )
 
 
 class DespikeParameters(PrepareScopeParameters):
@@ -1250,6 +1267,80 @@ class CalculateParameters(PipelineModel):
             "is replaced; a new one is added. Lines that start with # are notes."
         ),
     )
+
+
+class TimeParameters(PipelineModel):
+    """Features of the time an observation was measured at."""
+
+    elapsed: bool = Field(
+        default=True,
+        title="Seconds since the previous observation",
+        description=(
+            "Adds dt. The first observation has none before it, so the step is "
+            "ready after two."
+        ),
+    )
+    hour: bool = Field(
+        default=False,
+        title="Hour of day",
+        description=(
+            "Adds hour, from 0 at midnight up to 24, with minutes as a fraction."
+        ),
+    )
+    weekday: bool = Field(
+        default=False,
+        title="Day of week",
+        description="Adds weekday, from 1 for Monday to 7 for Sunday.",
+    )
+    daily_cycle: bool = Field(
+        default=False,
+        title="Daily cycle",
+        description=(
+            "Adds hour_sin and hour_cos, the time of day on a circle, where "
+            "23:59 lies next to 0:00."
+        ),
+    )
+    weekly_cycle: bool = Field(
+        default=False,
+        title="Weekly cycle",
+        description=(
+            "Adds weekday_sin and weekday_cos, the time of week on a circle, "
+            "where Sunday night lies next to Monday morning."
+        ),
+    )
+    timezone: str = Field(
+        default="UTC",
+        min_length=1,
+        max_length=64,
+        title="Time zone",
+        description=(
+            "The clock the hour and the weekday follow, such as Europe/Berlin, "
+            "with its daylight saving time."
+        ),
+    )
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value: str) -> str:
+        if value == "UTC":
+            return value
+        try:
+            ZoneInfo(value)
+        except (KeyError, ValueError, OSError):
+            raise ValueError(
+                "Unknown time zone. Write a name such as Europe/Berlin, or UTC."
+            ) from None
+        return value
+
+    @model_validator(mode="after")
+    def some_feature(self):
+        if not any(getattr(self, name) for name in TIME_SETTINGS):
+            raise ValueError("Choose at least one time feature.")
+        return self
+
+
+# The settings of a Time features step that each add features, in output order.
+TIME_SETTINGS = ("elapsed", "hour", "weekday", "daily_cycle", "weekly_cycle")
 
 
 class MathParameters(PrepareScopeParameters):

@@ -260,7 +260,11 @@ per observation, in arrival order, and compute the same values however the
 detectors learn; a detector fitted once keeps them running while it trains, so
 their windows never restart.
 
-- **Smooth** averages recent values, exponentially or over a rolling window.
+- **Smooth** averages recent values: exponentially, over a rolling window, or
+  by a **Time constant** in seconds. A time constant weighs values by the time
+  since they were measured, so readings every second and every ten seconds are
+  smoothed alike: a lasting change shows to 63% after one time constant and to
+  95% after three, however many observations arrive meanwhile.
 - **Despike** replaces a value further than **Threshold** robust deviations from
   the median of its window with that median. The detector then sees the median in
   place of the spike; the evidence keeps the raw reading.
@@ -317,6 +321,25 @@ their windows never restart.
   scale × x + offset.
 - **Range check** clips values to **Low** and **High**, or skips observations
   outside them.
+- **Time features** adds features of the time each observation was measured
+  at, whichever are switched on:
+  - **Seconds since the previous observation** adds `dt`. With it a formula
+    turns a difference into a rate, `dc_current_diff1 / dt`, and a power into
+    energy, `power * dt` under **Accumulate**. `dt` is always above 0, so
+    dividing by it skips nothing. The first observation has none before it,
+    so the step is ready after two.
+  - **Hour of day** adds `hour`, from 0 at midnight up to 24 with minutes as a
+    fraction, and **Day of week** adds `weekday`, 1 for Monday to 7 for Sunday.
+  - **Daily cycle** adds `hour_sin` and `hour_cos`, and **Weekly cycle**
+    `weekday_sin` and `weekday_cos`. They place the time on a circle, where
+    23:59 lies next to 0:00 and Sunday night next to Monday morning, so a
+    detector sees them as neighbours.
+
+  The hour and the weekday follow **Time zone**, such as `Europe/Berlin`, with
+  its daylight saving time, so a pattern that follows working hours stays in
+  place all year. Left empty it is UTC. The step has no **Applies to**: it
+  keeps the features that arrive and adds its own, and a name that already
+  arrives has to be renamed first.
 
 Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
 **Change**, **Rolling statistic**, **Accumulate**, **Hold** and **Rolling
@@ -324,7 +347,8 @@ relation** add features by default, such as `dc_voltage_diff1`,
 `dc_voltage_mean60`, `dc_voltage_total`, `dc_voltage_held` and
 `dc_voltage_corr60`; the others replace values. A count is named
 `dc_voltage_count`, and a covariance, slope or residual over 60 observations
-ends in `cov60`, `beta60` or `resid60`.
+ends in `cov60`, `beta60` or `resid60`. A **Smooth** by a time constant of 60
+seconds adds `dc_voltage_smooth60s`.
 A rolling quantile is named after its quantile as a percentage, so the 0.1 and
 0.9 quantiles of 60 values sit side by side as `dc_voltage_q10_60` and
 `dc_voltage_q90_60`. A step
@@ -338,9 +362,18 @@ and a design's Prepare windows hold at most 50,000 values in all. A **Rolling
 relation** keeps two windows per feature, its own and one of the feature it is
 compared with.
 
+**Time features** and **Smooth** by time constant read the observation's time,
+as [Observation time and alignment](#observation-time-and-alignment) defines
+it, never the moment it happened to be processed, so a Dojo replay of recorded
+data computes the same values as the live monitor did. The time between two
+observations counts from the previous observation the step used: one that was
+skipped, or that a **Gate** before the step held back, is not counted, so the
+next `dt` spans it.
+
 An observation a Prepare step cannot use is skipped as a whole: a logarithm or
 root outside its domain, a percent change from zero, a result too large to
-represent, or a value outside a skipping **Range check**. Skipping changes no
+represent, a value outside a skipping **Range check**, or an observation that
+is not later than the previous one at a step that reads time. Skipping changes no
 step's state, nothing learns from the observation, and it counts as a coverage
 gap. The step's diagnostics count skipped observations by reason. Evidence
 always records the raw readings. Learned steps and the detector skip an
@@ -610,6 +643,10 @@ regressing timestamps for the same reading. Rejected inputs are counted as
 coverage gaps and cannot refresh valid-input activity or advance the detector.
 Without a source timestamp or event identity, distinct deliveries cannot be
 deduplicated reliably.
+
+Pipeline steps that read time, **Time features** and **Smooth** by time
+constant, use the latest observation time among the readings of the aligned
+vector.
 
 An aligned vector also requires fresh receipts and observation times within
 5 seconds of one another. Newer compatible readings unblock alignment; a blocked

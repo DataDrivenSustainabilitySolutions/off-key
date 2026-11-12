@@ -1,5 +1,7 @@
 """Small executable pipelines for tests that need a real bound execution."""
 
+from itertools import pairwise
+
 from off_key_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
@@ -121,3 +123,52 @@ def quick(strategy="adaptive_stream"):
     data = branched(strategy).model_dump(mode="json")
     data["settings"].update(training_window_size=60, calibration_window_size=40)
     return PipelineDefinition.model_validate(data)
+
+
+def chained(strategy="adaptive_stream", steps=(), slots=("a", "b")):
+    """A design whose steps run one after another between the input and a small
+    detector; each step is (id, component, params)."""
+    data = template(strategy).model_dump(mode="json")
+    data["input_slots"] = [{"id": key, "label": key.upper()} for key in slots]
+    data["settings"].update(training_window_size=20, calibration_window_size=5)
+    detector = next(node for node in data["nodes"] if node["kind"] == "detector")
+    if strategy == "adaptive_stream":
+        detector.update(
+            component="detector:aberrant_moving_mahalanobis_distance",
+            params={"window_size": 5},
+        )
+    else:
+        detector["params"] = {"n_estimators": 10}
+    data["nodes"].extend(
+        {"id": key, "kind": "transform", "component": component, "params": params}
+        for key, component, params in steps
+    )
+    data["edges"] = [edge for edge in data["edges"] if edge["source"] != "input"] + [
+        {"source": source, "target": target}
+        for source, target in pairwise(
+            ["input", *(key for key, _, _ in steps), "detector"]
+        )
+    ]
+    return PipelineDefinition.model_validate(data)
+
+
+def chained_execution(strategy="adaptive_stream", steps=(), slots=("a", "b")):
+    """What RADAR runs for ``chained``, with a reading bound to every slot."""
+    definition = compile_pipeline(chained(strategy, steps, slots)).definition
+    bindings = [
+        dict(
+            slot_id=key,
+            reading_id=key,
+            entity_id="entity",
+            accepted_topic=f"telemetry/entity/{key}",
+            input_key=key,
+        )
+        for key in slots
+    ]
+    return PipelineExecutionConfig(
+        definition=definition,
+        bindings=bindings,
+        revision_id="revision",
+        run_id="run",
+        fingerprint=execution_fingerprint(definition, bindings),
+    )

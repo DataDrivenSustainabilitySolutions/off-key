@@ -30,6 +30,7 @@ ROW_SETTINGS = {
     "prepare.condition": {"condition": "a > 1"},
     "prepare.set": {"name": "a", "expression": "a + b"},
     "prepare.calculate": {"formulas": "c = a + b"},
+    "prepare.time": {},
 }
 # Likewise for the steps that read the row for each feature.
 LANE_SETTINGS = {

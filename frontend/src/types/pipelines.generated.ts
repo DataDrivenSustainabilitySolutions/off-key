@@ -743,8 +743,9 @@ export type SmoothParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string | null;
-  method?: "exponential" | "rolling";
+  method?: "exponential" | "rolling" | "time_constant";
   window_size?: number;
+  time_constant?: number;
 };
 
 export type StandardScalerParameters = {
@@ -752,6 +753,15 @@ export type StandardScalerParameters = {
   result?: "replace" | "add";
   suffix?: string;
   with_std?: boolean;
+};
+
+export type TimeParameters = {
+  elapsed?: boolean;
+  hour?: boolean;
+  weekday?: boolean;
+  daily_cycle?: boolean;
+  weekly_cycle?: boolean;
+  timezone?: string;
 };
 
 export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4 } as const;

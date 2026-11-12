@@ -144,7 +144,7 @@ describe("catalogue tree model", () => {
 });
 
 describe("catalogue list", () => {
-  it("observes fresh preview traffic and clears the circle when its listener leaves", async () => {
+  it("observes fresh preview traffic and clears the activity badge when its listener leaves", async () => {
     const document = system();
     let batch: LiveBatch = { mode: "live", revision: 1, sequence: 0, reset: true,
       brokers: [{ broker_id: "broker", state: "connected", message: null, received_messages: 1, fresh_count: 0, retained_count: 1, fresh_received_at: null, rate_hz: 0 }],
@@ -160,16 +160,16 @@ describe("catalogue list", () => {
     const view = render(<ExplorerList {...options} activity={{ telemetry, liveStreamIds: ["value-0"] }} />);
     try {
       const row = await screen.findByRole("button", { name: "Value 0, preview" });
-      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("none");
-      expect(row.querySelector(".ex-reading-activity")?.getAttribute("title")).toBe("Listening, waiting for fresh data");
+      expect(row.querySelector(".source-activity-dot")!.classList.contains("is-receiving")).toBe(false);
+      expect(row.querySelector(".ex-row-icon")?.getAttribute("title")).toBe("Listening, waiting for fresh data");
       batch = { ...batch, sequence: 1, reset: false, readings: [{ ...batch.readings[0]!, value: 21, is_retained: false, fresh_count: 1,
         fresh_received_at: new Date().toISOString(), sequence: 1 }] };
       act(() => telemetry.accept(batch, true));
-      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("currentColor");
+      expect(row.querySelector(".source-activity-dot")!.classList.contains("is-receiving")).toBe(true);
       view.rerender(<ExplorerList {...options} activity={{ telemetry, liveStreamIds: ["value-1"] }} />);
-      expect(row.querySelector("svg")!.getAttribute("fill")).toBe("none");
+      expect(row.querySelector(".source-activity-dot")!.classList.contains("is-receiving")).toBe(false);
       act(() => telemetry.stop());
-      expect(row.querySelector(".ex-reading-activity")?.getAttribute("title")).toBe("Not listening");
+      expect(row.querySelector(".ex-row-icon")?.getAttribute("title")).toBe("Not listening");
     } finally {
       view.unmount();
       telemetry.stop();
@@ -185,10 +185,10 @@ describe("catalogue list", () => {
     const selected = readingRows(options)[0]!.node.key;
     render(<ExplorerList {...options} selectedKey={selected} activity={{ telemetry: new SystemLiveTelemetry(), runtime, liveStreamIds: [] }} />);
     const row = await screen.findByRole("button", { name: "Value 0, preview" });
-    expect(row.querySelector("svg")!.getAttribute("fill")).toBe("currentColor");
+    expect(row.querySelector(".source-activity-dot")!.classList.contains("is-receiving")).toBe(true);
     expect(row.getAttribute("aria-current")).toBe("true");
     act(() => vi.advanceTimersByTime(120_000));
-    expect(row.querySelector("svg")!.getAttribute("fill")).toBe("none");
+    expect(row.querySelector(".source-activity-dot")!.classList.contains("is-receiving")).toBe(false);
     expect(screen.getByRole("button", { name: "Value 1, preview" })).toBeTruthy();
     expect(options.onOpen).not.toHaveBeenCalled();
     vi.useRealTimers();

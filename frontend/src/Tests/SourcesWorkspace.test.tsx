@@ -77,13 +77,13 @@ describe("dedicated Sources configuration", () => {
     await screen.findByRole("radiogroup", { name: "Recording" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search catalogue" }), { target: { value: "Remote reading" } });
     const row = await screen.findByRole("button", { name: "Remote reading, preview" });
-    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+    expect(row.querySelector(".source-activity-dot")?.classList.contains("is-receiving")).toBe(true);
     await act(async () => { vi.advanceTimersByTime(5000); });
     expect(apiUtils.post).toHaveBeenCalledWith("/v1/recording/status", { reading_ids: ["temperature", "power", "remote-value"] }, expect.anything());
-    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+    expect(row.querySelector(".source-activity-dot")?.classList.contains("is-receiving")).toBe(true);
     collectionRevision = 5;
     await act(async () => { vi.advanceTimersByTime(5000); });
-    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("none");
+    expect(row.querySelector(".source-activity-dot")?.classList.contains("is-receiving")).toBe(false);
   });
 
   it("shows confirmed recording traffic in the sidebar without opening a preview subscription", async () => {
@@ -94,7 +94,7 @@ describe("dedicated Sources configuration", () => {
     mount();
     fireEvent.change(screen.getByRole("searchbox", { name: "Search catalogue" }), { target: { value: "temperature" } });
     const row = await screen.findByRole("button", { name: "temperature, preview" });
-    expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+    expect(row.querySelector(".source-activity-dot")?.classList.contains("is-receiving")).toBe(true);
     expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 2 minutes)");
     expect(apiUtils.post).not.toHaveBeenCalled();
   });

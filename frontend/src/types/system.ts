@@ -1,6 +1,8 @@
 import type { CollectionPolicy } from "./collection";
+import type { SourceAppearance, TopicAppearance } from "./source-appearance";
 
 export type SystemConnection = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
   /** An MQTT broker pushes messages; an HTTP API is polled with GET requests. */
@@ -14,6 +16,7 @@ export type SystemConnection = {
 };
 
 export type SystemDevice = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
   broker_id?: string;
@@ -22,6 +25,7 @@ export type SystemDevice = {
 };
 
 export type SystemStream = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
   broker_id: string;
@@ -38,6 +42,7 @@ export type SystemStream = {
 };
 
 export type SystemGroup = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
   color?: string;
@@ -54,6 +59,7 @@ export type SystemDocument = {
   devices: SystemDevice[];
   readings: SystemStream[];
   groups: SystemGroup[];
+  topic_appearances?: TopicAppearance[];
 };
 
 /** One on-demand MQTT CONNECT or HTTP GET to a saved source; nothing is stored. */

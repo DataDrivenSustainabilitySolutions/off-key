@@ -1,5 +1,6 @@
 import { useId, useMemo, type ReactNode } from "react";
-import { ChevronRight, Cpu, Folder, Star } from "lucide-react";
+import { ChevronRight, Pencil } from "lucide-react";
+import { SourceIcon } from "@/components/source-icons/SourceIcon";
 import type { ExplorerNode } from "@/domain/system/navigationIndex";
 import { catalogueLocation } from "./catalogue-tree";
 import { useCatalogue } from "./catalogue-context";
@@ -27,7 +28,7 @@ function Category({ section, title, count, children }: { section: SidebarSection
  * nothing on the page.
  */
 export function SavedNavigation({ onNavigate }: { onNavigate?: () => void }) {
-  const { document, index, favourites, selected, selectSource, collection, showCollection, setQuery } = useCatalogue();
+  const { document, index, favourites, selected, selectSource, collection, showCollection, setQuery, system, editingLocked, openEditor } = useCatalogue();
   const streams = useMemo(() => new Map(document.readings.map(stream => [stream.id, stream])), [document.readings]);
   const starred = favourites.flatMap(item => {
     if (item.kind === "monitor") return [];
@@ -41,19 +42,23 @@ export function SavedNavigation({ onNavigate }: { onNavigate?: () => void }) {
       {starred.map(({ item, node, label }) => <li key={`${item.kind}:${item.id}`}>
         <button type="button" className="app-sidebar-item" aria-current={selected?.key === node.key ? "true" : undefined}
           title={[label, catalogueLocation(index, node)].filter(Boolean).join(" — ")} onClick={() => open(node)}>
-          {item.kind === "device" ? <Cpu size={16} strokeWidth={1.6} aria-hidden="true" /> : <Star size={16} strokeWidth={1.6} aria-hidden="true" />}
+          <SourceIcon kind={node.entityKind ?? node.kind} appearance={node.appearance} />
           <span>{label}</span>
         </button>
       </li>)}
     </Category>}
     {document.groups.length > 0 && <Category section="collections" title="Collections" count={document.groups.length}>
-      {document.groups.map(group => <li key={group.id}>
+      {document.groups.map(group => <li key={group.id} className="app-sidebar-collection">
         <button type="button" className="app-sidebar-item" aria-pressed={collection?.id === group.id}
           aria-label={`Show collection ${group.label}`} title={`${group.label}: show its ${group.member_ids.length} sources in the catalogue`}
           onClick={() => { setQuery(""); showCollection(collection?.id === group.id ? null : group.id); }}>
-          <Folder size={16} strokeWidth={1.6} aria-hidden="true" style={group.color ? { color: group.color } : undefined} />
+          <SourceIcon kind="group" appearance={group.appearance} color={group.color} />
           <span>{group.label}</span><small aria-hidden="true">{group.member_ids.length}</small>
         </button>
+        {system.canEdit && <button type="button" className="app-sidebar-toggle" aria-label={`Edit collection ${group.label}`}
+          title="Edit collection" disabled={system.saving || editingLocked} onClick={() => { openEditor("group", group.id); onNavigate?.(); }}>
+          <Pencil size={13} aria-hidden="true" />
+        </button>}
       </li>)}
     </Category>}
   </>;

@@ -1,7 +1,8 @@
 import { useNow } from "@/hooks/use-now";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Box, ChevronRight, Circle, Cpu, Folder, FolderInput } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { SourceIcon } from "@/components/source-icons/SourceIcon";
 import type { ExplorerNode } from "@/domain/system/navigationIndex";
 import { isReadingLeaf, readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
 import type { CatalogueRow } from "./catalogue-tree";
@@ -26,7 +27,6 @@ const TREE_ROW = 32;
 const SEARCH_ROW = 48;
 const subscribeNothing = () => () => {};
 const noStatus = () => undefined;
-const icons = { connection: Box, device: Cpu, unassigned: FolderInput } as const;
 
 /**
  * The sidebar's catalogue rows, virtualized for large catalogues. Rows are a
@@ -115,7 +115,6 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
       {items.map((item) => {
         const row = rows[item.index]!;
         const node = row.node;
-        const Icon = node.kind in icons ? icons[node.kind as keyof typeof icons] : Folder;
         const indicator = isReadingLeaf(node) ? readingActivity(node, activity, liveStatus, now) : undefined;
         const descriptionId = `${activityId}-${item.index}`;
         const selected = selectedKey === node.key;
@@ -136,10 +135,10 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
               aria-describedby={indicator ? descriptionId : undefined}
               title={row.path} onClick={() => { setActiveKey(node.key); onOpen(node); }} onKeyDown={(event) => keyboard(event, item.index)}
               onFocus={() => setActiveKey(node.key)}>
-              <span className={`ex-row-icon${indicator ? " ex-reading-activity" : ""}`} title={indicator?.label}
-                style={!indicator && row.color ? { color: row.color } : undefined}>
-                {indicator ? <><Circle size={16} strokeWidth={1.6} fill={indicator.receiving ? "currentColor" : "none"} aria-hidden="true" />
-                  <span id={descriptionId} className="ex-sr-only">{indicator.label}</span></> : <Icon size={16} strokeWidth={1.6} aria-hidden="true" />}
+              <span className="ex-row-icon" title={indicator?.label}>
+                <SourceIcon kind={node.entityKind ?? node.kind} appearance={node.appearance} color={row.color ?? node.color} />
+                {indicator && <><span className={`source-activity-dot${indicator.receiving ? " is-receiving" : ""}`} aria-hidden="true" />
+                  <span id={descriptionId} className="ex-sr-only">{indicator.label}</span></>}
               </span>
               <span className="ex-row-text"><span className="ex-row-label">{row.label}</span>
                 {row.detail && <span className="ex-row-detail">{row.detail}</span>}

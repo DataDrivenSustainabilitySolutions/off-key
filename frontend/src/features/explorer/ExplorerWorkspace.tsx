@@ -15,6 +15,7 @@ import { SourceScope } from "../workspace/SourceScope";
 import { CopyToDojo } from "../dojo/CopyToDojo";
 import { catalogueSelectionLabel, withCatalogueSource } from "../workspace/catalogue-navigation";
 import "../monitoring/monitoring.css";
+import { setSourceAppearance } from "@/domain/system/sourceAppearance";
 
 const Preview = lazy(() => import("../readings/ExplorerPreview"));
 const ServiceDetail = lazy(() => import("../monitoring/MonitoringServiceDetail"));
@@ -117,6 +118,7 @@ export function ExplorerWorkspace() {
       {preview && <Suspense fallback={<p className="ex-muted" role="status">Opening preview…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
         index={index} document={document} telemetry={telemetry} historyCache={history} canEdit={system.canEdit} saving={system.saving}
         error={system.error} onRename={rename} onEdit={openEditor}
+        onAppearanceChange={appearance => system.save(setSourceAppearance(document, selected, appearance), system.revision ?? 0)}
         runtime={system.snapshot?.runtime} collapseDefinition favourite={starred.some(item => item.kind === "reading" && item.id === selected.objectId)}
         onFavourite={id => toggleFavourite("reading", id)}
         actions={<CopyToDojo compact scope={selectedLabel ?? selected.label} readings={previewReadings} />}

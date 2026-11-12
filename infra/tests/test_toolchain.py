@@ -1,8 +1,12 @@
 """CI, image builds and production use one uv release and one Docker Engine release."""
 
+import json
 import re
 import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 import yaml
 from support import ROOT
@@ -11,6 +15,77 @@ REPOSITORY = ROOT.parent
 
 
 class ToolchainTests(unittest.TestCase):
+    def test_ci_version_selection_consumes_the_full_package_catalogue(self):
+        action = yaml.safe_load(
+            (REPOSITORY / ".github/actions/setup-docker-engine/action.yml").read_text()
+        )
+        selection = next(
+            line
+            for line in action["runs"]["steps"][0]["run"].splitlines()
+            if line.startswith("package=")
+        )
+        # Enough output to fill a pipe: stopping after the first match breaks
+        # the producer and fails setup before any Docker package is installed.
+        catalogue = r"""
+set -euo pipefail
+version=29.0.0
+apt-cache() {
+    printf 'docker-ce | 5:29.0.0-2 | fixture\n'
+    printf 'docker-ce | 5:29.0.0-1 | fixture\n'
+    for ((i=0; i<10000; i++)); do
+        printf 'docker-ce | 5:28.0.0-1 | fixture\n'
+    done
+}
+"""
+        result = subprocess.run(
+            ["bash", "-c", catalogue + selection + '\nprintf "%s\\n" "$package"'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "5:29.0.0-2\n")
+
+    def test_ci_image_store_preserves_existing_daemon_configuration(self):
+        action = yaml.safe_load(
+            (REPOSITORY / ".github/actions/setup-docker-engine/action.yml").read_text()
+        )
+        script = action["runs"]["steps"][0]["run"]
+        configure = script.split("sudo python3 - <<'PYTHON'\n", 1)[1].split(
+            "\nPYTHON", 1
+        )[0]
+        for original in [
+            None,
+            {"log-driver": "json-file", "features": {"buildkit": True}},
+            {"features": {"containerd-snapshotter": True}},
+        ]:
+            with (
+                self.subTest(configuration=original),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                path = Path(directory) / "docker" / "daemon.json"
+                if original is not None:
+                    path.parent.mkdir()
+                    path.write_text(json.dumps(original))
+                # Run the action's actual Python against a disposable config.
+                subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        configure.replace('"/etc/docker/daemon.json"', repr(str(path))),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                saved = json.loads(path.read_text())
+                self.assertIs(saved["features"].pop("containerd-snapshotter"), False)
+                expected = json.loads(json.dumps(original or {}))
+                expected.setdefault("features", {}).pop("containerd-snapshotter", None)
+                self.assertEqual(saved, expected)
+
     def test_ci_engine_restart_after_package_installation(self):
         action = yaml.safe_load(
             (REPOSITORY / ".github/actions/setup-docker-engine/action.yml").read_text()
@@ -100,7 +175,7 @@ docker() {
                         if "setup-uv" in step.get("uses", ""):
                             self.assertEqual(step["with"]["version"], expected)
 
-    def test_every_ci_swarm_runs_the_production_docker_engine(self):
+    def test_ci_image_build_and_swarms_use_the_same_docker_engine(self):
         role = yaml.safe_load(
             (
                 REPOSITORY / "infra/ansible/roles/docker_install/defaults/main.yml"
@@ -127,7 +202,7 @@ docker() {
             )
         ]
         self.assertTrue(swarm_jobs)
-        for name in swarm_jobs:
+        for name in ["images", *swarm_jobs]:
             with self.subTest(job=name):
                 steps = [
                     step.get("uses", step.get("run", ""))

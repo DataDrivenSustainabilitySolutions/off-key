@@ -69,7 +69,7 @@ class SystemCollectionDefinition(SystemModel):
 
     def streams(self, *, selected_only: bool = False) -> list:
         connections = {
-            item.id: item.model_dump(exclude={"label"})
+            item.id: item.model_dump(exclude={"label", "appearance"})
             for item in self.document.connections
         }
         return [

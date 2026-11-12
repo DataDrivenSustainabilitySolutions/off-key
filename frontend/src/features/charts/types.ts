@@ -16,5 +16,6 @@ export interface MonitoringChartReading extends TelemetryChartSeries {
   valueType?: "number" | "boolean";
   pendingTelemetry: TimeValue[];
   anomalyMarkers: TelemetryEventGroup[];
-  alarmTimes?: number[];
+  /** Alarm episodes at this reading's input times: consecutive alarm results share one span. */
+  alarmSpans?: Array<[startMs: number, endMs: number]>;
 }

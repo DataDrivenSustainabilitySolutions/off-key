@@ -292,9 +292,11 @@ describe("DynamicTelemetryChart", () => {
     );
 
     await waitFor(() =>
+      // The service has one result so far, which a line cannot show: it is drawn as a dot.
       expect(inspectOption().series.map(({ id }) => id)).toEqual([
         "telemetry",
         "adaptive-score:service-adaptive",
+        "history-dot:adaptive-score:service-adaptive",
       ]),
     );
   });
@@ -474,7 +476,7 @@ describe("DynamicTelemetryChart", () => {
     expect((selector as HTMLSelectElement).value).toBe(selectedId);
     expect(screen.queryByRole("option", { name: /unavailable/u })).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
-    expect(inspectOption().series.map(({ id }) => id)).toEqual(["telemetry", selectedId]);
+    expect(inspectOption().series.map(({ id }) => id)).toEqual(["telemetry", selectedId, `history-dot:${selectedId}`]);
   });
 
   it("remembers the initial primary default when polling leaves only another tracker", async () => {

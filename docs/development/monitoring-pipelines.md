@@ -135,6 +135,41 @@ score and surprise (`ObservedDetector`); each detector's own preview outputs its
 score. The live inspector lists them for the policy, and the chart tooltip lists
 an evidence row's `detector_results`.
 
+A block is a named chain of `transform` steps that the library keeps
+(`monitoring_pipeline_blocks`, migration `031_pipeline_blocks.sql`) and the
+editor copies into a design. No design, revision or run refers to a block, so
+the compiler, RADAR and activation know nothing of blocks, and deleting one
+changes nothing that runs. `PipelineBlockCreate` bounds a block to
+`MAX_BLOCK_STEPS` (16) steps and `MAX_BLOCK_BYTES` (16 KiB) of settings, and the
+library holds `MAX_BLOCKS` (100), so `GET /pipeline-blocks` returns every block
+and the menus need no paging. `require_block_steps()` in
+`models/pipeline_blocks.py` accepts the components the catalog offers at the
+saved contract version with kind `transform`; each takes features and gives
+features, so any of them can follow any other. It does not check settings: a
+block has no inputs to check them against, and the design's validation checks
+the copied steps where they land. `PipelineBlocks` (TACTIC
+`services/pipelines/blocks.py`) writes under `begin_library_write()`, the
+guards the template library uses, so blocks are read-only while authoring is
+off. Names are unique (`uq_pipeline_block_name`). A block is saved and deleted,
+never updated.
+
+In the editor, `blocks.ts` holds the operations. `blockChain()` gives the steps
+a card's **Save as block** can hold and `blockSteps()` their settings and
+titles without ids or positions. `placeBlock()` adds a block as a chain of its
+own, `insertBlock()` on a connection and `addBlockAfter()` after a card: on the
+card's one connection out when the block fits there, otherwise as a branch.
+Each returns a `BlockOutcome`, the changed document with the id of the first
+new step or the reason the block cannot be added, and `blockChoices()` pairs
+every block with its outcome, so the menus list all blocks and say why one does
+not fit. Steps are added with `addComponent(..., exact = true)`, which keeps
+the saved settings, feature names included, where a new step's names are made
+unique. On a connection, a learned step that `insertBlocker()` refuses is
+exchanged through `counterpartBefore()` for the counterpart that learns as the
+detectors after the connection do, the exchange `changeDetector()` makes.
+`useBlocks()` reads the library once per editor that can change its design; a
+failed read leaves the menus without blocks. `PIPELINE_LIMITS.blockSteps` comes
+from `MAX_BLOCK_STEPS` through the type generator.
+
 ## Monitoring history
 
 The service Evidence tab presents one timeline for its recorded inputs and joint

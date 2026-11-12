@@ -40,6 +40,12 @@ protected.include_router(
     pipelines.components_router, prefix="/pipeline-components", tags=["pipelines"]
 )
 protected.include_router(
+    pipelines.blocks_router,
+    prefix="/pipeline-blocks",
+    tags=["pipelines"],
+    dependencies=[Depends(manage_monitors)],
+)
+protected.include_router(
     pipelines.forecast_models_router,
     prefix="/forecast-models",
     tags=["pipelines"],

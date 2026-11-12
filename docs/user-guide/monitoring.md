@@ -188,6 +188,28 @@ text fields. Click empty canvas or press Escape to release a selection before
 using Delete. An unsaved setup survives a reload of the same browser tab, and
 **Reset** discards it.
 
+A **block** keeps steps you use again. Right-click a step, long-press it or
+press the menu key on it, and choose **Save as block**. The block holds that
+step and the steps after it, one after another, up to the **Last step** you
+choose, with their settings and titles. It ends before a detector and where
+the steps branch or merge, and holds at most 16 steps. Saving a block changes
+nothing in the design. Blocks are shared: every member sees them, and saving or
+deleting one needs the permission to manage monitors.
+
+Saved blocks are listed below the steps in **Add step**, in the **+** menu of a
+connection and in a step's **Add after** menu. Adding a block copies its steps
+into the design, connected to each other; on a connection they take the
+connection's place like a single step. The copies are ordinary steps with no tie
+to the block: changing them does not change the block, and deleting the block
+changes no service or template. The steps keep the feature names they were saved
+with, so the check names a feature the design already has. Before a detector, a
+block's learned step moves to the counterpart that learns as that detector does,
+as it would when the detector's model changes. A block that cannot be added
+stays listed and says why, for example **Holds a step this version does not
+offer.** **Manage templates** lists the blocks below the templates, where
+**Delete** removes one. A block is not edited: save the changed steps under
+another name and delete the old block.
+
 Every edit is checked shortly after it is made. The status chip beside the
 panel buttons shows the result: **Valid** with the time until the first alarm
 can come, or the number of issues. Open it to list the issues; selecting one

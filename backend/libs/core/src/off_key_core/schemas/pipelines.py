@@ -44,6 +44,10 @@ MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
 # Detectors that can feed one policy, and how the policy combines them.
 MAX_DETECTORS = 4
 FusionMode = Literal["max", "mean"]
+# A block is a short chain of steps; the library lists every block at once.
+MAX_BLOCKS = 100
+MAX_BLOCK_STEPS = 16
+MAX_BLOCK_BYTES = 16 * 1024
 
 
 class PipelineModel(BaseModel):
@@ -523,6 +527,52 @@ class PipelineView(PipelineModel):
     revision_next_before: int | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class PipelineBlockStep(PipelineModel):
+    """One step of a block: a component with its settings and its title."""
+
+    component: str = Field(min_length=1, max_length=160)
+    contract_version: int = Field(default=1, ge=1)
+    params: dict[str, Any] = Field(default_factory=dict)
+    label: str | None = Field(default=None, max_length=120)
+
+
+class PipelineBlockCreate(PipelineModel):
+    """A chain of steps to keep under a name; each step feeds the next."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    steps: list[PipelineBlockStep] = Field(min_length=1, max_length=MAX_BLOCK_STEPS)
+
+    @field_validator("name")
+    @classmethod
+    def nonblank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Enter a block name")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def bounded_settings(self) -> "PipelineBlockCreate":
+        if not fits_json_budget(self.steps, MAX_BLOCK_BYTES):
+            raise ValueError(
+                f"A block holds at most {MAX_BLOCK_BYTES // 1024} KiB of settings"
+            )
+        return self
+
+
+class PipelineBlockView(PipelineModel):
+    id: str
+    name: str
+    description: str
+    steps: list[PipelineBlockStep] = Field(max_length=MAX_BLOCK_STEPS)
+    created_at: datetime
+
+
+class PipelineBlockList(PipelineModel):
+    """Every block of the library, by name."""
+
+    items: list[PipelineBlockView] = Field(max_length=MAX_BLOCKS)
 
 
 class PipelineActivationRequest(PipelineModel):

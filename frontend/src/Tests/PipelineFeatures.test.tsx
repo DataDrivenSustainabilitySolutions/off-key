@@ -15,6 +15,7 @@ import {
   rowPlacement,
   rowSteps,
 } from "@/features/pipelines/features";
+import { pipelinesApi } from "@/features/pipelines/api";
 import type { GraphDocument } from "@/features/pipelines/model";
 import { PipelineFeatures } from "@/features/pipelines/PipelineFeatures";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
@@ -283,6 +284,8 @@ describe("the inspector of a Prepare step", () => {
 describe("the Graph and Features switch", () => {
   it("shows the same design as one row per feature", async () => {
     const { PipelineWorkbench } = await import("@/features/pipelines/PipelineWorkbench");
+    // The editor reads the block library when it opens; this one never answers.
+    vi.spyOn(pipelinesApi, "blocks").mockReturnValue(new Promise(() => {}));
     render(<PipelineWorkbench catalog={catalog} document={chain} validation={checked} onSelect={() => {}}
       onChange={() => {}} onAdd={() => {}} />);
     const views = screen.getByRole("group", { name: "View" });

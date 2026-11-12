@@ -3,6 +3,7 @@
 import socket
 import socketserver
 import time
+from contextlib import suppress
 from threading import Thread
 
 import pytest
@@ -228,6 +229,34 @@ def test_a_peer_that_does_not_speak_http_is_named():
         worker.stop()
         server.shutdown()
     assert states[-1] == ("reconnecting", NOT_HTTP)
+
+
+@pytest.mark.parametrize(
+    "head",
+    [b"HTTP/1.1 200 OK\r\nX-Padding: ", b"HTTP/1.1 200 OK\r\n\r\n"],
+    ids=["headers", "body"],
+)
+def test_a_reply_that_trickles_in_ends_at_the_request_deadline(head):
+    class Trickle(socketserver.BaseRequestHandler):
+        def handle(self):
+            self.request.recv(1024)
+            with suppress(OSError):
+                self.request.sendall(head)
+                for _ in range(200):
+                    self.request.sendall(b"x")
+                    time.sleep(0.02)
+
+    with socketserver.TCPServer(("127.0.0.1", 0), Trickle) as server:
+        Thread(target=server.serve_forever, daemon=True).start()
+        session = HttpSession(
+            _connection(server.server_address[1]), None, None, timeout=0.2
+        )
+        started = time.monotonic()
+        # Each byte arrives within the socket timeout, the whole reply never does.
+        with pytest.raises(TimeoutError):
+            session.get("/a", timeout=0.3)
+        assert time.monotonic() - started < 1
+        server.shutdown()
 
 
 def test_a_reply_is_cut_just_past_the_payload_limit():

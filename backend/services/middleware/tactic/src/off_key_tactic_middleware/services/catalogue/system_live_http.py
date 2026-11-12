@@ -2,17 +2,21 @@
 
 A worker sends GET requests to the saved host and port only, one request path at
 a time, and hands each reply to ``on_message`` as an MQTT worker hands over a
-message. Redirects are not followed, replies are cut at the payload limit, and
-public state uses fixed wording: never a reply, header, credential or exception.
+message. Redirects are not followed, replies are cut at the payload limit, a
+request ends at its deadline however slowly the reply arrives, and public state
+uses fixed wording: never a reply, header, credential or exception.
 """
 
 import http.client
+import io
 import socket
 import ssl
 import time
 from collections.abc import Callable, Mapping
 from contextlib import suppress
+from functools import partial
 from threading import Event, RLock, Thread, current_thread
+from typing import cast
 from urllib.parse import quote
 
 from off_key_core.schemas.system import SystemConnection
@@ -35,6 +39,33 @@ _PATH_CHARACTERS = "/?&=%:@!$'()*,;[]~"
 
 TLS_FAILED = "The TLS handshake failed; check the port, TLS setting and certificate."
 NOT_HTTP = "The server did not answer with HTTP; check the port and TLS setting."
+
+
+class _Incoming(io.RawIOBase):
+    """A reply's bytes; each read may take what is left of the request's time."""
+
+    def __init__(self, file, sock, left):
+        self.file, self.sock, self.left = file, sock, left
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        self.sock.settimeout(self.left())
+        return self.file.readinto(buffer)
+
+    def close(self):
+        self.file.close()
+        super().close()
+
+
+class _Reply(http.client.HTTPResponse):
+    """Reads its status line, headers and body through ``_Incoming``, so a reply
+    that trickles in ends at the deadline instead of one short wait after another."""
+
+    def __init__(self, sock, *arguments, left, **options):
+        super().__init__(sock, *arguments, **options)
+        self.fp = io.BufferedReader(_Incoming(self.fp.detach(), sock, left))
 
 
 class HttpSession:
@@ -64,15 +95,25 @@ class HttpSession:
         self.link: http.client.HTTPConnection | None = None
         self.socket: socket.socket | None = None
         self.aborted = False
+        # When the request under way must have ended, on the monotonic clock.
+        self.deadline = 0.0
+
+    def _left(self) -> float:
+        """How long the next socket operation may take: the socket timeout, or
+        what is left of the request's time when that is less."""
+        left = self.deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError
+        return min(self.timeout, left)
 
     def _open(self) -> http.client.HTTPConnection:
         address = (self.host, self.port)
         if self.proxy is None:
-            raw = socket.create_connection(address, self.timeout)
+            raw = socket.create_connection(address, self._left())
         else:
             raw = proxied_connection(
                 address,
-                self.timeout,
+                self._left(),
                 proxy_type=SOCKS5,
                 proxy_addr=self.proxy.host,
                 proxy_port=self.proxy.port,
@@ -83,6 +124,7 @@ class HttpSession:
         self.socket = raw
         if self.tls is not None:
             try:
+                raw.settimeout(self._left())
                 raw = self.tls.wrap_socket(raw, server_hostname=self.host)
             except BaseException:
                 raw.close()
@@ -90,6 +132,10 @@ class HttpSession:
             self.socket = raw
         link = http.client.HTTPConnection(self.host, self.port, timeout=self.timeout)
         link.sock = raw
+        # http.client only ever calls its response class, so a factory serves.
+        link.response_class = cast(
+            "type[http.client.HTTPResponse]", partial(_Reply, left=self._left)
+        )
         return link
 
     def _ask(self, target: str) -> http.client.HTTPResponse:
@@ -101,6 +147,7 @@ class HttpSession:
                 self.close()
                 self.link = self._open()
             try:
+                self.link.sock.settimeout(self._left())
                 self.link.request("GET", target, headers=self.headers)
                 return self.link.getresponse()
             except (OSError, http.client.HTTPException):
@@ -117,15 +164,14 @@ class HttpSession:
     ) -> tuple[int, bytes, float | None]:
         """One GET: (status, reply cut after the payload limit, Retry-After).
 
-        Raises OSError or http.client.HTTPException when no reply arrives.
+        Raises OSError or http.client.HTTPException when no reply arrives, and
+        TimeoutError when it has not arrived in full within ``timeout``.
         """
-        deadline = time.monotonic() + timeout
+        self.deadline = time.monotonic() + timeout
         reply = self._ask(quote(path, safe=_PATH_CHARACTERS))
         try:
             body = bytearray()
             while len(body) <= MAX_PAYLOAD_BYTES:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError
                 chunk = reply.read1(min(16384, MAX_PAYLOAD_BYTES + 1 - len(body)))
                 if not chunk:
                     break

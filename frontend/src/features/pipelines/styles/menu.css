@@ -32,7 +32,7 @@
   padding: 6px 9px;
   border: 1px solid hsl(var(--border));
   border-radius: 9px;
-  background: hsl(var(--background) / 0.7);
+  background: hsl(var(--card) / 0.7);
   color: inherit;
   font: inherit;
   font-size: var(--text-body);

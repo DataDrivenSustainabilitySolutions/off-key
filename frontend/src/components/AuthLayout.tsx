@@ -14,10 +14,11 @@ export const AUTH_SUBMIT_BUTTON_CLASS =
 
 interface AuthLayoutProps {
   title: string;
+  hideHeading?: boolean;
   children: ReactNode;
 }
 
-export function AuthLayout({ title, children }: AuthLayoutProps) {
+export function AuthLayout({ title, hideHeading = false, children }: AuthLayoutProps) {
   useDocumentTitle(title);
 
   return (
@@ -27,8 +28,8 @@ export function AuthLayout({ title, children }: AuthLayoutProps) {
         Back to website
       </a>
       <main aria-labelledby="auth-title">
-        <header className="auth-heading">
-          <p className="auth-eyebrow">Dashboard</p>
+        <header className={hideHeading ? "sr-only" : "auth-heading"}>
+          {!hideHeading && <p className="auth-eyebrow">Dashboard</p>}
           <h1 id="auth-title">{title}</h1>
         </header>
         {children}

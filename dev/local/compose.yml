@@ -38,6 +38,7 @@ services:
       TACTIC_RADAR_WORKLOAD_LIFECYCLE: persistent
       SYSTEM_LIVE_ENABLED: "${SYSTEM_LIVE_ENABLED:-true}"
       SYSTEM_LIVE_ALLOWED_HOSTS: '${SYSTEM_LIVE_ALLOWED_HOSTS:-["source-broker","fixture-broker-campus","fixture-broker-production","fixture-broker-greenhouse","fixture-broker-meter","fixture-broker-weather","fixture-broker-pump"]}'
+      SYSTEM_HTTP_ALLOWED_ORIGINS: '${SYSTEM_HTTP_ALLOWED_ORIGINS:-["http://fixture-api:8080"]}'
     ports:
       - "127.0.0.1:${LOCAL_TACTIC_PORT:-8003}:8000"
 
@@ -89,6 +90,27 @@ services:
 
   fixture-broker-pump:
     <<: *broker-fixture-broker
+
+  fixture-api:
+    # A small HTTP API to poll; the proxy image supplies its Python.
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
+    command: ["/app/bin/python", "/opt/api_fixture.py", "--serve"]
+    volumes:
+      - ./dev/local/api_fixture.py:/opt/api_fixture.py:ro
+    networks:
+      - app-network
+    profiles:
+      - broker-fixture
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - /app/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 10
 
   broker-fixture-publisher:
     build:

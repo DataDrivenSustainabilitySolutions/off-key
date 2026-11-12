@@ -47,7 +47,7 @@ def include_readings(definition, rules, selected):
 
 
 def apply_rule_edits(definition, edits):
-    brokers = {item.id for item in definition.document.connections}
+    brokers = {item.id: item for item in definition.document.connections}
     readings = {
         (stream.connection_id, stream.id): stream
         for stream in definition.document.streams
@@ -60,6 +60,15 @@ def apply_rule_edits(definition, edits):
             and (scope.connection_id, scope.reading_id) not in readings
         ):
             raise ValidationError("Select an existing broker or reading.")
+        if (
+            edit.operation == "set"
+            and edit.policy.mode == "original"
+            and brokers[scope.connection_id].protocol == "http"
+        ):
+            # A polled source sends nothing by itself, so it has no rate to keep.
+            raise ValidationError(
+                "An HTTP source is polled. Choose the interval to record it at."
+            )
         if edit.operation == "restore":
             restore_rule(definition, rules, edit)
         elif edit.operation == "set":

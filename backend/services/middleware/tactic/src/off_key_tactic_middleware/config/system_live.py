@@ -1,9 +1,12 @@
-"""Private operator controls for temporary generic MQTT observation."""
+"""Private operator controls for the sources TACTIC connects to: MQTT brokers
+and polled HTTP APIs, for temporary observation and for recording."""
 
+import base64
 import json
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Annotated, Literal, Self
+from urllib.parse import urlsplit
 
 from off_key_core.config.validation import SECRETS_DIR
 from pydantic import (
@@ -21,6 +24,72 @@ class LiveCredential(BaseModel):
     model_config = ConfigDict(extra="forbid")
     username: str = Field(default="", max_length=512)
     password: SecretStr = SecretStr("")
+
+
+# Headers that frame a request; a credential may not replace them.
+_FRAMING_HEADERS = {"connection", "content-length", "host", "transfer-encoding"}
+
+
+class HttpCredential(BaseModel):
+    """What an HTTP source expects in one request header: a basic login, a
+    bearer token, or a key sent as written under a header of its own."""
+
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(default="", max_length=512)
+    password: SecretStr = SecretStr("")
+    token: SecretStr = SecretStr("")
+    header: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,64}$")
+
+    @model_validator(mode="after")
+    def one_login(self) -> Self:
+        password = self.password.get_secret_value()
+        token = self.token.get_secret_value()
+        if bool(token) == bool(self.username or password):
+            raise ValueError("Give a token, or a username and password")
+        if self.header is not None and (
+            not token or self.header.lower() in _FRAMING_HEADERS
+        ):
+            raise ValueError("A header of its own carries a token")
+        if any(
+            ord(character) < 32 or ord(character) == 127
+            for character in f"{self.username}{password}{token}"
+        ):
+            raise ValueError("Credentials must not contain control characters")
+        return self
+
+    def request_header(self) -> tuple[str, str]:
+        token = self.token.get_secret_value()
+        if self.header is not None:
+            return self.header, token
+        if token:
+            return "Authorization", f"Bearer {token}"
+        login = f"{self.username}:{self.password.get_secret_value()}"
+        return "Authorization", f"Basic {base64.b64encode(login.encode()).decode()}"
+
+
+def _http_origin(value: str) -> str:
+    """Normalise ``https://host[:port]`` to scheme, exact host and explicit port."""
+    parts = urlsplit(value)
+    try:
+        port = parts.port
+    except ValueError:
+        port = 0
+    if (
+        parts.scheme not in {"http", "https"}
+        or not parts.hostname
+        or parts.username is not None
+        or parts.password is not None
+        or parts.path not in {"", "/"}
+        or parts.query
+        or parts.fragment
+        or port == 0
+    ):
+        raise ValueError(
+            "HTTP origins look like https://api.example.com or http://10.0.0.7:8080"
+        )
+    host = _exact_host(parts.hostname)
+    port = port or (443 if parts.scheme == "https" else 80)
+    return f"{parts.scheme}://{f'[{host}]' if ':' in host else host}:{port}"
 
 
 class LiveSocksProxy(LiveCredential):
@@ -128,6 +197,15 @@ class SystemLiveSettings(BaseSettings):
     # On-demand reachability checks: one CONNECT each, never a subscription.
     SYSTEM_CONNECTION_CHECK_TIMEOUT_SECONDS: float = Field(default=8, ge=1, le=30)
     SYSTEM_CONNECTION_CHECK_CONCURRENCY: int = Field(default=4, ge=1, le=16)
+    # HTTP sources are polled with GET. An origin fixes scheme, host and port, so
+    # a catalogue edit can neither reach another port nor drop TLS. Broker routes
+    # and MQTT logins never apply to them.
+    SYSTEM_HTTP_ALLOWED_ORIGINS: list[str] = Field(default_factory=list, max_length=128)
+    SYSTEM_HTTP_CREDENTIALS: Annotated[dict[str, HttpCredential], NoDecode] = Field(
+        default_factory=dict
+    )
+    # No request path is polled more often than this, whatever its readings ask.
+    SYSTEM_HTTP_MIN_POLL_SECONDS: int = Field(default=1, ge=1, le=3600)
 
     def collection_output_endpoint(self, radar_defaults) -> CollectionOutputEndpoint:
         """The broker mqtt-proxy subscribes on, reached with the managed RADAR
@@ -147,11 +225,19 @@ class SystemLiveSettings(BaseSettings):
         )
 
     @field_validator(
-        "SYSTEM_LIVE_CREDENTIALS", "SYSTEM_LIVE_SOCKS_PROXIES", mode="before"
+        "SYSTEM_LIVE_CREDENTIALS",
+        "SYSTEM_LIVE_SOCKS_PROXIES",
+        "SYSTEM_HTTP_CREDENTIALS",
+        mode="before",
     )
     @classmethod
     def private_credentials(cls, value):
         return json.loads(value or "{}") if isinstance(value, str) else value
+
+    @field_validator("SYSTEM_HTTP_ALLOWED_ORIGINS")
+    @classmethod
+    def exact_origins(cls, origins: list[str]) -> list[str]:
+        return [_http_origin(origin) for origin in origins]
 
     @field_validator("SYSTEM_BROKER_ROUTES", mode="before")
     @classmethod
@@ -178,6 +264,13 @@ class SystemLiveSettings(BaseSettings):
 
     def allows_host(self, host: str) -> bool:
         return host in self.SYSTEM_LIVE_ALLOWED_HOSTS
+
+    def allows_origin(self, connection) -> bool:
+        """Whether the operator listed this HTTP source's scheme, host and port."""
+        host = f"[{connection.host}]" if ":" in connection.host else connection.host
+        scheme = "https" if connection.tls else "http"
+        origin = f"{scheme}://{host}:{connection.port}"
+        return origin in self.SYSTEM_HTTP_ALLOWED_ORIGINS
 
     def route_for(self, host: str) -> BrokerRoute | None:
         return next(

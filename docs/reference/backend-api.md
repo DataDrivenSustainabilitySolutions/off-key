@@ -120,7 +120,10 @@ Authorization: Bearer <token>
 ### Catalogue, recording and live views
 
 The catalogue `document` holds `brokers`, `devices`, `readings` and `groups`;
-devices and readings name their broker as `broker_id`. Changes need
+devices and readings name their broker as `broker_id`. A broker's `protocol` is
+`mqtt` or `http`. On an HTTP broker a reading's `topic` is its request path,
+and the reading may carry a `timestamp_pointer`; the field is absent from
+readings that have none. Changes need
 `manage_sources`, which TACTIC checks.
 
 | Method | Path | Purpose | Access |
@@ -128,7 +131,7 @@ devices and readings name their broker as `broker_id`. Changes need
 | `GET` | `/catalogue` | Saved document, revision, how each reading is recorded (`runtime.bindings`) and `can_edit` | Member |
 | `PUT` | `/catalogue` | Save structural changes at `expected_revision` | `manage_sources` |
 | `GET` | `/catalogue/revisions` | Saved catalogue revisions | Member |
-| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes | `manage_sources` |
+| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes. For an HTTP broker, one `GET` for the path of its first reading | `manage_sources` |
 | `POST` | `/brokers/{broker_id}/reconnect` | Restart recording from a broker now, resetting its retry backoff | `manage_sources` |
 | `PUT` | `/recording` | Apply confirmed recording policies for `reading_ids`, or `rule_changes` for a broker, topic or reading scope | `manage_sources` |
 | `POST` | `/recording/preview` | Review a recording change and the monitors it affects | `manage_sources` |
@@ -450,7 +453,7 @@ a `lease` and a monitor is a `service`.
 | `GET` | `/system` | Saved catalogue document, revision and how each reading is recorded |
 | `PUT` | `/system` | Save structural catalogue changes at an expected revision |
 | `GET` | `/system/revisions` | Saved catalogue revisions |
-| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes |
+| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes. For an HTTP broker, one `GET` |
 | `POST` | `/system/connections/reconnect` | Retry a recorded broker now instead of waiting for its backoff |
 | `PUT` | `/system/collection` | Apply confirmed recording policies |
 | `POST` | `/system/collection/preview` | Review a recording change and the monitors it affects |

@@ -80,7 +80,11 @@ async def check_connection(
     system: SystemService = Depends(get_system_service),
     checker: BrokerCheck = Depends(get_broker_check),
 ):
-    """CONNECT once with the saved settings and disconnect; nothing is subscribed."""
+    """Connect once with the saved settings and disconnect; nothing is subscribed.
+
+    A broker is sent one MQTT CONNECT, an HTTP source one GET for the request
+    path of its first reading.
+    """
     snapshot = await system.read()
     connection = next(
         (
@@ -92,7 +96,15 @@ async def check_connection(
     )
     if connection is None:
         raise HTTPException(404, "This broker is not in the saved system.")
-    return await checker.check(connection)
+    path = next(
+        (
+            stream.topic
+            for stream in snapshot.document.streams
+            if connection.protocol == "http" and stream.connection_id == connection.id
+        ),
+        None,
+    )
+    return await checker.check(connection, path=path)
 
 
 @router.post("/connections/reconnect")

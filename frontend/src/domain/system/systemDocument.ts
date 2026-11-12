@@ -10,6 +10,13 @@ import type {
 
 export const MAX_SYSTEM_BYTES = 1_048_576;
 const DEFAULT_MQTT_PORT = 1883;
+/** The port an HTTP source uses when none is saved. */
+export const httpPort = (tls: boolean) => (tls ? 443 : 80);
+/** What the editor starts a connection of each type with. */
+export const connectionDefaults = (protocol: SystemConnection["protocol"]) =>
+  protocol === "http"
+    ? { protocol, port: httpPort(true), transport: "tcp" as const, tls: true }
+    : { protocol, port: DEFAULT_MQTT_PORT, transport: "tcp" as const, tls: false };
 const DEFAULT_POLICY: CollectionPolicy = { mode: "off", interval_seconds: 10 };
 export const DEFAULT_GROUP_COLOR = "#397f74";
 const INVALID_IDS = new Set(["__proto__", "constructor", "prototype"]);
@@ -115,12 +122,16 @@ function connection(value: unknown, index: number): SystemConnection {
     "websocket_path",
     "credential_ref",
   ]);
-  if ((item.protocol ?? "mqtt") !== "mqtt")
-    fail(`${path}.protocol`, "only mqtt is currently supported");
+  const protocol = item.protocol ?? "mqtt";
+  if (protocol !== "mqtt" && protocol !== "http")
+    fail(`${path}.protocol`, "use mqtt or http");
   const transport = item.transport ?? "tcp";
   if (transport !== "tcp" && transport !== "websocket")
     fail(`${path}.transport`, "use tcp or websocket");
-  const port = item.port ?? DEFAULT_MQTT_PORT;
+  const tls = item.tls ?? false;
+  if (typeof tls !== "boolean") fail(`${path}.tls`, "expected true or false");
+  const port =
+    item.port ?? (protocol === "http" ? httpPort(tls) : DEFAULT_MQTT_PORT);
   if (
     typeof port !== "number" ||
     !Number.isInteger(port) ||
@@ -128,8 +139,6 @@ function connection(value: unknown, index: number): SystemConnection {
     port > 65535
   )
     fail(`${path}.port`, "use a whole number between 1 and 65535");
-  const tls = item.tls ?? false;
-  if (typeof tls !== "boolean") fail(`${path}.tls`, "expected true or false");
   const host = text(item.host, `${path}.host`, 253)
     .toLowerCase()
     .replace(/\.$/, "");
@@ -157,10 +166,12 @@ function connection(value: unknown, index: number): SystemConnection {
       `${path}.websocket_path`,
       "only websocket connections have a websocket path",
     );
+  if (protocol === "http" && transport !== "tcp")
+    fail(`${path}.transport`, "an HTTP source has no MQTT transport");
   return {
     id: id(item.id, `${path}.id`),
     label: text(item.label, `${path}.label`, 120).trim(),
-    protocol: "mqtt",
+    protocol,
     host,
     port,
     transport,
@@ -198,6 +209,15 @@ function device(value: unknown, index: number): SystemDevice {
   };
 }
 
+/** An optional RFC 6901 JSON Pointer; the empty pointer is the whole value. */
+function pointer(value: unknown, path: string) {
+  if (value === undefined || value === null) return undefined;
+  const result = text(value, path, 512, true);
+  if (result !== "" && (!result.startsWith("/") || /~(?![01])/.test(result)))
+    fail(path, "use a JSON Pointer such as /temperature, with ~0 and ~1 escapes");
+  return result;
+}
+
 function stream(value: unknown, index: number): SystemStream {
   const path = `readings[${index}]`;
   const item = object(value, path, [
@@ -207,6 +227,7 @@ function stream(value: unknown, index: number): SystemStream {
     "device_id",
     "topic",
     "payload_pointer",
+    "timestamp_pointer",
     "value_type",
     "unit",
     "category",
@@ -216,23 +237,12 @@ function stream(value: unknown, index: number): SystemStream {
   if (new TextEncoder().encode(topic).length > 512)
     fail(`${path}.topic`, "topic must fit in 512 UTF-8 bytes");
   if (/[+#]/.test(topic))
-    fail(`${path}.topic`, "use a concrete MQTT topic without wildcards");
+    fail(`${path}.topic`, "use a topic or request path without + or #");
   const valueType = item.value_type ?? "number";
   if (!["number", "boolean", "text", "identifier"].includes(String(valueType)))
     fail(`${path}.value_type`, "use number, boolean, text or identifier");
-  const pointer =
-    item.payload_pointer === undefined || item.payload_pointer === null
-      ? undefined
-      : text(item.payload_pointer, `${path}.payload_pointer`, 512, true);
-  if (
-    pointer !== undefined &&
-    pointer !== "" &&
-    (!pointer.startsWith("/") || /~(?![01])/.test(pointer))
-  )
-    fail(
-      `${path}.payload_pointer`,
-      "use a JSON Pointer such as /temperature, with ~0 and ~1 escapes",
-    );
+  const payload = pointer(item.payload_pointer, `${path}.payload_pointer`);
+  const timestamp = pointer(item.timestamp_pointer, `${path}.timestamp_pointer`);
   const deviceId = optionalId(item.device_id, `${path}.device_id`);
   return {
     id: id(item.id, `${path}.id`),
@@ -242,7 +252,8 @@ function stream(value: unknown, index: number): SystemStream {
     value_type: valueType as SystemStream["value_type"],
     category: text(item.category ?? "Other", `${path}.category`, 60).trim(),
     ...(deviceId === undefined ? {} : { device_id: deviceId }),
-    ...(pointer === undefined ? {} : { payload_pointer: pointer }),
+    ...(payload === undefined ? {} : { payload_pointer: payload }),
+    ...(timestamp === undefined ? {} : { timestamp_pointer: timestamp }),
     ...(item.unit === undefined || item.unit === null
       ? {}
       : { unit: text(item.unit, `${path}.unit`, 32, true) }),
@@ -327,11 +338,24 @@ export function validateSystemDocument(value: unknown): SystemDocument {
     }
     chain.forEach((entryId) => completed.add(entryId));
   }
+  const polled = new Set(
+    document.brokers
+      .filter((entry) => entry.protocol === "http")
+      .map((entry) => entry.id),
+  );
   for (const entry of document.readings) {
     if (!connectionIds.has(entry.broker_id))
       fail(`reading ${entry.id}`, "broker does not exist");
     if (entry.device_id && !devices.has(entry.device_id))
       fail(`stream ${entry.id}`, "device does not exist");
+    if (!polled.has(entry.broker_id)) {
+      if (entry.timestamp_pointer !== undefined)
+        fail(`reading ${entry.id}`, "only an HTTP reading has a source timestamp");
+    } else if (!entry.topic.startsWith("/") || hasControl(entry.topic, true))
+      fail(
+        `reading ${entry.id}`,
+        "use a request path that starts with / and has no spaces",
+      );
   }
   const memberIds = new Set(
     [...document.brokers, ...document.devices, ...document.readings].map(
@@ -505,7 +529,7 @@ export function newSystemEntity(document: SystemDocument, kind: SystemEntityKind
   const identity = { id: `${kind}:${crypto.randomUUID()}`, label: `New ${ENTITY_NOUN[kind]}` };
   switch (kind) {
     case "connection":
-      return { ...identity, protocol: "mqtt", host: "", port: DEFAULT_MQTT_PORT, transport: "tcp", tls: false };
+      return { ...identity, host: "", ...connectionDefaults("mqtt") };
     case "device":
       return { ...identity, kind: "device", broker_id: document.brokers[0]?.id };
     case "stream":

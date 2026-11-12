@@ -26,6 +26,7 @@ from off_key_tactic_middleware.config.system_live import (
 )
 from off_key_tactic_middleware.services.catalogue.broker_check import BrokerCheck
 from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.catalogue.system_live_http import NOT_HTTP
 from paho.mqtt.client import WebsocketConnectionError
 from socks import ProxyError
 
@@ -335,10 +336,24 @@ async def test_an_unreachable_or_foreign_http_port_is_named():
         "unreachable",
         "Nothing accepts connections on this host and port.",
     )
-    async with mqtt_broker() as (_, port):
+    # A broker waits for MQTT and never answers an HTTP request.
+    async with withholding_server("connack") as broker:
+        silent = await _http_checker(broker.port).check(_http(broker.port))
+    assert (silent.status, silent.message) == (
+        "timeout",
+        "The server did not respond in time.",
+    )
+
+    async def greet(reader, writer):
+        await reader.readuntil(b"\r\n\r\n")
+        writer.write(b"220 mail.example.com ESMTP\r\n")
+        writer.close()
+        await writer.wait_closed()
+
+    async with await asyncio.start_server(greet, "127.0.0.1", 0) as mail:
+        port = mail.sockets[0].getsockname()[1]
         foreign = await _http_checker(port).check(_http(port))
-    assert foreign.status in {"refused", "timeout"}
-    assert "server" in foreign.message
+    assert (foreign.status, foreign.message) == ("refused", NOT_HTTP)
 
 
 def test_the_check_asks_an_http_source_for_its_first_readings_path(monkeypatch):

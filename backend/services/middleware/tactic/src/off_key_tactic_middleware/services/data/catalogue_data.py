@@ -117,7 +117,7 @@ class CatalogueDataService:
             after_sequence_number=after_sequence_number,
             limit=limit,
         )
-        return [self._chart(row) for row in rows]
+        return [self.chart_row(row) for row in rows]
 
     def _readings(self, entity: str, sensor_set, input_timestamps):
         reading_ids = self._ids.stream_ids(entity, sensor_set)
@@ -128,7 +128,7 @@ class CatalogueDataService:
         }
         return reading_ids, timestamps
 
-    def _chart(self, row) -> dict[str, Any]:
+    def chart_row(self, row) -> dict[str, Any]:
         reading_ids, timestamps = self._readings(
             row.charger_id, row.sensor_set, row.input_timestamps
         )

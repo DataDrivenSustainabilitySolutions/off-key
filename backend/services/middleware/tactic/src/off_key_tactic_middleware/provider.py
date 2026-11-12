@@ -30,6 +30,7 @@ from .services.data import (
     CatalogueDataService,
     FavoriteService,
 )
+from .services.data.alarm_actions import AlarmActions
 from .services.dojo.datasets import DojoDatasets
 from .services.dojo.labels import DojoLabels
 from .services.dojo.metrics import DojoMetrics
@@ -89,6 +90,10 @@ async def get_catalogue_data_service(
     """Devices, measurements and evidence by catalogue id, resolved against the
     saved catalogue of this request."""
     return CatalogueDataService(session, await SystemService(session).read())
+
+
+def get_alarm_actions(session: AsyncSession = RequestSession) -> AlarmActions:
+    return AlarmActions(session)
 
 
 def get_system_service(session: AsyncSession = RequestSession) -> SystemService:

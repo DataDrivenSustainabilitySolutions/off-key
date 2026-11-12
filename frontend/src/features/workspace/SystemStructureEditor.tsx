@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconPicker } from "@/components/source-icons/IconPicker";
 import { getErrorMessage } from "@/lib/errors";
 import {
   collectionByKind,
   connectionDefaults,
-  DEFAULT_GROUP_COLOR,
   ENTITY_NOUN,
   httpPort,
   newSystemEntity,
@@ -141,6 +141,10 @@ export function SystemStructureEditor({
         </p>
       </div>
       <fieldset disabled={disabled}>
+        <div className="source-appearance-field"><span>Appearance<small>A small icon and a quiet color.</small></span>
+          <IconPicker kind={kind} label={entity.label} value={entity.appearance} color={kind === "group" ? group.color : undefined}
+            disabled={disabled} onChange={appearance => update({ appearance })} />
+        </div>
         <label>
           Name
           <input
@@ -468,15 +472,6 @@ export function SystemStructureEditor({
         )}
         {kind === "group" && (
           <>
-            <label>
-              Colour
-              <input
-                aria-label="Collection colour"
-                type="color"
-                value={group.color ?? DEFAULT_GROUP_COLOR}
-                onChange={(event) => update({ color: event.target.value })}
-              />
-            </label>
             <label>
               Find members
               <input

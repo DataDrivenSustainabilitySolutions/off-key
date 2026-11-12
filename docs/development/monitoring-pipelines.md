@@ -1159,17 +1159,19 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`197cc239119b8bfb7df1b6921828dbb690adcd7f`, the commit that adds the composer's
-saved blocks and their table through migration 031
-(`pipeline_blocks`). It shares the current
+`14f26c367fa05b3dcbb2db7e95d3184f00413a01`. It retains the previous fixture's
+reporting runtime and adds only migration 032 (`alarm_deletions`) and its ORM
+metadata, so the rehearsal still switches between different application binaries.
+It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
-while the backend rolls back. It also serves the current REST paths and field
+while the backend rolls back. It also serves the current pipeline REST paths and field
 names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `efe30f4a`, has no migration 031;
+The previous reference, `197cc239`, has no migration 032;
+`efe30f4a` has no migration 031;
 `f02a9201` has no migration 030;
 `535b29cd` has neither migration 028 nor 029;
 `934f8f93` has no migration 027; `cbe2d839` before it
@@ -1179,7 +1181,7 @@ reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
 has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
 1.4.0, so the rehearsal accepts none of them.
 Releases before
-migration 031 refuse a database that has applied it. Rolling back past
+migration 032 refuse a database that has applied it. Rolling back past
 this schema boundary means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.

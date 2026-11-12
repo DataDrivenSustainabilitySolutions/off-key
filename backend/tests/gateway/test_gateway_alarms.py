@@ -155,3 +155,78 @@ async def test_removing_an_alarm_answers_no_content(remote):
         "method": "DELETE",
         "endpoint": "/api/v1/data/alarms/a%201",
     }
+
+
+@pytest.mark.asyncio
+async def test_event_detail_and_reviewed_deletion_are_forwarded(remote):
+    async with client() as http:
+        remote.return_value = {"alarm": CREATED, "evidence": None}
+        response = await http.get("/v1/alarms/a%201")
+        assert response.status_code == 200
+        assert response.json()["alarm"] == CREATED
+        assert remote.await_args.kwargs == {
+            "method": "GET",
+            "endpoint": "/api/v1/data/alarms/a%201",
+        }
+        remote.return_value = {
+            "token": "preview",
+            "count": 1501,
+            "expires_at": "2026-11-12T12:00:00Z",
+        }
+        response = await http.post(
+            "/v1/alarms/deletion-preview",
+            json={
+                "query": {"reading_ids": ["r1"], "max_p_value": 0.001},
+                "exclude_ids": ["keep"],
+            },
+        )
+        assert response.status_code == 200
+        forwarded = remote.await_args.kwargs
+        assert forwarded["endpoint"] == "/api/v1/data/alarms/deletion-preview"
+        assert forwarded["json_data"]["exclude_ids"] == ["keep"]
+        assert forwarded["json_data"]["query"]["reading_ids"] == ["r1"]
+        assert forwarded["json_data"]["query"]["max_p_value"] == 0.001
+        remote.return_value = {"count": 1501}
+        response = await http.post("/v1/alarms/delete", json={"token": "preview"})
+        assert response.json() == {"count": 1501}
+        assert remote.await_args.kwargs == {
+            "method": "POST",
+            "endpoint": "/api/v1/data/alarms/delete",
+            "json_data": {"token": "preview"},
+        }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"alarm_ids": []},
+        {"alarm_ids": [""]},
+        {"alarm_ids": ["one"], "query": {}},
+        {"alarm_ids": ["one"], "exclude_ids": ["two"]},
+        {"query": {"reading_idd": "one"}},
+        {"query": {}, "excluded_ids": ["one"]},
+        {"query": {"before": {"timestamp": CREATED["timestamp"], "alarm_id": "a"}}},
+    ],
+)
+async def test_ambiguous_or_empty_deletions_never_reach_tactic(remote, payload):
+    async with client() as http:
+        response = await http.post("/v1/alarms/deletion-preview", json=payload)
+    assert response.status_code == 422
+    remote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_readers_can_open_events_but_cannot_prepare_or_commit_deletions(remote):
+    async with asgi_client(gateway_app(member_profile("user"))) as http:
+        remote.return_value = {"alarm": CREATED, "evidence": None}
+        assert (await http.get("/v1/alarms/a1")).status_code == 200
+        remote.reset_mock()
+        for endpoint, body in [
+            ("deletion-preview", {"query": {}}),
+            ("delete", {"token": "preview"}),
+        ]:
+            response = await http.post(f"/v1/alarms/{endpoint}", json=body)
+            assert response.status_code == 403
+        remote.assert_not_awaited()

@@ -52,7 +52,6 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 .ex-row { display: flex; flex: 1; min-width: 0; height: 100%; padding: 0 6px 0 2px; gap: 8px; align-items: center; text-align: left; border-radius: var(--radius-control); font-size: var(--text-body); line-height: 20px; }
 .ex-row-icon { color: var(--ex-muted); flex-shrink: 0; display: inline-flex; width: 16px; justify-content: center; }
 .ex-row.is-selected .ex-row-icon { color: var(--ex-accent); }
-.ex-reading-activity { color: var(--ex-ink); }
 .ex-row-text { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 6px; }
 .ex-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-row.is-selected .ex-row-label { font-weight: 550; }

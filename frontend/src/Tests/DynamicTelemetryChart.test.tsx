@@ -215,6 +215,17 @@ describe("DynamicTelemetryChart", () => {
     expect(screen.getByText(/Current Voltage: 231 V at/u)).toBeTruthy();
   });
 
+  it("labels a historical investigation without offering to resume a live stream", async () => {
+    render(<ThemeProvider defaultTheme="light"><DynamicTelemetryChart historical telemetryData={telemetry()} /></ThemeProvider>);
+    showChart();
+    fireEvent.click(await screen.findByRole('img'));
+    expect(screen.getByText('Historical window')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reset zoom' })).toBeTruthy();
+    expect(screen.queryByText('Inspection paused')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Return to live' })).toBeNull();
+    expect(screen.getByText(/Latest in window · Voltage: 231 V at/)).toBeTruthy();
+  });
+
   it("replaces delayed pending telemetry without moving an inspected viewport", async () => {
     const firstTime = "2026-07-27T10:00:00Z";
     const secondTime = "2026-07-27T10:02:00Z";

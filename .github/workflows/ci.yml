@@ -646,6 +646,9 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
+      - name: Set up the production Docker Engine
+        uses: ./.github/actions/setup-docker-engine
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -801,7 +804,7 @@ jobs:
         if: matrix.lane == 'rehearsal'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 197cc239119b8bfb7df1b6921828dbb690adcd7f
+          ref: 14f26c367fa05b3dcbb2db7e95d3184f00413a01
           path: .tmp/compatible-release-source
           fetch-depth: 1
           persist-credentials: false

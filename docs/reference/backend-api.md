@@ -279,6 +279,9 @@ See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 | `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
 | `GET` | `/alarms/count` | Count alarms | Optional query: `since` |
 | `POST` | `/alarms/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `reading_ids`, optional `reading_id`, `monitor_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
+| `GET` | `/alarms/{alarm_id}` | One anomaly and its exact retained detector evidence; every member | Path: event ID |
+| `POST` | `/alarms/deletion-preview` | Freeze an exact deletion selection; requires `manage_alarms` | Body: either `alarm_ids` or `query`, with optional `exclude_ids`; returns token, count and expiry |
+| `POST` | `/alarms/delete` | Delete a reviewed selection atomically; requires `manage_alarms` | Body: preview `token`; retries return the recorded deletion count |
 | `GET` | `/alarms` | The newest alarms of a device, of readings, or of every reading | Query: `device_id` or `reading_id` (repeated, up to 200), optional `monitor_id`, `limit` |
 | `POST` | `/alarms` | Record an alarm by hand and email the alert recipients; 201 with the alarm | Body: `reading_ids`, `timestamp`, `alarm_type`, `value`, optional `value_type` |
 | `DELETE` | `/alarms/{alarm_id}` | Delete one alarm; 204, or 404 when there is none | Path: `alarm_id` |
@@ -517,6 +520,9 @@ a `lease` and a monitor is a `service`.
 | `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
 | `GET` | `/data/alarms` | Alarms of a catalogue device or of catalogue readings |
 | `POST` | `/data/alarms/query` | Reporting query by catalogue reading |
+| `GET` | `/data/alarms/{alarm_id}` | One anomaly with its exact retained evidence |
+| `POST` | `/data/alarms/deletion-preview` | Freeze matching event identities for ten minutes |
+| `POST` | `/data/alarms/delete` | Commit a reviewed selection with an idempotent token |
 | `GET` | `/data/alarms/count` | Count alarms |
 | `POST` | `/data/alarms` | Record an alarm about catalogue readings |
 | `DELETE` | `/data/alarms/{alarm_id}` | Delete an alarm |

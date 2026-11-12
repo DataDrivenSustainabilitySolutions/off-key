@@ -113,6 +113,13 @@ export type ElementwiseScopeParameters = {
   suffix?: string;
 };
 
+export type ExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+};
+
 export type FeatureDescription = {
   name: string;
   slots: Array<string>;
@@ -228,6 +235,14 @@ export type ObservedDetector = {
   detector_id: string;
   score: number | null;
   surprise: number | null;
+};
+
+export type OnlineExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+  forgetting?: number;
 };
 
 export type OnlinePCAParameters = {

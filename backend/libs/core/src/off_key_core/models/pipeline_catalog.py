@@ -218,6 +218,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "A seeded fixed random projection.",
         ),
         (
+            "static.expected_value",
+            "transform",
+            "Expected value",
+            "Fit one feature from the others on training data; give its residual.",
+        ),
+        (
             "adaptive.standard_scaler",
             "transform",
             "Online standard scaling",
@@ -246,6 +252,12 @@ def pipeline_components() -> list[PipelineComponent]:
             "transform",
             "Random projection",
             "A seeded fixed random projection.",
+        ),
+        (
+            "adaptive.expected_value",
+            "transform",
+            "Online expected value",
+            "Expect one feature from the others with the previous fit, then update.",
         ),
         (
             FIXED_SPLIT,

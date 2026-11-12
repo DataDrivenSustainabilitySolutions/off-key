@@ -1557,3 +1557,53 @@ class SetFeatureParameters(PipelineModel):
             "Use if(condition, when_true, when_false) to choose a value."
         ),
     )
+
+
+class ExpectedValueParameters(ScopeParameters):
+    """How far one feature lies from the value the other features imply.
+
+    The step fits the target as a weighted sum of the other features and a
+    constant, and gives the residual: the target minus that expected value.
+    """
+
+    target: str = Field(
+        min_length=1,
+        max_length=120,
+        title="Target",
+        description="The feature whose value is expected from the others.",
+    )
+    apply_to: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        title="Expected from",
+        description=(
+            "The features the target is expected from. Leave unset to use every "
+            "other feature."
+        ),
+    )
+    result: Literal["replace", "add"] = Field(
+        default="replace",
+        title="Result",
+        description=(
+            "Replace the target and the features it is expected from with the "
+            "residual, or keep them and add it."
+        ),
+    )
+    name: str | None = _combined_name("<target>_residual")
+
+
+class OnlineExpectedValueParameters(ExpectedValueParameters):
+    """The fit follows every observation, by recursive least squares."""
+
+    forgetting: float = Field(
+        default=1.0,
+        gt=0,
+        le=1,
+        description=(
+            "How much earlier observations count at every update. 1 weighs every "
+            "observation alike; 0.999 remembers roughly the last 1,000, so the "
+            "fit follows slow drift. Below 1, readings that stop varying for "
+            "long make the fit unstable, so keep 1 for readings that rest."
+        ),
+    )

@@ -60,7 +60,7 @@ export function CombinedName({ node, component, features, issues, readOnly, onCh
     <small className="pl-help" id={`${id}-name-help`}>
       {node.component === "prepare.set"
         ? `The feature to add or replace. Other features stay unchanged. Leave empty for ${fallback}.`
-        : `The computed feature, in letters, digits and underscores. Leave empty for ${fallback}.`}
+        : `The computed feature, in letters, digits and underscores.${fallback ? ` Leave empty for ${fallback}.` : ""}`}
     </small>
     <Errors id={`${id}-name-errors`} issues={errors} />
   </div>;

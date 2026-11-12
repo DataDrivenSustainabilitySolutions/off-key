@@ -552,6 +552,24 @@ The static step learns them from the training window. **Online robust scaling**
 uses a window of recent observations per feature, 256 by default, and is ready
 after **Min Samples** observations.
 
+**Expected value** compares one feature with what the other features imply.
+Choose the **Target**, such as a pump's current, and under **Expected from** the
+features it follows, such as flow and pressure; left as it is, every other
+feature counts. The step fits the target as a weighted sum of those features and
+a constant and gives the residual, the target minus the expected value. The
+residual is named after the target, such as `current_residual`, unless **Name**
+says otherwise. A detector on the residual reacts to a current that no longer
+fits the flow, also while each reading alone looks normal. **Result** replaces
+the target and the features it is expected from with the residual, or with
+**Keep features** adds it to them. The static step fits once on the training
+window, which has to hold more observations than the fit has weights. **Online
+expected value** updates the fit with every observation and scores each one
+against the fit before it. **Forgetting** below 1 lets earlier observations fade,
+so the fit follows slow drift; keep 1 for readings that rest for long, because a
+fit that forgets while nothing varies becomes unstable. A relation that is not a
+straight line needs its curve as a feature first, such as a **Formula** for the
+square of the flow.
+
 Unchecking readings in **Readings to monitor** changes the input slots and
 bindings together; a service accepts up to 100 readings. Each reading's feature
 is named after its label, such as `dc_voltage` for *DC Voltage*; a repeated label

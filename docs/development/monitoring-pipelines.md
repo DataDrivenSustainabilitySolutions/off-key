@@ -216,6 +216,30 @@ strategies. Robust scaling uses scikit-learn's `RobustScaler` on training data
 and Aberrant's `RollingRobustScaler` online; both use linear quartiles and scale
 by 1 when a feature's interquartile range is zero.
 
+Expected value steps (`static.expected_value` and `adaptive.expected_value`,
+`EXPECTATIONS` in `pipeline_scope.py`) are always scoped. `target` names the
+feature to expect and `apply_to` the features it is expected from, unset for
+every other feature. `step_scope` lists the target first and gives the
+residual's name, `name` or `<target>_residual`, as the scope's added feature. A
+replacing step drops the target and the features it is expected from and appends
+the residual, whose lineage is the slots of all of them. The compiler reports an
+unknown target, a target among `apply_to`, a step that only the target reaches
+and a name that repeats a feature that stays, each with its parameter path, and
+refuses a static step whose training window holds no more observations than the
+fit has coefficients. `ExpectedValue` (`pipelines/expected.py`) solves centred
+least squares with NumPy on the training window; inputs that are constant or
+repeat each other get the minimum-norm weights, so a fit never fails.
+`OnlineExpectedValue` wraps Aberrant's `RLSRegressor`, with one coefficient per
+input and a constant. It is ready after one observation per coefficient and one
+more, and its learning transaction restores a deep copy of the regressor when a
+later step rejects the observation. Scoring reads the fit before the
+observation is learned; in a learning pass Aberrant transforms after the update,
+as for every online step, so the detector learns the residual of the updated
+fit. `forgetting` defaults to 1, because the covariance of a fit that forgets
+grows without bound while its inputs stop varying. `STATE_ESTIMATORS` counts a
+weight and a centre per used feature for the static step and eight covariance
+matrices for the online one.
+
 Prepare steps (`pipeline_prepare.py`) are deterministic kernels that run once
 per observation, in arrival order, before anything learns. `stage_split()` takes
 every Prepare node and its ancestors, except the source, as the stage. Its

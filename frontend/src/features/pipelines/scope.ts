@@ -21,6 +21,14 @@ const strings = (value: JsonValue | undefined) =>
 export const hasScope = (component?: PipelineComponent) =>
   component?.id !== "prepare.formula" && !!component?.fields.some((field) => field.name === "apply_to");
 
+/** Steps that expect one feature, the target, from the others and give its residual. */
+export const isExpectation = (component: string) => component.endsWith(".expected_value");
+
+/** The setting that names the one feature a step sets apart from those it uses: what a
+ * Rolling relation compares with, or what an Expected value expects. */
+export const apartField = (component: string) =>
+  component === "prepare.relation" ? "against" : isExpectation(component) ? "target" : undefined;
+
 /** The name that stands for each feature in a Formula for each feature. */
 export const EACH_VARIABLE = "x";
 
@@ -94,6 +102,9 @@ export function combinedName(node: PipelineNode, component?: PipelineComponent):
   if (node.component === "prepare.condition") return "condition";
   if (node.component === "prepare.set") return "feature";
   if (node.component === "prepare.aggregate") return String(setting(node, component, "function") ?? "mean");
+  // The residual is named after its target, so it has no name before one is chosen.
+  if (isExpectation(node.component) && typeof node.params.target === "string" && node.params.target)
+    return `${node.params.target}_residual`;
 }
 
 const FORMULA_KEYWORDS = new Set(["and", "or", "not"]);

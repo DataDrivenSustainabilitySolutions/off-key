@@ -4,8 +4,10 @@ from typing import Any
 
 from ..schemas.pipeline_versions import streams
 from ..schemas.pipelines import (
+    ExpectedValueParameters,
     FusionMode,
     MinMaxScalerParameters,
+    OnlineExpectedValueParameters,
     OnlinePCAParameters,
     PipelineDefinition,
     PipelineModel,
@@ -45,6 +47,8 @@ PARAMETER_MODELS: dict[str, type[PipelineModel]] = {
     "static.random_projection": ProjectionParameters,
     "adaptive.random_projection": ProjectionParameters,
     "adaptive.uncentered_pca": OnlinePCAParameters,
+    "static.expected_value": ExpectedValueParameters,
+    "adaptive.expected_value": OnlineExpectedValueParameters,
     **PREPARE_MODELS,
     EXCEEDANCE_RULE: ExceedanceRuleParameters,
     "output.evidence": PipelineModel,

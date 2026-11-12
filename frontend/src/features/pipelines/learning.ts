@@ -97,6 +97,7 @@ const COUNTERPARTS: [fitted: string, continuous: string][] = [
   ["static.robust_scaler", "adaptive.robust_scaler"],
   ["static.pca", "adaptive.uncentered_pca"],
   ["static.random_projection", "adaptive.random_projection"],
+  ["static.expected_value", "adaptive.expected_value"],
 ];
 
 function counterpart(node: PipelineNode, mode: Learning, components: PipelineComponent[]) {

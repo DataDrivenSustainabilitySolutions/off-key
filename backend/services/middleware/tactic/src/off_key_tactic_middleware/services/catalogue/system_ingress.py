@@ -10,7 +10,7 @@ import json
 import time
 from collections import deque
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from threading import RLock
 from uuid import uuid4
@@ -59,8 +59,10 @@ class PendingMessage:
     size: int
     received_at: float
     retained: bool
-    # Readings whose source timestamp did not change with this reply.
+    # Readings whose source timestamp did not change with this reply, and the
+    # timestamp of each other reading that names one (None where unreadable).
     unchanged: frozenset = frozenset()
+    stamps: dict = field(default_factory=dict)
 
 
 class SystemIngress:
@@ -87,8 +89,10 @@ class SystemIngress:
         self.readings = {}
         self.cadences = {}
         self._received_at_us = {}
-        # Per HTTP reading: the source timestamp of the reply forwarded last.
+        # Per HTTP reading: the source timestamp of the reply forwarded last, and
+        # the newest reply with another timestamp that still waits to be forwarded.
         self.source_stamps = {}
+        self.waiting_stamps = {}
         self.generation = None
         self.output = None
         self.task = None
@@ -154,6 +158,7 @@ class SystemIngress:
             self.cadences = {}
             self.pending.clear()
             self.pending_bytes = 0
+            self.waiting_stamps = {}
         await asyncio.gather(
             *(asyncio.to_thread(item.stop) for item in workers), return_exceptions=True
         )
@@ -417,39 +422,41 @@ class SystemIngress:
             ):
                 self.dropped += 1
                 return
-            unchanged = self._unchanged(decoded, streams)
+            unchanged, stamps = self._source_stamps(decoded, streams)
             if len(unchanged) == len(streams):
                 return  # The source measured nothing new since the last poll.
-            self.pending.append(
-                PendingMessage(
-                    generation,
-                    connection_id,
-                    attempt,
-                    topic,
-                    envelope,
-                    size,
-                    received_at_us / 1_000_000,
-                    retained,
-                    unchanged,
-                )
+            item = PendingMessage(
+                generation,
+                connection_id,
+                attempt,
+                topic,
+                envelope,
+                size,
+                received_at_us / 1_000_000,
+                retained,
+                unchanged,
+                stamps,
             )
+            self.pending.append(item)
             self.pending_bytes += size
+            self.waiting_stamps.update(dict.fromkeys(stamps, item))
 
-    def _unchanged(self, decoded, streams) -> frozenset:
-        """Readings whose source timestamp in this reply equals the one forwarded
-        last. A reply without a readable timestamp counts as new."""
+    def _source_stamps(self, decoded, streams) -> tuple[frozenset, dict]:
+        """The readings whose source timestamp in this reply equals the one of
+        the reply before it, and the timestamp of each other reading that names
+        one. A reply without a readable timestamp counts as new."""
         stamped = [
             stream
             for stream in streams
             if stream.definition.timestamp_pointer is not None
         ]
         if not stamped:
-            return frozenset()
+            return frozenset(), {}
         try:
             document = json.loads(decoded)
         except (ValueError, RecursionError):
-            return frozenset()
-        unchanged = set()
+            return frozenset(), {}
+        unchanged, stamps = set(), {}
         for stream in stamped:
             identity = stream.definition.id
             try:
@@ -457,12 +464,35 @@ class SystemIngress:
             except (KeyError, IndexError, TypeError, ValueError):
                 stamp = None
             if isinstance(stamp, bool) or not isinstance(stamp, (str, int, float)):
-                self.source_stamps.pop(identity, None)
-            elif self.source_stamps.get(identity) == stamp:
+                stamp = None
+            # The reply before this one is the newest that waits, else the last
+            # that was forwarded.
+            waiting = self.waiting_stamps.get(identity)
+            last = (
+                self.source_stamps.get(identity)
+                if waiting is None
+                else waiting.stamps[identity]
+            )
+            if stamp is not None and stamp == last:
                 unchanged.add(identity)
             else:
-                self.source_stamps[identity] = stamp
-        return frozenset(unchanged)
+                stamps[identity] = stamp
+        return frozenset(unchanged), stamps
+
+    def _settle(self, item, *, forwarded):
+        """A reply left the queue. Its source timestamps become the last
+        forwarded ones only if it reached the internal broker; a reply that did
+        not is recorded when a later poll returns the measurement again."""
+        with self.guard:
+            for identity, stamp in item.stamps.items():
+                if self.waiting_stamps.get(identity) is item:
+                    del self.waiting_stamps[identity]
+                if not forwarded:
+                    continue
+                if stamp is None:
+                    self.source_stamps.pop(identity, None)
+                else:
+                    self.source_stamps[identity] = stamp
 
     async def _acknowledge(self, publications):
         try:
@@ -485,57 +515,71 @@ class SystemIngress:
             return
         publications = []
         accepted = []
-        for _ in range(32):
-            with self.guard:
-                if not self.pending:
-                    break
-                item = self.pending.popleft()
-                self.pending_bytes -= item.size
-                if (
-                    item.generation != self.generation
-                    or self.attempts.get(item.connection_id) is not item.attempt
-                ):
-                    continue
-                streams = [
-                    stream
-                    for stream in self.bindings.get(item.connection_id, {}).get(
-                        item.topic, []
+        taken = []
+        try:
+            for _ in range(32):
+                with self.guard:
+                    if not self.pending:
+                        break
+                    item = self.pending.popleft()
+                    self.pending_bytes -= item.size
+                    if (
+                        item.generation != self.generation
+                        or self.attempts.get(item.connection_id) is not item.attempt
+                    ):
+                        self._settle(item, forwarded=False)
+                        continue
+                    taken.append(item)
+                    streams = [
+                        stream
+                        for stream in self.bindings.get(item.connection_id, {}).get(
+                            item.topic, []
+                        )
+                        if stream.definition.id not in item.unchanged
+                    ]
+                for stream in streams:
+                    result = output.publish(
+                        stream.ingress_topic, item.envelope, qos=1, retain=True
                     )
-                    if stream.definition.id not in item.unchanged
-                ]
-            for stream in streams:
-                result = output.publish(
-                    stream.ingress_topic, item.envelope, qos=1, retain=True
-                )
-                # Paho may queue a QoS publication even when returning NO_CONN.
-                # An error therefore needs the same fenced transport teardown.
-                publications.append(result)
-                if result.rc == MQTT_ERR_SUCCESS:
-                    accepted.append((item, stream))
-                    self.retained_topics.add(stream.ingress_topic)
-                else:
-                    self.dropped += 1
-        await self._acknowledge(publications)
+                    # Paho may queue a QoS publication even when returning NO_CONN.
+                    # An error therefore needs the same fenced transport teardown.
+                    publications.append(result)
+                    if result.rc == MQTT_ERR_SUCCESS:
+                        accepted.append((item, stream))
+                        self.retained_topics.add(stream.ingress_topic)
+                    else:
+                        self.dropped += 1
+            await self._acknowledge(publications)
+        except BaseException:
+            for item in taken:
+                self._settle(item, forwarded=False)
+            raise
         with self.guard:
-            for item, stream in accepted:
-                self.last_publish = datetime.now(UTC).isoformat()
-                if (
-                    item.retained
-                    or item.generation != self.generation
-                    or self.attempts.get(item.connection_id) is not item.attempt
-                ):
-                    continue
-                cadence = self.cadences.get(stream.definition.id)
-                if cadence is None:
-                    cadence = ArrivalCadence()
-                    self.cadences[stream.definition.id] = cadence
-                cadence.add(item.received_at)
-                self.readings[stream.definition.id] = {
-                    "fresh_received_at": datetime.fromtimestamp(
-                        item.received_at, UTC
-                    ).isoformat(),
-                    "typical_interval_seconds": cadence.typical_seconds,
-                }
+            for item in taken:
+                self._settle(item, forwarded=True)
+            self._record_arrivals(accepted)
+
+    def _record_arrivals(self, accepted):
+        """Note when each forwarded reading arrived fresh, and how often it does."""
+        for item, stream in accepted:
+            self.last_publish = datetime.now(UTC).isoformat()
+            if (
+                item.retained
+                or item.generation != self.generation
+                or self.attempts.get(item.connection_id) is not item.attempt
+            ):
+                continue
+            cadence = self.cadences.get(stream.definition.id)
+            if cadence is None:
+                cadence = ArrivalCadence()
+                self.cadences[stream.definition.id] = cadence
+            cadence.add(item.received_at)
+            self.readings[stream.definition.id] = {
+                "fresh_received_at": datetime.fromtimestamp(
+                    item.received_at, UTC
+                ).isoformat(),
+                "typical_interval_seconds": cadence.typical_seconds,
+            }
 
     async def _forward_pending(self):
         async with self.effects:

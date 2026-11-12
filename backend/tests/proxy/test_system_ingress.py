@@ -746,6 +746,54 @@ async def test_a_poll_without_a_new_source_timestamp_is_not_recorded_again(
 
 
 @pytest.mark.asyncio
+async def test_a_source_timestamp_counts_once_its_reply_was_forwarded(monkeypatch):
+    ingress, published = polling_ingress(monkeypatch)
+    monkeypatch.setattr(system_ingress, "HttpPollWorker", FakeWorker)
+    monkeypatch.setattr(system_ingress, "close_client", AsyncMock())
+    catalog = http_definition()
+    temperature = next(
+        stream.ingress_topic
+        for stream in catalog.streams()
+        if stream.definition.id == "temperature"
+    )
+    reply = json.dumps({"temperature": 20, "humidity": 40, "measured_at": 7}).encode()
+
+    def poll():
+        FakeWorker.created[-1].on_message("/status", reply, False)
+
+    def recorded():
+        return [topic for topic, _ in published].count(temperature)
+
+    # The internal broker refuses the reply, and recording starts again.
+    await ingress._configure(catalog)
+    output = ingress.output
+    ingress.output = SimpleNamespace(
+        is_connected=lambda: True,
+        publish=lambda *_, **__: SimpleNamespace(rc=1, is_published=lambda: True),
+    )
+    poll()
+    with pytest.raises(RuntimeError, match="refused"):
+        await ingress._forward_pending()
+    ingress.output = output
+    await ingress._configure(catalog)
+
+    # The source is reconnected while its reply still waits to be forwarded.
+    poll()
+    assert await ingress.reconnect("api")
+    await ingress._forward_pending()
+    assert recorded() == 0
+
+    # Two polls return the measurement before the first one is forwarded.
+    poll()
+    poll()
+    await ingress._forward_pending()
+    assert recorded() == 1
+    poll()
+    await ingress._forward_pending()
+    assert recorded() == 1
+
+
+@pytest.mark.asyncio
 async def test_an_http_source_that_gives_up_is_retried_like_a_broker(monkeypatch):
     ingress, _ = polling_ingress(monkeypatch, SYSTEM_COLLECTION_RETRY_SECONDS=300)
     monkeypatch.setattr(system_ingress, "HttpPollWorker", FakeWorker)

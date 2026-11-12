@@ -466,7 +466,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             raise RuntimeError("Static alarm policy has not been initialized")
         started = perf_counter_ns()
         try:
-            context = self.alarm_controller.update(p_value)
+            context = self.alarm_controller.update(p_value, muted=self._muting)
         except Exception as error:
             raise FatalExecutionError(
                 str(error), node_id=self.plan.policy_id

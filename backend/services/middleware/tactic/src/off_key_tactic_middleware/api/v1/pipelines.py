@@ -14,6 +14,9 @@ from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineActivationView,
     PipelineApplyRequest,
+    PipelineBlockCreate,
+    PipelineBlockList,
+    PipelineBlockView,
     PipelineCatalog,
     PipelineCreate,
     PipelineDraftSave,
@@ -38,10 +41,12 @@ from off_key_core.schemas.pipelines import (
 from ...config.config import get_tactic_settings
 from ...provider import (
     get_pipeline_activations,
+    get_pipeline_blocks,
     get_pipeline_library,
 )
 from ...services.pipelines import forecast_models
 from ...services.pipelines.activation import PipelineActivations
+from ...services.pipelines.blocks import PipelineBlocks
 from ...services.pipelines.library import PipelineLibrary
 from ..collection_auth import current_member, require_permission
 from ..errors import DomainErrorRoute
@@ -264,6 +269,34 @@ async def cancel_activation(
     activations: PipelineActivations = Depends(get_pipeline_activations),
 ):
     return await invoke(activations.cancel(activation_id))
+
+
+@router.get("/pipeline-blocks", response_model=PipelineBlockList)
+async def list_blocks(blocks: PipelineBlocks = Depends(get_pipeline_blocks)):
+    return await blocks.list()
+
+
+@router.post(
+    "/pipeline-blocks",
+    response_model=PipelineBlockView,
+    status_code=201,
+    dependencies=[Depends(manage_monitors)],
+)
+async def create_block(
+    change: PipelineBlockCreate, blocks: PipelineBlocks = Depends(get_pipeline_blocks)
+):
+    return await invoke(blocks.create(change))
+
+
+@router.delete(
+    "/pipeline-blocks/{block_id}",
+    status_code=204,
+    dependencies=[Depends(manage_monitors)],
+)
+async def delete_block(
+    block_id: str, blocks: PipelineBlocks = Depends(get_pipeline_blocks)
+):
+    await blocks.remove(block_id)
 
 
 @router.get("/workspace", response_model=PipelineWorkspace)

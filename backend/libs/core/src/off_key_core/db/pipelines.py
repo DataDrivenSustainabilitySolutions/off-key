@@ -62,6 +62,20 @@ class MonitoringPipeline(Base):
     )
 
 
+class PipelineBlock(Base):
+    """A named chain of steps. Designs copy it and keep no reference to it."""
+
+    __tablename__ = "monitoring_pipeline_blocks"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    steps: Mapped[Any] = mapped_column(document(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (UniqueConstraint("name", name="uq_pipeline_block_name"),)
+
+
 class PipelineRevision(Base):
     __tablename__ = "monitoring_pipeline_revisions"
     id: Mapped[str] = mapped_column(Text, primary_key=True)

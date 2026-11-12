@@ -23,8 +23,9 @@ export const STEP_FAMILIES: { id: StepFamily; label: string }[] = [
   { id: "output", label: "Evidence output" },
 ];
 
-// A Gate decides whether an observation goes on, so it sits with the routes.
-const ROUTES = new Set(["features.select", "features.rename", "features.passthrough", "prepare.gate"]);
+// A Gate decides whether an observation goes on and Mute alarms whether it may alarm,
+// so they sit with the routes.
+const ROUTES = new Set(["features.select", "features.rename", "features.passthrough", "prepare.gate", "prepare.mute"]);
 /** Steps that compute one feature from the features that arrive. */
 const COMBINE_STEPS = new Set([
   "prepare.aggregate", "prepare.formula", "prepare.constant", "prepare.condition", "prepare.set", "prepare.calculate",
@@ -46,7 +47,8 @@ export function stepFamily(kind: PipelineNode["kind"], component: string): StepF
   if (COMBINE_STEPS.has(component)) return "combine";
   if (isPrepare(component)) return "prepare";
   if (/(standard|min_max|robust)_scaler$/.test(component)) return "normalize";
-  if (/(pca|random_projection)$/.test(component)) return "reduce";
+  // An Expected value leaves one residual in place of the features it uses.
+  if (/(pca|random_projection|expected_value)$/.test(component)) return "reduce";
   return "transform";
 }
 
@@ -72,6 +74,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "prepare.aggregate": "Combine features into their mean, sum, extreme, spread or range.",
   "prepare.formula": "Compute a feature from others, such as dc_voltage * dc_current.",
   "prepare.gate": "Learn and score only while a condition holds.",
+  "prepare.mute": "Raise no alarm while a condition holds; learning and scoring go on.",
   "prepare.constant": "Add a named constant to use in later steps.",
   "prepare.condition": "Turn a comparison or Boolean condition into a 1 or 0 feature.",
   "prepare.set": "Calculate or replace one feature, keeping the others.",
@@ -87,6 +90,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "adaptive.uncentered_pca": "Keep the main directions, updated as data arrives.",
   "static.random_projection": "Fewer dimensions through a fixed random map.",
   "adaptive.random_projection": "Fewer dimensions through a fixed random map.",
+  "static.expected_value": "Give how far one feature is from what the others imply, by a fit on training data.",
+  "adaptive.expected_value": "Give how far one feature is from what the others imply, by a fit updated as data arrives.",
   "detector:aberrant_seasonal_naive_forecaster": "Expect the value one cycle ago and score the miss.",
   "detector:aberrant_holt_winters_forecaster": "Expect a level, a trend and a repeating cycle, and score the miss.",
   "forecast.timestral": "Expect what a pretrained model forecasts from the recent values and score the miss.",
@@ -101,11 +106,13 @@ export const stepDescription = (component: PipelineComponent) =>
   DESCRIPTIONS[component.id] ?? component.description;
 
 /** Settings with controls of their own: the formula editor, For each, Result, Name, Suffix,
- * the feature a Rolling relation compares with and the list of time features. */
+ * the feature a Rolling relation compares with, an Expected value's target and the list of
+ * time features. */
 const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
   "prepare.gate": new Set(["condition"]),
+  "prepare.mute": new Set(["condition"]),
   "prepare.condition": new Set(["condition", "name"]),
   "prepare.set": new Set(["expression", "name"]),
   "prepare.calculate": new Set(["formulas"]),
@@ -113,9 +120,15 @@ const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.hold": new Set(["update_when"]),
   "prepare.relation": new Set(["against"]),
   "prepare.time": new Set([...TIME_FEATURES.map(([name]) => name), "timezone"]),
+  "static.expected_value": new Set(["target", "name"]),
+  "adaptive.expected_value": new Set(["target", "name"]),
 };
 /** Steps that compute or decide by a formula; it is their main setting. */
-export const FORMULA_STEPS = new Set(["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set", "prepare.calculate"]);
+export const FORMULA_STEPS = new Set([
+  "prepare.formula", "prepare.gate", "prepare.mute", "prepare.condition", "prepare.set", "prepare.calculate",
+]);
+/** Steps that decide by a condition and pass every feature on, so no feature row names them. */
+export const DECISION_STEPS = new Set(["prepare.gate", "prepare.mute"]);
 /** Steps that work on each feature and read a condition as well, below their own settings. */
 export const CONDITION_STEPS = new Set(["prepare.accumulate", "prepare.hold"]);
 // Combine detectors has its own control, shown once the design has two detectors.

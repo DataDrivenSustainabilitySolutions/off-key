@@ -101,10 +101,14 @@ export function useGraphEditor({
     // A palette click places the card beside the selected component; connections stay explicit.
     const placed = addComponent(current.current, component, position, present);
     if (placed === current.current) return;
-    const added = placed.definition.nodes[placed.definition.nodes.length - 1]!;
-    commit(placed);
-    select(added.id);
-    setReveal((previous) => ({ id: added.id, request: (previous?.request ?? 0) + 1 }));
+    place({ document: placed, id: placed.definition.nodes[placed.definition.nodes.length - 1]!.id });
+  };
+  /** Take a change that added steps, select the first of them and bring it into view. */
+  const place = ({ document: next, id }: { document: GraphDocument; id: string }) => {
+    if (readOnly) return;
+    commit(next);
+    select(id);
+    setReveal((previous) => ({ id, request: (previous?.request ?? 0) + 1 }));
   };
   const arrange = async () => {
     if (readOnly) return false;
@@ -127,7 +131,7 @@ export function useGraphEditor({
 
   return {
     selected: present, select, fitRequest, requestFit, reveal, validation,
-    commit, beginMove, add, arrange, validate, undo, redo, resetHistory,
+    commit, beginMove, add, place, arrange, validate, undo, redo, resetHistory,
     canUndo: history.undo.length > 0, canRedo: history.redo.length > 0,
   };
 }

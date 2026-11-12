@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PipelineCatalog } from "./contracts";
+import { PipelineBlockLibrary } from "./PipelineBlockLibrary";
 import { PipelineDesignBrowser } from "./PipelineDesignBrowser";
 
 export function PipelineLibrary({
@@ -28,5 +29,6 @@ export function PipelineLibrary({
       Design authoring is disabled for this deployment. Existing designs and runs remain available to inspect.
     </p>}
     <PipelineDesignBrowser onSelect={onOpen} />
+    <PipelineBlockLibrary components={catalog.components} canEdit={canEdit && catalog.authoring_enabled} />
   </section>;
 }

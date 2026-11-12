@@ -106,13 +106,16 @@ export function addComponent(
   anchor?: string,
   /** Settings to start from instead of the defaults, as a duplicate does. */
   initial?: PipelineNode["params"],
+  /** Keep those settings as they are, the name of a feature included, as a block's steps do. */
+  exact = false,
 ): GraphDocument {
   if (addBlocker(document.definition, component)) return document;
   const id = nextNodeId(document.definition.nodes, component.id);
   const instance =
     document.definition.nodes.filter((node) => node.component === component.id)
       .length + 1;
-  const params = newParams(document.definition.nodes, component, initial && structuredClone(initial));
+  const params = exact && initial ? structuredClone(initial)
+    : newParams(document.definition.nodes, component, initial && structuredClone(initial));
   return {
     definition: {
       ...document.definition,
@@ -516,12 +519,14 @@ function roomOnLink(document: GraphDocument, link: Link) {
 }
 
 /** Place a component on a link, source → component → target. The target keeps
- * the link's merge position, so execution order elsewhere does not change. */
+ * the link's merge position, so execution order elsewhere does not change.
+ * `settings` are kept as they are, as a block's step brings them. */
 export function insertOnEdge(
   document: GraphDocument,
   link: Link,
   component: PipelineComponent,
   components: PipelineComponent[],
+  settings?: PipelineNode["params"],
 ): { document: GraphDocument; id: string } | undefined {
   const { definition } = document;
   const existing = definition.edges.find(
@@ -529,7 +534,7 @@ export function insertOnEdge(
   );
   if (!existing || insertBlocker(definition, link, component, components)) return;
   const room = roomOnLink(document, link);
-  const added = addComponent({ definition, layout: room.layout }, component, room.position);
+  const added = addComponent({ definition, layout: room.layout }, component, room.position, undefined, settings, true);
   const id = added.definition.nodes[added.definition.nodes.length - 1]!.id;
   return {
     id,

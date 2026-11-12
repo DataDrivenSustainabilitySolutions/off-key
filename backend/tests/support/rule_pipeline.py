@@ -20,16 +20,19 @@ def rule_definition(
     calibration: str = "calibrate.fixed_split",
     calibration_params: dict | None = None,
     before: str | None = None,
+    before_params: dict | None = None,
     rule: str = RULE_DETECTOR,
     rule_params: dict | None = None,
     calibration_window: int = CALIBRATION,
+    mute: str | None = None,
 ) -> PipelineDefinition:
     """A formula over readings a and b feeds a rule detector.
 
     ``others`` adds detectors from the boundary designs' branches beside it,
     each reading one scaled reading. ``before`` puts a step between the
     formula and the rule detector, and ``rule`` puts another detector in the
-    rule detector's place.
+    rule detector's place. ``mute`` is the condition of a Mute alarms step
+    between the input and the formula.
     """
     nodes = [
         {"id": "input", "kind": "source", "component": "source.aligned"},
@@ -47,12 +50,29 @@ def rule_definition(
         },
     ]
     edges = [
-        {"source": "input", "target": "gap"},
+        {"source": "input" if mute is None else "mute", "target": "gap"},
         {"source": "rule", "target": "calibrate", "order": 0},
     ]
+    if mute is not None:
+        nodes.append(
+            {
+                "id": "mute",
+                "kind": "transform",
+                "component": "prepare.mute",
+                "params": {"condition": mute},
+            }
+        )
+        edges.append({"source": "input", "target": "mute"})
     reads = "gap"
     if before is not None:
-        nodes.append({"id": "before", "kind": "transform", "component": before})
+        nodes.append(
+            {
+                "id": "before",
+                "kind": "transform",
+                "component": before,
+                "params": before_params or {},
+            }
+        )
         edges.append({"source": "gap", "target": "before"})
         reads = "before"
     edges.append({"source": reads, "target": "rule"})

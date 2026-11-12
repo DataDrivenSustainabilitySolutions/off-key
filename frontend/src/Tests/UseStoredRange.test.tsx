@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTelemetryHistory } from "@/lib/charger-api";
-import { useStoredRange } from "@/features/readings/useStoredRange";
+import { overviewRefreshMs, useStoredRange } from "@/features/readings/useStoredRange";
 import type { HistoryPreference, TelemetryHistory } from "@/types/telemetry-history";
 
 vi.mock("@/lib/charger-api", () => ({ getTelemetryHistory: vi.fn() }));
@@ -52,6 +52,32 @@ describe("stored telemetry ranges", () => {
     await waitFor(() => expect(hook.result.current.error).toMatch(/could not be updated/));
     expect(hook.result.current.history).toBeUndefined();
     expect(hook.result.current.loading).toBe(false);
+  });
+
+  it("asks for the overview as often as its means can change", () => {
+    expect(overviewRefreshMs(60_000, { mode: "auto" }, 300)).toBe(5_000);
+    expect(overviewRefreshMs(3_600_000, { mode: "auto" }, 300)).toBe(7_500);
+    expect(overviewRefreshMs(3_600_000, { mode: "auto", windowMs: 60_000 }, 300)).toBe(30_000);
+    expect(overviewRefreshMs(86_400_000, { mode: "auto" }, 300)).toBe(60_000);
+    // Original samples and the whole history refresh each minute; live values are appended meanwhile.
+    expect(overviewRefreshMs(3_600_000, { mode: "raw" }, 300)).toBe(60_000);
+    expect(overviewRefreshMs(undefined, { mode: "auto" }, 300)).toBe(60_000);
+  });
+
+  it("loads an inspected window once and asks again only after a failed request", async () => {
+    vi.useFakeTimers();
+    vi.mocked(getTelemetryHistory).mockRejectedValueOnce(new Error("offline"));
+    const window = { startMs: NOW - 2600, endMs: NOW - 1400 };
+    const hook = renderHook(() => useStoredRange(binding, 3_600_000, window));
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(getTelemetryHistory).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.error).toMatch(/could not be loaded/);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(getTelemetryHistory).toHaveBeenCalledTimes(2);
+    expect(hook.result.current).toMatchObject({ history: data, error: "" });
+    // The window is fixed, so its history is too: nothing asks for it again.
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(getTelemetryHistory).toHaveBeenCalledTimes(2);
   });
 
   it("does not fetch for a reading that is not recorded", () => {

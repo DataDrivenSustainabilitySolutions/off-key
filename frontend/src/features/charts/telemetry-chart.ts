@@ -12,7 +12,7 @@ import { buildDetectionSeriesOption, buildThresholdSeriesOption } from "./teleme
 import { formatMonitoringObservationTooltip } from "./monitoring-tooltip";
 
 import type { AnomalyMarker } from "@/lib/anomaly-utils";
-import type { TimeValue } from "./telemetry-data";
+import { getPauseLimit, type TimeValue } from "./telemetry-data";
 import type { MonitoringChartReading, TelemetryChartSeries } from "./types";
 import {
   buildSelectedDetectorSeries,
@@ -20,10 +20,10 @@ import {
   type SecondaryChartSeries,
   type SelectedDetectorIds,
 } from "./telemetry-detectors";
-import { getChartDomain } from "./telemetry-thresholds";
+import { getChartDomain, type DetectionValueBounds } from "./telemetry-thresholds";
 import { forecastIntervalText, type DetectorInputSeries } from "./detector-inputs";
 import { localMidnights, timeAxisLabelFormatter } from "./time-axis";
-import { historyBandSeries, historyChartData } from "./history-presentation";
+import { bandSeries, historyBandSeries, historyChartData } from "./history-presentation";
 import type { HistoryPoint, TelemetryHistory } from "@/types/telemetry-history";
 import {
   groupTelemetryEvents,
@@ -116,6 +116,8 @@ interface BuildTelemetryChartModelInput {
   telemetryColor: string;
   telemetry: TimeValue[];
   presentation?: TelemetryHistory;
+  /** Times that have a reading on the chart, when means stand for samples that are not loaded. */
+  detectionTimes?: readonly number[];
   detectors: readonly TelemetryChartDetector[];
   pendingTelemetryTimestamps?: readonly number[];
   anomalyMarkers: AnomalyMarker[];
@@ -201,12 +203,24 @@ export const formatChartTime = (
 ): string =>
   getDateTimeFormatter(timeZone, locale, detail).format(epochMilliseconds);
 
+type RangeFormat = Intl.DateTimeFormat & { formatRange?: (startMs: number, endMs: number) => string };
+
+/** A span of time: the parts both ends share are named once where the locale can, and so is the zone. */
+const formatChartInterval = (startMs: number, endMs: number, timeZone: string, locale?: string): string => {
+  const plain: RangeFormat = getDateTimeFormatter(timeZone, locale, "axis");
+  const zone = getDateTimeFormatter(timeZone, locale, "tooltip").formatToParts(endMs)
+    .find((part) => part.type === "timeZoneName")?.value;
+  const span = plain.formatRange?.(startMs, endMs) ?? `${plain.format(startMs)} – ${plain.format(endMs)}`;
+  return zone ? `${span} ${zone}` : span;
+};
+
 export const buildTelemetryChartModel = ({
   telemetryName,
   telemetryUnit,
   telemetryColor,
   telemetry,
   presentation,
+  detectionTimes,
   detectors,
   pendingTelemetryTimestamps = [],
   anomalyMarkers,
@@ -216,7 +230,7 @@ export const buildTelemetryChartModel = ({
 }: BuildTelemetryChartModelInput): TelemetryChartModel => {
   const telemetryTimes = telemetry.map(([time]) => time);
   const pendingTimes = new Set(pendingTelemetryTimestamps);
-  const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes, selectedDetectorIds, range });
+  const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes: detectionTimes ?? telemetryTimes, selectedDetectorIds, range });
   const startMs = telemetryTimes[0];
   const endMs = telemetryTimes[telemetryTimes.length - 1];
 
@@ -244,6 +258,7 @@ type TooltipEntry = {
   seriesName?: unknown;
   value?: unknown;
   data?: unknown;
+  axisValue?: unknown;
 };
 
 const readTimeValue = (value: unknown): TimeValue | undefined => {
@@ -270,36 +285,61 @@ const readObservationDetails = (data: unknown): { threshold: number | null; alar
   return { threshold, alarmActive };
 };
 
+const readSummary = (data: unknown): HistoryPoint | undefined =>
+  typeof data === "object" && data !== null && "summary" in data ? (data as { summary?: HistoryPoint }).summary : undefined;
+
+const readPeakCount = (data: unknown): number => typeof data === "object" && data !== null && "peak" in data
+  ? (data as { peak?: { count: number } }).peak?.count ?? 1 : 1;
+
+/** A range reads "0–10"; a minus sign beside the dash would not, so negative bounds read "-3 to -1". */
+const formatRange = (minimum: number, maximum: number): string => minimum < 0 || maximum < 0
+  ? `${formatNumber(minimum)} to ${formatNumber(maximum)}` : `${formatNumber(minimum)}–${formatNumber(maximum)}`;
+
+/**
+ * `reach` holds, per series id, how far from the pointer a point may lie and still
+ * be named. The axis pointer offers the nearest point of every series, however
+ * distant; a series only speaks where its line is drawn. `means` names the series
+ * whose plain points are interval means.
+ */
 export const formatTelemetryTooltip = (
   params: unknown,
   timeZone: string,
   units: ReadonlyMap<string, string>,
   locale?: string,
+  reach?: ReadonlyMap<string, number>,
+  means?: ReadonlySet<string>,
 ): string => {
   const entries = (Array.isArray(params) ? params : [params]).filter(
     (entry): entry is TooltipEntry => typeof entry === "object" && entry !== null,
-  );
+  ).filter((entry) => {
+    const seriesId = String(entry.seriesId);
+    // Bands and lone-sample dots only draw what their own line names.
+    if (["forecast-band:", "history-band:", "history-dot:"].some((prefix) => seriesId.startsWith(prefix))) return false;
+    const value = readTimeValue(entry.value), limit = reach?.get(seriesId);
+    const pointer = entry.axisValue === undefined ? NaN : Number(entry.axisValue);
+    return !value || limit === undefined || !Number.isFinite(pointer) || Math.abs(value[0] - pointer) <= limit;
+  });
   const firstValue = entries.map((entry) => readTimeValue(entry.value)).find(Boolean);
   if (!firstValue) return "";
 
-  const lines = [formatChartTime(firstValue[0], timeZone, "tooltip", locale)];
+  // Means share their interval, so it heads the tooltip once instead of following each reading.
+  const interval = entries.map((entry) => readSummary(entry.data)).find((summary) => summary?.start && summary.end);
+  const lines = [interval
+    ? formatChartInterval(Date.parse(interval.start!), Date.parse(interval.end!), timeZone, locale)
+    : formatChartTime(firstValue[0], timeZone, "tooltip", locale)];
   const numberFormatter = getNumberFormatter(locale);
   for (const entry of entries) {
     const value = readTimeValue(entry.value);
     if (!value || typeof entry.seriesName !== "string") continue;
     const seriesId = typeof entry.seriesId === "string" ? entry.seriesId : "";
-    // The band's two lines only draw the interval, which the forecast's own line names.
-    if (seriesId.startsWith("forecast-band:") || seriesId.startsWith("history-band:")) continue;
     const unit = units.get(entry.seriesName);
-    const formattedValue = unit ? numberFormatter.format(value[1]) : formatNumber(value[1]);
-    const interval = seriesId.startsWith("forecast:") ? forecastIntervalText(entry.value, formatNumber) : "";
-    const summary = typeof entry.data === "object" && entry.data !== null && "summary" in entry.data
-      ? (entry.data as { summary?: HistoryPoint }).summary : undefined;
-    lines.push(`${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}${summary ? " (mean)" : ""}${interval}`);
-    if (summary) {
-      lines.push(`Min–max: ${formatNumber(summary.minimum!)}–${formatNumber(summary.maximum!)}${unit ? ` ${unit}` : ""} · ${summary.count} readings`);
-      lines.push(`${formatChartTime(Date.parse(summary.start!), timeZone, "tooltip", locale)} – ${formatChartTime(Date.parse(summary.end!), timeZone, "tooltip", locale)}`);
-    }
+    const summary = readSummary(entry.data);
+    // A recorded value keeps its digits; a mean has none of its own to keep.
+    const formattedValue = unit && !summary ? numberFormatter.format(value[1]) : formatNumber(value[1]);
+    const forecast = seriesId.startsWith("forecast:") ? forecastIntervalText(entry.value, formatNumber) : "";
+    const peak = readPeakCount(entry.data);
+    lines.push(`${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}${summary || means?.has(seriesId) ? " (mean)" : ""}${peak > 1 ? ` (highest of ${peak})` : ""}${forecast}`);
+    if (summary) lines.push(`Min–max: ${formatRange(summary.minimum!, summary.maximum!)}${unit ? ` ${unit}` : ""} · ${summary.count} readings`);
     const observation = readObservationDetails(entry.data);
     if (observation) {
       lines.push(`Alarm threshold: ${observation.threshold !== null ? formatNumber(observation.threshold) : "unavailable"}`);
@@ -317,6 +357,28 @@ export const buildTelemetryChartOption = ({
     anomalyMarkers: model.anomalyMarkers }], detectorInputs: model.detectorInputs, secondarySeries: model.secondarySeries,
     range: model.range, extent: model.extent },
 });
+
+/** The padded ends of a detection pane are room around its values, not values to read. */
+const labelWithin = (bounds: DetectionValueBounds | undefined, format: (value: number) => string) =>
+  (value: number): string => bounds && (value <= bounds.minimum || value >= bounds.maximum) ? "" : format(Number(value));
+
+type Plotted = readonly [time: number, value: number | null, ...rest: unknown[]];
+/**
+ * Values with no line to either side, such as one sample between two pauses. A line
+ * draws nothing for one, so it gets a dot. A series of a single value needs none: the
+ * line shows that one itself.
+ */
+const loneDots = (id: string, name: string, points: readonly Plotted[], color: string, axis: number, size: number): ScatterSeriesOption[] => {
+  const data = points.length < 2 ? [] : points.flatMap(([time, value], index) =>
+    value !== null && (points[index - 1]?.[1] ?? null) === null && (points[index + 1]?.[1] ?? null) === null ? [[time, value]] : []);
+  return data.length ? [{ id: `history-dot:${id}`, name, type: "scatter", xAxisIndex: axis, yAxisIndex: axis, data,
+    symbolSize: size, itemStyle: { color }, silent: true, emphasis: { disabled: true }, tooltip: { show: false },
+    animation: false, z: 3 }] : [];
+};
+
+/** Zero when the values are non-negative and the padded scale would dip below it; otherwise the automatic minimum. */
+const nonNegativeFloor = ({ min, max }: { min: number; max: number }): number =>
+  (min >= 0 && min - (max - min) * 0.1 < 0 ? 0 : null) as number;
 
 type BuildMonitoringChartOptionInput = Omit<BuildTelemetryChartOptionInput, "model" | "valueType" | "layout"> & {
   model: MonitoringChartModel;
@@ -355,7 +417,7 @@ export const buildMonitoringChartOption = ({
     : compact
     ? panes.map((_, index) => ({
         left: 44, right: 16,
-        top: index === 0 ? 22 : 242 + (index - 1) * 164,
+        top: index === 0 ? 26 : 242 + (index - 1) * 164,
         ...(panes.length === 1 ? { bottom: 76 } : { height: index === 0 ? 164 : 112 }),
       }))
     : panes.length === 1
@@ -390,9 +452,9 @@ export const buildMonitoringChartOption = ({
     axisLine: { lineStyle: { color: colors.border } },
     axisTick: { show: false },
     splitLine: { show: false },
-    axisPointer: { show: true, snap: false,
-      ...(compact ? { label: { formatter: (params: { value: number | string | Date }) => formatChartTime(Number(params.value), timeZone, "axis", locale) } } : {}),
-    },
+    // One hairline crosses every pane; only the time axis under the last one names its time.
+    axisPointer: { show: true, snap: false, label: { show: index === panes.length - 1,
+      ...(compact ? { formatter: (params: { value: number | string | Date }) => formatChartTime(Number(params.value), timeZone, "axis", locale) } : {}) } },
     name:
       !compact && index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
     nameLocation: "middle" as const,
@@ -412,13 +474,34 @@ export const buildMonitoringChartOption = ({
   const dayBreakLine = { silent: true, animation: false, symbol: ["none", "none"], label: { show: false }, z: 1,
     data: dayBreaks };
 
+  const alarmColor = colors.alarmBoundary ?? "#dc2626";
+  // How far from the pointer each series still speaks: see `formatTelemetryTooltip`.
+  const reach = new Map<string, number>();
+  const means = new Set<string>();
+  const valueTimes = (points: readonly Plotted[]) => points.flatMap(([time, value]) => value === null ? [] : [time]);
   const historyBands: LineSeriesOption[] = [];
+  const dots: ScatterSeriesOption[] = [];
+  // Alarm episodes the width cannot separate, such as an alarm flapping around its threshold, read as one.
+  const joinWithin = Number.isFinite(visibleSpan) ? visibleSpan / 150 : 0;
   const telemetrySeries: LineSeriesOption[] = model.readings.map((reading, index) => {
     const valueType = reading.valueType ?? "number";
     const telemetryValueExtent = reading.data.reduce<[number, number] | undefined>((extent, [, value]) =>
       extent ? [Math.min(extent[0], value), Math.max(extent[1], value)] : [value, value], undefined);
     const display = reading.presentation && historyChartData(reading.presentation);
     if (display) historyBands.push(...historyBandSeries(reading.id, display, reading.color, index));
+    dots.push(...loneDots(reading.id, reading.name, display?.map(point => point.value) ?? reading.data, reading.color, index, 5));
+    // A mean speaks for its own interval; a recorded sample as far as its line would bridge.
+    reach.set(reading.id, reading.presentation?.representation === "mean" ? reading.presentation.interval_ms
+      : getPauseLimit(valueTimes(display?.map(point => point.value) ?? reading.data)));
+    // Consecutive alarm results are one episode: a soft band from its first to its last
+    // result, and a line where it began. A single result is that line alone.
+    const alarmSpans = (reading.alarmSpans ?? []).reduce<Array<[number, number]>>((joined, [start, end]) => {
+      const last = joined[joined.length - 1];
+      if (last && start - last[1] <= joinWithin) last[1] = Math.max(last[1], end);
+      else joined.push([start, end]);
+      return joined;
+    }, []);
+    const episodes = alarmSpans.filter(([start, end]) => end > start);
     return {
       id: reading.id,
       name: reading.name,
@@ -446,9 +529,12 @@ export const buildMonitoringChartOption = ({
           unit: reading.unit, telemetryValueExtent,
         }),
       },
-      ...(reading.alarmTimes?.length || dayBreaks.length ? { markLine: { ...dayBreakLine,
-        lineStyle: { color: colors.alarmBoundary ?? "#dc2626", width: 1, opacity: 0.55 },
-        data: [...(reading.alarmTimes ?? []).map(time => ({ xAxis: time })), ...dayBreaks],
+      ...(episodes.length ? { markArea: { silent: true, animation: false, label: { show: false },
+        itemStyle: { color: colors.alarmFill ?? "rgba(220, 38, 38, 0.12)" },
+        data: episodes.map(([start, end]) => [{ xAxis: start }, { xAxis: end }]) } } : {}),
+      ...(alarmSpans.length || dayBreaks.length ? { markLine: { ...dayBreakLine,
+        lineStyle: { color: alarmColor, width: 1, opacity: 0.55 },
+        data: [...alarmSpans.map(([start]) => ({ xAxis: start })), ...dayBreaks],
       } } : {}),
     };
   });
@@ -477,6 +563,17 @@ export const buildMonitoringChartOption = ({
 
   const inputsPane = panes.indexOf("inputs");
   const palette = colors.seriesPalette?.length ? colors.seriesPalette : DEFAULT_SERIES_PALETTE;
+  detectorInputs.forEach((series, index) => {
+    const forecastId = `forecast:${series.id.slice("input:".length)}`;
+    reach.set(series.id, getPauseLimit(valueTimes(series.data)));
+    if (series.forecast) reach.set(forecastId, getPauseLimit(valueTimes(series.forecast)));
+    if (series.range) means.add(series.id).add(forecastId);
+    dots.push(...loneDots(series.id, series.name, series.data, palette[index % palette.length]!, inputsPane, 4));
+  });
+  // The range a feature covered within each interval. Beside a forecast it shows what a
+  // mean alone would hide: values that left the forecast interval.
+  const inputBands: LineSeriesOption[] = detectorInputs.flatMap((series, index) => series.range
+    ? bandSeries(series.id, series.range, palette[index % palette.length]!, inputsPane, .1) : []);
   const inputSeries: LineSeriesOption[] = detectorInputs.map((series, index) => ({
     id: series.id,
     name: series.name,
@@ -545,8 +642,9 @@ export const buildMonitoringChartOption = ({
     top: Number(grid[inputsPane]?.top ?? 0) - 22,
     right: monitoring ? 18 : 16,
     width: "60%",
-    itemWidth: 14,
-    itemHeight: 8,
+    icon: "roundRect",
+    itemWidth: 12,
+    itemHeight: 3,
     textStyle: { color: colors.foreground, fontSize: 11 },
     pageTextStyle: { color: colors.mutedForeground },
   } : undefined;
@@ -562,18 +660,26 @@ export const buildMonitoringChartOption = ({
       (time) => formatChartTime(time, timeZone, "tooltip", locale),
       formatNumber,
     );
+    reach.set(series.id, getPauseLimit(series.data.flatMap(point => point.observation ? [point.value[0]] : [])));
+    dots.push(...loneDots(series.id, series.name, series.data.map(point => point.value), colors.primary, paneIndex, 5));
     if (dayBreaks.length && !ruledPanes.has(paneIndex)) {
       ruledPanes.add(paneIndex);
       line.markLine = dayBreakLine;
     }
     if (!monitoring) return [line];
-    line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []),
-      ...series.data.flatMap(point => point.observation?.alarmFired && point.value[1] !== null ? [{
+    // A dot where an alarm begins; the results that keep it up already sit above the threshold.
+    let alarmed = false;
+    const onsets = series.data.flatMap(point => {
+      if (!point.observation) return [];
+      const began = Boolean(point.observation.alarmFired) && !alarmed;
+      alarmed = Boolean(point.observation.alarmFired);
+      return began && point.value[1] !== null ? [{
         name: "Alarm decision", coord: [point.value[0], point.value[1]], symbol: "circle", symbolSize: 6,
-        itemStyle: { color: colors.alarmBoundary ?? "#dc2626" },
-      }] : []),
-    ] };
-    return [line, buildThresholdSeriesOption(series, paneIndex, colors.alarmBoundary ?? "#dc2626")];
+        itemStyle: { color: alarmColor },
+      }] : [];
+    });
+    line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []), ...onsets] };
+    return [line, buildThresholdSeriesOption(series, paneIndex, alarmColor)];
   });
 
   return {
@@ -593,7 +699,7 @@ export const buildMonitoringChartOption = ({
     },
     axisPointer: {
       link: [{ xAxisIndex: "all" }],
-      lineStyle: { color: colors.mutedForeground, type: "dashed" },
+      lineStyle: { color: colors.mutedForeground, type: "solid", width: 1, opacity: 0.55 },
       label: {
         color: colors.popoverForeground,
         backgroundColor: colors.popover,
@@ -607,11 +713,11 @@ export const buildMonitoringChartOption = ({
       backgroundColor: colors.popover,
       borderColor: colors.border,
       textStyle: { color: colors.popoverForeground, fontSize: 12 },
-      axisPointer: { type: "cross" },
+      axisPointer: { type: "line" },
       formatter: (params: unknown) =>
         (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
           time => formatChartTime(time, timeZone, "tooltip", locale), formatNumber) : undefined)
-          ?? formatTelemetryTooltip(params, timeZone, units, locale),
+          ?? formatTelemetryTooltip(params, timeZone, units, locale, reach, means),
     },
     xAxis,
     yAxis: [
@@ -620,9 +726,12 @@ export const buildMonitoringChartOption = ({
         type: "value" as const,
         scale: true,
         boundaryGap: ["10%", "10%"] as [string, string],
+        // The breathing room under the lowest value must not invent a negative scale.
+        min: nonNegativeFloor,
         ...(reading.valueType === "boolean" ? { scale: false, min: 0, max: 1, interval: 1 } : {}),
         ...(compact ? { splitNumber: 4 } : {}),
         gridIndex: index,
+        ...(compact && !monitoring ? { nameGap: 10 } : {}),
         name: compact && !monitoring ? reading.unit : reading.unit
           ? `${reading.name} (${reading.unit})` : reading.name,
         nameTextStyle: { color: monitoring ? reading.color : colors.mutedForeground, fontSize: 12, align: "left" as const,
@@ -639,6 +748,7 @@ export const buildMonitoringChartOption = ({
               type: "value" as const,
               scale: true,
               boundaryGap: ["10%", "10%"] as [string, string],
+              min: nonNegativeFloor,
               ...(compact ? { splitNumber: 3 } : {}),
               gridIndex: inputsPane,
               name: "Detector inputs",
@@ -665,7 +775,7 @@ export const buildMonitoringChartOption = ({
               axisLabel: {
                 color: colors.mutedForeground,
                 fontSize: 12,
-                formatter: (value: number) => Number(value).toPrecision(2),
+                formatter: labelWithin(boundsByPane.get("static"), (value) => value.toPrecision(2)),
               },
               axisLine: { show: false },
               axisTick: { show: false },
@@ -687,7 +797,7 @@ export const buildMonitoringChartOption = ({
               name: monitoring ? model.secondarySeries.find(series => series.pane === "adaptive")?.name : "Adaptive anomaly score",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
               axisLabel: { color: colors.mutedForeground, fontSize: 12,
-                formatter: (value: number) => formatNumber(Number(value)), hideOverlap: true },
+                formatter: labelWithin(boundsByPane.get("adaptive"), formatNumber), hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },
               splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
@@ -743,9 +853,11 @@ export const buildMonitoringChartOption = ({
       ...telemetrySeries,
       ...historyBands,
       ...pendingTelemetrySeries,
+      ...inputBands,
       ...inputSeries,
       ...forecastSeries,
       ...secondarySeries,
+      ...dots,
     ],
   };
 };

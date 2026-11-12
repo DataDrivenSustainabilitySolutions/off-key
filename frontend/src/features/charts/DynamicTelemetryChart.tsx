@@ -9,6 +9,7 @@ import React, {
 import { ChevronDown } from "lucide-react";
 import { HistoryViewControls } from "./HistoryViewControls";
 import { combineHistory, DEFAULT_HISTORY_PREFERENCE, presentHistory } from "./history-presentation";
+import { summarizeDetection } from "./detection-summary";
 import { useHistoryWidth } from "./use-history-width";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import type { HistoryPreference } from "@/types/telemetry-history";
@@ -318,7 +319,11 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     () =>
       !collapsed && isChartVisible
         ? buildTelemetryChartOption({
-            model: chartModel,
+            // Scores and features follow the reading into its intervals.
+            model: presentation.representation === "mean"
+              ? summarizeDetection(chartModel, presentation.interval_ms, buckets,
+                viewport.mode === "absolute" ? [viewport.startMs, viewport.endMs] : undefined)
+              : chartModel,
             viewport,
             timelineExtent,
             timeZone,
@@ -330,6 +335,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [
       accessibleDescription,
       chartModel,
+      presentation,
+      buckets,
       collapsed,
       isChartVisible,
       themeColors,
@@ -461,9 +468,6 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
           )}
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {!collapsed && numeric && <div className="ex-preview-section-heading">
-            <HistoryViewControls value={preference} onChange={setPreference} intervalMs={presentation.interval_ms} />
-          </div>}
           {!collapsed && (
             <div className="flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-xs">
               <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
@@ -520,6 +524,9 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
               </span>
             </div>
           )}
+          {!collapsed && numeric && <div className="ex-preview-section-heading">
+            <HistoryViewControls value={preference} onChange={setPreference} intervalMs={presentation.interval_ms} />
+          </div>}
           <Button
             type="button"
             variant="ghost"

@@ -40,7 +40,7 @@ describe("joint monitoring history", () => {
     expect(model.secondarySeries).toHaveLength(1);
     expect(model.secondarySeries[0]!.name).toBe("Joint anomaly score");
     expect(model.secondarySeries[0]!.data.map(point => point.value)).toEqual([[Date.parse(second), 0.61]]);
-    expect(model.readings.map(reading => reading.alarmTimes)).toEqual([[Date.parse(first)], [Date.parse(second)]]);
+    expect(model.readings.map(reading => reading.alarmSpans)).toEqual([[[Date.parse(first), Date.parse(first)]], [[Date.parse(second), Date.parse(second)]]]);
     const option = buildMonitoringChartOption({ model, colors, timeZone: "UTC", accessibleDescription: "Joint forest", layout: "monitoring", viewport: { mode: "live" } });
     expect(option.grid).toHaveLength(3);
     expect(option.axisPointer).toMatchObject({ link: [{ xAxisIndex: "all" }] });
@@ -111,11 +111,21 @@ describe("joint monitoring history", () => {
     expect(text).not.toContain("Joint anomaly score: 0.61");
   });
 
+  it("groups consecutive alarm results into one episode that the next quiet result ends", () => {
+    const at = (second: number) => `2026-10-21T10:00:${String(second).padStart(2, "0")}.000Z`;
+    const result = (second: number, alarmed: boolean): MonitoringChartEvidence => ({ ...row, timestamp: at(second), sequence_number: second,
+      input_timestamps: { temperature: at(second), humidity: at(second) }, alarm: alarmed });
+    // Out of order on purpose: episodes follow the reading's own input times.
+    const { model } = build([result(5, true), result(1, false), result(3, true), result(2, true), result(4, false), result(6, true), result(7, false), result(8, true)]);
+    const time = (second: number) => Date.parse(at(second));
+    expect(model.readings[0]!.alarmSpans).toEqual([[time(2), time(3)], [time(5), time(6)], [time(8), time(8)]]);
+  });
+
   it("keeps inputs usable without detector evidence and excludes another service's decisions", () => {
     const { model } = build([{ ...row, monitor_id: "retired", anomaly_score: 100 }]);
     expect(model.readings[0]!.data).toHaveLength(2);
     expect(model.secondarySeries).toEqual([]);
-    expect(model.readings.every(reading => reading.alarmTimes!.length === 0)).toBe(true);
+    expect(model.readings.every(reading => reading.alarmSpans!.length === 0)).toBe(true);
   });
 
   it("retains static logarithmic evidence and overflow alongside multiple readings", () => {

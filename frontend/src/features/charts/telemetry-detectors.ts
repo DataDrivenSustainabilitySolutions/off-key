@@ -46,6 +46,8 @@ export interface TelemetryChartDetector extends ChartDetector {
 export interface DetectionChartPoint {
   value: DetectionTimeValue;
   observation?: DetectionObservation;
+  /** Set when this result stands for its interval: the highest of `count` results. */
+  peak?: { count: number };
 }
 
 interface DetectionOverflow {

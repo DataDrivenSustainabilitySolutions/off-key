@@ -14,7 +14,8 @@ import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildServiceHistoryModel, MAX_VISIBLE_READINGS } from "./historyModel";
 import { useServiceHistory } from "./useServiceHistory";
 import { HistoryViewControls } from "@/features/charts/HistoryViewControls";
-import { combineHistory, DEFAULT_HISTORY_PREFERENCE, presentHistory } from "@/features/charts/history-presentation";
+import { combineHistory, DEFAULT_HISTORY_PREFERENCE, historyInterval, presentHistory } from "@/features/charts/history-presentation";
+import { summarizeDetection } from "@/features/charts/detection-summary";
 import { useHistoryWidth } from "@/features/charts/use-history-width";
 import type { HistoryPreference } from "@/types/telemetry-history";
 
@@ -49,12 +50,21 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const domain = getChartDomain(model.extent);
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
     + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
-  const displayModel = useMemo(() => ({ ...model, readings: model.readings.map(reading => {
-    const view: HistoryPreference = reading.valueType === "boolean" ? { mode: "raw" } : preference;
-    const overview = presentHistory(reading.data, view, buckets);
-    return { ...reading, presentation: inspection ? combineHistory(overview,
-      presentHistory(reading.data, view, buckets, [inspection.startMs, inspection.endMs]), inspection) : overview };
-  }) }), [model, preference, buckets, inspection]);
+  // One interval for the whole chart, so every pane's means and peaks cover the same spans of time.
+  const displayModel = useMemo(() => {
+    const shown = inspection && [inspection.startMs, inspection.endMs] as const;
+    const interval = (span?: readonly [number, number]) => span && preference.mode !== "raw"
+      ? historyInterval(span[1] - span[0], buckets, preference.windowMs) : undefined;
+    const overviewMs = interval(model.extent), detailMs = interval(shown);
+    const readings = model.readings.map(reading => {
+      const view: HistoryPreference = reading.valueType === "boolean" ? { mode: "raw" } : preference;
+      const overview = presentHistory(reading.data, view, buckets, undefined, overviewMs);
+      return { ...reading, presentation: shown ? combineHistory(overview,
+        presentHistory(reading.data, view, buckets, shown, detailMs), inspection) : overview };
+    });
+    return summarizeDetection({ ...model, readings }, detailMs ?? overviewMs ?? 0, buckets, shown);
+  }, [model, preference, buckets, inspection]);
+  const meanMs = displayModel.readings.find(reading => reading.presentation.representation === "mean")?.presentation.interval_ms;
   const option = useMemo(() => buildMonitoringChartOption({ model: displayModel, colors, timeZone, accessibleDescription: description,
     viewport: inspection ? { mode: "absolute", ...inspection } : { mode: "live" }, layout: "monitoring" }),
   [displayModel, colors, timeZone, description, inspection]);
@@ -89,7 +99,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   return <section ref={chartWidthRef} className="ex-preview-history mn-history" aria-label="Monitoring history">
     <div className="ex-preview-section-heading"><h3>Inputs and detection</h3>
       {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
-        {model.readings.some(reading => reading.valueType !== "boolean") && <HistoryViewControls value={preference} onChange={setPreference} />}
+        {model.readings.some(reading => reading.valueType !== "boolean") && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={meanMs} />}
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
         <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>
@@ -125,7 +135,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
       <strong>{model.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>
       <span>Threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · {latest.alarmActive ? "Alarm active" : "Alarm inactive"}</span>
     </output>}
-    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms. Each reading keeps its own scale.</p>}
+    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red line and shading: a service alarm and how long it lasted · Red dot: where the selected detector's alarm begins. Each reading keeps its own scale.</p>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

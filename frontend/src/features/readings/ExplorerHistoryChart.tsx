@@ -25,7 +25,8 @@ import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache"
 import { HistoryViewControls } from "@/features/charts/HistoryViewControls";
 import { RawHistoryValues } from "@/features/charts/RawHistoryValues";
 import { useHistoryWidth } from "@/features/charts/use-history-width";
-import { combineHistory, DEFAULT_HISTORY_PREFERENCE, intervalLabel, presentHistory } from "@/features/charts/history-presentation";
+import { combineHistory, DEFAULT_HISTORY_PREFERENCE, historyInterval, intervalLabel, presentHistory } from "@/features/charts/history-presentation";
+import { summarizeDetection } from "@/features/charts/detection-summary";
 import type { HistoryPreference } from "@/types/telemetry-history";
 
 type Inspection = { startMs: number; endMs: number; windowStartMs: number };
@@ -71,11 +72,14 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     return { ...stored.history, points: [...stored.history.points, ...tail], sample_count: stored.history.sample_count + tail.length,
       extent: stored.history.extent ? [stored.history.extent[0], tail[tail.length - 1]!.timestamp] as [string, string] : null };
   }, [stored.history, inspection, history]);
+  // While a zoomed window or the other representation loads, the overview already on
+  // screen stays, so the chart refines in place instead of blinking to live samples.
   const presentation = useMemo(() => currentHistory ? combineHistory(stored.overview, currentHistory, inspection)
-    : !monitoring.binding ? presentHistory(telemetry, numeric ? preference : { mode: "raw" }, buckets,
-      inspection ? [inspection.startMs, inspection.endMs] : undefined) : undefined,
+    : stored.overview ?? (!monitoring.binding ? presentHistory(telemetry, numeric ? preference : { mode: "raw" }, buckets,
+      inspection ? [inspection.startMs, inspection.endMs] : undefined) : undefined),
   [currentHistory, stored.overview, inspection, monitoring.binding, telemetry, numeric, preference, buckets]);
   const visibleHistory = currentHistory ?? presentation;
+  const meanShown = visibleHistory?.representation === "mean";
   // Evidence and alarms name the catalogue reading the chart draws.
   const readingId = stream.id;
   // The services already watch this reading; the first running one owns the chart.
@@ -84,23 +88,32 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     && (!service || item.monitor_id === service.id)), [monitoring.evidence, service, readingId]);
   const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, readingId),
     [service?.id, monitoring.anomalies, evidence, readingId]);
-  const telemetryTimes = useMemo(() => normalizedHistory.map(([time]) => time), [normalizedHistory]);
+  // Means stand for samples that are not loaded, so a detector result cannot be matched to
+  // one. Every result of the window then counts: Auto shows the same detection as Raw.
+  const telemetryTimes = useMemo(() => {
+    const times = normalizedHistory.map(([time]) => time);
+    if (!meanShown) return times;
+    const scored = evidence.flatMap(row => { const time = getEvidenceTimeForSensor(row, readingId); return time === undefined ? [] : [time]; });
+    return [...new Set([...times, ...scored])].sort((left, right) => left - right);
+  }, [normalizedHistory, meanShown, evidence, readingId]);
+  const detectionTimes = useMemo(() => meanShown ? telemetryTimes.filter(time => time >= cutoff) : undefined,
+    [meanShown, telemetryTimes, cutoff]);
   const collectedTimes = useMemo(() => monitoring.telemetry.map((point) => epochMilliseconds(point.timestamp))
     .filter((time) => time >= cutoff), [monitoring.telemetry, cutoff]);
   const panes = useDetectorPanes({ telemetryType: readingId, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
     service, selectionKey: `${stream.id}\u0000${service?.id ?? ""}` });
   const { detectors, selectedDetectorIds, pending } = panes;
   const detectorInputs = useMemo(() => {
-    const first = telemetry[0]?.[0], last = telemetry[telemetry.length - 1]?.[0];
+    const first = meanShown ? cutoff : telemetry[0]?.[0], last = meanShown ? Infinity : telemetry[telemetry.length - 1]?.[0];
     return service && first !== undefined && last !== undefined
       ? buildDetectorInputSeries(evidence, row => getEvidenceTimeForSensor(row, readingId), [first, last]) : [];
-  }, [service, evidence, readingId, telemetry]);
+  }, [service, evidence, readingId, telemetry, meanShown, cutoff]);
   const model = useMemo(() => buildTelemetryChartModel({
     telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,
-    telemetry, presentation, detectors, selectedDetectorIds,
+    telemetry, presentation, detectionTimes, detectors, selectedDetectorIds,
     pendingTelemetryTimestamps: pending, detectorInputs,
     anomalyMarkers: createAnomalyMarkers(history, filterAnomalies(anomalies, readingId, new Date(cutoff))),
-  }), [readingId, stream.label, stream.unit, colors.primary, telemetry, presentation, detectors,
+  }), [readingId, stream.label, stream.unit, colors.primary, telemetry, presentation, detectionTimes, detectors,
     selectedDetectorIds, pending, detectorInputs, history, anomalies, cutoff]);
   // Stable between renders, so the inspect callback below is too.
   const extent = stored.overview?.extent;
@@ -108,11 +121,19 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const resolution = visibleHistory?.representation === "mean" ? `${intervalLabel(visibleHistory.interval_ms)} mean · min–max` : "";
   const description = `${stream.label}. ${visibleHistory?.sample_count ?? model.telemetry.data.length} received samples. ${resolution ? `${resolution}. ` : ""}Times in ${timeZone}.`
     + (model.secondarySeries.length ? " Monitoring scores and thresholds share the time axis." : "");
+  // Scores and features follow the reading into its intervals, each with the statistic it needs.
+  const displayModel = useMemo(() => {
+    if (viewPreference.mode === "raw") return model;
+    const shown = inspection ? [inspection.startMs, inspection.endMs] as const : domain;
+    const intervalMs = visibleHistory?.representation === "mean" ? visibleHistory.interval_ms
+      : shown ? historyInterval(shown[1] - shown[0], buckets, viewPreference.windowMs) : 0;
+    return summarizeDetection(model, intervalMs, buckets, shown);
+  }, [model, viewPreference.mode, viewPreference.windowMs, inspection, domain, visibleHistory, buckets]);
   const option = useMemo(() => buildTelemetryChartOption({
-    model, viewport: inspection ? { mode: "absolute", startMs: inspection.startMs, endMs: inspection.endMs } : { mode: "live" },
+    model: displayModel, viewport: inspection ? { mode: "absolute", startMs: inspection.startMs, endMs: inspection.endMs } : { mode: "live" },
     timeZone, colors, accessibleDescription: description, layout: "compact", timelineExtent: domain,
     valueType: stream.value_type === "boolean" ? "boolean" : "number",
-  }), [model, inspection, timeZone, colors, description, stream.value_type, domain]);
+  }), [displayModel, inspection, timeZone, colors, description, stream.value_type, domain]);
   const inspect = useCallback((startMs: number, endMs: number) => {
     if (!domain || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
     const start = Math.max(domain[0], startMs);
@@ -185,7 +206,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     <TelemetryEventDetails groups={events} timeZone={timeZone} unit={stream.unit} />
     {hasValues && stored.loading && <p className="ex-preview-note" role="status">Loading {preference.mode === "raw" ? "raw readings" : "history"}…</p>}
     {visibleHistory?.truncated && <p className="ex-preview-note" role="status">Showing the latest {visibleHistory.points.length.toLocaleString()} of {visibleHistory.sample_count.toLocaleString()} raw readings in this range. Zoom in to inspect earlier readings.</p>}
-    {preference.mode === "raw" && visibleHistory?.representation === "raw" && <RawHistoryValues points={visibleHistory.points} unit={stream.unit} />}
+    {preference.mode === "raw" && !stored.loading && visibleHistory?.representation === "raw" && <RawHistoryValues points={visibleHistory.points} unit={stream.unit} />}
     {stored.error && <p className="ex-preview-note" role="status">{stored.error}</p>}
     {monitoring.error && <p className="ex-preview-note" role="status">{monitoring.error}</p>}
   </section>;

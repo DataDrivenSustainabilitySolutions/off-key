@@ -270,7 +270,23 @@ their windows never restart.
   deviation, range, sum, quantile, interquartile range (IQR), median absolute
   deviation (MAD), or fitted slope of the last **Window** values. Quantiles use
   linear interpolation; MAD is unscaled. Slope measures change per observation,
-  not per second.
+  not per second. Six more statistics place the latest value in its window or
+  describe the window's shape:
+  - **zscore** is the latest value's distance from the window's mean in
+    standard deviations, and **robust_zscore** its distance from the median in
+    scaled MADs, which a few outliers in the window do not stretch. Where more
+    than half of the window holds one value, the mean absolute deviation
+    stands in for the MAD.
+  - **rank** runs from 0, the lowest value of the window, to 1, the highest;
+    equal values count half.
+  - **rms** is the root mean square, the usual size of a signal that swings
+    around 0.
+  - **skewness** is positive when the window has a tail of high values, and
+    **kurtosis** is positive when it has heavier tails than a normal
+    distribution.
+
+  A window that holds one value throughout has no spread: its scores, skewness
+  and kurtosis are 0 and its rank is 0.5.
 - **Accumulate** adds a running total, minimum or maximum. It starts with the
   first observation reaching the step, continues across checkpoint recovery,
   and starts over in a new run. A total of a 0/1 feature counts its true values.
@@ -326,6 +342,17 @@ logarithm or a square root on the feature itself, as above: the check follows a
 comparison of the feature with a number, not a flag computed from it, so
 `if(running == 1, power / dc_current, 0)` still warns that a current of 0 is
 skipped.
+
+More functions round, wrap and combine values:
+
+| Function | Result |
+| --- | --- |
+| `round(x)`, `floor(x)`, `ceil(x)` | The nearest, next lower or next higher whole number. A half rounds away from 0, so `round(2.5)` is 3. For two decimals, write `round(x * 100) / 100`. |
+| `sign(x)` | -1, 0 or 1. |
+| `mod(x, divisor)` | The remainder, with the divisor's sign: `mod(hour - 1, 24)` is 23 at hour 0. A divisor of 0 skips the observation. |
+| `mean(a, b, …)`, `sum(a, b, …)` | The mean or the sum of two or more values. |
+| `hypot(a, b, …)` | The length of a vector, `sqrt(a^2 + b^2 + …)`. |
+| `sin(x)`, `cos(x)`, `atan2(y, x)` | Angles in radians. `pi()` is π, so `sin(2 * pi() * hour / 24)` turns an hour of the day into a smooth daily cycle. |
 
 Both keep the features they use and add the result, named by **Name**, or
 `formula` and the function's name, such as `mean`, when it is empty. A second

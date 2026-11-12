@@ -11,7 +11,7 @@ the steps from here.
 
 import math
 from array import array
-from bisect import bisect_left, insort
+from bisect import bisect_left, bisect_right, insort
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
@@ -70,8 +70,13 @@ MAD_SCALE = 1.4826
 REJECTION_REASONS = ("non_finite", "out_of_domain", "out_of_range")
 _CHANGE_SUFFIXES = {"difference": "diff", "percent": "pct", "lag": "lag"}
 _ORDERED_STATISTICS = frozenset(
-    {"median", "min", "max", "range", "quantile", "iqr", "mad"}
+    {
+        *("median", "min", "max", "range", "quantile", "iqr", "mad"),
+        *("robust_zscore", "rank"),
+    }
 )
+# Scales a mean absolute deviation to the standard deviation of normal data.
+MEAN_DEVIATION_SCALE = math.sqrt(math.pi / 2)
 
 State = tuple[Any, ...]
 Bounds = tuple[float | None, float | None]
@@ -261,9 +266,7 @@ class Rolling(Kernel):
             case "mean":
                 return math.fsum(window) / size
             case "std":
-                mean = math.fsum(window) / size
-                deviations = [item - mean for item in window]
-                return math.sqrt(math.sumprod(deviations, deviations) / (size - 1))
+                return _root_mean_square(_deviations(window), size - 1)
             case "median":
                 if size % 2:
                     return ordered[middle]
@@ -284,10 +287,77 @@ class Rolling(Kernel):
                 return _quantile(ordered, 0.75) - _quantile(ordered, 0.25)
             case "mad":
                 return _median_deviation(ordered, _quantile(ordered, 0.5))
-        return math.sumprod(self._positions, window) / self._spread
+            case "slope":
+                return math.sumprod(self._positions, window) / self._spread
+            case "rank":
+                # Values below the latest one, and half of those equal to it.
+                below = bisect_left(ordered, window[-1])
+                equal = bisect_right(ordered, window[-1]) - below
+                return (below + (equal - 1) / 2) / (self.size - 1)
+            case "robust_zscore":
+                return _robust_score(window, ordered)
+            case "rms":
+                # The root lies between the smallest and the largest magnitude,
+                # which is the range the compiler passes on; rounding may not.
+                root = _root_mean_square(window, self.size)
+                return max(root, min(map(abs, window)))
+        return self._moment_statistic(window)
+
+    def _moment_statistic(self, window: array) -> float:
+        """zscore, skewness or excess kurtosis; 0 for a window of one value."""
+        size = self.size
+        deviations = _deviations(window)
+        # All three compare deviations with each other, so the largest one
+        # can stand for 1 and no power of them overflows or vanishes.
+        largest = max(map(abs, deviations))
+        if largest == 0:
+            return 0.0
+        unit = [item / largest for item in deviations]
+        second = math.sumprod(unit, unit) / size
+        if self.statistic == "zscore":
+            score = unit[-1] / math.sqrt(second * size / (size - 1))
+        elif self.statistic == "skewness":
+            third = math.fsum(item * item * item for item in unit) / size
+            score = third / second**1.5
+        else:
+            squares = [item * item for item in unit]
+            score = math.sumprod(squares, squares) / size / second**2 - 3
+        # No window exceeds these limits; rounding near a flat window may.
+        low, high = _moment_limits(self.statistic, size)
+        return min(max(score, low), high)
 
     def accepts(self, state: State) -> bool:
         return _window_state(state, self.size, 2 if self.ordered else 1)
+
+
+def _deviations(window) -> list[float]:
+    """Each value's distance from the mean of the window; 0 in a flat window.
+
+    The mean of large values that differ little rounds to a value next to
+    them, which would move every distance by as much as the values differ.
+    Values on one side of 0 are therefore measured from the smallest one
+    first, and the mean is taken of what remains.
+    """
+    low, high = min(window), max(window)
+    if low == high:
+        return [0.0] * len(window)
+    start = low if low > 0 or high < 0 else 0.0
+    offsets = [item - start for item in window]
+    mean = math.fsum(offsets) / len(offsets)
+    return [item - mean for item in offsets]
+
+
+def _root_mean_square(values, divisor: int) -> float:
+    """The root of the sum of squares over divisor.
+
+    The largest magnitude stands for 1, so the squares of very large or very
+    small values neither overflow nor vanish where their root does not.
+    """
+    largest = max(map(abs, values))
+    if largest == 0:
+        return 0.0
+    unit = [item / largest for item in values]
+    return largest * math.sqrt(math.sumprod(unit, unit) / divisor)
 
 
 def _quantile(ordered, fraction: float) -> float:
@@ -324,6 +394,40 @@ def _median_deviation(ordered: array, centre: float) -> float:
     return 0.5 * _deviation(ordered, centre, size // 2) + 0.5 * middle
 
 
+def _robust_score(window: array, ordered: array) -> float:
+    """The latest value's distance from the median in scaled MADs.
+
+    More than half of a window can hold one value, which makes the MAD 0;
+    the mean absolute deviation then takes its place, scaled alike, so a
+    value that differs still stands out. A window of one value gives 0.
+    """
+    median = _quantile(ordered, 0.5)
+    distance = window[-1] - median
+    spread = MAD_SCALE * _median_deviation(ordered, median)
+    if spread == 0:
+        mean_deviation = math.fsum(abs(item - median) for item in window)
+        spread = MEAN_DEVIATION_SCALE * mean_deviation / len(window)
+    return distance / spread if spread else 0.0
+
+
+def _moment_limits(statistic: str, size: int) -> tuple[float, float]:
+    """The values a statistic of n values can take, whatever the values."""
+    if statistic == "zscore":
+        # Samuelson: no value lies more than (n - 1) / sqrt(n) deviations out.
+        limit = (size - 1) / math.sqrt(size)
+        return -limit, limit
+    if statistic == "skewness":
+        limit = (size - 2) / math.sqrt(size - 1)
+        return -limit, limit
+    # Excess kurtosis; a window of one value gives 0, above -2.
+    return -2.0, max(size - 5 + 1 / (size - 1), 0.0)
+
+
+def _carried(state: State) -> State:
+    """Checkpoints from before totals kept a carry hold (seen, previous)."""
+    return (*state, 0.0) if len(state) == 2 else state
+
+
 class Accumulate(Kernel):
     """A constant-size running total or extreme, committed with the observation.
 
@@ -338,7 +442,7 @@ class Accumulate(Kernel):
         return (False, 0.0, 0.0)
 
     def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        seen, previous, carry = state
+        seen, previous, carry = _carried(state)
         if not seen:
             return (True, value, 0.0), value
         if self.function != "sum":
@@ -353,6 +457,7 @@ class Accumulate(Kernel):
         return (True, total, carry), result
 
     def accepts(self, state: State) -> bool:
+        state = _carried(state)
         return (
             len(state) == 3
             and isinstance(state[0], bool)
@@ -597,6 +702,15 @@ def _rolling_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
         )
     if statistic in {"range", "iqr", "mad"} and low is not None and high is not None:
         return 0.0, high - low
+    if statistic in {"zscore", "skewness", "kurtosis"}:
+        size = _setting("prepare.rolling", params, "window_size")
+        return _moment_limits(statistic, size)
+    if statistic == "rank":
+        return 0.0, 1.0
+    if statistic == "robust_zscore":
+        return None, None
+    if statistic == "rms":
+        return _magnitude(bounds)
     return 0.0, None
 
 

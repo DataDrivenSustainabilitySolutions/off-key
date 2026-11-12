@@ -69,6 +69,8 @@ function scopeSummary(
 const STATISTICS: Record<string, string> = {
   mean: "Mean", median: "Median", min: "Minimum", max: "Maximum", std: "Standard deviation", range: "Range",
   sum: "Sum", quantile: "Quantile", iqr: "Interquartile range", mad: "Median absolute deviation", slope: "Slope per observation",
+  zscore: "Z-score", robust_zscore: "Robust z-score", rank: "Rank", rms: "Root mean square",
+  skewness: "Skewness", kurtosis: "Excess kurtosis",
 };
 const AGGREGATES: Record<string, string> = { ...STATISTICS, sum: "Sum" };
 const FUNCTIONS: Record<string, string> = {
@@ -103,8 +105,12 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       if (value("mode") === "lag") return `Value ${count(lag, "observation")} back`;
       return `${value("mode") === "percent" ? "Percent change" : "Difference"} over ${count(lag, "observation")}`;
     }
-    case "prepare.rolling":
-      return `${STATISTICS[String(value("statistic"))] ?? "Mean"}${value("statistic") === "quantile" ? ` ${number(amount("quantile", 0.5))}` : ""} of last ${number(amount("window_size", 60))}`;
+    case "prepare.rolling": {
+      const statistic = String(value("statistic"));
+      // A score or a rank places the latest value within the window; the rest describe the window.
+      const within = ["zscore", "robust_zscore", "rank"].includes(statistic);
+      return `${STATISTICS[statistic] ?? "Mean"}${statistic === "quantile" ? ` ${number(amount("quantile", 0.5))}` : ""} ${within ? "within" : "of"} last ${number(amount("window_size", 60))}`;
+    }
     case "prepare.accumulate":
       return `Running ${value("function") === "sum" ? "total" : value("function") === "min" ? "minimum" : "maximum"} since the first accepted observation`;
     case "prepare.constant":

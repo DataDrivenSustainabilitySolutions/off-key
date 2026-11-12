@@ -101,7 +101,7 @@ def pipeline_components() -> list[PipelineComponent]:
             "prepare.rolling",
             "transform",
             "Rolling statistic",
-            "Sum, quantile, spread, trend and other statistics of recent values.",
+            "Sum, quantile, spread, trend, shape and scores of recent values.",
         ),
         (
             "prepare.math",

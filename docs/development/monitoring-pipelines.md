@@ -255,7 +255,21 @@ for 0.999, rounded to six decimals of a percent; `defaultSuffix` in
 `scope.ts` derives the same name.
 
 Rolling statistics also support sum, linearly interpolated quantiles, IQR,
-unscaled MAD and least-squares slope per observation. The `quantile` setting is
+unscaled MAD and least-squares slope per observation. `zscore`,
+`robust_zscore` and `rank` place the latest value in the window, and `rms`,
+`skewness` and `kurtosis` (excess, population moments) describe it. The three
+moment statistics divide the deviations by the largest one first, so no power
+overflows or vanishes, and are clamped to the limits no window of n values
+exceeds: (n - 1) / sqrt(n) for a z-score, (n - 2) / sqrt(n - 1) for skewness
+and n - 5 + 1 / (n - 1) for excess kurtosis. These limits are the features'
+known ranges, and `rank` has [0, 1]. A flat window gives 0, and 0.5 for
+`rank`. Deviations from the mean, also for `std`, come from `_deviations()`:
+a window on one side of 0 is measured from its smallest value before the mean
+is taken, because the mean of large values that differ by a few floats rounds
+to one of them. `std` and `rms` take their root in `_root_mean_square()` with
+the largest magnitude standing for 1, and `rms` never falls below the
+smallest magnitude in its window, which is the lower end of its known range. `robust_zscore` falls back from 1.4826 x MAD to sqrt(pi / 2) x the mean
+absolute deviation where the MAD is 0. The `quantile` setting is
 normalized away for every other statistic, preserving existing executable
 fingerprints. MAD and Despike find the median distance by binary search in the
 sorted window, since the values nearest the median lie side by side there, so
@@ -301,6 +315,15 @@ check that any text parses or fails with `FormulaError`, that evaluation fails
 only with `PrepareFailure`, that every value lies in the inferred range, also
 behind guards of the shape the analysis narrows on, and that a value outside a
 function's domain is never skipped without a warning.
+
+Further functions take numbers only: `sign`, `floor`, `ceil`, `round` (a
+half away from 0), `mod` (floored, with the divisor's sign; a divisor that can
+be 0 warns like a division), `sin`, `cos`, `atan2`, `hypot`, `mean`, `sum` and
+`pi()`. A bare `pi` is a feature name, and an unknown one offers `pi()`. Each
+has a range: `sin` and `cos` [-1, 1], `mod` between 0 and its divisor, `atan2`
+by the half-planes its point can lie in. Left of the origin a y of 0 gives pi
+or -pi by its sign, and -0.0 counts as 0 in a range, so only a y that stays
+off 0 narrows there.
 
 The numeric `if(condition, when_true, when_false)` function evaluates only its
 selected branch. Its first argument must be a condition and both remaining

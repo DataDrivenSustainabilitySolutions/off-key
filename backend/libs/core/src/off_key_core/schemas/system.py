@@ -33,9 +33,20 @@ class SystemModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SourceAppearance(SystemModel):
+    """Presentation metadata only; icon names resolve to trusted client SVGs."""
+
+    icon: str | None = Field(default=None, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")
+    color: (
+        Literal["slate", "sage", "teal", "blue", "lavender", "ochre", "clay", "rose"]
+        | None
+    ) = None
+
+
 class NamedEntity(SystemModel):
     id: EntityId = Field(default_factory=lambda: str(uuid4()))
     label: str = Field(min_length=1, max_length=120)
+    appearance: SourceAppearance | None = None
 
     @field_validator("id")
     @classmethod
@@ -215,6 +226,18 @@ class SystemGroup(NamedEntity):
     member_ids: list[EntityId] = Field(default_factory=list, max_length=8192)
 
 
+class TopicAppearance(SystemModel):
+    broker_id: EntityId
+    # Empty is the first level of an absolute MQTT path, e.g. /sensors/room.
+    topic: str = Field(max_length=512)
+    appearance: SourceAppearance
+
+    @field_validator("topic")
+    @classmethod
+    def concrete_topic(cls, value: str) -> str:
+        return SystemStream.concrete_topic(value)
+
+
 class SystemDocument(SystemModel):
     schema_version: Literal[1] = 1
     format: Literal["aberration-system"] = "aberration-system"
@@ -229,6 +252,9 @@ class SystemDocument(SystemModel):
         default_factory=list, max_length=4096, **public("readings", "streams")
     )
     groups: list[SystemGroup] = Field(default_factory=list, max_length=128)
+    topic_appearances: list[TopicAppearance] = Field(
+        default_factory=list, max_length=8192
+    )
 
     @field_validator("label")
     @classmethod
@@ -257,6 +283,16 @@ class SystemDocument(SystemModel):
         self._validate_device_parents(devices)
         self._validate_stream_references(connections, set(devices))
         self._validate_request_paths()
+        topic_keys = set()
+        for item in self.topic_appearances:
+            key = (item.broker_id, item.topic)
+            if item.broker_id not in connections:
+                raise ValueError("Topic appearance broker does not exist")
+            if key in topic_keys:
+                raise ValueError(
+                    "Topic appearances must be unique per broker and topic"
+                )
+            topic_keys.add(key)
         if any(f"group:{group.id}" in members for group in self.groups):
             raise ValueError("An entity ID conflicts with a collapsed group identity")
         self._validate_group_members(members)

@@ -340,6 +340,20 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
         changed.streams[0].topic = "sensors/office/temperature"
         changed.streams[0].device_id = None
         changed.groups[0].color = "#abcdef"
+        from off_key_core.schemas.system import SourceAppearance, TopicAppearance
+
+        for item in [
+            *changed.connections,
+            *changed.devices,
+            *changed.streams,
+            *changed.groups,
+        ]:
+            item.appearance = SourceAppearance(icon="pump", color="sage")
+        changed.topic_appearances = [
+            TopicAppearance(
+                broker_id="broker-1", topic="sensors", appearance={"icon": "factory"}
+            )
+        ]
         saved = await service.save(
             SystemChange(expected_revision=1, document=changed),
             actor="other-admin@example.com",
@@ -353,6 +367,11 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
         assert restored.document.connections[0].host == "new.example.com"
         assert restored.document.streams[0].topic == "sensors/office/temperature"
         assert restored.document.groups[0].color == "#abcdef"
+        assert restored.document.connections[0].appearance.icon == "pump"
+        assert restored.document.devices[0].appearance.color == "sage"
+        assert restored.document.streams[0].appearance.icon == "pump"
+        assert restored.document.groups[0].appearance.color == "sage"
+        assert restored.document.topic_appearances[0].appearance.icon == "factory"
         unchanged = session.get(CollectionConfiguration, 1)
         assert unchanged.revision == 7 and unchanged.document == legacy
         assert unchanged.collection_status == {"status": "paused"}

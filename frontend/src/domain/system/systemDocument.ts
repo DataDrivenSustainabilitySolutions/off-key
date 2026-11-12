@@ -1,4 +1,5 @@
 import type { CollectionPolicy } from "@/types/collection";
+import { SOURCE_COLORS, type SourceAppearance, type TopicAppearance } from "@/types/source-appearance";
 import type {
   SystemConnection,
   SystemDevice,
@@ -109,6 +110,34 @@ function policy(value: unknown, path: string): CollectionPolicy {
   };
 }
 
+function appearance(value: unknown, path: string): { appearance?: SourceAppearance } {
+  if (value === undefined || value === null) return {};
+  const item = object(value, path, ["icon", "color"]);
+  const result: SourceAppearance = {};
+  if (item.icon !== undefined && item.icon !== null) {
+    const icon = text(item.icon, `${path}.icon`, 40);
+    if (!/^[a-z][a-z0-9-]*$/.test(icon)) fail(`${path}.icon`, "use an icon name");
+    result.icon = icon;
+  }
+  if (item.color !== undefined && item.color !== null) {
+    if (!SOURCE_COLORS.some(color => color === item.color))
+      fail(`${path}.color`, "use a colour from the icon palette");
+    result.color = item.color as SourceAppearance["color"];
+  }
+  return Object.keys(result).length ? { appearance: result } : {};
+}
+
+function topicAppearance(value: unknown, index: number): TopicAppearance {
+  const path = `topic_appearances[${index}]`;
+  const item = object(value, path, ["broker_id", "topic", "appearance"]);
+  const topic = text(item.topic, `${path}.topic`, 512, true);
+  if (/[+#]/.test(topic) || new TextEncoder().encode(topic).length > 512)
+    fail(`${path}.topic`, "use a concrete MQTT path of at most 512 UTF-8 bytes");
+  if (!record(item.appearance)) fail(`${path}.appearance`, "expected an object");
+  return { broker_id: id(item.broker_id, `${path}.broker_id`), topic,
+    appearance: appearance(item.appearance, `${path}.appearance`).appearance ?? {} };
+}
+
 function connection(value: unknown, index: number): SystemConnection {
   const path = `brokers[${index}]`;
   const item = object(value, path, [
@@ -121,6 +150,7 @@ function connection(value: unknown, index: number): SystemConnection {
     "tls",
     "websocket_path",
     "credential_ref",
+    "appearance",
   ]);
   const protocol = item.protocol ?? "mqtt";
   if (protocol !== "mqtt" && protocol !== "http")
@@ -169,6 +199,7 @@ function connection(value: unknown, index: number): SystemConnection {
   if (protocol === "http" && transport !== "tcp")
     fail(`${path}.transport`, "an HTTP source has no MQTT transport");
   return {
+    ...appearance(item.appearance, `${path}.appearance`),
     id: id(item.id, `${path}.id`),
     label: text(item.label, `${path}.label`, 120).trim(),
     protocol,
@@ -197,10 +228,12 @@ function device(value: unknown, index: number): SystemDevice {
     "broker_id",
     "parent_id",
     "kind",
+    "appearance",
   ]);
   const connectionId = optionalId(item.broker_id, `${path}.broker_id`);
   const parentId = optionalId(item.parent_id, `${path}.parent_id`);
   return {
+    ...appearance(item.appearance, `${path}.appearance`),
     id: id(item.id, `${path}.id`),
     label: text(item.label, `${path}.label`, 120).trim(),
     kind: text(item.kind ?? "device", `${path}.kind`, 60).trim(),
@@ -232,6 +265,7 @@ function stream(value: unknown, index: number): SystemStream {
     "unit",
     "category",
     "policy",
+    "appearance",
   ]);
   const topic = text(item.topic, `${path}.topic`, 512);
   if (new TextEncoder().encode(topic).length > 512)
@@ -245,6 +279,7 @@ function stream(value: unknown, index: number): SystemStream {
   const timestamp = pointer(item.timestamp_pointer, `${path}.timestamp_pointer`);
   const deviceId = optionalId(item.device_id, `${path}.device_id`);
   return {
+    ...appearance(item.appearance, `${path}.appearance`),
     id: id(item.id, `${path}.id`),
     label: text(item.label, `${path}.label`, 120).trim(),
     broker_id: id(item.broker_id, `${path}.broker_id`),
@@ -265,13 +300,14 @@ function stream(value: unknown, index: number): SystemStream {
 
 function group(value: unknown, index: number): SystemGroup {
   const path = `groups[${index}]`;
-  const item = object(value, path, ["id", "label", "color", "member_ids"]);
+  const item = object(value, path, ["id", "label", "color", "member_ids", "appearance"]);
   if (
     item.color !== undefined &&
     (typeof item.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(item.color))
   )
     fail(`${path}.color`, "use a six-digit hexadecimal colour");
   return {
+    ...appearance(item.appearance, `${path}.appearance`),
     id: id(item.id, `${path}.id`),
     label: text(item.label, `${path}.label`, 120).trim(),
     member_ids: list(item.member_ids, `${path}.member_ids`, 8192).map(
@@ -292,6 +328,7 @@ export function validateSystemDocument(value: unknown): SystemDocument {
     "devices",
     "readings",
     "groups",
+    "topic_appearances",
   ]);
   if (item.format !== "aberration-system" || item.schema_version !== 1)
     fail("system", "expected aberration-system schema version 1");
@@ -304,6 +341,9 @@ export function validateSystemDocument(value: unknown): SystemDocument {
     devices: list(item.devices, "devices", 2048).map(device),
     readings: list(item.readings, "readings", 4096).map(stream),
     groups: list(item.groups, "groups", 128).map(group),
+    ...(item.topic_appearances === undefined ? {} : {
+      topic_appearances: list(item.topic_appearances, "topic_appearances", 8192).map(topicAppearance),
+    }),
   };
   const allIds = new Set<string>();
   for (const entity of [
@@ -316,6 +356,13 @@ export function validateSystemDocument(value: unknown): SystemDocument {
     allIds.add(entity.id);
   }
   const connectionIds = new Set(document.brokers.map((entry) => entry.id));
+  const topicKeys = new Set<string>();
+  for (const entry of document.topic_appearances ?? []) {
+    const key = JSON.stringify([entry.broker_id, entry.topic]);
+    if (!connectionIds.has(entry.broker_id)) fail("topic appearance", "broker does not exist");
+    if (topicKeys.has(key)) fail("topic appearance", "duplicate broker and topic");
+    topicKeys.add(key);
+  }
   const devices = new Map(document.devices.map((entry) => [entry.id, entry]));
   for (const entry of document.devices) {
     if (entry.broker_id && !connectionIds.has(entry.broker_id))
@@ -510,6 +557,9 @@ export function removeSystemEntity(
   return validateSystemDocument({
     ...document,
     brokers: document.brokers.filter((entry) => !removed.has(entry.id)),
+    ...(document.topic_appearances ? {
+      topic_appearances: document.topic_appearances.filter(entry => !removed.has(entry.broker_id)),
+    } : {}),
     devices: document.devices.filter((entry) => !removed.has(entry.id)),
     readings: document.readings.filter((entry) => !removed.has(entry.id)),
     groups: document.groups

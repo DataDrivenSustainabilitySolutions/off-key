@@ -1,6 +1,9 @@
 import type { SystemDocument } from "@/types/system";
+import type { SourceAppearance } from "@/types/source-appearance";
 
 export type ExplorerNode = {
+  appearance?: SourceAppearance;
+  color?: string;
   key: string;
   kind: "root" | "connection" | "device" | "topic" | "reading" | "unassigned";
   label: string;
@@ -65,6 +68,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
   const topicIdentities = new Set<string>();
   const bindingSearch = new Map<string, string[]>();
   const topicContexts = new Map<string, string>();
+  const topicAppearances = new Map((document.topic_appearances ?? []).map(item => [identity(item.broker_id, item.topic), item.appearance]));
 
   const addObjectKey = (objectId: string, key: string) => {
     const references = objectKeys.get(objectId);
@@ -102,6 +106,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
       objectId: connection.id,
       entityKind: "connection",
       connectionId: connection.id,
+      appearance: connection.appearance,
     });
   }
   for (const device of document.devices) {
@@ -127,6 +132,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
         entityKind: "device",
         connectionId: connectionId ?? undefined,
         deviceId: device.id,
+        appearance: device.appearance,
       });
     }
   }
@@ -186,6 +192,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
           connectionId: stream.broker_id,
           deviceId: stream.device_id,
           topic: prefix,
+          appearance: topicAppearances.get(identity(stream.broker_id, prefix)),
         });
         topicContexts.set(key, contextKey);
       }
@@ -206,6 +213,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     if (endpoint.streamIds.length === 1 && endpoint.children.length === 0) {
       endpoint.objectId = endpoint.streamIds[0]!;
       endpoint.entityKind = "stream";
+      endpoint.appearance = streams.get(endpoint.objectId)!.appearance ?? endpoint.appearance;
       // The explorer shows the reading's name here rather than its topic segment.
       endpoint.searchLabel = streams.get(endpoint.objectId)!.label.toLocaleLowerCase();
       addObjectKey(endpoint.objectId, endpoint.key);
@@ -221,6 +229,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
         deviceId: stream.device_id,
         topic: stream.topic,
         streamIds: [stream.id],
+        appearance: stream.appearance,
       });
       bindingSearch.set(node.key, [stream.label, stream.payload_pointer ?? "", stream.category, stream.value_type, stream.unit ?? ""]);
       topicContexts.set(node.key, topicContexts.get(endpoint.key)!);

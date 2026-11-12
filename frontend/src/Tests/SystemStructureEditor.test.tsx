@@ -185,6 +185,62 @@ describe("generic structure editing", () => {
     ).not.toHaveProperty("websocket_path");
   });
 
+  it("creates an HTTP API connection with a scheme in place of the MQTT transport", async () => {
+    const props = common();
+    render(<SystemStructureEditor {...props} document={createEmptySystem("Weather")} kind="connection" />);
+    fireEvent.change(screen.getByLabelText("connection name"), { target: { value: "Weather API" } });
+    fireEvent.change(screen.getByLabelText("Connection type"), { target: { value: "http" } });
+    expect(screen.queryByLabelText("Transport")).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Use TLS" })).toBeNull();
+    const port = () => (screen.getByLabelText("Port") as HTMLInputElement).value;
+    expect(port()).toBe("443");
+    // The port follows the scheme until another one is typed in.
+    fireEvent.change(screen.getByLabelText("Scheme"), { target: { value: "http" } });
+    expect(port()).toBe("80");
+    fireEvent.change(screen.getByLabelText("Port"), { target: { value: "8080" } });
+    fireEvent.change(screen.getByLabelText("Scheme"), { target: { value: "https" } });
+    expect(port()).toBe("8080");
+    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "api.example.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(props.onDone).toHaveBeenCalled());
+    expect((props.onSave.mock.calls[0]![0] as SystemDocument).brokers).toEqual([
+      expect.objectContaining({ label: "Weather API", protocol: "http", host: "api.example.test", port: 8080, transport: "tcp", tls: true }),
+    ]);
+  });
+
+  it("asks an HTTP reading for a request path and an optional source timestamp", async () => {
+    const system = fixture();
+    system.brokers[1] = { ...system.brokers[1]!, protocol: "http", port: 443, tls: true };
+    const props = common();
+    render(<SystemStructureEditor {...props} document={system} kind="stream" />);
+    expect(screen.queryByLabelText("Source timestamp")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Connection"), { target: { value: "broker:west" } });
+    expect(screen.queryByLabelText("MQTT topic")).toBeNull();
+    fireEvent.change(screen.getByLabelText("stream name"), { target: { value: "Outside temperature" } });
+    fireEvent.change(screen.getByLabelText("Request path"), { target: { value: "/v1/stations/7/latest" } });
+    fireEvent.change(screen.getByLabelText("Payload field"), { target: { value: "/temperature" } });
+    fireEvent.change(screen.getByLabelText("Source timestamp"), { target: { value: "/observed_at" } });
+    // Only an HTTP reply names its own time, so the field leaves with the connection.
+    fireEvent.change(screen.getByLabelText("Connection"), { target: { value: "broker:east" } });
+    fireEvent.change(screen.getByLabelText("Connection"), { target: { value: "broker:west" } });
+    expect((screen.getByLabelText("Source timestamp") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByLabelText("Source timestamp"), { target: { value: "/observed_at" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(props.onSave).toHaveBeenCalled());
+    expect((props.onSave.mock.calls[0]![0] as SystemDocument).readings[1]).toMatchObject({
+      broker_id: "broker:west", topic: "/v1/stations/7/latest", payload_pointer: "/temperature", timestamp_pointer: "/observed_at",
+    });
+  });
+
+  it("keeps the type of a connection while readings use it", () => {
+    const type = () => screen.getByLabelText("Connection type") as HTMLSelectElement;
+    const { unmount } = render(<SystemStructureEditor {...common()} document={fixture()} kind="connection" entityId="broker:east" />);
+    expect(type().disabled).toBe(true);
+    unmount();
+    render(<SystemStructureEditor {...common()} document={fixture()} kind="connection" entityId="broker:west" />);
+    expect(type().disabled).toBe(false);
+  });
+
   it("moves a device's attached streams together while retaining IDs and topic bindings", async () => {
     const props = common();
     render(

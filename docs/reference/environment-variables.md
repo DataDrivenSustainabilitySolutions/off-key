@@ -239,8 +239,11 @@ tested main commit. Images are recorded in the verified server release; local
 | `SYSTEM_CONNECTION_CHECK_TIMEOUT_SECONDS`, `SYSTEM_CONNECTION_CHECK_CONCURRENCY` | `8`, `4` | Deadline and parallelism of an administrator's on-demand broker connection check |
 | `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY`, `SYSTEM_COLLECTION_MQTT_CA_FILE` | Empty locally; private TACTIC secrets in production | Internal EMQX publisher credentials and CA; see [Collection](../operations/system-collection.md) |
 | `SYSTEM_LIVE_CREDENTIALS` | Private JSON mapping | Credential reference to MQTT username/password |
-| `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker host to SOCKS route |
+| `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker or HTTP API host to SOCKS route |
 | `SYSTEM_BROKER_ROUTES` | `[]`; a private TACTIC secret in production | Operator broker routes: covered hosts or suffixes, SOCKS5 proxy, optional login and TLS requirement; see [Broker routes](../operations/system-collection.md#broker-routes) |
+| `SYSTEM_HTTP_ALLOWED_ORIGINS` | `[]` | Origins (`https://host` or `http://host:port`) of the HTTP APIs that may be polled; see [HTTP sources](../operations/system-collection.md#http-sources) |
+| `SYSTEM_HTTP_CREDENTIALS` | Private JSON mapping | Credential reference to a bearer token, a Basic login or a token under a named header |
+| `SYSTEM_HTTP_MIN_POLL_SECONDS` | `1` | Shortest time between two requests for one request path (1–3600) |
 
 See [Deployment modes](../operations/deployment-modes.md) and [Collection](../operations/system-collection.md) for deployment and catalog setup.
 
@@ -254,6 +257,7 @@ See [Deployment modes](../operations/deployment-modes.md) and [Collection](../op
 | No source telemetry | Catalog selection, `MQTT_BROKER_*`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |
 | Managed workload cannot start | `TACTIC_DOCKER_API_*`, `TACTIC_RADAR_DEFAULT_*` | Check TACTIC readiness, proxy access, broker, and image |
 | Routed broker has no traffic | `SYSTEM_BROKER_ROUTES` | Verify the route covers the host, the `broker-route` node identity and its network reachability |
+| HTTP source is blocked | `SYSTEM_HTTP_ALLOWED_ORIGINS`, `SYSTEM_HTTP_CREDENTIALS` | List the source's exact scheme, host and port, and define the login its credential reference names |
 
 ## RADAR configuration files
 

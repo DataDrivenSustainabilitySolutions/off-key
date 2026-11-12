@@ -107,6 +107,8 @@ CONFORMANCE = json.loads(
 def conformance_document(case: dict) -> dict:
     data = deepcopy(CONFORMANCE["base"])
     data["brokers"][0].update(case.get("connection", {}))
+    if "reading" in case:
+        data["readings"].append(case["reading"])
     if "group" in case:
         data["groups"].append(case["group"])
     return data
@@ -139,6 +141,42 @@ def test_generic_connections_accept_hostname_and_ip_addresses(host):
     data = document().model_dump(mode="json")
     data["connections"][0]["host"] = host
     assert SystemDocument.model_validate(data).connections[0].host == host
+
+
+def http_document(**connection) -> dict:
+    data = document().model_dump(mode="json")
+    del data["connections"][0]["port"]
+    data["connections"][0].update(protocol="http", **connection)
+    data["streams"][0]["topic"] = "/v1/status?unit=c"
+    return data
+
+
+@pytest.mark.parametrize(
+    ("connection", "port"),
+    [({}, 80), ({"tls": True}, 443), ({"tls": True, "port": 8443}, 8443)],
+)
+def test_an_http_source_without_a_port_uses_the_one_of_its_scheme(connection, port):
+    saved = SystemDocument.model_validate(http_document(**connection))
+    assert saved.connections[0].port == port
+    # The stored document names the port, so a later TLS change cannot move it.
+    stored = saved.model_dump(mode="json")
+    assert stored["connections"][0]["port"] == port
+    assert SystemDocument.model_validate(stored) == saved
+
+
+def test_a_source_timestamp_is_stored_only_where_one_is_set():
+    """The previous release rejects keys it does not know, and a rollback must
+    still read every catalogue that holds no HTTP source."""
+    stored = document().model_dump(mode="json")
+    assert "timestamp_pointer" not in stored["streams"][0]
+    assert stored["connections"][0]["protocol"] == "mqtt"
+
+    data = http_document()
+    data["streams"][0]["timestamp_pointer"] = "/observed_at"
+    saved = SystemDocument.model_validate(data)
+    stored = saved.model_dump(mode="json")
+    assert stored["streams"][0]["timestamp_pointer"] == "/observed_at"
+    assert SystemDocument.model_validate(stored) == saved
 
 
 @pytest.mark.parametrize(

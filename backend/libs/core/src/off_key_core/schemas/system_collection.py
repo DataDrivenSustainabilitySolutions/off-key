@@ -122,7 +122,7 @@ class SystemCollectionStream:
 
     @property
     def signature(self):
-        return (
+        signature = (
             stable_key("reading", self.definition.id),
             self.accepted_topic,
             self.definition.topic,
@@ -133,6 +133,10 @@ class SystemCollectionStream:
             self.policy.cadence,
             self.endpoint,
         )
+        # Monitors store a hash of this, so a reading without a source
+        # timestamp keeps the signature it had before that field existed.
+        pointer = self.definition.timestamp_pointer
+        return signature if pointer is None else (*signature, pointer)
 
 
 def build_bindings(

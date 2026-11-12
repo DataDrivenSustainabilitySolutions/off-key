@@ -27,9 +27,9 @@ const catalogueSummary = (document: SystemDocument, includeGroups = false) => [
   ...(includeGroups ? [itemCount(document.groups.length, "collection")] : []),
 ].join(" · ");
 const creationActions = [
-  { kind: "connection", label: "Add broker", description: "Connect an MQTT server", icon: Server },
+  { kind: "connection", label: "Add broker", description: "Connect an MQTT broker or HTTP API", icon: Server },
   { kind: "device", label: "Add entity", description: "Describe a device or asset", icon: Box },
-  { kind: "stream", label: "Add reading", description: "Register a value from a topic", icon: Radio },
+  { kind: "stream", label: "Add reading", description: "Register a value from a topic or path", icon: Radio },
   { kind: "group", label: "Add collection", description: "Organise related sources", icon: Layers },
 ] as const;
 

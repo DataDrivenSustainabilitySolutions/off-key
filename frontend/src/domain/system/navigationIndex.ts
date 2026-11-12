@@ -39,6 +39,18 @@ const naturalOrder = new Intl.Collator(undefined, {
   sensitivity: "base",
 });
 const identity = (...parts: unknown[]): string => JSON.stringify(parts);
+/**
+ * The levels of an address. An MQTT topic splits at every slash. An HTTP request
+ * path keeps its leading slash on the first level and its query on the last.
+ */
+function addressLevels(address: string, polled: boolean): string[] {
+  if (!polled || !address.startsWith("/")) return address.split("/");
+  const query = address.indexOf("?");
+  const levels = (query < 0 ? address : address.slice(0, query)).split("/").slice(1);
+  levels[0] = `/${levels[0]}`;
+  if (query >= 0) levels[levels.length - 1] += address.slice(query);
+  return levels;
+}
 const rootKey = identity("root");
 const unassignedKey = identity("unassigned");
 
@@ -48,6 +60,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
   const objectKeys = new Map<string, string[]>();
   const devices = new Map(document.devices.map((device) => [device.id, device]));
   const connections = new Set(document.brokers.map((connection) => connection.id));
+  const polled = new Set(document.brokers.filter((connection) => connection.protocol === "http").map((connection) => connection.id));
   const deviceContexts = new Map<string, Set<string | null>>();
   const topicIdentities = new Set<string>();
   const bindingSearch = new Map<string, string[]>();
@@ -162,7 +175,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     topicIdentities.add(identity(stream.broker_id, stream.topic));
     let parentKey = contextKey;
     let prefix = "";
-    const segments = stream.topic.split("/");
+    const segments = addressLevels(stream.topic, polled.has(stream.broker_id));
     for (let position = 0; position < segments.length; position += 1) {
       const segment = segments[position]!;
       prefix = position === 0 ? segment : `${prefix}/${segment}`;

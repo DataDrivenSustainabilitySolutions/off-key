@@ -22,7 +22,7 @@ Use this page for account, device, favourites, monitoring-service, and anomaly w
 | `/` | Monitoring services and selected-source evidence | Authenticated |
 | `/details/:chargerId` | Telemetry details for one charger | Authenticated |
 | `/services` | Legacy link to Monitoring | Authenticated |
-| `/sources` | Sources: configure brokers and recorded readings | Authenticated |
+| `/sources` | Sources: configure brokers, HTTP APIs and recorded readings | Authenticated |
 | `/anomalies` | Reporting: review recent anomaly events | Authenticated |
 | `/dojo` | Dojo: datasets, labels, offline runs and comparisons; `?dataset=<id>&tab=values\|runs\|compare` opens one dataset | Members who may use the Dojo |
 | `?settings=<section>` | Settings overlay above any workspace page: `account`, `preferences`, `catalogue` or `status` | Authenticated |
@@ -72,7 +72,8 @@ Brokers contain their devices, and devices may contain other devices. Below them
 come MQTT topic levels. A level without branches is shown as one row, such as
 `weather/roof`. Readings show their display name and unit; hover a row for its
 full name and MQTT address. Readings a broker receives without a device sit
-directly under the broker. Readings that have not received anything recently
+directly under the broker. An HTTP API is listed like a broker, with the levels
+of its request paths below it, such as `/v1/stations`. Readings that have not received anything recently
 stay in the tree.
 
 Search matches names, identifiers, units and full MQTT paths. Results are a flat
@@ -195,6 +196,15 @@ readings; review the affected scope before applying changes. Including readings
 added later requires an explicit opt-in. Roles that manage sources can also use **View live**
 to preview configured sources whose recording is off, and **Stop live view** to end
 that preview. Previewing does not enable background recording.
+
+**Add broker** offers two types. An **MQTT broker** sends messages on topics. An
+**HTTP API** is asked for a request path at an interval: give it a host, a port
+and a scheme, then add readings with a request path such as
+`/v1/stations/7/latest` and the payload field to read from the reply. Recording
+an HTTP API starts at one request a minute; choose another interval under
+**At intervals**. If the reply states when its value was measured, enter that
+field as the reading's **Source timestamp**, and a repeated measurement is
+recorded once. Your operator decides which APIs may be reached.
 
 ## Favourites workflow
 

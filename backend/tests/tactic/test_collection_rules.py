@@ -16,6 +16,7 @@ from off_key_core.schemas.system_collection import (
     build_bindings,
 )
 from off_key_core.utils.collection_rules import CollectionRuleResolver
+from off_key_tactic_middleware.domain import ValidationError
 from off_key_tactic_middleware.services.catalogue import (
     system_collection as collection_module,
 )
@@ -118,6 +119,19 @@ def test_excluded_additions_remain_off_after_rate_changes_and_can_be_admitted():
     assert modes(value)["power"] == "sample"
     apply_rule_edits(value, [edit(scope(), "original")])
     assert modes(value)["power"] == "original"
+
+
+def test_a_polled_source_is_recorded_at_an_interval_only():
+    value = definition()
+    value.document.connections[0].protocol = "http"
+    for target in (scope(), scope("reading", reading_id="power")):
+        with pytest.raises(ValidationError, match="Choose the interval"):
+            apply_rule_edits(value, [edit(target)])
+    assert value.rules == []
+    apply_rule_edits(value, [edit(scope(), "sample")])
+    assert set(modes(value).values()) == {"sample"}
+    apply_rule_edits(value, [edit(scope(), "off")])
+    assert set(modes(value).values()) == {"off"}
 
 
 def test_disabling_future_admission_preserves_current_members():

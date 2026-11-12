@@ -37,7 +37,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 | Entity | Primary key | Purpose |
 | --- | --- | --- |
-| `system_configuration` | `id` (singleton) | Current saved catalogue document and its revision |
+| `system_configuration` | `id` (singleton) | Current saved catalogue document and its revision. A connection's `protocol` is `mqtt` or `http`; a reading stores `timestamp_pointer` only when it has one |
 | `system_revisions` | `revision` | Every saved catalogue document, for conflict checks and history |
 | `system_collection_configuration` | `id` (singleton) | Collection policy per reading plus ingress and collector status |
 | `collection_state` | `(charger_id, sensor_key)` | Latest boolean, text and identifier values per reading |

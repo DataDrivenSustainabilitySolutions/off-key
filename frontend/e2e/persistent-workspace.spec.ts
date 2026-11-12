@@ -300,7 +300,7 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     const active = sidebar.getByRole("button", { name: "North value 01, preview", exact: true });
     const quiet = sidebar.getByRole("button", { name: "North value 02, preview", exact: true });
     await search.fill(run);
-    await expect(active.locator("svg")).toHaveAttribute("fill", "currentColor");
+    await expect(active.locator(".source-activity-dot")).toHaveClass(/is-receiving/);
     await quiet.click();
     const selection = page.url();
     await toggle.click();
@@ -348,7 +348,7 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     await toggle.click();
     await expect(sidebar.getByText("No recently active topics.", { exact: true })).toBeVisible();
     await publisher.publishAsync(fixture.streams[0]!.topic, "24", { qos: 1 });
-    await expect(active.locator("svg")).toHaveAttribute("fill", "currentColor");
+    await expect(active.locator(".source-activity-dot")).toHaveClass(/is-receiving/);
     await page.setViewportSize({ width: 320, height: 844 });
     await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await expect(toggle).toHaveAttribute("aria-pressed", "true");

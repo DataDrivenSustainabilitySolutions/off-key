@@ -48,6 +48,15 @@ class NamedEntity(SystemModel):
     label: str = Field(min_length=1, max_length=120)
     appearance: SourceAppearance | None = None
 
+    @model_serializer(mode="wrap")
+    def _stored_fields(self, handler):
+        """Keep untouched catalogues readable by releases before icon picking."""
+        data = handler(self)
+        appearance = data.get("appearance")
+        if not appearance or not any(appearance.values()):
+            data.pop("appearance", None)
+        return data
+
     @field_validator("id")
     @classmethod
     def storage_safe_id(cls, value: str) -> str:
@@ -211,7 +220,7 @@ class SystemStream(NamedEntity):
     def _stored_fields(self, handler):
         """Releases before HTTP sources reject a key they do not know, so the
         source timestamp is written only where one is set."""
-        data = handler(self)
+        data = super()._stored_fields(handler)
         if data.get("timestamp_pointer") is None:
             data.pop("timestamp_pointer", None)
         return data
@@ -255,6 +264,13 @@ class SystemDocument(SystemModel):
     topic_appearances: list[TopicAppearance] = Field(
         default_factory=list, max_length=8192
     )
+
+    @model_serializer(mode="wrap")
+    def _stored_fields(self, handler):
+        data = handler(self)
+        if not data.get("topic_appearances"):
+            data.pop("topic_appearances", None)
+        return data
 
     @field_validator("label")
     @classmethod

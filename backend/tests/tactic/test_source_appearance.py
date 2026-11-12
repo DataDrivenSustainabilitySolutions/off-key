@@ -1,5 +1,7 @@
 """Portable cosmetic metadata cannot alter recording identities or connections."""
 
+import json
+
 import pytest
 from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system import (
@@ -14,6 +16,32 @@ from off_key_core.schemas.system_collection import (
 )
 
 from tests.support.system_document import document
+
+
+@pytest.mark.parametrize("appearance", [None, SourceAppearance()])
+@pytest.mark.parametrize("by_alias", [False, True])
+def test_default_appearance_preserves_the_pre_picker_storage_format(
+    appearance, by_alias
+):
+    saved = document()
+    for item in [*saved.connections, *saved.devices, *saved.streams, *saved.groups]:
+        item.appearance = appearance
+    # Both the database document and its portable API/export form must remain
+    # readable by the older release, whose models reject unknown fields.
+    data = saved.model_dump(mode="json", by_alias=by_alias)
+    assert json.loads(saved.model_dump_json(by_alias=by_alias)) == data
+    assert "topic_appearances" not in data
+    for collection in (
+        "brokers" if by_alias else "connections",
+        "devices",
+        "readings" if by_alias else "streams",
+        "groups",
+    ):
+        assert all("appearance" not in item for item in data[collection])
+    assert (
+        SystemDocument.model_validate(data).model_dump(mode="json", by_alias=by_alias)
+        == data
+    )
 
 
 def test_appearance_roundtrips_without_changing_recording_fingerprint():

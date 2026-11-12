@@ -190,16 +190,24 @@ export function addForFeature(
 }
 
 const amount = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 4 });
-const known = (value?: number | null) =>
-  typeof value === "number" && Number.isFinite(value) ? amount.format(value) : undefined;
+/** The check writes "above 0" as the smallest positive number, as for the seconds between
+ * observations, and what is computed from it can stay as close to 0. Written out it would
+ * be hundreds of zeros, so an end this close to 0 reads as the side of 0 it is on. */
+const NEAR_ZERO = 1e-9;
+function known(value: number | null | undefined, end: "low" | "high") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value === 0 || Math.abs(value) >= NEAR_ZERO) return amount.format(value);
+  return end === "low" ? value > 0 ? "above 0" : "0" : value < 0 ? "below 0" : "0";
+}
 
-/** A feature's range as the check inferred it: "0 to 1,200", "at least 0", or nothing when unbounded. */
+/** A feature's range as the check inferred it: "0 to 1,200", "at least 0", "above 0", or
+ * nothing when unbounded. */
 export function rangeText(minimum?: number | null, maximum?: number | null) {
-  const low = known(minimum);
-  const high = known(maximum);
+  const low = known(minimum, "low");
+  const high = known(maximum, "high");
   if (low !== undefined && high !== undefined) return low === high ? `always ${low}` : `${low} to ${high}`;
-  if (low !== undefined) return `at least ${low}`;
-  if (high !== undefined) return `at most ${high}`;
+  if (low !== undefined) return low === "above 0" ? low : `at least ${low}`;
+  if (high !== undefined) return high === "below 0" ? high : `at most ${high}`;
 }
 
 /** Whether a Gate can hold observations back before a step reaches it: the step is a

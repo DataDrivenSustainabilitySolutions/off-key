@@ -120,7 +120,10 @@ Authorization: Bearer <token>
 ### Catalogue, recording and live views
 
 The catalogue `document` holds `brokers`, `devices`, `readings` and `groups`;
-devices and readings name their broker as `broker_id`. Changes need
+devices and readings name their broker as `broker_id`. A broker's `protocol` is
+`mqtt` or `http`. On an HTTP broker a reading's `topic` is its request path,
+and the reading may carry a `timestamp_pointer`; the field is absent from
+readings that have none. Changes need
 `manage_sources`, which TACTIC checks.
 
 | Method | Path | Purpose | Access |
@@ -128,7 +131,7 @@ devices and readings name their broker as `broker_id`. Changes need
 | `GET` | `/catalogue` | Saved document, revision, how each reading is recorded (`runtime.bindings`) and `can_edit` | Member |
 | `PUT` | `/catalogue` | Save structural changes at `expected_revision` | `manage_sources` |
 | `GET` | `/catalogue/revisions` | Saved catalogue revisions | Member |
-| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes | `manage_sources` |
+| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes. For an HTTP broker, one `GET` for the path of its first reading | `manage_sources` |
 | `POST` | `/brokers/{broker_id}/reconnect` | Restart recording from a broker now, resetting its retry backoff | `manage_sources` |
 | `PUT` | `/recording` | Apply confirmed recording policies for `reading_ids`, or `rule_changes` for a broker, topic or reading scope | `manage_sources` |
 | `POST` | `/recording/preview` | Review a recording change and the monitors it affects | `manage_sources` |
@@ -193,6 +196,9 @@ here; changes need `manage_monitors`.
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint | Path ids |
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node | `selected_node_id` |
 | `GET` | `/pipeline-components` | Components a design may use, with parameter schemas, and the starting templates | None |
+| `GET` | `/pipeline-blocks` | Every saved block, by name: `items`, each with `id`, `name`, `description`, `steps` and `created_at` | None |
+| `POST` | `/pipeline-blocks` | Save a chain of steps as a block (HTTP 201). HTTP 409 when the name is taken or the library holds 100 blocks; 422 for a step a block cannot hold, such as a detector | Body: `name`, optional `description`, `steps` (1 to 16, each with `component` and optional `contract_version`, `params`, `label`) |
+| `DELETE` | `/pipeline-blocks/{block_id}` | Delete a block (HTTP 204); designs keep the steps they copied from it | Path: `block_id` |
 | `GET` | `/forecast-models` | Models of the forecast service that pretrained forecaster steps use, each with its download `status`, `progress` and `error`; `service` is `not_deployed` or `unreachable` when there is none to list | None |
 | `POST` | `/forecast-models/downloads` | Have the forecast service download a model's weights (HTTP 202); poll the list for progress | Body: `model` |
 | `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
@@ -450,7 +456,7 @@ a `lease` and a monitor is a `service`.
 | `GET` | `/system` | Saved catalogue document, revision and how each reading is recorded |
 | `PUT` | `/system` | Save structural catalogue changes at an expected revision |
 | `GET` | `/system/revisions` | Saved catalogue revisions |
-| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes |
+| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes. For an HTTP broker, one `GET` |
 | `POST` | `/system/connections/reconnect` | Retry a recorded broker now instead of waiting for its backoff |
 | `PUT` | `/system/collection` | Apply confirmed recording policies |
 | `POST` | `/system/collection/preview` | Review a recording change and the monitors it affects |
@@ -488,6 +494,9 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/monitors/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run |
 | `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint |
 | `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node |
+| `GET` | `/monitors/pipeline-blocks` | Every saved block, by name |
+| `POST` | `/monitors/pipeline-blocks` | Save a chain of steps as a block |
+| `DELETE` | `/monitors/pipeline-blocks/{block_id}` | Delete a block; designs keep the steps they copied from it |
 | `POST` | `/monitors/pipeline-activations` | Run a published revision as a monitor |
 | `GET` | `/monitors/pipeline-activations/{activation_id}` | Progress of an activation: phase, monitor and issues |
 | `DELETE` | `/monitors/pipeline-activations/{activation_id}` | Cancel an activation that has not finished |

@@ -218,6 +218,10 @@ async def test_denied_connection_stops_without_retry_and_explicit_retry_starts_f
         ("number", "", b"-4", -4),
         ("boolean", "/values/active", b'{"values":{"active":false}}', False),
         ("identifier", "/id", b'{"id":"0012"}', "0012"),
+        # Device APIs often send a number as text.
+        ("number", "/power", b'{"power":"230.5"}', 230.5),
+        ("number", None, b'"-4e2"', -400.0),
+        ("number", "/power", b'{"power":" 7 "}', 7.0),
     ],
 )
 def test_typed_values_and_json_pointer(kind, pointer, payload, expected):
@@ -247,6 +251,15 @@ def test_typed_values_and_json_pointer(kind, pointer, payload, expected):
         ("number", "/-", b"[1,2]"),
         ("number", None, b"1" * 65537),
         ("number", None, b"[1,2]"),
+        # Text counts as a number only where JSON would read the same number.
+        ("number", None, b'"12,5"'),
+        ("number", None, b'"0x1F"'),
+        ("number", None, b'"007"'),
+        ("number", None, b'"1e999"'),
+        ("number", None, b'"NaN"'),
+        ("number", None, b'""'),
+        ("number", None, b'"1_000"'),
+        ("boolean", None, b'"true"'),
     ],
 )
 def test_invalid_and_oversized_values_are_rejected(kind, pointer, payload):

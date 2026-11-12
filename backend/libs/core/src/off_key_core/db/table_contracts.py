@@ -199,6 +199,14 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
         ),
         Column("threshold", Float, nullable=False),
         Column("alarm", Boolean, nullable=False, default=False),
+        # The policy fired and a Mute alarms step kept the alarm from being raised.
+        Column(
+            "muted",
+            Boolean,
+            nullable=False,
+            default=False,
+            server_default=text("false"),
+        ),
         Column(
             "created",
             DateTime(timezone=True),

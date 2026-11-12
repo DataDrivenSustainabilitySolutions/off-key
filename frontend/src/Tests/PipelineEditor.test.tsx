@@ -37,6 +37,7 @@ vi.mock("@/features/pipelines/api", () => ({
     create: vi.fn(),
     revision: vi.fn(),
     apply: vi.fn(), activation: vi.fn(), cancel: vi.fn(), list: vi.fn(), catalog: vi.fn(), service: vi.fn(),
+    blocks: vi.fn(),
   },
 }));
 
@@ -156,6 +157,7 @@ beforeEach(() => {
   vi.mocked(pipelinesApi.get).mockResolvedValue(pipeline());
   vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: true, definition: normalizeDefinition(definition), issues: [], features: {}, provenance_complete: true }));
   vi.mocked(pipelinesApi.list).mockResolvedValue({ items: [], next_offset: null });
+  vi.mocked(pipelinesApi.blocks).mockResolvedValue([]);
   vi.mocked(pipelinesApi.revision).mockImplementation(async (_id, id) => {
     if (id !== "revision") throw new ApiRequestError("Published revision not found", 404);
     return { ...pipeline().revisions[0]!, definition };

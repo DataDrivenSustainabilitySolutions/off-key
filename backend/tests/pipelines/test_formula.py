@@ -123,6 +123,109 @@ def test_conditionally_invalid_values_warn_without_blocking_the_valid_branch():
 
 
 @pytest.mark.parametrize(
+    ("text", "row", "expected"),
+    [
+        ("sign(x)", {"x": -3.0}, -1),
+        ("sign(x)", {"x": 0.0}, 0),
+        ("sign(x)", {"x": 0.2}, 1),
+        ("floor(x)", {"x": -1.5}, -2),
+        ("ceil(x)", {"x": -1.5}, -1),
+        # A half rounds away from 0, and the largest value below a half down.
+        ("round(x)", {"x": 2.5}, 3),
+        ("round(x)", {"x": -2.5}, -3),
+        ("round(x)", {"x": 0.49999999999999994}, 0),
+        ("round(x * 100) / 100", {"x": 3.14159}, 3.14),
+        # The remainder takes the divisor's sign: an hour before midnight is 23.
+        ("mod(x, 24)", {"x": -1.0}, 23),
+        ("mod(x, 24)", {"x": 49.5}, 1.5),
+        ("mod(x, -24)", {"x": 1.0}, -23),
+        ("hypot(3, 4)", {}, 5),
+        ("hypot(1, 2, 2)", {}, 3),
+        ("mean(a, b, 6)", {"a": 1.0, "b": 2.0}, 3),
+        ("sum(a, b, 6)", {"a": 1.0, "b": 2.0}, 9),
+        ("2 * pi()", {}, 2 * math.pi),
+        ("sin(pi() / 2)", {}, 1),
+        ("cos(pi())", {}, -1),
+        ("atan2(y, x)", {"y": 1.0, "x": -1.0}, 3 * math.pi / 4),
+        ("atan2(0, 0)", {}, 0),
+    ],
+)
+def test_more_functions_round_wrap_and_combine(text, row, expected):
+    assert value(text, **row) == pytest.approx(expected)
+
+
+def test_a_remainder_by_zero_skips_and_a_guard_prevents_it():
+    with pytest.raises(PrepareFailure, match="mod by 0") as failure:
+        value("mod(a, b)", a=1.0, b=0.0)
+    assert failure.value.reason == "out_of_domain"
+    bounds = {"a": (-5.0, 5.0), "b": (0.0, 24.0)}
+    assert analyze(parse("mod(a, b)"), bounds, {"b": "Period"}).warnings == [
+        "mod by Period: observations where it is 0 are skipped."
+    ]
+    assert analyze(parse("if(b != 0, mod(a, b), 0)"), bounds).warnings == []
+    assert analyze(parse("mod(a, 0)"), bounds).errors == [
+        "mod by 0 is undefined, so every observation would be skipped."
+    ]
+    with pytest.raises(PrepareFailure, match="finite"):
+        value("sum(a, a)", a=1e308)
+
+
+@pytest.mark.parametrize(
+    ("text", "low", "high"),
+    [
+        ("sign(a)", -1, 1),
+        ("sign(b)", 0, 1),
+        ("floor(a)", -3, 3),
+        ("ceil(a)", -2, 4),
+        ("round(a)", -3, 4),
+        ("mod(a, 24)", 0, 24),
+        ("mod(a, -24)", -24, 0),
+        ("mod(a, b)", 0, 1),
+        ("mod(a, a)", -2.5, 3.5),
+        ("hypot(a, b)", 0, math.hypot(3.5, 1)),
+        ("mean(a, b)", -1.25, 2.25),
+        ("sum(a, b, 1)", -1.5, 5.5),
+        ("sin(a)", -1, 1),
+        ("cos(0)", 1, 1),
+        ("pi()", math.pi, math.pi),
+        # Right of the origin an angle is at most a quarter turn either way.
+        ("atan2(a, 1 + b)", -math.pi / 2, math.pi / 2),
+        ("atan2(b, 1 + b)", 0, math.pi / 2),
+        ("atan2(1 + b, a)", 0, math.pi),
+        # Left of the origin a y of 0 gives pi or -pi, so nothing narrows.
+        ("atan2(b, a)", -math.pi, math.pi),
+        ("sum(a, c)", None, None),
+        ("round(c)", None, None),
+    ],
+)
+def test_more_functions_have_ranges(text, low, high):
+    bounds = {"a": (-2.5, 3.5), "b": (0.0, 1.0), "c": (None, None)}
+    analysis = analyze(parse(text), bounds)
+    assert (analysis.low, analysis.high) == (low, high)
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("2 * pi", "Unknown feature pi at character 5. Did you mean pi()?"),
+        ("pi(1)", "pi takes no value: write pi() at character 1."),
+        ("mod(1)", "mod takes 2 values: the value and what it is divided by"),
+        ("atan2(1)", "atan2 takes 2 values: y and x"),
+        ("hypot(1)", "hypot takes at least 2 values"),
+        ("sign()", "sign takes 1 value"),
+        ("mean(a > 1, 2)", "Use a number here, not a condition"),
+    ],
+)
+def test_more_functions_name_their_problems(text, message):
+    with pytest.raises(FormulaError) as error:
+        parse(text).check_names(["a"])
+    assert message in str(error.value)
+    if text == "2 * pi":
+        # One click writes the constant.
+        assert error.value.fix == (4, 6, "pi()")
+
+
+@pytest.mark.parametrize(
     ("text", "message"),
     [
         ("a +", "The expression ends too early at character 4."),
@@ -148,8 +251,8 @@ def test_conditionally_invalid_values_warn_without_blocking_the_valid_branch():
         ("a * ", "The expression ends too early at character 5."),
         (
             "a > 1",
-            "A formula computes a number; to hold observations back by a "
-            "condition, use a Gate step.",
+            "A formula computes a number. For 1 or 0, write if(condition, 1, 0); "
+            "to hold observations back by a condition, use a Gate step.",
         ),
     ],
 )
@@ -331,8 +434,13 @@ def test_a_condition_can_be_always_never_or_sometimes_true(text, truth):
 
 # A generator of formulas that are mostly well formed, so the fuzzing reaches
 # evaluation and range analysis as well as the parser's errors.
-_ATOMS = ["a", "b", "c", "0", "1", "2", "0.5", "-1", "1e3", "`b`"]
-_UNARY = ["abs", "sqrt", "log", "log1p", "exp"]
+_ATOMS = ["a", "b", "c", "0", "1", "2", "0.5", "-1", "1e3", "`b`", "pi()"]
+_UNARY = [
+    *("abs", "sqrt", "log", "log1p", "exp"),
+    *("sign", "floor", "ceil", "round", "sin", "cos"),
+]
+_BINARY = ["mod", "atan2"]
+_OVER = ["min", "max", "mean", "sum", "hypot"]
 _JOINS = [" + ", " - ", " * ", " / ", " ^ "]
 _NOISE = ["(", ")", ",", " and ", " or ", " not ", " < ", " == ", "=", "$", "min("]
 _COMPARISONS = ["<", "<=", ">", ">=", "==", "!="]
@@ -360,9 +468,12 @@ def _formula(rng, depth=0):
         return rng.choice(_ATOMS)
     if roll < 0.45:
         return f"{rng.choice(_UNARY)}({_formula(rng, depth + 1)})"
-    if roll < 0.55:
+    if roll < 0.52:
         args = ", ".join(_formula(rng, depth + 1) for _ in range(rng.randint(2, 3)))
-        return f"{rng.choice(['min', 'max'])}({args})"
+        return f"{rng.choice(_OVER)}({args})"
+    if roll < 0.55:
+        pair = f"{_formula(rng, depth + 1)}, {_formula(rng, depth + 1)}"
+        return f"{rng.choice(_BINARY)}({pair})"
     if roll < 0.6:
         parts = [_formula(rng, depth + 1) for _ in range(3)]
         return f"clip({', '.join(parts)})"

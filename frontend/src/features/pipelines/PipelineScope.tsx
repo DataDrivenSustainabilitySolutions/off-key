@@ -2,11 +2,65 @@ import { useId, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
 import { CombinedName } from "./PipelineFormula";
-import { addedName, addsByDefault, combinedName, defaultSuffix, listed, setting, stepScope } from "./scope";
+import { addedName, addsByDefault, combinedName, defaultSuffix, isExpectation, listed, setting, stepScope } from "./scope";
 
 type Issue = { path: (string | number)[]; message: string };
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+const APART = {
+  against: {
+    label: "Against",
+    help: "Every feature under Applies to is compared with this one, over the same recent observations.",
+  },
+  target: {
+    label: "Target",
+    help: "The feature the step expects from the features below. It gives the target minus the expected value.",
+  },
+};
+
+/** The one feature a step sets apart from those it uses: what a Rolling relation compares
+ * every other feature with, or what an Expected value expects from them. */
+export function PipelineApart({ field, node, features, featureLabels, featureHint, issues, readOnly, onChange }: {
+  field: keyof typeof APART;
+  node: PipelineNode;
+  features: string[];
+  featureLabels: Record<string, string>;
+  featureHint?: ReactNode;
+  issues: Issue[];
+  readOnly?: boolean;
+  onChange: (params: Record<string, JsonValue>, field: string) => void;
+}) {
+  const id = useId();
+  const apart = typeof node.params[field] === "string" ? node.params[field] : "";
+  const errors = issues.filter((issue) => issue.path[0] === field);
+  const choose = (feature: string) => {
+    const params = { ...node.params };
+    if (feature) params[field] = feature;
+    else delete params[field];
+    // The feature set apart is never one the step uses.
+    if (Array.isArray(params.apply_to)) {
+      const kept = params.apply_to.filter((name) => name !== feature);
+      if (kept.length) params.apply_to = kept;
+      else delete params.apply_to;
+    }
+    onChange(params, field);
+  };
+  return <div className="pl-field">
+    <label htmlFor={`${id}-apart`}>{APART[field].label}</label>
+    <select id={`${id}-apart`} value={apart} disabled={readOnly} aria-invalid={errors.length > 0}
+      aria-describedby={`${id}-apart-help ${id}-apart-errors`} onChange={(event) => choose(event.target.value)}>
+      <option value="">Choose a feature</option>
+      {features.map((feature) => <option key={feature} value={feature}>{featureLabels[feature] ?? feature}</option>)}
+      {apart && !features.includes(apart) && <option value={apart}>{apart} (not available here)</option>}
+    </select>
+    <small className="pl-help" id={`${id}-apart-help`}>{APART[field].help}</small>
+    {!features.length && featureHint}
+    <div id={`${id}-apart-errors`}>
+      {errors.map((issue, index) => <p key={index} className="pl-field-error" role="alert">{issue.message}</p>)}
+    </div>
+  </div>;
+}
 
 /** Applies to and Result: which incoming features a step uses and where its output goes. */
 export function PipelineScope({ node, component, features, featureLabels, featureHint, issues, readOnly, onChange }: {
@@ -44,10 +98,19 @@ export function PipelineScope({ node, component, features, featureLabels, featur
   const components = typeof node.params.n_components === "number" ? node.params.n_components : 1;
   // A Range check that skips leaves values unchanged, so there is nothing to add.
   const keepsValues = node.component === "prepare.range" && setting(node, component, "action") === "skip";
+  // An Expected value expects its target from the features chosen here, one at least.
+  const expects = isExpectation(node.component);
+  const target = expects && typeof node.params.target === "string" ? node.params.target : "";
   // An Aggregate computes one feature from at least two.
   const computed = combinedName(node, component);
-  const fewest = computed === undefined ? 1 : 2;
-  const outcome = computed !== undefined
+  const fewest = computed === undefined || expects ? 1 : 2;
+  const outcome = expects
+    ? !target
+      ? "Choose a target to see what the step gives."
+      : scope.add
+        ? `Keeps every feature and adds ${computed}.`
+        : `Replaces ${chosen ? listed([target, ...used]) : "every feature"} with ${computed}.`
+    : computed !== undefined
     ? scope.add
       ? `Keeps the features and adds ${computed}.`
       : `Replaces ${chosen ? listed(used) : "the features"} with ${computed}.`
@@ -67,9 +130,10 @@ export function PipelineScope({ node, component, features, featureLabels, featur
   const defaultResult = addsByDefault(component) ? "add" : "replace";
   return <div className="pl-scope">
     <fieldset className="pl-field" aria-describedby={`${id}-applies ${id}-applies-errors`}>
-      <legend>Applies to</legend>
+      <legend>{expects ? "Expected from" : "Applies to"}</legend>
       <small className="pl-help" id={`${id}-applies`}>
-        {chosen ? `${plural(chosen.length, "feature")} of ${features.length}` : "Every feature that arrives"}
+        {chosen ? `${plural(chosen.length, "feature")} of ${features.length}`
+          : expects ? "Every other feature that arrives" : "Every feature that arrives"}
       </small>
       {!features.length && !missing.length
         ? featureHint ?? <p className="pl-help">Connect an input to choose features.</p>

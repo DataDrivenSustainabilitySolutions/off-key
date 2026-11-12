@@ -7,6 +7,7 @@ import {
   type PipelineComponent,
   type PipelineNode,
 } from "@/features/pipelines/contracts";
+import { pipelinesApi } from "@/features/pipelines/api";
 import { presentGraph } from "@/features/pipelines/graphPresentation";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
@@ -262,6 +263,8 @@ describe("warnings", () => {
 
   it("calls a design with only warnings complete and names them in the status chip", async () => {
     const { PipelineWorkbench } = await import("@/features/pipelines/PipelineWorkbench");
+    // The editor reads the block library when it opens; this one never answers.
+    vi.spyOn(pipelinesApi, "blocks").mockReturnValue(new Promise(() => {}));
     const catalog: PipelineCatalog = { catalog_id: "scope", authoring_enabled: true, templates: [],
       components: [source, robust] };
     render(<PipelineWorkbench catalog={catalog} document={document()} onSelect={() => {}} onChange={() => {}}

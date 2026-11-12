@@ -178,11 +178,13 @@ class PipelineDiagnostics:
         required: int | None,
         blocked_by: tuple[str, ...] = (),
         held_back: bool = False,
+        muting: bool = False,
     ) -> None:
         """One Prepare step's part in an accepted observation, in the learn pass.
 
         A Gate that holds the observation back is ready and says so. The steps
-        after it did not run, so they keep their state.
+        after it did not run, so they keep their state. A Mute alarms step
+        whose condition holds says so too.
         """
         metrics = self.nodes[node_id]
         if held_back and inputs is None:
@@ -223,6 +225,8 @@ class PipelineDiagnostics:
                 **(
                     {"reason": "The condition does not hold for this observation"}
                     if held_back
+                    else {"reason": "The condition holds, so no alarm is raised"}
+                    if muting
                     else {}
                 ),
             }

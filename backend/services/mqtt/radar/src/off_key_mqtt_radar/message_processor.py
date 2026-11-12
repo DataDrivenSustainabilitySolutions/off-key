@@ -425,16 +425,9 @@ class MessageProcessor:
         alignment_context: dict[str, Any] | None = None,
     ) -> AnomalyResult:
         """Run the anomaly detector and return result."""
-        result = self.detector.process(
-            features, topic=message.topic, charger_id=charger_id
-        )
         alignment_context = alignment_context or {}
-        result.context = result.context or {}
-        result.context["alignment"] = alignment_context
-        sensor_ages = alignment_context.get("sensor_ages")
-        if isinstance(sensor_ages, dict):
-            result.context["sensor_ages"] = sensor_ages
         input_timestamps = alignment_context.get("input_timestamps")
+        # An observation is measured when its latest reading is.
         sample_timestamp = alignment_context.get("sample_timestamp")
         if isinstance(input_timestamps, dict):
             finite_input_timestamps = [
@@ -444,6 +437,21 @@ class MessageProcessor:
             ]
             if finite_input_timestamps:
                 sample_timestamp = max(finite_input_timestamps)
+        result = self.detector.process(
+            features,
+            topic=message.topic,
+            charger_id=charger_id,
+            timestamp=(
+                float(sample_timestamp)
+                if isinstance(sample_timestamp, int | float)
+                else None
+            ),
+        )
+        result.context = result.context or {}
+        result.context["alignment"] = alignment_context
+        sensor_ages = alignment_context.get("sensor_ages")
+        if isinstance(sensor_ages, dict):
+            result.context["sensor_ages"] = sensor_ages
         if isinstance(sample_timestamp, int | float):
             canonical_dt = datetime.fromtimestamp(float(sample_timestamp), tz=UTC)
             result.timestamp = canonical_dt

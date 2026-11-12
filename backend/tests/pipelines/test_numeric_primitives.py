@@ -15,6 +15,7 @@ from off_key_core.models.pipeline_prepare import (
     PrepareFailure,
     default_suffix,
     kernel,
+    prepared_bounds,
 )
 from off_key_core.models.pipeline_scope import ScopeError
 from off_key_core.models.pipelines import (
@@ -179,6 +180,152 @@ def test_new_window_statistics_match_independent_references(statistic, size):
         assert actual == pytest.approx(expected)
 
 
+def _reference(statistic, window):
+    """numpy's value of a statistic that places or describes the latest value."""
+    latest, size = window[-1], len(window)
+    deviations = window - window.mean()
+    second = np.mean(deviations**2)
+    match statistic:
+        case "zscore":
+            return deviations[-1] / window.std(ddof=1)
+        case "rank":
+            ties = np.sum(window == latest) - 1
+            return (np.sum(window < latest) + ties / 2) / (size - 1)
+        case "rms":
+            return np.sqrt(np.mean(window**2))
+        case "skewness":
+            return np.mean(deviations**3) / second**1.5
+        case "kurtosis":
+            return np.mean(deviations**4) / second**2 - 3
+    median = np.median(window)
+    distances = np.abs(window - median)
+    spread = 1.4826 * np.median(distances) or math.sqrt(math.pi / 2) * distances.mean()
+    return (latest - median) / spread
+
+
+SCORES = ["zscore", "robust_zscore", "rank", "rms", "skewness", "kurtosis"]
+
+
+@pytest.mark.parametrize("statistic", SCORES)
+@pytest.mark.parametrize("size", [2, 3, 8, 21])
+def test_scores_and_shape_statistics_match_numpy_within_their_limits(statistic, size):
+    rng = random.Random(size)
+    # Repeated values make ties and windows where more than half are equal.
+    values = [
+        float(rng.choice([0, 0, 0, rng.randint(-3, 3), rng.gauss(50, 3)]))
+        for _ in range(200)
+    ]
+    params = {"statistic": statistic, "window_size": size}
+    step = kernel("prepare.rolling", params)
+    low, high = prepared_bounds("prepare.rolling", params, (None, None))
+    state = step.initial()
+    for index, value in enumerate(values):
+        state, actual = step.advance(pickle.loads(pickle.dumps(state)), value)
+        assert step.accepts(state)
+        if index + 1 < size:
+            assert actual is None
+            continue
+        window = np.array(values[index + 1 - size : index + 1])
+        assert (low is None or actual >= low) and (high is None or actual <= high)
+        if np.all(window == window[0]) and statistic != "rms":
+            # One value says nothing about spread or shape; rank sits in the middle.
+            assert actual == (0.5 if statistic == "rank" else 0.0)
+        else:
+            assert actual == pytest.approx(_reference(statistic, window), abs=1e-9)
+
+
+def rolled(statistic, values):
+    """The statistic of a window that holds exactly these values."""
+    step = kernel(
+        "prepare.rolling", {"statistic": statistic, "window_size": len(values)}
+    )
+    state = step.initial()
+    for value in values:
+        state, result = step.advance(state, value)
+    return result
+
+
+def test_statistics_stay_finite_where_their_powers_would_not():
+    plain = [1.0, -1.0, 3.0, 0.0, 2.0]
+    huge = [value * 1e200 for value in plain]
+    tiny = [value * 1e-200 for value in plain]
+    for statistic in ("zscore", "robust_zscore", "skewness", "kurtosis"):
+        # Scores compare values with each other, so the scale drops out.
+        assert rolled(statistic, huge) == pytest.approx(rolled(statistic, plain))
+        assert rolled(statistic, tiny) == pytest.approx(rolled(statistic, plain))
+    for statistic, expected in (("rms", math.sqrt(3)), ("std", math.sqrt(2.5))):
+        # A root keeps the scale, also where its squares overflow or vanish.
+        assert rolled(statistic, plain) == pytest.approx(expected)
+        assert rolled(statistic, huge) == pytest.approx(expected * 1e200)
+        assert rolled(statistic, tiny) == pytest.approx(expected * 1e-200, abs=0)
+    with pytest.raises(PrepareFailure, match="finite"):
+        rolled("std", [1.7e308, -1.7e308, -1.7e308])
+
+
+@pytest.mark.parametrize("value", [1e-200, 5e-324, 1e200, 1.7e308, 0.1, 0.0])
+def test_a_root_mean_square_stays_within_the_magnitudes_it_is_taken_of(value):
+    params = {"statistic": "rms", "window_size": 3}
+    low, high = prepared_bounds("prepare.rolling", params, (value, value))
+    assert low == high == value
+    assert rolled("rms", [value, value, value]) == value
+    assert rolled("rms", [-value, value, -value]) == value
+    rng = random.Random(7)
+    for _ in range(500):
+        values = [value * rng.uniform(1, 1 + 1e-15 * rng.randint(0, 9))] * 2 + [value]
+        assert min(values) <= rolled("rms", values) <= max(values)
+
+
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_small_differences_between_large_values_are_not_rounded_away(sign):
+    # The mean of the large values, 1e16 + 0.8, is no float; the nearest is 1e16.
+    large = [sign * value for value in (1e16, 1e16, 1e16, 1e16 + 2, 1e16 + 2)]
+    small = [sign * value for value in (0.0, 0.0, 0.0, 2.0, 2.0)]
+    expected = {
+        "std": math.sqrt(1.2),
+        "zscore": sign * math.sqrt(1.2),
+        "skewness": sign * 0.384 / 0.96**1.5,
+        "kurtosis": 1.0752 / 0.96**2 - 3,
+    }
+    for statistic, value in expected.items():
+        assert rolled(statistic, small) == pytest.approx(value)
+        assert rolled(statistic, large) == pytest.approx(value)
+    # A value and its neighbours a few floats apart, far from 0.
+    step = math.ulp(1e9)
+    window = [1e9 + index * step for index in (0, 3, 1, 4, 1, 5, 9, 2)]
+    plain = [float(index) for index in (0, 3, 1, 4, 1, 5, 9, 2)]
+    for statistic in ("zscore", "skewness", "kurtosis"):
+        assert rolled(statistic, window) == pytest.approx(rolled(statistic, plain))
+    assert rolled("std", window) == pytest.approx(rolled("std", plain) * step)
+
+
+def test_a_robust_score_survives_a_window_that_is_mostly_one_value():
+    step = kernel("prepare.rolling", {"statistic": "robust_zscore", "window_size": 5})
+    state = step.initial()
+    for value in [0.0, 0.0, 0.0, 0.0, 5.0]:
+        state, score = step.advance(state, value)
+    # The MAD is 0, so the mean absolute deviation, 1, stands in for it.
+    assert score == pytest.approx(5 / math.sqrt(math.pi / 2))
+
+
+def test_scores_have_ranges_a_unit_interval_detector_can_rely_on():
+    def bounds(statistic, size=60, incoming=(None, None)):
+        params = {"statistic": statistic, "window_size": size}
+        return prepared_bounds("prepare.rolling", params, incoming)
+
+    assert bounds("rank") == (0.0, 1.0)
+    assert bounds("zscore", 4) == (-1.5, 1.5)
+    assert bounds("skewness", 5) == (-1.5, 1.5)
+    assert bounds("kurtosis", 5) == (-2.0, 0.25)
+    assert bounds("kurtosis", 2) == (-2.0, 0.0)
+    assert bounds("robust_zscore") == (None, None)
+    assert bounds("rms") == (0.0, None)
+    assert bounds("rms", incoming=(-3.0, 2.0)) == (0.0, 3.0)
+    assert bounds("rms", incoming=(1.0, 2.0)) == (1.0, 2.0)
+    assert default_suffix("prepare.rolling", {"statistic": "robust_zscore"}) == (
+        "robust_zscore60"
+    )
+
+
 @pytest.mark.parametrize(
     "function,expected",
     [
@@ -195,9 +342,21 @@ def test_accumulation_starts_with_the_first_value_and_restores(function, expecte
         assert actual == result and step.accepts(state)
     assert not step.accepts((True, math.inf, 0.0))
     assert not step.accepts((False, 1.0, 0.0))
-    assert not step.accepts((True, 1.0))
+    assert not step.accepts((True,))
     # Only a total carries what addition dropped.
     assert step.accepts((True, 1.0, 0.5)) is (function == "sum")
+
+
+@pytest.mark.parametrize(
+    "function,expected", [("sum", 4.5), ("min", 1.5), ("max", 3.0)]
+)
+def test_accumulation_continues_a_checkpoint_from_before_the_carry(function, expected):
+    step = kernel("prepare.accumulate", {"function": function})
+    assert step.accepts((True, 1.5)) and step.accepts((False, 0.0))
+    assert not step.accepts((True, math.nan)) and not step.accepts((False, 1.0))
+    state, actual = step.advance((True, 1.5), 3.0)
+    assert actual == expected and len(state) == 3 and step.accepts(state)
+    assert step.advance((False, 0.0), 3.0) == ((True, 3.0, 0.0), 3.0)
 
 
 def test_a_long_total_keeps_what_plain_addition_drops():

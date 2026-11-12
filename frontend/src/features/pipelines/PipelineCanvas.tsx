@@ -9,9 +9,11 @@ import {
   type OnConnectEnd,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { Copy, LocateFixed, Magnet, Pencil, Plus, SlidersHorizontal, Trash2, Unlink } from "lucide-react";
+import { Copy, LocateFixed, Magnet, Pencil, Plus, Save, SlidersHorizontal, Trash2, Unlink } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
-import type { PipelineComponent, PipelineValidation } from "./contracts";
+import type { PipelineBlockCreate } from "@/types/pipelines.generated";
+import type { PipelineBlock, PipelineComponent, PipelineValidation } from "./contracts";
+import { addBlockAfter, blockChain, blockChoices, blockedBy, insertBlock, placeBlock, type BlockOutcome } from "./blocks";
 import {
   addAfter, addBlocker, afterBlocker, connectNodes, connectionIssue, disconnectEdge, disconnectNode, duplicateBlocker,
   duplicateNode, insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel,
@@ -20,7 +22,8 @@ import {
 import { PipelineContextMenu } from "./PipelineContextMenu";
 import { PipelineDetectorSlot } from "./PipelineDetectorSlot";
 import { detectorSlot } from "./detectorSlot";
-import { stepMenu, type Menu } from "./contextMenu";
+import { stepMenu, type Menu, type MenuItem } from "./contextMenu";
+import { PipelineSaveBlock } from "./PipelineSaveBlock";
 import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard } from "./PipelineNodeCard";
@@ -78,6 +81,10 @@ type Props = {
   onConfigure?: (id: string) => void;
   /** Offers the place a design without a detector keeps for one; called with the element to open a choice at. */
   onChooseDetector?: (anchor: Element) => void;
+  /** Saved chains of steps, offered beside the steps wherever a step can be added. */
+  blocks?: PipelineBlock[];
+  /** Keeps a chain of steps as a block; a card's menu offers it where this is given. */
+  onSaveBlock?: (request: PipelineBlockCreate) => Promise<void>;
 };
 
 /** What a right-click, long-press or the menu key was aimed at. */
@@ -108,6 +115,8 @@ export default function PipelineCanvas({
   insets,
   onConfigure,
   onChooseDetector,
+  blocks = [],
+  onSaveBlock,
 }: Props) {
   const { resolvedTheme } = useTheme();
   const [feedback, setFeedback] = useState("");
@@ -325,7 +334,9 @@ export default function PipelineCanvas({
     setOpen: (id) => setOpenWire(id ? { id, definition: document.definition } : undefined),
     hover,
     menu: (link) => <PipelineToolbox components={components} document={document} link={link}
-      onAdd={(componentId) => insert(link, componentId)} />,
+      onAdd={(componentId) => insert(link, componentId)}
+      blocks={blockChoices(blocks, components, (block) => insertBlock(document, link, block, components))}
+      onPlace={(placed) => { setOpenWire(undefined); setSelectedEdges([]); applied(placed); }} />,
   };
   // Card centred under the pointer, its corner snapped to the grid as a drop is.
   const placeAt = (clientX: number, clientY: number) => {
@@ -351,18 +362,31 @@ export default function PipelineCanvas({
     onSelect(result.id);
     setInserted(result.id);
   };
+  // The card whose steps are being saved as a block.
+  const [savingFrom, setSavingFrom] = useState<string>();
+  /** Every block as a menu entry; one that cannot be added here stays listed and says why. */
+  const blockItems = (add: (block: PipelineBlock) => BlockOutcome): MenuItem[] =>
+    blockChoices(blocks, components, add).map(({ block, detail, outcome }) => ({
+      key: `block:${block.id}`, label: block.name, detail, blocked: blockedBy(outcome),
+      run: () => { if (!("blocked" in outcome)) applied(outcome); },
+    }));
+  const anyFits = (items: MenuItem[]) => items.some((item) => !item.blocked);
   const menuFor = (target: MenuTarget): Menu => {
     if (target.kind === "pane") return stepMenu("Add a step",
       components.filter((component) => !addBlocker(document.definition, component)),
       (component) => onAdd(component.id, target.position),
-      "No step can be added. The design has reached its limit.");
+      "No step can be added. The design has reached its limit.",
+      blockItems((block) => placeBlock(document, block, components, target.position)));
     if (target.kind === "edge") {
       const between = `${nodeName(document, components, target.link.source)} and ${nodeName(document, components, target.link.target)}`;
       const fitting = components.filter((component) => !insertBlocker(document.definition, target.link, component, components));
+      const offered = blockItems((block) => insertBlock(document, target.link, block, components));
       return { label: `Connection between ${between}`, items: [
-        { key: "insert", label: "Insert here", icon: Plus, blocked: fitting.length ? undefined : "No step fits this connection.",
+        { key: "insert", label: "Insert here", icon: Plus,
+          blocked: fitting.length || anyFits(offered) ? undefined : "No step fits this connection.",
           submenu: stepMenu("Insert a step", fitting,
-            (component) => applied(insertOnEdge(document, target.link, component, components)), "No step fits this connection.") },
+            (component) => applied(insertOnEdge(document, target.link, component, components)), "No step fits this connection.",
+            offered) },
         { key: "delete", label: "Delete connection", icon: Trash2, destructive: true, separated: true,
           run: () => { setSelectedEdges([]); onChange({ ...document, definition: disconnectEdge(document.definition, target.link) }); } },
       ] };
@@ -371,16 +395,20 @@ export default function PipelineCanvas({
     const connected = document.definition.edges.some((edge) => edge.source === id || edge.target === id);
     const after = components.filter((component) => !afterBlocker(document, id, component, components));
     const node = document.definition.nodes.find((item) => item.id === id);
+    const blocksAfter = blockItems((block) => addBlockAfter(document, id, block, components));
     return { label: nodeName(document, components, id), items: [
       { key: "rename", label: "Rename", icon: Pencil, run: () => setRenaming(id) },
       { key: "configure", label: "Configure", icon: SlidersHorizontal, run: () => (onConfigure ?? onSelect)(id) },
       { key: "after", label: "Add after", icon: Plus, separated: true,
         blocked: node?.kind === "output" ? "Evidence output is the last step."
-          : after.length ? undefined : "No step takes this step's output.",
+          : after.length || anyFits(blocksAfter) ? undefined : "No step takes this step's output.",
         submenu: stepMenu("Add after", after, (component) => applied(addAfter(document, id, component, components)),
-          "No step takes this step's output.") },
+          "No step takes this step's output.", blocksAfter) },
       { key: "duplicate", label: "Duplicate", icon: Copy, blocked: duplicateBlocker(document.definition, id, components),
         run: () => applied(duplicateNode(document, id, components)) },
+      ...(onSaveBlock ? [{ key: "block", label: "Save as block", icon: Save,
+        blocked: blockChain(document.definition, id).length ? undefined : "A block holds steps between the input and a detector.",
+        run: () => setSavingFrom(id) }] : []),
       { key: "disconnect", label: "Disconnect", icon: Unlink, blocked: connected ? undefined : "This step has no connections.",
         run: () => onChange(disconnectNode(document, id)) },
       { key: "delete", label: "Delete", icon: Trash2, destructive: true, separated: true,
@@ -663,6 +691,9 @@ export default function PipelineCanvas({
           setContextMenu(undefined);
           if (restore && shownMenu.returnFocus instanceof HTMLElement) shownMenu.returnFocus.focus({ preventScroll: true });
         }} />}
+      {onSaveBlock && savingFrom && blockChain(document.definition, savingFrom).length > 0
+        && <PipelineSaveBlock document={document} components={components} from={savingFrom} onSave={onSaveBlock}
+          onClose={() => setSavingFrom(undefined)} />}
       {(feedback || blocked) && (
         <p className="pl-canvas-feedback" role="status">
           {feedback || "Space components apart to show blocked connections."}

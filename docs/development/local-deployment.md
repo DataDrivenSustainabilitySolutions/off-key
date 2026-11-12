@@ -197,8 +197,9 @@ MQTT credentials remain separate from tailnet registration: set a broker's
 python3 dev/local/run.py up --broker-fixture
 ```
 
-This opt-in profile starts **six independent Eclipse Mosquitto brokers** and one
-publisher using the existing Paho dependency. The brokers expose no host ports.
+This opt-in profile starts **six independent Eclipse Mosquitto brokers**, one
+publisher using the existing Paho dependency and a [test API](#test-api). The
+brokers expose no host ports.
 They belong only to this checkout's isolated Compose project. The ordinary stack
 and other local deployments are unchanged.
 
@@ -241,6 +242,34 @@ fixture-broker-meter
 fixture-broker-weather
 fixture-broker-pump
 ```
+
+### Test API
+
+The same profile starts `fixture-api`, a small HTTP API to poll. It exposes no
+host port and needs no login, and the local deployment allows its origin
+`http://fixture-api:8080` by default. In **Sources**, choose **Add broker**,
+type **HTTP API**, host `fixture-api`, port `8080` and scheme HTTP. Then add
+readings on it:
+
+| Request path | Payload field | Value type | Note |
+| --- | --- | --- | --- |
+| `/v1/stations/roof/latest` | `/temperature` | Number | A new observation every 15 seconds; set **Source timestamp** to `/observed_at` to record each one once |
+| `/v1/stations/roof/latest` | `/humidity` | Number | Sent as text |
+| `/v1/stations/roof/latest` | `/wind/gusting` | Boolean | |
+| `/v1/stations/roof/latest` | `/sky` | Text | |
+| `/v1/meters/main` | `/power_kw` | Number | States no time; every poll is a new value |
+
+Any other path answers `404`. To poll another API, list its origin in the
+private `dev/local/.env` and, if it needs one, a login for the connection's
+credential reference:
+
+```dotenv
+SYSTEM_HTTP_ALLOWED_ORIGINS='["http://fixture-api:8080","https://api.example.com"]'
+SYSTEM_HTTP_CREDENTIALS='{"credentials/weather":{"token":"replace-locally"}}'
+```
+
+See [HTTP sources](../operations/system-collection.md#http-sources) for polling
+rates, logins and failure handling.
 
 Regenerate the catalog after changing fixture definitions using
 `python3 dev/local/broker_fixture.py --write-catalog`; check that the tracked

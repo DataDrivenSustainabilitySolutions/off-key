@@ -36,6 +36,7 @@ from .services.dojo.metrics import DojoMetrics
 from .services.dojo.runs import DojoRuns
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.pipelines.activation import PipelineActivations
+from .services.pipelines.blocks import PipelineBlocks
 from .services.pipelines.forms import start_form_monitor
 from .services.pipelines.library import PipelineLibrary
 
@@ -123,6 +124,10 @@ def get_pipeline_library(
     session: AsyncSession = RequestSession,
 ) -> PipelineLibrary:
     return PipelineLibrary(session)
+
+
+def get_pipeline_blocks(session: AsyncSession = RequestSession) -> PipelineBlocks:
+    return PipelineBlocks(session)
 
 
 def get_dojo_datasets(session: AsyncSession = RequestSession) -> DojoDatasets:

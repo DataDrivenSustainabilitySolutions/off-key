@@ -1,5 +1,5 @@
 {
-  "description": "Broker and group cases that the backend SystemDocument model and the frontend validator must judge alike; the backend is canonical.",
+  "description": "Broker, reading and group cases that the backend SystemDocument model and the frontend validator must judge alike; the backend is canonical.",
   "default_group_color": "#397f74",
   "base": {
     "format": "aberration-system",
@@ -29,6 +29,21 @@
     {"name": "websocket path with a fragment", "valid": false, "connection": {"transport": "websocket", "websocket_path": "/mqtt#feed"}},
     {"name": "relative websocket path", "valid": false, "connection": {"transport": "websocket", "websocket_path": "mqtt"}},
     {"name": "websocket path on TCP", "valid": false, "connection": {"transport": "tcp", "websocket_path": "/mqtt"}},
+    {"name": "HTTP source", "valid": true, "connection": {"protocol": "http", "port": 8080}},
+    {"name": "HTTP source with TLS", "valid": true, "connection": {"protocol": "http", "port": 443, "tls": true}},
+    {"name": "HTTP source over a WebSocket transport", "valid": false, "connection": {"protocol": "http", "port": 8080, "transport": "websocket"}},
+    {"name": "HTTP source with a WebSocket path", "valid": false, "connection": {"protocol": "http", "port": 8080, "transport": "websocket", "websocket_path": "/mqtt"}},
+    {"name": "unknown protocol", "valid": false, "connection": {"protocol": "amqp"}},
+    {"name": "MQTT topic", "valid": true, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "site/room 1/temperature"}},
+    {"name": "MQTT topic with a wildcard", "valid": false, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "site/+/temperature"}},
+    {"name": "MQTT reading with a source timestamp", "valid": false, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "site/room/temperature", "timestamp_pointer": "/at"}},
+    {"name": "HTTP request path", "valid": true, "connection": {"protocol": "http", "port": 8080}, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "/api/v1/status?device=1&unit=°C", "payload_pointer": "/sensors/temperature", "timestamp_pointer": "/updated_at"}},
+    {"name": "HTTP root path", "valid": true, "connection": {"protocol": "http", "port": 8080}, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "/"}},
+    {"name": "relative HTTP request path", "valid": false, "connection": {"protocol": "http", "port": 8080}, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "api/v1/status"}},
+    {"name": "HTTP request path with a space", "valid": false, "connection": {"protocol": "http", "port": 8080}, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "/api/v1/status one"}},
+    {"name": "HTTP request path with a fragment", "valid": false, "connection": {"protocol": "http", "port": 8080}, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "/api/v1/status#one"}},
+    {"name": "HTTP request path with a plus", "valid": false, "connection": {"protocol": "http", "port": 8080}, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "/api/v1/status?q=a+b"}},
+    {"name": "source timestamp that is not a pointer", "valid": false, "connection": {"protocol": "http", "port": 8080}, "reading": {"id": "reading", "label": "Reading", "broker_id": "broker", "topic": "/api/v1/status", "timestamp_pointer": "updated_at"}},
     {"name": "group without a colour", "valid": true, "group": {"id": "group", "label": "Group", "member_ids": ["broker"]}},
     {"name": "group with a short colour", "valid": false, "group": {"id": "group", "label": "Group", "color": "#abc", "member_ids": []}}
   ]

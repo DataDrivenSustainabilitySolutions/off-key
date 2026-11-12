@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import type { PipelineCatalog } from "./contracts";
-import { hasFittedDetector, hasStreamingDetector } from "./learning";
+import { hasFittedDetector, hasStreamingDetector, learningWindow } from "./learning";
 import { PIPELINE_LIMITS, type GraphDocument } from "./model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "./slots";
 import { observationCount, roughDuration, startupSummary, type Startup } from "./startup";
@@ -29,7 +29,7 @@ function StartupTimeline({ startup }: { startup: Startup }) {
         {interval
           ? `Durations use the slowest reading's typical interval of ${roughDuration(interval)}. `
           : "Durations appear once the chosen readings report how often they arrive. "}
-        Learned steps before the detector can need a few observations of their own first.
+        {phases.some((phase) => phase.id === "learning") && "Learned steps before the detector can need a few observations of their own first."}
         {gated && " A Gate holds back the observations its condition rejects, and they do not count, so the start can take longer."}
       </p>
     </section>
@@ -106,6 +106,8 @@ export function PipelineDesignSettings({
   // Without the catalog, a design reads as one that learns continuously.
   const fitted = !!catalog && hasFittedDetector(definition, catalog.components);
   const streaming = !catalog || hasStreamingDetector(definition, catalog.components);
+  // Detectors that follow a rule have nothing to learn, so the design has no learning window.
+  const untrained = !!catalog && learningWindow(definition, catalog.components) === "none";
   const setting = (change: Partial<typeof settings>, field: string) =>
     onChange({
       ...document,
@@ -116,14 +118,16 @@ export function PipelineDesignSettings({
   return (
     <>
       {catalog && <p className="pl-help pl-learning-note">
-        {fitted && streaming
-          ? "Some detectors are fitted once on the training window and others keep learning. They meet at the calibration step."
-          : fitted ? "The detectors are fitted once on the training window and then stay as they are."
-            : "The detectors take in every observation and keep adapting."}
+        {untrained
+          ? "The detectors follow a rule and learn nothing, so calibration starts with the first observation."
+          : fitted && streaming
+            ? "Some detectors are fitted once on the training window and others keep learning. They meet at the calibration step."
+            : fitted ? "The detectors are fitted once on the training window and then stay as they are."
+              : "The detectors take in every observation and keep adapting."}
         {" "}Each detector's settings choose its model, and with it how it learns.
       </p>}
       <div className="pl-settings-grid">
-        <NumberSetting
+        {!untrained && <NumberSetting
           label={fitted && streaming ? "Training observations and learning updates"
             : fitted ? "Training observations" : "Detector learning updates before calibration"}
           min={2}
@@ -131,7 +135,7 @@ export function PipelineDesignSettings({
           value={settings.training_window_size}
           disabled={readOnly}
           onChange={(value) => setting({ training_window_size: value ?? settings.training_window_size }, "training")}
-        />
+        />}
         <NumberSetting
           label="Calibration observations"
           min={1}
@@ -150,7 +154,7 @@ export function PipelineDesignSettings({
         />
       </div>
       {startup && <StartupTimeline startup={startup} />}
-      {streaming && (
+      {streaming && !untrained && (
         <p className="pl-help">
           Upstream steps initialize first. The configured learning count
           tracks successful updates to the detector; calibration starts only

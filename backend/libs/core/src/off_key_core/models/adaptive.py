@@ -6,6 +6,7 @@ from copy import deepcopy
 from importlib.resources import files
 from typing import Any
 
+from ..schemas.pipeline_versions import RULE_DETECTOR
 from .parameter_validation import (
     ParameterIssue,
     parameter_error,
@@ -214,19 +215,51 @@ PRETRAINED_FORECASTERS: dict[str, dict[str, Any]] = {
     }
 }
 
+# A rule detector is RADAR's own as well. It has no settings: a step before it
+# computes the feature whose value is the score, such as a flag that is 1 where
+# a limit is crossed, or how far a reading is from what it should be.
+RULE_DETECTORS: dict[str, dict[str, Any]] = {
+    RULE_DETECTOR: {
+        "catalog_id": RULE_DETECTOR,
+        "name": "Rule detector",
+        "description": "Takes one feature's value as the score, with no training.",
+        "import_path": "off_key_mqtt_radar.rules.FeatureScore",
+        "algorithm_family": "rule",
+        "available": True,
+        "parameter_schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {},
+        },
+        "default_parameters": {},
+        "default_capabilities": {
+            "event_kind": "univariate",
+            "feature_count": {"minimum": 1, "maximum": 1},
+            "feature_schema": "fixed",
+            "higher_is_more_anomalous": True,
+            "requires_unit_interval": False,
+            "resettable": True,
+            "score_kind": "signed",
+            "state": "stateless",
+            "warmup": {"minimum": 0, "unit": "events"},
+        },
+        "bound_parameters": ["key"],
+    }
+}
+
 CATALOG = json.loads(files(__package__).joinpath("adaptive_catalog.json").read_text())
 ABERRANT_VERSION: str = CATALOG["aberrant_version"]
 ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = {
     **CATALOG["models"],
     **PRETRAINED_FORECASTERS,
+    **RULE_DETECTORS,
 }
 
 
 def detector_component(model_type: str) -> str:
     """The pipeline component of a streaming detector's model type."""
-    return (
-        model_type if model_type in PRETRAINED_FORECASTERS else f"detector:{model_type}"
-    )
+    own = model_type in PRETRAINED_FORECASTERS or model_type in RULE_DETECTORS
+    return model_type if own else f"detector:{model_type}"
 
 
 # Detector parameters bound from the feature schema, never from user input.

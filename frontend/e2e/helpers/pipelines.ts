@@ -50,7 +50,13 @@ export async function archivePipelines(
   { lenient = false } = {},
 ) {
   for (const url of urls) {
-    const response = await request.get(url, { headers });
+    let response = await request.get(url, { headers });
+    if (response.status() === 429) {
+      // Cleanup reads share a one-minute member quota with workspace requests.
+      await response.dispose();
+      await delay(60_000);
+      response = await request.get(url, { headers });
+    }
     if (lenient && !response.ok()) continue;
     expect(response.ok(), await response.text()).toBe(true);
     const design = (await response.json()) as PipelineView;

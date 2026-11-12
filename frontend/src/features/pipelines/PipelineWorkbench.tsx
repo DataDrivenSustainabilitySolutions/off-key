@@ -3,8 +3,10 @@ import * as Popover from "@radix-ui/react-popover";
 import toast from "react-hot-toast";
 import { CircleCheck, CircleDashed, Plus, TriangleAlert, X } from "lucide-react";
 import type { PipelineCatalog, PipelineComponent } from "./contracts";
+import { blockChoices, placeBlock, useBlocks } from "./blocks";
 import { detectorMenu, fillDetectorSlot, suggestedDetector } from "./detectorSlot";
 import { useForecastModels, usesForecastService, withForecastService } from "./forecastModels";
+import type { GraphDocument } from "./model";
 import PipelineCanvas from "./PipelineCanvas";
 import { PipelineContextMenu } from "./PipelineContextMenu";
 import { PipelineFeatures } from "./PipelineFeatures";
@@ -17,8 +19,11 @@ import { useUndoShortcuts } from "./useGraphEditor";
 import { usePlaceToasts } from "@/hooks/use-toast-position";
 
 export type InspectorPanel = "service" | "component" | null;
-type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues" | "features" | "featuresStale" | "insets"> & {
+type Props = Omit<ComponentProps<typeof PipelineCanvas>,
+  "components" | "issues" | "features" | "featuresStale" | "insets" | "blocks" | "onSaveBlock"> & {
   catalog: PipelineCatalog;
+  /** Takes steps the Add step menu placed, such as a block's, so the editor records and shows them. */
+  onPlace?: (placed: { document: GraphDocument; id: string }) => void;
   validation?: ComponentProps<typeof PipelineInspector>["validation"];
   settings?: ReactNode;
   actions?: ReactNode;
@@ -75,7 +80,7 @@ function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, 
 /** One canvas-first workspace for creation, saved designs and running graphs. */
 export function PipelineWorkbench({
   catalog: offered, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
-  onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, stage = false, header, ...props
+  onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, stage = false, header, onPlace, ...props
 }: Props) {
   // A step whose model lives in the forecast service is offered only where the deployment
   // has one; a design that is only shown asks when it holds such a step.
@@ -86,6 +91,8 @@ export function PipelineWorkbench({
     () => ({ ...offered, components: withForecastService(offered.components, forecast.catalog) }),
     [offered, forecast.catalog],
   );
+  // Saved blocks are offered wherever a step can be added, and a card's menu saves one more.
+  const library = useBlocks(!props.readOnly);
   useUndoShortcuts(!props.readOnly && !!onUndo && !!onRedo, () => onUndo?.(), () => onRedo?.());
   const [issuesOpen, setIssuesOpen] = useState(false);
   // Keep the last result on screen while an edit is re-checked, instead of flickering away.
@@ -203,6 +210,15 @@ export function PipelineWorkbench({
     if (component?.kind === "detector" && placeDetector(component)) return;
     props.onAdd(componentId, position);
   };
+  const place = (placed: { document: GraphDocument; id: string }) => {
+    addedFromMenu.current = adding;
+    setMenu(false);
+    setPanel("component");
+    setView("graph");
+    if (onPlace) return onPlace(placed);
+    props.onChange(placed.document);
+    props.onSelect(placed.id);
+  };
   const toolbar = <div className="pl-canvas-toolbar">
     <div className="pl-actions">
       {!props.readOnly && <Popover.Root open={adding} onOpenChange={setMenu}>
@@ -226,6 +242,9 @@ export function PipelineWorkbench({
             <Popover.Close aria-label="Close steps"><X size={16} aria-hidden="true" /></Popover.Close>
           </div>
           <PipelineToolbox components={catalog.components} document={props.document} onAdd={add}
+            blocks={adding ? blockChoices(library.blocks, catalog.components,
+              (block) => placeBlock(props.document, block, catalog.components, undefined, props.selected)) : []}
+            onPlace={place}
             onSelect={(id) => { setMenu(false); select(id); }}
             onDragStart={() => {
               // Keep the source visible until the browser captures its drag image.
@@ -303,7 +322,7 @@ export function PipelineWorkbench({
       onChange={(document) => props.onChange(document)} />
     : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
       features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={selectOnCanvas} onAdd={add} insets={insets}
-      onConfigure={select} onChooseDetector={chooseDetector} />;
+      onConfigure={select} onChooseDetector={chooseDetector} blocks={library.blocks} onSaveBlock={props.readOnly ? undefined : library.save} />;
   const settingsContent = panel && <div className="pl-settings-panel" id={panelId} ref={settingsPanel} onKeyDown={(event) => {
     if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
       event.stopPropagation(); close();

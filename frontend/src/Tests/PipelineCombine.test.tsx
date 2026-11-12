@@ -35,6 +35,7 @@ const aggregate = component("prepare.aggregate", [
 ]);
 const formula = component("prepare.formula", [text("expression", "Formula", true), text("name", "Name"), result]);
 const gate = component("prepare.gate", [text("condition", "Condition", true)]);
+const mute = component("prepare.mute", [text("condition", "Condition", true)]);
 const condition = component("prepare.condition", [text("condition", "Condition", true), text("name", "Name")]);
 const assignment = component("prepare.set", [text("expression", "Formula", true), text("name", "Name")]);
 const constant = component("prepare.constant", [text("name", "Name"),
@@ -49,12 +50,15 @@ const summary = (step: PipelineComponent, params?: PipelineNode["params"]) =>
   nodeSummary(node(step, params), step, definition);
 
 describe("Combine and Gate steps in the composer", () => {
-  it("sit in the add-step menu: Aggregate and Formula under Combine, Gate with the routes", () => {
+  it("sit in the add-step menu: Aggregate and Formula under Combine, Gate and Mute alarms with the routes", () => {
     expect(STEP_FAMILIES[1]).toEqual({ id: "combine", label: "Combine" });
     expect(stepFamily("transform", "prepare.aggregate")).toBe("combine");
     expect(stepFamily("transform", "prepare.formula")).toBe("combine");
     expect(stepFamily("transform", "prepare.gate")).toBe("route");
-    for (const step of [aggregate, formula, gate]) expect(stepDescription(step)).not.toBe("");
+    expect(stepFamily("transform", "prepare.mute")).toBe("route");
+    for (const step of [aggregate, formula, gate, mute]) expect(stepDescription(step)).not.toBe("");
+    // The two read alike, so each says what it does to learning and scoring.
+    expect(stepDescription(mute)).toBe("Raise no alarm while a condition holds; learning and scoring go on.");
   });
 
   it("leave the settings with controls of their own out of the generic list", () => {
@@ -62,6 +66,7 @@ describe("Combine and Gate steps in the composer", () => {
     expect(names(aggregate)).toEqual(["function"]);
     expect(names(formula)).toEqual([]);
     expect(names(gate)).toEqual([]);
+    expect(names(mute)).toEqual([]);
   });
 
   it("name the computed feature as core does", () => {
@@ -70,6 +75,7 @@ describe("Combine and Gate steps in the composer", () => {
     expect(combinedName(node(aggregate, { function: "std" }), aggregate)).toBe("std");
     expect(combinedName(node(formula, { name: "power" }), formula)).toBe("power");
     expect(combinedName(node(gate), gate)).toBeUndefined();
+    expect(combinedName(node(mute), mute)).toBeUndefined();
     expect(formulaName("dc_voltage")).toBe("dc_voltage");
     expect(formulaName("dc-voltage")).toBe("`dc-voltage`");
   });
@@ -85,6 +91,8 @@ describe("Combine and Gate steps in the composer", () => {
     expect(summary(formula)).toEqual({ text: "No formula yet" });
     expect(summary(gate, { condition: "dc_current > 1" })).toEqual({ text: "Only when dc_current > 1" });
     expect(summary(gate)).toEqual({ text: "No condition yet" });
+    expect(summary(mute, { condition: "speed < 100" })).toEqual({ text: "No alarm while speed < 100" });
+    expect(summary(mute)).toEqual({ text: "No condition yet" });
   });
 });
 
@@ -136,6 +144,16 @@ describe("the formula editor", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Condition" }), { target: { value: "dc_voltage > 1" } });
     expect(changes).toEqual([{ condition: "dc_voltage > 1" }]);
     expect(screen.getByText("Condition help")).toBeTruthy();
+  });
+
+  it("writes the condition of a Mute alarms step under what it does", () => {
+    const changes = formulaPanel(mute, {});
+    expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Keep features" })).toBeNull();
+    const area = screen.getByRole("textbox", { name: "Mute while" }) as HTMLTextAreaElement;
+    expect(area.placeholder).toBe("speed < 100");
+    fireEvent.change(area, { target: { value: "dc_voltage < 100" } });
+    expect(changes).toEqual([{ condition: "dc_voltage < 100" }]);
   });
 });
 
@@ -205,8 +223,10 @@ describe("completing a formula", () => {
       suggestions({ prefix, quoted }, ["dc_voltage", "dc-current", "max"], labels, condition).map((item) => item.value);
     expect(names("dc")).toEqual(["dc_voltage", "dc-current"]);
     expect(names("ma")).toEqual(["max", "max"]);
-    expect(names("o", true)).toEqual(["or", "dc_voltage", "log", "log1p", "not"]);
-    expect(names("o")).toEqual(["dc_voltage", "log", "log1p"]);
+    // A feature is found by any part of its name, a function or keyword by its beginning.
+    expect(names("o", true)).toEqual(["or", "dc_voltage"]);
+    expect(names("o")).toEqual(["dc_voltage"]);
+    expect(names("lo")).toEqual(["log", "log1p"]);
     expect(names("c", false, true)).toEqual(["dc_voltage", "dc-current"]);
     // A finished word needs no list.
     expect(names("dc_voltage")).toEqual([]);
@@ -229,6 +249,24 @@ describe("completing a formula", () => {
     caretAtEnd();
     fireEvent.click(screen.getByRole("option", { name: /sqrt/ }));
     expect(changes).toEqual([{ expression: "sqrt()" }]);
+  });
+
+  it("writes a constant with its parentheses", () => {
+    const changes = formulaPanel(formula, { expression: "2 * p" });
+    caretAtEnd();
+    fireEvent.click(screen.getByRole("option", { name: /pi\(\)/ }));
+    expect(changes).toEqual([{ expression: "2 * pi()" }]);
+  });
+
+  it("offers the rounding, wrapping and combining functions by what is typed", () => {
+    const names = (prefix: string) =>
+      suggestions({ prefix, quoted: false }, [], {}, false).map((item) => item.value);
+    expect(names("ro")).toEqual(["round"]);
+    expect(names("mo")).toEqual(["mod"]);
+    expect(names("me")).toEqual(["mean"]);
+    expect(names("hy")).toEqual(["hypot"]);
+    expect(names("si")).toEqual(["sign", "sin"]);
+    expect(names("at")).toEqual(["atan2"]);
   });
 
   it("closes the list with Escape and keeps the panel open", () => {
@@ -277,6 +315,16 @@ describe("the Prepare summary", () => {
     } as unknown as PipelineState;
     render(<PipelineLearningSummary state={state} />);
     expect(screen.getByText("Held back by a Gate").nextSibling?.textContent).toBe("7");
+    expect(screen.queryByText("Scored with alarms muted")).toBeNull();
+  });
+
+  it("counts the observations scored while a Mute alarms step held alarms back", () => {
+    const state = {
+      preparation: { ready: true, observed: 3, required: 3, rejected: 0, held_back: 0, muted: 12 },
+    } as unknown as PipelineState;
+    render(<PipelineLearningSummary state={state} />);
+    expect(screen.getByText("Scored with alarms muted").nextSibling?.textContent).toBe("12");
+    expect(screen.queryByText("Held back by a Gate")).toBeNull();
   });
 });
 
@@ -367,5 +415,11 @@ describe("numeric primitives", () => {
       .toEqual(["statistic", "quantile"]);
     expect(summary(rolling, { statistic: "quantile", quantile: .9, window_size: 5 }).text)
       .toBe("Quantile 0.9 of last 5");
+    // A score or a rank places the latest value within the window.
+    const rolled = (statistic: string) => summary(rolling, { statistic, window_size: 60 }).text;
+    expect(["zscore", "robust_zscore", "rank"].map(rolled))
+      .toEqual(["Z-score within last 60", "Robust z-score within last 60", "Rank within last 60"]);
+    expect(["rms", "skewness", "kurtosis"].map(rolled))
+      .toEqual(["Root mean square of last 60", "Skewness of last 60", "Excess kurtosis of last 60"]);
   });
 });

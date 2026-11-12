@@ -7,6 +7,7 @@ from off_key_core.models import (
     STATIC_MODEL_FAMILY,
     STATIC_MONITORING_STRATEGY,
 )
+from off_key_core.models.adaptive import RULE_DETECTORS
 from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
 from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
@@ -43,11 +44,10 @@ def test_catalogue_lists_every_shipped_model_with_its_strategy():
             "/models/", params={"strategy": ADAPTIVE_MONITORING_STRATEGY}
         ).json()
 
-    assert [model["model_type"] for model in models] == [
-        *STATIC_MODELS,
-        *ADAPTIVE_MODELS_BY_TYPE,
-    ]
-    assert {model["model_type"] for model in adaptive} == set(ADAPTIVE_MODELS_BY_TYPE)
+    # A rule detector scores what a step states, so only the composer offers it.
+    learned = [name for name in ADAPTIVE_MODELS_BY_TYPE if name not in RULE_DETECTORS]
+    assert [model["model_type"] for model in models] == [*STATIC_MODELS, *learned]
+    assert {model["model_type"] for model in adaptive} == set(learned)
     knn = next(model for model in models if model["model_type"] == "pyod_knn")
     assert knn["strategy"] == STATIC_MONITORING_STRATEGY
     assert knn["family"] == STATIC_MODEL_FAMILY

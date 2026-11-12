@@ -2,15 +2,20 @@
 
 import json
 import math
+import re
 
 from off_key_core.schemas.system import SystemStream
 
 MAX_PAYLOAD_BYTES = 65536
 MAX_TEXT_LENGTH = 512
 _UNSET = object()
+# A JSON number written inside a string, as many device APIs send it.
+_NUMBER_TEXT = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 
 
-def _pointer(value, pointer: str):
+def resolve_pointer(value, pointer: str):
+    """The value an RFC 6901 pointer names; raises KeyError, IndexError,
+    TypeError or ValueError when the document has no such place."""
     for segment in pointer.split("/")[1:]:
         segment = segment.replace("~1", "/").replace("~0", "~")
         if isinstance(value, dict):
@@ -49,7 +54,7 @@ class PayloadDecoder:
             self.json_value = json.loads(self.text)
         try:
             value = (
-                _pointer(self.json_value, stream.payload_pointer)
+                resolve_pointer(self.json_value, stream.payload_pointer)
                 if stream.payload_pointer is not None
                 else self.json_value
             )
@@ -60,6 +65,8 @@ class PayloadDecoder:
 
 def _scalar(value, value_type: str) -> float | bool | str:
     if value_type == "number":
+        if isinstance(value, str) and _NUMBER_TEXT.fullmatch(value.strip(" ")):
+            value = float(value)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("Expected a number")
         value = float(value)

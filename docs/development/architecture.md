@@ -56,9 +56,9 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 
 ### 2. Telemetry ingestion flow
 
-1. A member with `manage_sources` saves MQTT broker, entity, topic and payload-field definitions through Sources.
+1. A member with `manage_sources` saves broker, entity, topic and payload-field definitions through Sources. A broker entry is an MQTT broker or an HTTP API with request paths in place of topics.
 2. Collection is explicitly enabled for chosen readings; saving definitions alone does not select them.
-3. TACTIC subscribes to selected upstream topics using operator-provisioned networking and credentials, then forwards generation-scoped envelopes through internal EMQX.
+3. TACTIC subscribes to selected upstream topics, or polls selected request paths with `GET`, using operator-provisioned networking and credentials. It forwards both as generation-scoped envelopes through internal EMQX, so every later step is the same for either protocol.
 4. MQTT Proxy decodes admitted readings, applies collection policy, stores numeric history/latest state and emits accepted topics.
 5. RADAR consumes `telemetry/<entity>/<reading>` observations. Gateway serves stored history and live monitoring evidence to the UI.
 

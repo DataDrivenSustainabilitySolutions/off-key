@@ -81,6 +81,8 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
             ("DELETE", "/monitors/example"),
             ("POST", "/pipelines/apply"),
             ("POST", "/pipeline-activations/example/cancel"),
+            ("POST", "/pipeline-blocks"),
+            ("DELETE", "/pipeline-blocks/example"),
             ("POST", "/alarms"),
             ("DELETE", "/alarms/example"),
             ("GET", "/members"),

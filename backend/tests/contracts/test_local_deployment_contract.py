@@ -77,6 +77,9 @@ def test_init_preserves_private_configuration(launcher):
     assert values["SYSTEM_LIVE_ENABLED"] == "true"
     assert json.loads(values["SYSTEM_LIVE_ALLOWED_HOSTS"]) == launcher.LOCAL_LIVE_HOSTS
     assert values["SYSTEM_LIVE_CREDENTIALS"] == "{}"
+    assert (
+        json.loads(values["SYSTEM_HTTP_ALLOWED_ORIGINS"]) == launcher.LOCAL_HTTP_ORIGINS
+    )
     assert launcher.default_project(launcher.ROOT) != launcher.default_project(
         launcher.ROOT.parent
     )
@@ -419,7 +422,7 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
         ".tmp/spatial-runtime" in str(service) for service in services.values()
     )
     fixture_names = set(launcher.LOCAL_LIVE_HOSTS) - {"source-broker"}
-    for name in fixture_names | {"broker-fixture-publisher"}:
+    for name in fixture_names | {"broker-fixture-publisher", "fixture-api"}:
         assert services[name]["profiles"] == ["broker-fixture"]
         assert services[name].get("ports", []) == []
         assert set(services[name]["networks"]) == {"app-network"}
@@ -455,6 +458,13 @@ def test_compose_defaults_follow_the_launcher_and_the_fixture_brokers(launcher):
         fixture_hosts
     )
     assert set(services["broker-fixture-publisher"]["depends_on"]) == fixture_hosts
+    (origins,) = re.findall(r"\$\{SYSTEM_HTTP_ALLOWED_ORIGINS:-(.+?)\}'", text)
+    assert origins == json.dumps(launcher.LOCAL_HTTP_ORIGINS, separators=(",", ":"))
+    # The allowed origin is where the test API listens.
+    api = (ROOT / "dev/local/api_fixture.py").read_text()
+    (port,) = re.findall(r"^PORT = (\d+)$", api, flags=re.MULTILINE)
+    assert [f"http://fixture-api:{port}"] == launcher.LOCAL_HTTP_ORIGINS
+    assert f"localhost:{port}/health" in str(services["fixture-api"]["healthcheck"])
 
 
 @pytest.mark.parametrize(

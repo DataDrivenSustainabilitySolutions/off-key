@@ -266,9 +266,7 @@ class Rolling(Kernel):
             case "mean":
                 return math.fsum(window) / size
             case "std":
-                mean = math.fsum(window) / size
-                deviations = [item - mean for item in window]
-                return math.sqrt(math.sumprod(deviations, deviations) / (size - 1))
+                return _root_mean_square(_deviations(window), size - 1)
             case "median":
                 if size % 2:
                     return ordered[middle]
@@ -299,19 +297,21 @@ class Rolling(Kernel):
             case "robust_zscore":
                 return _robust_score(window, ordered)
             case "rms":
-                return math.sqrt(math.sumprod(window, window) / self.size)
+                # The root lies between the smallest and the largest magnitude,
+                # which is the range the compiler passes on; rounding may not.
+                root = _root_mean_square(window, self.size)
+                return max(root, min(map(abs, window)))
         return self._moment_statistic(window)
 
     def _moment_statistic(self, window: array) -> float:
         """zscore, skewness or excess kurtosis; 0 for a window of one value."""
         size = self.size
-        if window.count(window[0]) == size:
-            return 0.0
-        mean = math.fsum(window) / size
-        deviations = [item - mean for item in window]
+        deviations = _deviations(window)
         # All three compare deviations with each other, so the largest one
         # can stand for 1 and no power of them overflows or vanishes.
         largest = max(map(abs, deviations))
+        if largest == 0:
+            return 0.0
         unit = [item / largest for item in deviations]
         second = math.sumprod(unit, unit) / size
         if self.statistic == "zscore":
@@ -328,6 +328,36 @@ class Rolling(Kernel):
 
     def accepts(self, state: State) -> bool:
         return _window_state(state, self.size, 2 if self.ordered else 1)
+
+
+def _deviations(window) -> list[float]:
+    """Each value's distance from the mean of the window; 0 in a flat window.
+
+    The mean of large values that differ little rounds to a value next to
+    them, which would move every distance by as much as the values differ.
+    Values on one side of 0 are therefore measured from the smallest one
+    first, and the mean is taken of what remains.
+    """
+    low, high = min(window), max(window)
+    if low == high:
+        return [0.0] * len(window)
+    start = low if low > 0 or high < 0 else 0.0
+    offsets = [item - start for item in window]
+    mean = math.fsum(offsets) / len(offsets)
+    return [item - mean for item in offsets]
+
+
+def _root_mean_square(values, divisor: int) -> float:
+    """The root of the sum of squares over divisor.
+
+    The largest magnitude stands for 1, so the squares of very large or very
+    small values neither overflow nor vanish where their root does not.
+    """
+    largest = max(map(abs, values))
+    if largest == 0:
+        return 0.0
+    unit = [item / largest for item in values]
+    return largest * math.sqrt(math.sumprod(unit, unit) / divisor)
 
 
 def _quantile(ordered, fraction: float) -> float:

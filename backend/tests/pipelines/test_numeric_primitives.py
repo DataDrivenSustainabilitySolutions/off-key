@@ -234,24 +234,68 @@ def test_scores_and_shape_statistics_match_numpy_within_their_limits(statistic, 
             assert actual == pytest.approx(_reference(statistic, window), abs=1e-9)
 
 
-def test_scores_stay_finite_where_their_powers_would_not():
-    huge = [1e200, -1e200, 3e200, 0.0, 2e200]
-    tiny = [1e-200, -1e-200, 3e-200, 0.0, 2e-200]
+def rolled(statistic, values):
+    """The statistic of a window that holds exactly these values."""
+    step = kernel(
+        "prepare.rolling", {"statistic": statistic, "window_size": len(values)}
+    )
+    state = step.initial()
+    for value in values:
+        state, result = step.advance(state, value)
+    return result
+
+
+def test_statistics_stay_finite_where_their_powers_would_not():
+    plain = [1.0, -1.0, 3.0, 0.0, 2.0]
+    huge = [value * 1e200 for value in plain]
+    tiny = [value * 1e-200 for value in plain]
     for statistic in ("zscore", "robust_zscore", "skewness", "kurtosis"):
-        results = []
-        for values in (huge, tiny, [1.0, -1.0, 3.0, 0.0, 2.0]):
-            step = kernel("prepare.rolling", {"statistic": statistic, "window_size": 5})
-            state = step.initial()
-            for value in values:
-                state, result = step.advance(state, value)
-            results.append(result)
         # Scores compare values with each other, so the scale drops out.
-        assert results[0] == pytest.approx(results[2])
-        assert results[1] == pytest.approx(results[2])
-    step = kernel("prepare.rolling", {"statistic": "rms", "window_size": 2})
-    state, _ = step.advance(step.initial(), 1e200)
+        assert rolled(statistic, huge) == pytest.approx(rolled(statistic, plain))
+        assert rolled(statistic, tiny) == pytest.approx(rolled(statistic, plain))
+    for statistic, expected in (("rms", math.sqrt(3)), ("std", math.sqrt(2.5))):
+        # A root keeps the scale, also where its squares overflow or vanish.
+        assert rolled(statistic, plain) == pytest.approx(expected)
+        assert rolled(statistic, huge) == pytest.approx(expected * 1e200)
+        assert rolled(statistic, tiny) == pytest.approx(expected * 1e-200, abs=0)
     with pytest.raises(PrepareFailure, match="finite"):
-        step.advance(state, 1e200)
+        rolled("std", [1.7e308, -1.7e308, -1.7e308])
+
+
+@pytest.mark.parametrize("value", [1e-200, 5e-324, 1e200, 1.7e308, 0.1, 0.0])
+def test_a_root_mean_square_stays_within_the_magnitudes_it_is_taken_of(value):
+    params = {"statistic": "rms", "window_size": 3}
+    low, high = prepared_bounds("prepare.rolling", params, (value, value))
+    assert low == high == value
+    assert rolled("rms", [value, value, value]) == value
+    assert rolled("rms", [-value, value, -value]) == value
+    rng = random.Random(7)
+    for _ in range(500):
+        values = [value * rng.uniform(1, 1 + 1e-15 * rng.randint(0, 9))] * 2 + [value]
+        assert min(values) <= rolled("rms", values) <= max(values)
+
+
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_small_differences_between_large_values_are_not_rounded_away(sign):
+    # The mean of the large values, 1e16 + 0.8, is no float; the nearest is 1e16.
+    large = [sign * value for value in (1e16, 1e16, 1e16, 1e16 + 2, 1e16 + 2)]
+    small = [sign * value for value in (0.0, 0.0, 0.0, 2.0, 2.0)]
+    expected = {
+        "std": math.sqrt(1.2),
+        "zscore": sign * math.sqrt(1.2),
+        "skewness": sign * 0.384 / 0.96**1.5,
+        "kurtosis": 1.0752 / 0.96**2 - 3,
+    }
+    for statistic, value in expected.items():
+        assert rolled(statistic, small) == pytest.approx(value)
+        assert rolled(statistic, large) == pytest.approx(value)
+    # A value and its neighbours a few floats apart, far from 0.
+    step = math.ulp(1e9)
+    window = [1e9 + index * step for index in (0, 3, 1, 4, 1, 5, 9, 2)]
+    plain = [float(index) for index in (0, 3, 1, 4, 1, 5, 9, 2)]
+    for statistic in ("zscore", "skewness", "kurtosis"):
+        assert rolled(statistic, window) == pytest.approx(rolled(statistic, plain))
+    assert rolled("std", window) == pytest.approx(rolled("std", plain) * step)
 
 
 def test_a_robust_score_survives_a_window_that_is_mostly_one_value():

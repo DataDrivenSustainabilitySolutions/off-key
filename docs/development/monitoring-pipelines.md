@@ -263,7 +263,12 @@ overflows or vanishes, and are clamped to the limits no window of n values
 exceeds: (n - 1) / sqrt(n) for a z-score, (n - 2) / sqrt(n - 1) for skewness
 and n - 5 + 1 / (n - 1) for excess kurtosis. These limits are the features'
 known ranges, and `rank` has [0, 1]. A flat window gives 0, and 0.5 for
-`rank`. `robust_zscore` falls back from 1.4826 x MAD to sqrt(pi / 2) x the mean
+`rank`. Deviations from the mean, also for `std`, come from `_deviations()`:
+a window on one side of 0 is measured from its smallest value before the mean
+is taken, because the mean of large values that differ by a few floats rounds
+to one of them. `std` and `rms` take their root in `_root_mean_square()` with
+the largest magnitude standing for 1, and `rms` never falls below the
+smallest magnitude in its window, which is the lower end of its known range. `robust_zscore` falls back from 1.4826 x MAD to sqrt(pi / 2) x the mean
 absolute deviation where the MAD is 0. The `quantile` setting is
 normalized away for every other statistic, preserving existing executable
 fingerprints. MAD and Despike find the median distance by binary search in the

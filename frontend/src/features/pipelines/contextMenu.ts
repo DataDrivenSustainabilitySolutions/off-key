@@ -25,12 +25,14 @@ export type Menu = {
   empty?: string;
 };
 
-/** Steps by family, each family opening its steps; typing lists matching steps directly. */
+/** Steps by family, each family opening its steps; typing lists matching steps directly.
+ * Saved blocks follow the families as one more group. */
 export function stepMenu(
   label: string,
   components: PipelineComponent[],
   pick: (component: PipelineComponent) => void,
   empty: string,
+  blocks: MenuItem[] = [],
 ): Menu {
   const entry = (component: PipelineComponent, detail = stepDescription(component)): MenuItem => ({
     key: component.id, label: component.label, detail, run: () => pick(component),
@@ -39,22 +41,28 @@ export function stepMenu(
   return {
     label,
     empty,
-    items: STEP_FAMILIES.flatMap((family) => {
-      const steps = components.filter((component) => familyOf(component) === family.id);
-      return steps.length ? [{ key: family.id, label: family.label, detail: `${steps.length}`,
-        submenu: { label: family.label, items: steps.map((component) => entry(component)) } }] : [];
-    }),
+    items: [
+      ...STEP_FAMILIES.flatMap((family) => {
+        const steps = components.filter((component) => familyOf(component) === family.id);
+        return steps.length ? [{ key: family.id, label: family.label, detail: `${steps.length}`,
+          submenu: { label: family.label, items: steps.map((component) => entry(component)) } }] : [];
+      }),
+      ...(blocks.length ? [{ key: "blocks", label: "Blocks", detail: `${blocks.length}`, separated: true,
+        submenu: { label: "Blocks", items: blocks } }] : []),
+    ],
     search: {
       label: "Search steps",
       results: (query) => {
         const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
-        return STEP_FAMILIES.flatMap((family) => components.filter((component) => familyOf(component) === family.id))
-          .filter((component) => {
-            const text = `${component.label} ${stepDescription(component)} ${component.description} ${familyLabel(familyOf(component))}`
-              .toLocaleLowerCase();
-            return words.every((word) => text.includes(word));
-          })
-          .map((component) => entry(component, familyLabel(familyOf(component))));
+        const matches = (text: string) => words.every((word) => text.toLocaleLowerCase().includes(word));
+        return [
+          ...STEP_FAMILIES.flatMap((family) => components.filter((component) => familyOf(component) === family.id))
+            .filter((component) => matches(
+              `${component.label} ${stepDescription(component)} ${component.description} ${familyLabel(familyOf(component))}`))
+            .map((component) => entry(component, familyLabel(familyOf(component)))),
+          ...blocks.filter((block) => matches(`${block.label} ${block.detail ?? ""} block`))
+            .map((block) => ({ ...block, detail: "Block" })),
+        ];
       },
     },
   };

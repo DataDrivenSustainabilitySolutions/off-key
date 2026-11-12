@@ -9,6 +9,7 @@ from off_key_core.models.pipeline_prepare import (
     PREPARE_COMPONENTS,
     kernel,
 )
+from off_key_core.models.pipeline_scope import EXPECTATIONS
 from off_key_mqtt_radar.pipelines.components import (
     BATCH_BUILDERS,
     BATCH_PASSTHROUGH,
@@ -65,8 +66,10 @@ def test_runtime_registries_hold_no_component_the_catalog_lacks():
     assert ONLINE_BUILDERS.keys() <= offered
 
 
-def test_every_projection_and_rolling_window_has_a_state_estimate():
-    assert set(STATE_ESTIMATORS) == PROJECTIONS | {"adaptive.robust_scaler"}
+def test_every_step_that_keeps_a_matrix_or_a_window_has_a_state_estimate():
+    assert set(STATE_ESTIMATORS) == (
+        PROJECTIONS | EXPECTATIONS | {"adaptive.robust_scaler"}
+    )
 
 
 def test_unknown_components_keep_their_strategy_specific_errors():

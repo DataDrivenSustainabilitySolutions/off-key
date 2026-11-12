@@ -35,6 +35,7 @@ EXPECTED_MIGRATIONS = (
     "028_access_token_revocation.sql",
     "029_dojo_metrics_cache.sql",
     "030_evidence_muted.sql",
+    "031_pipeline_blocks.sql",
 )
 
 

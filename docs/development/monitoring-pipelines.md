@@ -135,6 +135,41 @@ score and surprise (`ObservedDetector`); each detector's own preview outputs its
 score. The live inspector lists them for the policy, and the chart tooltip lists
 an evidence row's `detector_results`.
 
+A block is a named chain of `transform` steps that the library keeps
+(`monitoring_pipeline_blocks`, migration `031_pipeline_blocks.sql`) and the
+editor copies into a design. No design, revision or run refers to a block, so
+the compiler, RADAR and activation know nothing of blocks, and deleting one
+changes nothing that runs. `PipelineBlockCreate` bounds a block to
+`MAX_BLOCK_STEPS` (16) steps and `MAX_BLOCK_BYTES` (16 KiB) of settings, and the
+library holds `MAX_BLOCKS` (100), so `GET /pipeline-blocks` returns every block
+and the menus need no paging. `require_block_steps()` in
+`models/pipeline_blocks.py` accepts the components the catalog offers at the
+saved contract version with kind `transform`; each takes features and gives
+features, so any of them can follow any other. It does not check settings: a
+block has no inputs to check them against, and the design's validation checks
+the copied steps where they land. `PipelineBlocks` (TACTIC
+`services/pipelines/blocks.py`) writes under `begin_library_write()`, the
+guards the template library uses, so blocks are read-only while authoring is
+off. Names are unique (`uq_pipeline_block_name`). A block is saved and deleted,
+never updated.
+
+In the editor, `blocks.ts` holds the operations. `blockChain()` gives the steps
+a card's **Save as block** can hold and `blockSteps()` their settings and
+titles without ids or positions. `placeBlock()` adds a block as a chain of its
+own, `insertBlock()` on a connection and `addBlockAfter()` after a card: on the
+card's one connection out when the block fits there, otherwise as a branch.
+Each returns a `BlockOutcome`, the changed document with the id of the first
+new step or the reason the block cannot be added, and `blockChoices()` pairs
+every block with its outcome, so the menus list all blocks and say why one does
+not fit. Steps are added with `addComponent(..., exact = true)`, which keeps
+the saved settings, feature names included, where a new step's names are made
+unique. On a connection, a learned step that `insertBlocker()` refuses is
+exchanged through `counterpartBefore()` for the counterpart that learns as the
+detectors after the connection do, the exchange `changeDetector()` makes.
+`useBlocks()` reads the library once per editor that can change its design; a
+failed read leaves the menus without blocks. `PIPELINE_LIMITS.blockSteps` comes
+from `MAX_BLOCK_STEPS` through the type generator.
+
 ## Monitoring history
 
 The service Evidence tab presents one timeline for its recorded inputs and joint
@@ -215,6 +250,30 @@ computes exactly what select, the step and an ordered merge compute, under both
 strategies. Robust scaling uses scikit-learn's `RobustScaler` on training data
 and Aberrant's `RollingRobustScaler` online; both use linear quartiles and scale
 by 1 when a feature's interquartile range is zero.
+
+Expected value steps (`static.expected_value` and `adaptive.expected_value`,
+`EXPECTATIONS` in `pipeline_scope.py`) are always scoped. `target` names the
+feature to expect and `apply_to` the features it is expected from, unset for
+every other feature. `step_scope` lists the target first and gives the
+residual's name, `name` or `<target>_residual`, as the scope's added feature. A
+replacing step drops the target and the features it is expected from and appends
+the residual, whose lineage is the slots of all of them. The compiler reports an
+unknown target, a target among `apply_to`, a step that only the target reaches
+and a name that repeats a feature that stays, each with its parameter path, and
+refuses a static step whose training window holds no more observations than the
+fit has coefficients. `ExpectedValue` (`pipelines/expected.py`) solves centred
+least squares with NumPy on the training window; inputs that are constant or
+repeat each other get the minimum-norm weights, so a fit never fails.
+`OnlineExpectedValue` wraps Aberrant's `RLSRegressor`, with one coefficient per
+input and a constant. It is ready after one observation per coefficient and one
+more, and its learning transaction restores a deep copy of the regressor when a
+later step rejects the observation. Scoring reads the fit before the
+observation is learned; in a learning pass Aberrant transforms after the update,
+as for every online step, so the detector learns the residual of the updated
+fit. `forgetting` defaults to 1, because the covariance of a fit that forgets
+grows without bound while its inputs stop varying. `STATE_ESTIMATORS` counts a
+weight and a centre per used feature for the static step and eight covariance
+matrices for the online one.
 
 Prepare steps (`pipeline_prepare.py`) are deterministic kernels that run once
 per observation, in arrival order, before anything learns. `stage_split()` takes
@@ -1100,9 +1159,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`efe30f4aefd5aba13eecb298d3201370ede11699`, the commit that adds the Mute alarms
-step and the evidence's `muted` column through migration 030
-(`evidence_muted`). It shares the current
+`197cc239119b8bfb7df1b6921828dbb690adcd7f`, the commit that adds the composer's
+saved blocks and their table through migration 031
+(`pipeline_blocks`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -1110,7 +1169,8 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `f02a9201`, has no migration 030;
+The previous reference, `efe30f4a`, has no migration 031;
+`f02a9201` has no migration 030;
 `535b29cd` has neither migration 028 nor 029;
 `934f8f93` has no migration 027; `cbe2d839` before it
 has no migration 026, `ad919d98` returns a design with its lane and without
@@ -1119,7 +1179,7 @@ reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
 has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
 1.4.0, so the rehearsal accepts none of them.
 Releases before
-migration 030 refuse a database that has applied it. Rolling back past
+migration 031 refuse a database that has applied it. Rolling back past
 this schema boundary means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.

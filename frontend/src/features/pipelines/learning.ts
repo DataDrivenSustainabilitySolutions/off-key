@@ -97,12 +97,27 @@ const COUNTERPARTS: [fitted: string, continuous: string][] = [
   ["static.robust_scaler", "adaptive.robust_scaler"],
   ["static.pca", "adaptive.uncentered_pca"],
   ["static.random_projection", "adaptive.random_projection"],
+  ["static.expected_value", "adaptive.expected_value"],
 ];
 
 function counterpart(node: PipelineNode, mode: Learning, components: PipelineComponent[]) {
   const pair = COUNTERPARTS.find((item) => item.includes(node.component));
   const wanted = pair?.[mode === "batch" ? 0 : 1];
   return components.find((component) => component.id === wanted && component.kind === node.kind && component.learning === mode);
+}
+
+/** A learned step for a place where it does not fit as it is: its counterpart that learns
+ * as the detectors after `target` do, with the settings both share. Undefined when the
+ * detectors there learn differently from each other or the step has no such counterpart. */
+export function counterpartBefore(
+  definition: PipelineDefinition,
+  target: string,
+  node: PipelineNode,
+  components: PipelineComponent[],
+): { component: PipelineComponent; params: PipelineNode["params"] } | undefined {
+  const modes = [...new Set(detectorsFrom(definition, target).map((reader) => learningOf(reader, components)))];
+  const other = modes.length === 1 ? counterpart(node, modes[0]!, components) : undefined;
+  return other && { component: other, params: sharedParams(node, other) };
 }
 
 /** The policy that fits the calibration step and the detectors. The fixed split gives

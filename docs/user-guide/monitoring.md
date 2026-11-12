@@ -188,6 +188,28 @@ text fields. Click empty canvas or press Escape to release a selection before
 using Delete. An unsaved setup survives a reload of the same browser tab, and
 **Reset** discards it.
 
+A **block** keeps steps you use again. Right-click a step, long-press it or
+press the menu key on it, and choose **Save as block**. The block holds that
+step and the steps after it, one after another, up to the **Last step** you
+choose, with their settings and titles. It ends before a detector and where
+the steps branch or merge, and holds at most 16 steps. Saving a block changes
+nothing in the design. Blocks are shared: every member sees them, and saving or
+deleting one needs the permission to manage monitors.
+
+Saved blocks are listed below the steps in **Add step**, in the **+** menu of a
+connection and in a step's **Add after** menu. Adding a block copies its steps
+into the design, connected to each other; on a connection they take the
+connection's place like a single step. The copies are ordinary steps with no tie
+to the block: changing them does not change the block, and deleting the block
+changes no service or template. The steps keep the feature names they were saved
+with, so the check names a feature the design already has. Before a detector, a
+block's learned step moves to the counterpart that learns as that detector does,
+as it would when the detector's model changes. A block that cannot be added
+stays listed and says why, for example **Holds a step this version does not
+offer.** **Manage templates** lists the blocks below the templates, where
+**Delete** removes one. A block is not edited: save the changed steps under
+another name and delete the old block.
+
 Every edit is checked shortly after it is made. The status chip beside the
 panel buttons shows the result: **Valid** with the time until the first alarm
 can come, or the number of issues. Open it to list the issues; selecting one
@@ -551,6 +573,24 @@ interquartile range, so occasional spikes shift it less than standard scaling.
 The static step learns them from the training window. **Online robust scaling**
 uses a window of recent observations per feature, 256 by default, and is ready
 after **Min Samples** observations.
+
+**Expected value** compares one feature with what the other features imply.
+Choose the **Target**, such as a pump's current, and under **Expected from** the
+features it follows, such as flow and pressure; left as it is, every other
+feature counts. The step fits the target as a weighted sum of those features and
+a constant and gives the residual, the target minus the expected value. The
+residual is named after the target, such as `current_residual`, unless **Name**
+says otherwise. A detector on the residual reacts to a current that no longer
+fits the flow, also while each reading alone looks normal. **Result** replaces
+the target and the features it is expected from with the residual, or with
+**Keep features** adds it to them. The static step fits once on the training
+window, which has to hold more observations than the fit has weights. **Online
+expected value** updates the fit with every observation and scores each one
+against the fit before it. **Forgetting** below 1 lets earlier observations fade,
+so the fit follows slow drift; keep 1 for readings that rest for long, because a
+fit that forgets while nothing varies becomes unstable. A relation that is not a
+straight line needs its curve as a feature first, such as a **Formula** for the
+square of the flow.
 
 Unchecking readings in **Readings to monitor** changes the input slots and
 bindings together; a service accepts up to 100 readings. Each reading's feature

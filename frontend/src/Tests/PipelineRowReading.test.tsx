@@ -7,7 +7,7 @@ import {
 } from "@/features/pipelines/contracts";
 import { calculateLine, writtenNames } from "@/features/pipelines/formula";
 import { PipelineFormula } from "@/features/pipelines/PipelineFormula";
-import { PipelineAgainst } from "@/features/pipelines/PipelineScope";
+import { PipelineApart } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix } from "@/features/pipelines/scope";
 import { CONDITION_STEPS, FORMULA_STEPS, stepDescription, stepFamily, stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
@@ -190,7 +190,7 @@ describe("the condition of a step that works on each feature", () => {
 describe("the feature a Rolling relation compares with", () => {
   function against(params: PipelineNode["params"], issues: Issue[] = []) {
     const changes: Record<string, JsonValue>[] = [];
-    render(<PipelineAgainst node={node(relation, params)} features={["dc_voltage", "dc-current", "speed"]}
+    render(<PipelineApart field="against" node={node(relation, params)} features={["dc_voltage", "dc-current", "speed"]}
       featureLabels={{ dc_voltage: "DC voltage" }} issues={issues} onChange={(next) => { changes.push(next); }} />);
     return changes;
   }

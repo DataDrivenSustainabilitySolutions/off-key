@@ -113,6 +113,13 @@ export type ElementwiseScopeParameters = {
   suffix?: string;
 };
 
+export type ExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+};
+
 export type FeatureDescription = {
   name: string;
   slots: Array<string>;
@@ -230,6 +237,14 @@ export type ObservedDetector = {
   surprise: number | null;
 };
 
+export type OnlineExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+  forgetting?: number;
+};
+
 export type OnlinePCAParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
@@ -277,6 +292,31 @@ export type PipelineBindingMetadata = {
   collection_generation: string;
   collection_fingerprint: string;
   readings: Array<PipelineReadingMetadata>;
+};
+
+export type PipelineBlockCreate = {
+  name: string;
+  description?: string;
+  steps: Array<PipelineBlockStep>;
+};
+
+export type PipelineBlockList = {
+  items: Array<PipelineBlockView>;
+};
+
+export type PipelineBlockStep = {
+  component: string;
+  contract_version?: number;
+  params?: Record<string, unknown>;
+  label?: string | null;
+};
+
+export type PipelineBlockView = {
+  id: string;
+  name: string;
+  description: string;
+  steps: Array<PipelineBlockStep>;
+  created_at: string;
 };
 
 export type PipelineCatalog = {
@@ -769,4 +809,4 @@ export type TimeParameters = {
   timezone?: string;
 };
 
-export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4 } as const;
+export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4, blockSteps: 16 } as const;

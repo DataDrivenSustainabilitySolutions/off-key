@@ -43,6 +43,9 @@ from .pipelines import (
     PipelineActivation as PipelineActivation,
 )
 from .pipelines import (
+    PipelineBlock as PipelineBlock,
+)
+from .pipelines import (
     PipelineRevision as PipelineRevision,
 )
 from .pipelines import (

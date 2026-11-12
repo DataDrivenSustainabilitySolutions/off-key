@@ -1,4 +1,5 @@
 import { formatChartTime, formatNumber, type TelemetryChartModel } from "./telemetry-chart";
+import { alarmText } from "./telemetry-detectors";
 
 export function TelemetryChartSummary({ model, timeZone, showTelemetry = true }: { model: TelemetryChartModel; timeZone: string; showTelemetry?: boolean }) {
   const latestTelemetry = model.telemetry.data[model.telemetry.data.length - 1];
@@ -17,7 +18,7 @@ export function TelemetryChartSummary({ model, timeZone, showTelemetry = true }:
           <span key={series.id}>
             {series.name}: {latest.isInfinite || (latest.value === null && latest.logValue !== null) ? (
               <>
-                Beyond numeric range{latest.logValue !== null ? ` (ln: ${formatNumber(latest.logValue)})` : ""}; {latest.alarmActive ? "alarm active" : "alarm inactive"}
+                Beyond numeric range{latest.logValue !== null ? ` (ln: ${formatNumber(latest.logValue)})` : ""}; alarm {alarmText(latest)}
               </>
             ) : latest.value !== null ? formatNumber(latest.value) : "Unavailable"}
             {latest.threshold !== null ? ` · Threshold: ${formatNumber(latest.threshold)}` : ""}

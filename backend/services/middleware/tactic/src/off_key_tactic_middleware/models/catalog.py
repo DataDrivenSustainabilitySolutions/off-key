@@ -12,6 +12,7 @@ from off_key_core.models import (
     adaptive_model_metadata,
     validate_adaptive_model_params,
 )
+from off_key_core.models.adaptive import RULE_DETECTORS
 from off_key_core.models.pipeline_fields import component_fields
 from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
 
@@ -61,6 +62,9 @@ def available_models() -> list[dict[str, Any]]:
             **adaptive_model_metadata(model_type),
         }
         for model_type, definition in ADAPTIVE_MODELS_BY_TYPE.items()
+        # A rule detector scores what a step before it states, so it is a
+        # composer step and the setup form, which has no such step, leaves it out.
+        if model_type not in RULE_DETECTORS
     ]
     return static + adaptive
 

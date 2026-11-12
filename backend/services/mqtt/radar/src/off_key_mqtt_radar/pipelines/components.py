@@ -24,6 +24,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
 from sklearn.random_projection import SparseRandomProjection
 
+from .expected import ExpectedValue, OnlineExpectedValue
 from .plan import ExecutionPlan
 
 # Column operations BatchFeatureGraph applies inline, without a fitted object.
@@ -56,6 +57,8 @@ BATCH_BUILDERS: dict[str, Callable[[dict], Any]] = {
     "static.robust_scaler": lambda params: RobustScaler(**params),
     "static.pca": _seeded(PCA),
     "static.random_projection": _seeded(SparseRandomProjection),
+    # Its settings name features, which the scope hands over target first.
+    "static.expected_value": lambda _params: ExpectedValue(),
 }
 
 
@@ -166,6 +169,17 @@ def _projection(constructor: Callable[..., Any]) -> OnlineBuilder:
     return build
 
 
+def _expected_value(plan: ExecutionPlan, node, parents: list[str], params: dict) -> Any:
+    scope = step_scope(node.component, node.params, plan.names(parents[0]))
+    # The scope lists the target first, then the features it is expected from.
+    return OnlineExpectedValue(
+        scope.selected[0],
+        scope.added[0],
+        len(scope.selected) - 1,
+        params["forgetting"],
+    )
+
+
 # features.merge is a MergeNode in the adaptive graph, not a transformer.
 ONLINE_BUILDERS: dict[str, OnlineBuilder] = {
     "features.select": lambda _plan, _node, _parents, params: Select(**params),
@@ -182,6 +196,7 @@ ONLINE_BUILDERS: dict[str, OnlineBuilder] = {
     ),
     "adaptive.uncentered_pca": _projection(IncrementalPCA),
     "adaptive.random_projection": _projection(RandomProjection),
+    "adaptive.expected_value": _expected_value,
 }
 
 

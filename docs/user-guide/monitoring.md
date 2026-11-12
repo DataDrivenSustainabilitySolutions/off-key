@@ -151,7 +151,7 @@ Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
 Detection rule or Evidence output), its title and its underlying operation; a
 step that learns also says how (**Learns continuously**, **Fitted once** or
-**Pretrained**); renaming a card helps explain its purpose while the operation name
+**Pretrained**), and a detector that learns nothing says **No training**; renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -188,6 +188,28 @@ text fields. Click empty canvas or press Escape to release a selection before
 using Delete. An unsaved setup survives a reload of the same browser tab, and
 **Reset** discards it.
 
+A **block** keeps steps you use again. Right-click a step, long-press it or
+press the menu key on it, and choose **Save as block**. The block holds that
+step and the steps after it, one after another, up to the **Last step** you
+choose, with their settings and titles. It ends before a detector and where
+the steps branch or merge, and holds at most 16 steps. Saving a block changes
+nothing in the design. Blocks are shared: every member sees them, and saving or
+deleting one needs the permission to manage monitors.
+
+Saved blocks are listed below the steps in **Add step**, in the **+** menu of a
+connection and in a step's **Add after** menu. Adding a block copies its steps
+into the design, connected to each other; on a connection they take the
+connection's place like a single step. The copies are ordinary steps with no tie
+to the block: changing them does not change the block, and deleting the block
+changes no service or template. The steps keep the feature names they were saved
+with, so the check names a feature the design already has. Before a detector, a
+block's learned step moves to the counterpart that learns as that detector does,
+as it would when the detector's model changes. A block that cannot be added
+stays listed and says why, for example **Holds a step this version does not
+offer.** **Manage templates** lists the blocks below the templates, where
+**Delete** removes one. A block is not edited: save the changed steps under
+another name and delete the old block.
+
 Every edit is checked shortly after it is made. The status chip beside the
 panel buttons shows the result: **Valid** with the time until the first alarm
 can come, or the number of issues. Open it to list the issues; selecting one
@@ -197,8 +219,8 @@ checked** and offers **Check again**.
 A design has no strategy to choose. Three settings decide how it detects:
 
 - **Detector model**, in a detector's settings, lists the models by how they
-  learn: **Learns continuously**, **Fitted once** or **Pretrained**. Detectors
-  that learn in different ways can run in one design. Choosing a model that
+  learn: **Learns continuously**, **Fitted once**, **Pretrained** or **No
+  training**. Detectors that learn in different ways can run in one design. Choosing a model that
   learns differently moves the learned steps only that detector reads to their
   counterparts, such as **Standard scaling** to **Online standard scaling**,
   and they keep the settings both versions share.
@@ -215,8 +237,24 @@ A design has no strategy to choose. Three settings decide how it detects:
   once **Exceedances in a row** scores are above the boundary; more than one
   ignores short spikes. Under the fixed split, detectors that are all fitted
   once alarm with the **Conformal alarm policy**, and a design with a detector
-  that learns continuously, or a pretrained one, alarms on the **Calibrated
-  score threshold**.
+  that learns continuously, a pretrained one or a rule detector alarms on the
+  **Calibrated score threshold**.
+
+The **Rule detector** learns nothing: the value of the one feature it reads is
+its score, and a higher value counts as more anomalous. A step before it states
+the rule. A **Formula** such as `if(temperature > 80, 1, 0)` is a hard limit,
+and one such as `abs(power - voltage * current)` scores how far a reading is
+from what it should be. Set the formula's **Result** to **Replace features**,
+or add **Select features**, so that one feature arrives. The score then takes
+the path of a learned detector's: the calibration step ranks it, the detection
+rule alarms on it, and the alarm is recorded and reviewed like any other. Under
+the **Fixed split**, a flag that stays 0 through calibration alarms whenever it
+is 1. A rule detector reads only steps that do not learn, runs beside other
+detectors, and does not run under the **Conformal alarm policy**. A design
+whose detectors are all rule detectors has no learning window: calibration
+starts with its first observation, and **Service settings** ask only for
+**Calibration observations**. The form-based setup has no step to state a rule
+in, so it does not offer the Rule detector.
 
 A pretrained forecaster, such as the **Timestral forecaster**, does not carry
 its model: the weights live in the deployment's forecast service. The step's
@@ -495,6 +533,21 @@ that is never true is an error, and one that is always true a warning. **Before
 the first alarm** and **Ready after** then say *at least*, because the
 observations a Gate holds back do not count.
 
+A **Mute alarms** step raises no alarm while its condition holds, such as
+`speed < 100` while a machine runs up. Unlike a Gate it lets every observation
+through: the steps after it, the detectors and the calibration learn and score
+as usual, so the charts keep their line and the detector keeps following the
+process. Only the alarm is held back. An alarm that would have been raised is
+kept as **muted**: the monitor's chart shows it as an open dot where a raised
+alarm is a filled one, hover reads **Alarm: muted**, and no alarm is listed for
+it. When the condition stops holding and the alarm still stands, it is raised
+then. The Prepare summary counts the observations scored with alarms muted, and
+the step's diagnostics say when its condition holds. A condition that is always
+true is an error, because no alarm would ever be raised, and one that is never
+true a warning. In a Dojo run a muted observation counts as no alarm. Choose a
+Gate when the detector should not learn from the readings at all, such as a
+standstill, and Mute alarms when it should and only the alarms would be noise.
+
 A step that chooses features, such as **Select features** or **Applies to**,
 lists the features that arrive once the check has worked them out. When an
 earlier step has an error, the check cannot, and the step names the earlier one
@@ -503,8 +556,8 @@ and its problem instead, with **Go to** to open it.
 **Features** beside **Graph** lists the features the detector receives, one row
 each: the reading it comes from, the steps that change it on the way, and the
 name the detector sees. Features made from several, such as a formula's result,
-follow the readings, and the Gates sit above the rows because they decide which
-observations reach every feature. **Raw** means no step changes the feature, and
+follow the readings, and the Gates and Mute alarms steps sit above the rows
+because they decide for every feature at once. **Raw** means no step changes the feature, and
 selecting a step opens its settings. **+** in a row adds a step for that feature
 alone: a Prepare or Combine step goes in before anything learns, and a learned
 step just before the detector. A feature that a learned step makes, such as a
@@ -520,6 +573,24 @@ interquartile range, so occasional spikes shift it less than standard scaling.
 The static step learns them from the training window. **Online robust scaling**
 uses a window of recent observations per feature, 256 by default, and is ready
 after **Min Samples** observations.
+
+**Expected value** compares one feature with what the other features imply.
+Choose the **Target**, such as a pump's current, and under **Expected from** the
+features it follows, such as flow and pressure; left as it is, every other
+feature counts. The step fits the target as a weighted sum of those features and
+a constant and gives the residual, the target minus the expected value. The
+residual is named after the target, such as `current_residual`, unless **Name**
+says otherwise. A detector on the residual reacts to a current that no longer
+fits the flow, also while each reading alone looks normal. **Result** replaces
+the target and the features it is expected from with the residual, or with
+**Keep features** adds it to them. The static step fits once on the training
+window, which has to hold more observations than the fit has weights. **Online
+expected value** updates the fit with every observation and scores each one
+against the fit before it. **Forgetting** below 1 lets earlier observations fade,
+so the fit follows slow drift; keep 1 for readings that rest for long, because a
+fit that forgets while nothing varies becomes unstable. A relation that is not a
+straight line needs its curve as a feature first, such as a **Formula** for the
+square of the flow.
 
 Unchecking readings in **Readings to monitor** changes the input slots and
 bindings together; a service accepts up to 100 readings. Each reading's feature

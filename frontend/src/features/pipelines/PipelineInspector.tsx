@@ -21,14 +21,14 @@ import {
 import { afterGate, featureBlocker, rangeText, readyText } from "./features";
 import {
   calibrationFamily, changeCalibration, changeDetector, changeNotice, coverage, FIXED_SPLIT, fittingPolicy,
-  learningLabel, type Learning,
+  learningLabel, type Learning, UNTRAINED,
 } from "./learning";
 import { usesForecastService, type ForecastModels } from "./forecastModels";
 import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
-import { PipelineAgainst, PipelineScope } from "./PipelineScope";
+import { PipelineApart, PipelineScope } from "./PipelineScope";
 import { PipelineTime } from "./PipelineTime";
-import { combinedName, hasScope, isWarning } from "./scope";
+import { apartField, combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 import { CONDITION_STEPS, FORMULA_STEPS, FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
 import type { HistoryMode } from "./types";
@@ -38,7 +38,7 @@ const LEARNING_GROUPS: { mode: Learning; label: string }[] = [
   { mode: "online", label: "Learns continuously" },
   { mode: "batch", label: "Fitted once" },
   { mode: "pretrained", label: "Pretrained" },
-  { mode: "none", label: "Other" },
+  { mode: "none", label: UNTRAINED },
 ];
 
 type Props = {
@@ -211,6 +211,8 @@ export function PipelineInspector({
   const ready = node && report?.ready_after?.[node.id];
   const computed = node && report?.features[node.id]?.find((feature) => feature.name === combinedName(node, component));
   const scoped = hasScope(component);
+  // The feature a Rolling relation compares with or an Expected value expects.
+  const apart = node && apartField(node.component);
   const changeParams = (params: PipelineNode["params"], changed: string) => {
     if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
   };
@@ -434,17 +436,17 @@ export function PipelineInspector({
             </div>
           )}
           {titleField}
-          {component && node.component === "prepare.relation" && (
-            <PipelineAgainst node={node} features={features} featureLabels={featureLabels}
+          {component && apart && (
+            <PipelineApart field={apart} node={node} features={features} featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && node.component === "prepare.time" && (
             <PipelineTime node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && scoped && (
-            // A Rolling relation compares the other features with one, which it never uses itself.
+            // The feature a step sets apart is never among the ones it uses.
             <PipelineScope node={node} component={component}
-              features={features.filter((feature) => node.component !== "prepare.relation" || feature !== node.params.against)}
+              features={features.filter((feature) => !apart || feature !== node.params[apart])}
               featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}

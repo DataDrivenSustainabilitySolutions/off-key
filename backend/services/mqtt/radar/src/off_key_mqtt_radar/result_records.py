@@ -206,6 +206,9 @@ def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
                     candidate.get("threshold_window_reset", False)
                 ),
                 "alarm_fired": bool(candidate.get("alarm_fired", False)),
+                # Each tracker keeps its own flag: the row's muted says only
+                # that some tracker's crossing was held back.
+                "alarm_muted": bool(candidate.get("alarm_muted", False)),
                 "alarm_active": bool(candidate.get("alarm_active", False)),
                 "alarm_count": _nonnegative_int(candidate.get("alarm_count")),
                 "tested_count": _nonnegative_int(candidate.get("tested_count")),
@@ -474,6 +477,7 @@ class ResultProjector:
                     "forecasts": _normalize_forecasts(context.get("forecasts")),
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),
+                    "muted": bool(context.get("alarm_muted", False)),
                 }
             )
         return records

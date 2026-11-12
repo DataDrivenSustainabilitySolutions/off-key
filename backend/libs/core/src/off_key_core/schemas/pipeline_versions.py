@@ -17,6 +17,9 @@ Strategy = Literal["static_baseline", "adaptive_stream"]
 CALIBRATION_PREFIX = "calibrate."
 FIXED_SPLIT = f"{CALIBRATION_PREFIX}fixed_split"
 CALIBRATION_ID = "calibrate"
+# A rule detector learns nothing: the value of the one feature it reads is its
+# score. It scores every observation as it arrives, as an online detector does.
+RULE_DETECTOR = "rule.score"
 # A pretrained step scores and then takes in every observation, as an online
 # one does, so both run in the adaptive lane.
 _STRATEGY_BY_LEARNING: dict[str, Strategy] = {
@@ -45,6 +48,15 @@ def component_learning(component: str) -> Learning:
     return "none"
 
 
+def streams(component: str) -> bool:
+    """Whether a detector scores every observation as it arrives: it learns
+    there, is pretrained or follows a rule."""
+    return component == RULE_DETECTOR or component_learning(component) in (
+        "online",
+        "pretrained",
+    )
+
+
 def learning_modes(nodes: list[dict[str, Any]]) -> set[Learning]:
     """The ways the learned steps of a design learn."""
     modes = {component_learning(str(node.get("component", ""))) for node in nodes}
@@ -55,6 +67,9 @@ def learning_modes(nodes: list[dict[str, Any]]) -> set[Learning]:
 def derived_strategy(nodes: list[dict[str, Any]]) -> Strategy | None:
     """Today's lane of a design whose learned steps all learn the same way."""
     lanes = {_STRATEGY_BY_LEARNING[mode] for mode in learning_modes(nodes)}
+    # A rule detector learns nothing and still runs in the adaptive lane.
+    if any(node.get("component") == RULE_DETECTOR for node in nodes):
+        lanes.add("adaptive_stream")
     return next(iter(lanes)) if len(lanes) == 1 else None
 
 

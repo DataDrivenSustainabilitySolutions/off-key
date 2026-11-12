@@ -13,7 +13,7 @@ from .pipeline_combine import (
     lane_condition,
 )
 from .pipeline_prepare import LANE_COMPONENTS, ROW_COMPONENTS, prepared_bounds
-from .pipeline_scope import PROJECTIONS, step_scope
+from .pipeline_scope import EXPECTATIONS, PROJECTIONS, step_scope
 
 Columns = list[FeatureDescription]
 __all__ = ["PROJECTIONS", "Columns", "adaptive_input_errors", "node_features"]
@@ -130,6 +130,27 @@ def _projection(
     ]
 
 
+def _expectation(
+    definition: PipelineDefinition, node: PipelineNode, columns: Columns
+) -> Columns:
+    """The features an Expected value step keeps, then the target's residual."""
+    scope = step_scope(node.component, node.params, [item.name for item in columns])
+    used = [columns[index] for index in scope.indices]
+    # One coefficient per feature the target is expected from, and a constant.
+    if (
+        node.component == "static.expected_value"
+        and len(used) >= definition.settings.training_window_size
+    ):
+        raise ValueError(
+            f"Expecting {used[0].name} from {len(used) - 1} features fits "
+            f"{len(used)} coefficients and needs more training observations than that"
+        )
+    lineage = sorted({slot for item in used for slot in item.slots})
+    return [columns[index] for index in scope.kept] + [
+        FeatureDescription(name=scope.added[0], slots=lineage, raw=False)
+    ]
+
+
 def _continued(branches: Sequence[tuple[str, Columns]]) -> Columns:
     """Copies of the arriving features that name the feature each continues.
     Node ids hold no dots, so the first dot of node.name ends the node."""
@@ -175,6 +196,8 @@ def _changed(
         return _combined(node, columns)
     if node.component in PROJECTIONS:
         return _projection(definition, node, columns)
+    if node.component in EXPECTATIONS:
+        return _expectation(definition, node, columns)
     return columns
 
 

@@ -186,6 +186,10 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const condition = written(value("condition"));
       return condition ? `Only when ${condition}` : "No condition yet";
     }
+    case "prepare.mute": {
+      const condition = written(value("condition"));
+      return condition ? `No alarm while ${condition}` : "No condition yet";
+    }
   }
 }
 
@@ -251,6 +255,12 @@ function settingsSummary(
     case "adaptive.uncentered_pca":
     case "adaptive.random_projection":
       return { text: count(typeof params.n_components === "number" ? params.n_components : 1, "component") };
+    case "static.expected_value":
+    case "adaptive.expected_value": {
+      if (typeof params.target !== "string" || !params.target) return { text: "No target yet" };
+      const from = strings(params.apply_to);
+      return { text: `Expects ${params.target} from ${from.length ? listed(from) : "the other features"}` };
+    }
     case "policy.quantile": {
       // The threshold freezes at this quantile of the calibration scores.
       const quantile = typeof params.quantile === "number" ? params.quantile : 1;

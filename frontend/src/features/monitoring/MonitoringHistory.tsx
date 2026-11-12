@@ -6,6 +6,7 @@ import { useChartColors } from "@/features/charts/use-chart-colors";
 import { useDetectorSelection } from "@/features/charts/use-detector-selection";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTimeZone } from "@/features/charts/telemetry-chart";
+import { alarmText } from "@/features/charts/telemetry-detectors";
 import { getChartDomain } from "@/features/charts/telemetry-thresholds";
 import type { ActiveService } from "@/types/monitoring";
 import type { SystemConnection } from "@/types/system";
@@ -46,6 +47,9 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const option = useMemo(() => buildMonitoringChartOption({ model, colors, timeZone, accessibleDescription: description,
     viewport: inspection ? { mode: "absolute", ...inspection } : { mode: "live" }, layout: "monitoring" }),
   [model, colors, timeZone, description, inspection]);
+  // The key names open dots only where the chart shows one.
+  const anyMuted = useMemo(() => model.secondarySeries.some(series =>
+    series.data.some(point => point.observation?.alarmMuted)), [model.secondarySeries]);
   const inspect = useCallback((startMs: number, endMs: number) => {
     if (!domain || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
     setInspection(current => current && Math.abs(current.startMs - startMs) < 1 && Math.abs(current.endMs - endMs) < 1
@@ -110,9 +114,9 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     {latest && <output className="mn-history-result" aria-label="Latest detector result">
       <span>Latest {inputs.length > 1 ? "joint " : ""}result · {formatChartTime(latest.timeMs, timeZone, "tooltip")}</span>
       <strong>{model.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>
-      <span>Threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · {latest.alarmActive ? "Alarm active" : "Alarm inactive"}</span>
+      <span>Threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · Alarm {alarmText(latest)}</span>
     </output>}
-    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms. Each reading keeps its own scale.</p>}
+    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms{anyMuted ? " · Open dots: muted alarms" : ""}. Each reading keeps its own scale.</p>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

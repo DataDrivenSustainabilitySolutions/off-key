@@ -92,7 +92,8 @@ def pipeline_contracts(definitions: dict) -> str:
         f"nodes: {limits['nodes']['maxItems']}, "
         f"edges: {limits['edges']['maxItems']}, "
         f"slots: {limits['input_slots']['maxItems']}, "
-        f"detectors: {pipelines.MAX_DETECTORS} }} as const;\n"
+        f"detectors: {pipelines.MAX_DETECTORS}, "
+        f"blockSteps: {pipelines.MAX_BLOCK_STEPS} }} as const;\n"
     )
     return text
 

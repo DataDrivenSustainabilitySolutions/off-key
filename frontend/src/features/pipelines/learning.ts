@@ -106,6 +106,20 @@ function counterpart(node: PipelineNode, mode: Learning, components: PipelineCom
   return components.find((component) => component.id === wanted && component.kind === node.kind && component.learning === mode);
 }
 
+/** A learned step for a place where it does not fit as it is: its counterpart that learns
+ * as the detectors after `target` do, with the settings both share. Undefined when the
+ * detectors there learn differently from each other or the step has no such counterpart. */
+export function counterpartBefore(
+  definition: PipelineDefinition,
+  target: string,
+  node: PipelineNode,
+  components: PipelineComponent[],
+): { component: PipelineComponent; params: PipelineNode["params"] } | undefined {
+  const modes = [...new Set(detectorsFrom(definition, target).map((reader) => learningOf(reader, components)))];
+  const other = modes.length === 1 ? counterpart(node, modes[0]!, components) : undefined;
+  return other && { component: other, params: sharedParams(node, other) };
+}
+
 /** The policy that fits the calibration step and the detectors. The fixed split gives
  * exact p-values, which the conformal alarm policy needs from detectors that have stopped
  * learning; with a detector that takes in every observation it gives a frozen score

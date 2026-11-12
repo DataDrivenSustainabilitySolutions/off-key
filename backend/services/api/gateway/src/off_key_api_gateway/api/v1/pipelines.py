@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from off_key_core.schemas.forecast import ForecastModelInfo
 from off_key_core.schemas.members import MemberProfile
 from off_key_core.schemas.pipelines import (
@@ -11,6 +11,9 @@ from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineActivationView,
     PipelineApplyRequest,
+    PipelineBlockCreate,
+    PipelineBlockList,
+    PipelineBlockView,
     PipelineCatalog,
     PipelineCreate,
     PipelineDraftSave,
@@ -55,6 +58,7 @@ def member_router() -> APIRouter:
 router = member_router()
 components_router = member_router()
 forecast_models_router = member_router()
+blocks_router = member_router()
 activations_router = member_router()
 monitor_pipeline_router = member_router()
 read_limit = limiter.shared_limit(
@@ -144,6 +148,38 @@ async def download_forecast_model(request: Request, change: ForecastModelDownloa
     return await forward(
         request, "POST", "/pipelines/forecast-models/downloads", change
     )
+
+
+@blocks_router.get("", response_model=PipelineBlockList)
+@read_limit
+async def list_pipeline_blocks(request: Request):
+    """Every saved block, by name. A block is a chain of steps with their
+    settings that the composer copies into a design.
+    """
+    return await forward(request, "GET", "/pipeline-blocks")
+
+
+@blocks_router.post("", response_model=PipelineBlockView, status_code=201)
+@write_limit
+async def create_pipeline_block(request: Request, change: PipelineBlockCreate):
+    """Save a chain of steps as a block. Needs `manage_monitors`.
+
+    `steps` are in order, each feeding the next; a block holds only steps that
+    take features and give features. Answers 409 for a name that is taken or
+    once the library holds 100 blocks.
+    """
+    return await forward(request, "POST", "/pipeline-blocks", change)
+
+
+@blocks_router.delete("/{block_id}", status_code=204)
+@write_limit
+async def delete_pipeline_block(request: Request, block_id: str):
+    """Delete a block. Needs `manage_monitors`.
+
+    Designs that copied its steps keep them.
+    """
+    await forward(request, "DELETE", f"/pipeline-blocks/{path_segment(block_id)}")
+    return Response(status_code=204)
 
 
 @router.get("", response_model=PipelineListPage)

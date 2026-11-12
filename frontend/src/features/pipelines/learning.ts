@@ -15,9 +15,13 @@ const LABELS: Record<Learning, string | undefined> = {
   pretrained: "Pretrained",
 };
 
-/** "Fitted once", "Learns continuously" or "Pretrained"; nothing for a step that does not learn. */
-export const learningLabel = (component: Pick<PipelineComponent, "learning"> | undefined) =>
-  LABELS[component?.learning ?? "none"];
+/** What a detector that learns nothing is called: a rule detector scores a feature as it is. */
+export const UNTRAINED = "No training";
+
+/** "Fitted once", "Learns continuously" or "Pretrained". A detector that learns nothing
+ * says so; a step that does not learn says nothing. */
+export const learningLabel = (component: Pick<PipelineComponent, "learning"> & { kind?: PipelineComponent["kind"] } | undefined) =>
+  LABELS[component?.learning ?? "none"] ?? (component?.kind === "detector" ? UNTRAINED : undefined);
 
 const learningOf = (node: PipelineNode | undefined, components: PipelineComponent[]): Learning =>
   componentFor(node, components)?.learning ?? "none";
@@ -31,12 +35,23 @@ export function detectorLearning(definition: PipelineDefinition, components: Pip
 export function learningSummary(definition: PipelineDefinition, components: PipelineComponent[]) {
   const modes = detectorLearning(definition, components);
   if (!modes.length) return "No detector yet";
-  return modes.length > 1 ? "Detectors learn differently" : LABELS[modes[0]!] ?? "Detector";
+  return modes.length > 1 ? "Detectors learn differently" : LABELS[modes[0]!] ?? UNTRAINED;
 }
 
-/** Whether some detector takes in every observation: it learns on the stream or is pretrained. */
+/** Whether some detector scores every observation as it arrives: it learns on the stream,
+ * is pretrained or follows a rule. */
 export const hasStreamingDetector = (definition: PipelineDefinition, components: PipelineComponent[]) =>
-  detectorLearning(definition, components).some((mode) => mode === "online" || mode === "pretrained");
+  detectorLearning(definition, components).some((mode) => mode !== "batch");
+
+/** What the design's detectors do with the learning window: every one is fitted on it,
+ * none learns anything, or some learn as observations arrive. */
+export type LearningWindow = "continuous" | "fitted" | "none";
+
+export function learningWindow(definition: PipelineDefinition, components: PipelineComponent[]): LearningWindow {
+  const modes = detectorLearning(definition, components);
+  if (modes.length && modes.every((mode) => mode === "none")) return "none";
+  return modes.some((mode) => mode !== "batch") ? "continuous" : "fitted";
+}
 
 /** Whether some detector is fitted once on the training window. */
 export const hasFittedDetector = (definition: PipelineDefinition, components: PipelineComponent[]) =>
@@ -57,7 +72,8 @@ function detectorsFrom(definition: PipelineDefinition, nodeId: string) {
 }
 
 /** Why a learned step does not belong before a node: a detector reads only steps that
- * learn as it does, and a pretrained one reads none that learn. Undefined when it fits. */
+ * learn as it does, and a pretrained one or one that follows a rule reads none that learn.
+ * Undefined when it fits. */
 export function learningBlocker(
   definition: PipelineDefinition,
   target: string,
@@ -69,6 +85,7 @@ export function learningBlocker(
   const other = detectorsFrom(definition, target).map((node) => learningOf(node, components)).find((item) => item !== mode);
   if (!other) return;
   return other === "pretrained" ? "The detector here is pretrained and reads only steps that do not learn."
+    : other === "none" ? "The detector here follows a rule and reads only steps that do not learn."
     : other === "batch" ? "Learns continuously, and the detector here is fitted once."
       : "Fitted once, and the detector here learns continuously.";
 }

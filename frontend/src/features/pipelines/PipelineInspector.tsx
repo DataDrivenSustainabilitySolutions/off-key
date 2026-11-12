@@ -21,7 +21,7 @@ import {
 import { afterGate, featureBlocker, rangeText, readyText } from "./features";
 import {
   calibrationFamily, changeCalibration, changeDetector, changeNotice, coverage, FIXED_SPLIT, fittingPolicy,
-  learningLabel, type Learning,
+  learningLabel, type Learning, UNTRAINED,
 } from "./learning";
 import { usesForecastService, type ForecastModels } from "./forecastModels";
 import { PipelineForecastModels } from "./PipelineForecastModels";
@@ -38,7 +38,7 @@ const LEARNING_GROUPS: { mode: Learning; label: string }[] = [
   { mode: "online", label: "Learns continuously" },
   { mode: "batch", label: "Fitted once" },
   { mode: "pretrained", label: "Pretrained" },
-  { mode: "none", label: "Other" },
+  { mode: "none", label: UNTRAINED },
 ];
 
 type Props = {

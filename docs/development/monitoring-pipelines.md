@@ -222,8 +222,11 @@ frontier is the stage nodes, and the source, whose features a later node uses, i
 compiled order. RADAR's `PrepareStage` runs the stage on the bound observation and
 passes the frontier's features, keyed `<node>.<feature>`, to the learned stage:
 static graphs fit and score those columns, and adaptive graphs read them through
-`Prepared` input nodes. Designs without Prepare steps keep their runtime shape,
-so existing checkpoints load unchanged.
+`Prepared` input nodes. With several detectors, each detector's graph gets the
+`Prepared` nodes its own steps read across the cut (`adaptive_graph`), not every
+frontier node among its ancestors: a detector behind a Prepare step reads that
+step alone, also when another detector reads the source. Designs without
+Prepare steps keep their runtime shape, so existing checkpoints load unchanged.
 
 Each kernel advances an immutable state per feature and returns a value, or none
 while its window fills. The stage commits an observation only when every step
@@ -625,7 +628,8 @@ The compiler checks schema 2 designs by learning mode instead of by lane
 (`_validate_learning`):
 
 - `learning`: a step reads a learned step that learns differently. A batch
-  detector reads batch or stateless steps, an online one online or stateless steps.
+  detector reads batch or stateless steps, an online one online or stateless
+  steps, and a pretrained or rule detector stateless steps only.
 - `calibration`: the martingale policy needs exact p-values, so no step in front
   of it may keep learning after calibration (no online step). A policy also has
   to fit its calibration step: the martingale and the score threshold need the
@@ -636,9 +640,30 @@ The compiler checks schema 2 designs by learning mode instead of by lane
 The rules leave one policy for a design. A calibration step that adapts alarms
 by the exceedance rule. Under the fixed split, detectors that are all fitted
 once alarm with the martingale, and a design with a detector that takes in
-every observation (one that learns continuously or a pretrained forecaster)
-alarms on the score threshold; the compiler reports the threshold behind
+every observation (one that learns continuously, a pretrained forecaster or
+a rule detector) alarms on the score threshold; the compiler reports the threshold behind
 detectors that are all fitted once as `calibration`.
+
+A rule detector is the component `rule.score` (`RULE_DETECTOR`). It learns
+nothing, so its learning is `none`, and it scores every observation as it
+arrives, so `streams()` in `pipeline_versions.py` is true for it as for an
+online or pretrained detector: the compiler checks its input like theirs,
+`derived_strategy()` counts it towards the adaptive lane, and RADAR runs it
+among the streaming detectors. Like a pretrained forecaster it is RADAR's own
+and not in `adaptive_catalog.json`: `RULE_DETECTORS` in `models/adaptive.py`
+describes it beside the generated models, with no settings and exactly one
+feature, bound as `key`. `resolved_detector_config()` resolves it through
+`rules.resolve_rule_detector()` to a `FeatureScore`, an Aberrant model whose
+`score_one` returns that feature's value and whose `learn_one` does nothing,
+so it sits at the end of an Aberrant graph like any other detector. In the
+compiler `_learned()` lists it as `rule`: a step that learns can't feed it
+(`learning`), and the martingale policy does not run on it (`calibration`). A
+run whose detectors all follow a rule (`_learns_nothing()`) starts in
+`calibrating` instead of `warmup` and reports a warm-up requirement of 0;
+beside a detector that learns, the run warms up as that detector needs.
+TACTIC's `available_models()`, which `/v1/detectors` serves to the setup form,
+leaves it out: a rule needs a step before it, and the rollback rehearsal
+expects settings for every model that field discovery lists.
 
 No design stores a lane. `PipelineDefinition.lane` is derived: the strategy all
 a design's learned steps share, or none. Routing and the schema 1 written form
@@ -732,8 +757,8 @@ The composer has no strategy switch and no `strategy.ts`. `learning.ts` holds
 what replaced it:
 
 - A card says how its step learns (`learningLabel`: *Learns continuously*,
-  *Fitted once*, *Pretrained*), and the add-step menu lists every step with that
-  tag. `learningBlocker()` refuses a step in front of a detector that learns
+  *Fitted once*, *Pretrained*, and *No training* for a detector that learns
+  nothing), and the add-step menu lists every step with that tag. `learningBlocker()` refuses a step in front of a detector that learns
   differently, with the compiler's reason, before the step is added.
 - **Detector model** lists the models by how they learn. Choosing one that
   learns differently (`changeDetector`) moves the learned steps only that
@@ -750,6 +775,9 @@ what replaced it:
 - Service settings name their first window after what the detectors do with it:
   *Training observations*, *Detector learning updates before calibration*, or
   both for a design that mixes them. `startupPhases()` takes the same view.
+  A design whose detectors all follow a rule has no such window
+  (`learningWindow()` is `none`): the setting is left out and the estimate
+  starts with calibration.
 
 `normalizeDefinition()` drops a strategy and stamps `schema_version: 2` on what
 the editor sends. A layout saved before the calibration step had a card gets one

@@ -22,6 +22,7 @@ from aberrant.compose import (
     GraphStateUncertainError,
 )
 from off_key_core.models import ABERRANT_VERSION
+from off_key_core.schemas.pipeline_versions import RULE_DETECTOR
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 
 from .calibration_comparison import CalibrationComparison
@@ -100,7 +101,13 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self._report_readiness()
 
     def _initialize_fresh(self) -> None:
-        self.state = AdaptiveStreamState.WARMUP
+        # Rule detectors learn nothing and read no step that learns, so a run
+        # of them alone calibrates from its first observation.
+        self.state = (
+            AdaptiveStreamState.CALIBRATING
+            if self._learns_nothing()
+            else AdaptiveStreamState.WARMUP
+        )
         self.feature_keys: list[str] = self._initial_feature_keys()
         # Validate constructors at startup, before subscribing or learning data.
         if self.plan.fused:
@@ -266,6 +273,13 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
 
     def _online_ids(self) -> list[str]:
         return list(self.plan.detector_ids)
+
+    def _learns_nothing(self) -> bool:
+        """Whether every detector of the run follows a rule."""
+        return all(
+            self.plan.nodes[identifier].component == RULE_DETECTOR
+            for identifier in self.plan.detector_ids
+        )
 
     def _initial_feature_keys(self) -> list[str]:
         return sorted(slot.id for slot in self.plan.compiled.definition.input_slots)
@@ -838,7 +852,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                 "state": self.state.value,
                 "model_updates": min(graph.model_updates for graph in self.pipelines),
                 "warmup_updates": self.warmup_count,
-                "warmup_required": self.adaptive_config.training_window_size,
+                # A run of rule detectors has nothing to warm up.
+                "warmup_required": (
+                    0
+                    if self._learns_nothing()
+                    else self.adaptive_config.training_window_size
+                ),
                 "ready": waiting.readiness.ready,
                 "reason": waiting.readiness.reason,
             }

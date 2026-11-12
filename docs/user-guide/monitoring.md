@@ -151,7 +151,7 @@ Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
 Detection rule or Evidence output), its title and its underlying operation; a
 step that learns also says how (**Learns continuously**, **Fitted once** or
-**Pretrained**); renaming a card helps explain its purpose while the operation name
+**Pretrained**), and a detector that learns nothing says **No training**; renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -197,8 +197,8 @@ checked** and offers **Check again**.
 A design has no strategy to choose. Three settings decide how it detects:
 
 - **Detector model**, in a detector's settings, lists the models by how they
-  learn: **Learns continuously**, **Fitted once** or **Pretrained**. Detectors
-  that learn in different ways can run in one design. Choosing a model that
+  learn: **Learns continuously**, **Fitted once**, **Pretrained** or **No
+  training**. Detectors that learn in different ways can run in one design. Choosing a model that
   learns differently moves the learned steps only that detector reads to their
   counterparts, such as **Standard scaling** to **Online standard scaling**,
   and they keep the settings both versions share.
@@ -215,8 +215,24 @@ A design has no strategy to choose. Three settings decide how it detects:
   once **Exceedances in a row** scores are above the boundary; more than one
   ignores short spikes. Under the fixed split, detectors that are all fitted
   once alarm with the **Conformal alarm policy**, and a design with a detector
-  that learns continuously, or a pretrained one, alarms on the **Calibrated
-  score threshold**.
+  that learns continuously, a pretrained one or a rule detector alarms on the
+  **Calibrated score threshold**.
+
+The **Rule detector** learns nothing: the value of the one feature it reads is
+its score, and a higher value counts as more anomalous. A step before it states
+the rule. A **Formula** such as `if(temperature > 80, 1, 0)` is a hard limit,
+and one such as `abs(power - voltage * current)` scores how far a reading is
+from what it should be. Set the formula's **Result** to **Replace features**,
+or add **Select features**, so that one feature arrives. The score then takes
+the path of a learned detector's: the calibration step ranks it, the detection
+rule alarms on it, and the alarm is recorded and reviewed like any other. Under
+the **Fixed split**, a flag that stays 0 through calibration alarms whenever it
+is 1. A rule detector reads only steps that do not learn, runs beside other
+detectors, and does not run under the **Conformal alarm policy**. A design
+whose detectors are all rule detectors has no learning window: calibration
+starts with its first observation, and **Service settings** ask only for
+**Calibration observations**. The form-based setup has no step to state a rule
+in, so it does not offer the Rule detector.
 
 A pretrained forecaster, such as the **Timestral forecaster**, does not carry
 its model: the weights live in the deployment's forecast service. The step's

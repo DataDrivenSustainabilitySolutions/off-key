@@ -348,7 +348,8 @@ def pipeline_components() -> list[PipelineComponent]:
                 id=detector_component(identifier),
                 kind="detector",
                 label=model["name"],
-                description=(
+                description=model.get("description")
+                or (
                     "Scores a feature by how far it misses its forecast."
                     if "forecaster_id" in model
                     else "Adaptive score-before-learn anomaly detector."

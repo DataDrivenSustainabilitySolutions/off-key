@@ -4,11 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { ProtectedRoute } from '@/auth/ProtectedRoute';
 import { ApplicationMenu } from '@/app/ApplicationMenu';
+import { SidebarFooter } from '@/app/SidebarFooter';
 import { loadDemoStatus } from '@/auth/demo';
 import { getCurrentMember } from '@/lib/member-api';
 import { tokenManager } from '@/auth/session';
 
-vi.mock('@/auth/demo', () => ({ loadDemoStatus: vi.fn(), isPublicDemo: () => true }));
+vi.mock('@/auth/demo', () => ({ loadDemoStatus: vi.fn(), isPublicDemo: () => true, DEMO_VISITOR: { name: 'Demo visitor', initials: 'DV' } }));
 vi.mock('@/lib/member-api', () => ({ getCurrentMember: vi.fn() }));
 
 const token = `test.${btoa(JSON.stringify({ user_id: 1, sub: 'admin@example.com', session_version: 0, exp: 4102444800 }))}.signature`;
@@ -21,6 +22,7 @@ function Workspace() {
     <button onClick={() => auth.login(token)}>Finish admin sign in</button>
     <button onClick={auth.logout}>End session</button>
     <ApplicationMenu />
+    <SidebarFooter />
   </>;
 }
 
@@ -47,8 +49,11 @@ describe('public demo access', () => {
     expect(getCurrentMember).not.toHaveBeenCalled();
     expect(tokenManager.getToken()).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit sources' })).toBeNull();
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Demo menu' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
-    expect(await screen.findByText('Public demo · Read only')).toBeTruthy();
+    // The sidebar shows visitors an account row like a signed-in member's.
+    const [menu, account] = screen.getAllByRole('button', { name: 'Demo menu' });
+    expect(account?.textContent).toBe('DVDemo visitor');
+    fireEvent.pointerDown(menu!, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    expect(await screen.findByText('Demo visitor · Read only')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Admin sign in' }));
     expect(await screen.findByText('Administrator login')).toBeTruthy();
   });

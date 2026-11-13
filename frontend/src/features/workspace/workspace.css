@@ -32,7 +32,7 @@
 /* Unmount a blurred hint immediately so its closing layer cannot consume Escape. */
 .app-sidebar-tooltip[data-state="closed"] { animation: none; }
 
-.app-sidebar-heading { margin: 0; font-family: var(--font-mono); font-size: var(--text-caption); font-weight: 400; line-height: 16px; letter-spacing: .04em; color: var(--ex-muted); }
+.app-sidebar-heading { margin: 0; font-family: var(--font-sans); font-size: var(--text-caption); font-weight: 500; line-height: 16px; letter-spacing: .01em; color: var(--ex-muted); }
 .app-sidebar-heading-row { display: flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 8px 0 16px; }
 .app-sidebar-heading-row > .app-sidebar-heading { flex: 1; }
 .app-sidebar-workspaces { flex-shrink: 0; padding: 4px 0 12px; }

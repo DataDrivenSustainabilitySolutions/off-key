@@ -66,11 +66,14 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const telemetry = useMemo(() => normalizedHistory.filter(([time]) => time >= cutoff), [normalizedHistory, cutoff]);
   const currentHistory = useMemo(() => {
     if (!stored.history || stored.history.representation !== "raw" || inspection) return stored.history;
+    // A reading that went quiet before the range began has no stored points; what was
+    // collected since still belongs on the chart.
     const last = stored.history.points[stored.history.points.length - 1];
-    const tail = last ? history.filter(point => epochMilliseconds(point.timestamp) > epochMilliseconds(last.timestamp)) : [];
+    const lastMs = last ? epochMilliseconds(last.timestamp) : -Infinity;
+    const tail = history.filter(point => epochMilliseconds(point.timestamp) > lastMs);
     if (!tail.length) return stored.history;
     return { ...stored.history, points: [...stored.history.points, ...tail], sample_count: stored.history.sample_count + tail.length,
-      extent: stored.history.extent ? [stored.history.extent[0], tail[tail.length - 1]!.timestamp] as [string, string] : null };
+      extent: [stored.history.extent?.[0] ?? tail[0]!.timestamp, tail[tail.length - 1]!.timestamp] as [string, string] };
   }, [stored.history, inspection, history]);
   // While a zoomed window or the other representation loads, the overview already on
   // screen stays, so the chart refines in place instead of blinking to live samples.
@@ -117,7 +120,12 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     selectedDetectorIds, pending, detectorInputs, history, anomalies, cutoff]);
   // Stable between renders, so the inspect callback below is too.
   const extent = stored.overview?.extent;
-  const domain = useMemo(() => getChartDomain(extent ? [epochMilliseconds(extent[0]), epochMilliseconds(extent[1])] : model.extent), [extent, model.extent]);
+  // The overview sets the historical bounds; samples appended since it loaded extend the live end.
+  const domain = useMemo(() => {
+    if (!extent) return getChartDomain(model.extent);
+    const end = Math.max(epochMilliseconds(extent[1]), model.extent?.[1] ?? -Infinity);
+    return getChartDomain([epochMilliseconds(extent[0]), end]);
+  }, [extent, model.extent]);
   const resolution = visibleHistory?.representation === "mean" ? `${intervalLabel(visibleHistory.interval_ms)} mean · min–max` : "";
   const description = `${stream.label}. ${visibleHistory?.sample_count ?? model.telemetry.data.length} received samples. ${resolution ? `${resolution}. ` : ""}Times in ${timeZone}.`
     + (model.secondarySeries.length ? " Monitoring scores and thresholds share the time axis." : "");

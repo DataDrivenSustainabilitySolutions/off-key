@@ -231,6 +231,27 @@ describe("workspace chart navigation and monitoring", () => {
     vi.mocked(useStoredRange).mockReturnValue({ history: undefined, overview: undefined, loading: false, error: "" });
   });
 
+  it("keeps collected values of a reading that went quiet before the range, and extends the live end past the overview", () => {
+    const empty = { representation: "raw" as const, points: [], interval_ms: 0, sample_count: 0, extent: null, truncated: false };
+    vi.mocked(useStoredRange).mockReturnValue({ history: empty, overview: empty, loading: false, error: "" });
+    const collected = [{ timestamp: new Date(NOW - 2 * 3_600_000).toISOString(), value: 5 }, { timestamp: new Date(NOW - 3_590_000).toISOString(), value: 6 }];
+    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { readingId: "temperature" }, error: "", services: [], evidence: [], anomalies: [], telemetry: collected });
+    const { unmount } = render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
+    expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 2 * 3_600_000, 5], [NOW - 3_590_000, 6]] }]);
+    unmount();
+
+    const stored = [{ timestamp: new Date(NOW - 120_000).toISOString(), value: 10 }, { timestamp: new Date(NOW - 60_000).toISOString(), value: 11 }];
+    const history = { representation: "raw" as const, points: stored, interval_ms: 0, sample_count: 2,
+      extent: [stored[0]!.timestamp, stored[1]!.timestamp] as [string, string], truncated: false };
+    vi.mocked(useStoredRange).mockReturnValue({ history, overview: history, loading: false, error: "" });
+    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { readingId: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
+      telemetry: [{ timestamp: new Date(NOW).toISOString(), value: 12 }] });
+    render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
+    const axis = (lastChartProps().option.xAxis as Array<{ max?: number }>)[0]!;
+    expect(axis.max).toBeGreaterThanOrEqual(NOW);
+    vi.mocked(useStoredRange).mockReturnValue({ history: undefined, overview: undefined, loading: false, error: "" });
+  });
+
   it("shows the window's detector results beside means and keeps the overview while a zoomed window loads", () => {
     const minute = 60_000;
     const mean = (start: number, value: number) => ({ timestamp: new Date(start + minute / 2).toISOString(), value,

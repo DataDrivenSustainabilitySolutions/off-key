@@ -518,9 +518,12 @@ class ReleaseTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("bootstrap", json.dumps(release_steps))
+        # The public demo's sources come after its administrator, and only there.
         self.assertEqual(
-            [step["include_tasks"] for step in setup], ["bootstrap_admin.yml"]
+            [step["include_tasks"] for step in setup],
+            ["bootstrap_admin.yml", "bootstrap_demo.yml"],
         )
+        self.assertIn("demo_mode", setup[1]["when"])
 
     def test_pin_validates_revision_against_the_digest_not_the_tag(self):
         revision = "a" * 40

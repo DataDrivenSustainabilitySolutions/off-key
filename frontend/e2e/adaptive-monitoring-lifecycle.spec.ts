@@ -60,7 +60,7 @@ interface ChartEvidence {
 test.describe("adaptive monitoring production lifecycle", () => {
   test.setTimeout(600_000);
 
-  test("correlates delayed multivariate evidence without moving the chart viewport", async ({
+  test("correlates held and refreshed readings without moving the chart viewport", async ({
     page,
     playwright,
   }) => {
@@ -277,11 +277,32 @@ test.describe("adaptive monitoring production lifecycle", () => {
       ).toBeVisible();
 
       eventTimeCursor = Math.max(Date.now() + 1_000, eventTimeCursor + 100);
-      const pendingL1 = new Date(eventTimeCursor).toISOString();
-      await publish(activePublisher, topics.L1, 123, pendingL1);
+      const refreshedL1 = new Date(eventTimeCursor).toISOString();
+      await publish(activePublisher, topics.L1, 123, refreshedL1);
       await expect
-        .poll(() => hasTelemetryAt(l1Reading, pendingL1), { timeout: 60_000 })
+        .poll(() => hasTelemetryAt(l1Reading, refreshedL1), { timeout: 60_000 })
         .toBe(true);
+
+      // L2's next value is overdue after opening and zooming the charts. The
+      // monitor can score L1 with L2's held value, preserving its original time.
+      let heldEvidence: ChartEvidence | undefined;
+      await expect
+        .poll(
+          async () => {
+            heldEvidence = (await readServiceEvidence()).find(
+              (row) =>
+                Date.parse(row.input_timestamps[l1Reading]!) === Date.parse(refreshedL1) &&
+                Date.parse(row.input_timestamps[l2Reading]!) === Date.parse(lastPublishedCycle.L2),
+            );
+            return heldEvidence !== undefined;
+          },
+          { timeout: 120_000 },
+        )
+        .toBe(true);
+      expect(heldEvidence!.strategy).toBe("adaptive_stream");
+      expect(Number.isFinite(heldEvidence!.anomaly_score)).toBe(true);
+      expect(Number.isFinite(heldEvidence!.threshold)).toBe(true);
+      expect(Date.parse(heldEvidence!.timestamp)).toBe(Date.parse(refreshedL1));
 
       const telemetryRefresh = page.waitForResponse((response) => {
         const url = new URL(response.url());
@@ -290,22 +311,32 @@ test.describe("adaptive monitoring production lifecycle", () => {
           url.searchParams.has("after_created")
         );
       });
+      const heldEvidenceRefresh = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname.includes("/v1/evidence/chart") &&
+          url.searchParams.has("after_created")
+        );
+      });
       await page.evaluate(() =>
         document.dispatchEvent(new Event("visibilitychange")),
       );
-      await telemetryRefresh;
-      await expect(l1Card.getByText("1 awaiting score")).toBeVisible();
+      await Promise.all([telemetryRefresh, heldEvidenceRefresh]);
+      await expect(l1Card.getByText("1 awaiting score")).toBeHidden();
+      await expect(
+        l1Card.getByRole("button", { name: "Return to live" }),
+      ).toBeVisible();
 
-      const pendingL2 = new Date(Date.parse(pendingL1) + 75).toISOString();
-      await publish(activePublisher, topics.L2, 456, pendingL2);
+      const refreshedL2 = new Date(Date.parse(refreshedL1) + 75).toISOString();
+      await publish(activePublisher, topics.L2, 456, refreshedL2);
       let delayedEvidence: ChartEvidence | undefined;
       await expect
         .poll(
           async () => {
             delayedEvidence = (await readServiceEvidence()).find(
               (row) =>
-                Date.parse(row.input_timestamps[l1Reading]!) === Date.parse(pendingL1) &&
-                Date.parse(row.input_timestamps[l2Reading]!) === Date.parse(pendingL2),
+                Date.parse(row.input_timestamps[l1Reading]!) === Date.parse(refreshedL1) &&
+                Date.parse(row.input_timestamps[l2Reading]!) === Date.parse(refreshedL2),
             );
             return delayedEvidence !== undefined;
           },
@@ -313,11 +344,13 @@ test.describe("adaptive monitoring production lifecycle", () => {
         )
         .toBe(true);
       expect(Date.parse(delayedEvidence!.timestamp)).toBe(
-        Date.parse(pendingL2),
+        Date.parse(refreshedL2),
       );
+      expect(Number.isFinite(delayedEvidence!.anomaly_score)).toBe(true);
+      expect(Number.isFinite(delayedEvidence!.threshold)).toBe(true);
 
       await expect
-        .poll(() => hasTelemetryAt(l2Reading, pendingL2), { timeout: 120_000 })
+        .poll(() => hasTelemetryAt(l2Reading, refreshedL2), { timeout: 120_000 })
         .toBe(true);
 
       const evidenceRefresh = page.waitForResponse((response) => {

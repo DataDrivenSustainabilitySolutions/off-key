@@ -27,12 +27,21 @@ const SETTINGS = [
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
+/** A number with as many significant digits as it holds, up to 15, so a small rate or a quantile
+ * near one keeps the digits that set it apart. */
+function digits(value: number) {
+  if (Number.isInteger(value)) return value.toLocaleString(undefined, { maximumSignificantDigits: 21 });
+  const held = Number(value.toPrecision(15));
+  let shown = 1;
+  while (shown < 15 && Number(value.toPrecision(shown)) !== held) shown++;
+  return value.toLocaleString(undefined, { maximumSignificantDigits: shown });
+}
+
 /** A setting's value in a word or two, or nothing where it takes more than a line. */
 function worded(value: JsonValue | undefined): string | undefined {
   if (value == null) return "none";
   if (typeof value === "boolean") return value ? "on" : "off";
-  if (typeof value === "number")
-    return (Number.isInteger(value) ? value : Number(value.toPrecision(4))).toLocaleString();
+  if (typeof value === "number") return digits(value);
   if (typeof value === "string") return value.replace(/_/g, " ") || "empty";
   if (Array.isArray(value) && value.every((item) => item === null || typeof item !== "object"))
     return value.length ? value.map(worded).join(", ") : "none";

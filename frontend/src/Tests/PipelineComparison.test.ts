@@ -69,6 +69,16 @@ describe("a design beside the one that runs", () => {
     });
   });
 
+  it("keeps the digits that tell a small rate or a quantile near one apart", () => {
+    const rate = setNodeParams(running(), "scale", { factor: 0.0001 });
+    const was = { ...running(), definition: { ...running().definition,
+      nodes: running().definition.nodes.map((item) => item.id === "scale" ? { ...item, params: { factor: 0.00001 } } : item) } };
+    expect(compareDesigns(was, rate, components).steps.scale?.detail).toBe("Factor 0.0001, was 0.00001.");
+    const near = setNodeParams(running(), "scale", { factor: 0.99999 });
+    const before = setNodeParams(running(), "scale", { factor: 0.9999 });
+    expect(compareDesigns(before, near, components).steps.scale?.detail).toBe("Factor 0.99999, was 0.9999.");
+  });
+
   it("marks new steps and names the ones that went", () => {
     const smooth = components.find((component) => component.id === "features.smooth")!;
     const added = addAfter(running(), "scale", smooth, components)!;

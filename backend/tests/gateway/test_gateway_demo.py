@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.routing import iter_route_contexts
+from httpx import ASGITransport, AsyncClient
 from off_key_api_gateway.api import demo
 from off_key_api_gateway.app import build_app
 from off_key_api_gateway.facades.tactic import TacticError
@@ -210,3 +211,13 @@ async def test_guests_read_proposals_with_agents_named_and_members_hidden(remote
     assert (member["author"], member["decided_by"]) == ("A member", "A member")
     assert (agent["author"], agent["decided_by"]) == ("Scout", "A member")
     assert member["reason"] == "Flags stops between stations"
+
+
+async def test_guests_are_recognised_behind_the_deployed_api_root_path(remote):
+    # Uvicorn runs with --root-path /api and passes the full path, prefix included.
+    transport = ASGITransport(app=app(), root_path="/api")
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/catalogue")
+        assert response.status_code == 200
+        assert response.json()["updated_by"] is None
+        assert (await client.put("/api/v1/catalogue", json={})).status_code == 403

@@ -26,6 +26,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from ..facades.tactic import TacticError, tactic
 from ..settings import DemoSettings
 from .rate_limiter import client_ip
+from .request_guards import route_path
 from .v1.auth import access_token_response
 
 # Read routes a guest may call, as OpenAPI path templates. Writes, member
@@ -184,7 +185,9 @@ class DemoGuestMiddleware:
         if scope["type"] != "http" or not self._anonymous(scope):
             await self.app(scope, receive, send)
             return
-        method, path = scope["method"], scope["path"]
+        # Behind the dashboard the gateway runs with --root-path /api, and the
+        # path a guest is judged by is the one the routes see, without it.
+        method, path = scope["method"], route_path(scope)
         if (
             method == "OPTIONS"
             or path.startswith(OPEN_PREFIXES)

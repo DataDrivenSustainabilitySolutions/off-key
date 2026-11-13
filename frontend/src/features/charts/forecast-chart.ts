@@ -53,7 +53,8 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
 }
 
 type TooltipEntry = { seriesId?: string; seriesName?: string; value?: unknown;
-  data?: { forecastObservation?: ForecastObservation; observation?: DetectionObservation; futureForecast?: FutureForecastPoint } };
+  data?: { forecastObservation?: ForecastObservation; observation?: DetectionObservation; futureForecast?: FutureForecastPoint;
+    summary?: unknown } };
 
 /** Never show a neighbouring forecast as if it evaluated the hovered sample. */
 export function formatForecastTooltip(params: unknown, time: (value: number) => string,
@@ -65,6 +66,8 @@ export function formatForecastTooltip(params: unknown, time: (value: number) => 
   const future = formatFutureTooltip(entries, timestamp, time, number, intervalLabel);
   if (future) return future;
   const points = entries.filter(entry => entry.data?.forecastObservation?.time === timestamp);
+  // An interval mean is not an input sample, so its own tooltip names the interval, range and count.
+  if (!points.length && entries.some(entry => entry.data?.summary)) return undefined;
   if (!points.length) return showMissing && (anchor.seriesId?.startsWith("reading:") || anchor.seriesId?.startsWith("pending-reading:"))
     ? [time(timestamp), `${anchor.seriesName}: ${number(Number(anchor.value[1]))}`, "No evaluated forecast for this input sample."].join("\n")
     : undefined;

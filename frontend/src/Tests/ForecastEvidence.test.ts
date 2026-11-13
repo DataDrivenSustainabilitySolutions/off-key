@@ -123,6 +123,10 @@ describe("forecast evidence presentation", () => {
     expect(formatForecastTooltip([{ value: [start + 1000, 51] }, ...entries], String, String, "NexCP interval")).toBeUndefined();
     expect(formatForecastTooltip([{ seriesId: "reading:reading", seriesName: "Frequency", value: [start + 1000, 51] }, ...entries], String, String, "NexCP interval"))
       .toContain("No evaluated forecast for this input sample.");
+    // An interval mean is not an input sample; its own tooltip names the interval and range.
+    expect(formatForecastTooltip([{ seriesId: "reading:reading", seriesName: "Frequency", value: [start + 1000, 51],
+      data: { summary: { timestamp: new Date(start + 1000).toISOString(), value: 51, minimum: 50, maximum: 52, count: 4 } } }, ...entries],
+    String, String, "NexCP interval")).toBeUndefined();
   });
 
   it("cycles overlay, ahead and data without altering residuals or underlying values", () => {

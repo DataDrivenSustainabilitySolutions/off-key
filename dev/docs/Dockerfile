@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim AS build
+FROM python:3.15-slim AS build
 WORKDIR /docs
 COPY requirements-docs.txt ./
 RUN pip install --no-cache-dir --disable-pip-version-check -r requirements-docs.txt

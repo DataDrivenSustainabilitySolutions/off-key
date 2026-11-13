@@ -5,9 +5,7 @@ ids remain in every topic and reading id, so changing an asset cannot splice its
 history into another asset's readings.
 """
 
-from typing import Annotated
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..schemas.collection_policy import CollectionPolicy
 from ..schemas.system import (
@@ -24,16 +22,6 @@ class FeedSelection(BaseModel):
 
     weather_station: int = Field(default=1003, gt=0, lt=1_000_000)
     traffic_station: int = Field(default=23438, gt=0, lt=1_000_000)
-    hamburg_detectors: list[Annotated[int, Field(gt=0)]] = Field(
-        default_factory=lambda: [13, 30], min_length=1, max_length=3
-    )
-
-    @field_validator("hamburg_detectors")
-    @classmethod
-    def distinct_detectors(cls, values: list[int]) -> list[int]:
-        if len(values) != len(set(values)):
-            raise ValueError("Choose distinct Hamburg detectors")
-        return values
 
 
 # Digitraffic road sensor ids by normalized field. Cadence varies by station.
@@ -71,7 +59,6 @@ FIELDS = {
         ("speed_1", "Average speed, direction 1", "km/h"),
         ("speed_2", "Average speed, direction 2", "km/h"),
     ],
-    "hamburg": [("occupancy", "Occupancy", "%")],
     "mosquitto": [
         ("clients", "Connected clients", "clients"),
         ("messages_received", "Messages received, 1-minute average", "messages/min"),
@@ -85,7 +72,6 @@ def entities(selection: FeedSelection) -> dict[str, list[str]]:
     return {
         "weather": [str(selection.weather_station)],
         "traffic": [str(selection.traffic_station)],
-        "hamburg": [str(value) for value in selection.hamburg_detectors],
         "mosquitto": [MOSQUITTO_ENTITY],
     }
 

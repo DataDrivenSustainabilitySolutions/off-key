@@ -22,8 +22,7 @@ DEFAULT_MAX_AGE = 120
 
 def timestamp(value) -> float:
     if isinstance(value, str):
-        # SensorThings can express an observation as a start/end interval.
-        value = datetime.fromisoformat(value.split("/")[-1].replace("Z", "+00:00"))
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if value.tzinfo is None:
             raise ValueError("Source time needs a timezone")
         return value.timestamp()
@@ -51,13 +50,6 @@ def _traffic(mqtt_topic: str, data: dict, selection: FeedSelection):
     return _road(TRAFFIC_SENSORS, selection.traffic_station, mqtt_topic, data)
 
 
-def _hamburg(mqtt_topic: str, data: dict, selection: FeedSelection):
-    entity = mqtt_topic.split("Datastreams(")[1].split(")")[0]
-    if entity not in {str(value) for value in selection.hamburg_detectors}:
-        return None
-    return entity, data["phenomenonTime"], {"occupancy": data.get("result")}
-
-
 def _mosquitto(mqtt_topic: str, data, _selection: FeedSelection):
     field = {value: key for key, value in MOSQUITTO_SENSORS.items()}.get(mqtt_topic)
     if field is None or type(data) not in (int, float) or data < 0:
@@ -69,7 +61,6 @@ def _mosquitto(mqtt_topic: str, data, _selection: FeedSelection):
 _DECODERS = {
     "weather": _weather,
     "traffic": _traffic,
-    "hamburg": _hamburg,
     "mosquitto": _mosquitto,
 }
 

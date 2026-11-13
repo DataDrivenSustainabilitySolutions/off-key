@@ -19,7 +19,7 @@ monitoring evidence, pipelines and Dojo datasets become public.
 
 ## Public feeds
 
-The initial catalogue contains four providers, five devices and fourteen numeric
+The initial catalogue contains three sources, three devices and twelve numeric
 readings, sampled at five-second intervals when new messages arrive. The sources
 report at different cadences; a quiet or unavailable upstream never produces
 invented readings. A small relay separates individual assets and gives upstream
@@ -30,15 +30,12 @@ The normal collection and monitoring services process those topics.
 | --- | --- | --- |
 | Fintraffic road weather | Air and road surface temperature, mean wind, humidity at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
 | Fintraffic traffic counts | Vehicles per hour and average speed in both directions at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
-| Hamburg traffic | Occupancy for detectors 13 and 30 | [Hamburg SensorThings](https://tld.iot.hamburg.de/v1.1/) |
 | Mosquitto public broker | Connected clients, received/sent messages per minute, received bytes per minute | [Public test broker](https://test.mosquitto.org/) |
 
 Provider attribution and license links are available from **Demo → Data sources**.
 
 Fintraffic weather updates can be several minutes apart; traffic counts are
-five-minute sliding values. Hamburg detectors report short vehicle-presence
-pulses: zero and sharp occupancy peaks are normal, with quiet periods between
-vehicles. Five-second sampling can omit intermediate changes. Mosquitto reports
+five-minute sliding values. Mosquitto reports
 real operational metrics, typically about every ten seconds. It is a public test
 service, so interruptions are possible. Single trams, trains and vessels
 were dropped from the initial selection because they only report while that one
@@ -71,7 +68,7 @@ so prefer a known station with every sensor and check it with `--selection`. It 
 before copying it into the inventory. A zero count means no fresh observation was
 received during that bounded check, not proof that a source is permanently down.
 On 2026-11-13, weather station 1003 supplied all four selected measurements,
-traffic station 23438 and Hamburg supplied fresh readings, and all four Mosquitto
+traffic station 23438 supplied fresh readings, and all four Mosquitto
 metrics arrived over verified TLS from the demo worker. The invalid weather
 station 4057 and unreachable TDengine endpoint were replaced. These checks do not
 guarantee future provider availability; verify freshness before each launch.

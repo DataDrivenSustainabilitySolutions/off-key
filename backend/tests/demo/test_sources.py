@@ -1,7 +1,6 @@
 """Provider-shaped messages must become stable, fresh application readings."""
 
 import json
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -14,7 +13,6 @@ from off_key_mqtt_proxy.demo.normalize import DEFAULT_MAX_AGE, MAX_AGE, Normaliz
 from off_key_mqtt_proxy.demo.relay import feeds
 
 NOW = 1_794_475_800.0
-ISO = datetime.fromtimestamp(NOW, UTC).isoformat()
 SELECTION = FeedSelection()
 MESSAGES = [
     (
@@ -27,12 +25,6 @@ MESSAGES = [
         "traffic",
         "tms-v2/23438/5122",
         {"value": 87, "time": int(NOW), "start": int(NOW) - 300, "end": int(NOW)},
-        1,
-    ),
-    (
-        "hamburg",
-        "v1.1/Datastreams(13)/Observations",
-        {"phenomenonTime": ISO, "result": 35},
         1,
     ),
 ]
@@ -93,19 +85,6 @@ def test_road_feeds_take_only_the_selected_station_and_known_sensors():
         "traffic", "tms-v2/23438/5116", reading, received_at=NOW + 300
     )
     assert destination == "demo/traffic/23438/volume_1"
-
-
-def test_unselected_hamburg_detector_is_not_recorded():
-    normalizer = Normalizer(SELECTION)
-    assert (
-        normalizer.messages(
-            "hamburg",
-            "v1.1/Datastreams(99)/Observations",
-            json.dumps(MESSAGES[2][2]).encode(),
-            received_at=NOW,
-        )
-        == []
-    )
 
 
 @pytest.mark.parametrize("field,mqtt_topic", MOSQUITTO_SENSORS.items())
@@ -202,13 +181,12 @@ def test_catalogue_roundtrips_and_changed_entities_get_new_reading_ids():
         == document
     )
     assert (
-        len(document.connections) == len(public_sources()) == len(feeds(SELECTION)) == 4
+        len(document.connections) == len(public_sources()) == len(feeds(SELECTION)) == 3
     )
-    assert len(document.streams) == 14
+    assert len(document.streams) == 12
     assert {source["id"] for source in public_sources()} == {
         "weather",
         "traffic",
-        "hamburg",
         "mosquitto",
     }
     before = {
@@ -223,9 +201,3 @@ def test_catalogue_roundtrips_and_changed_entities_get_new_reading_ids():
         if reading.connection_id == "demo-weather"
     }
     assert before.isdisjoint(after)
-
-
-@pytest.mark.parametrize("detectors", [[13, 13], [0], [-1], [1, 2, 3, 4]])
-def test_detector_selection_is_bounded_positive_and_distinct(detectors):
-    with pytest.raises(ValueError):
-        FeedSelection(hamburg_detectors=detectors)

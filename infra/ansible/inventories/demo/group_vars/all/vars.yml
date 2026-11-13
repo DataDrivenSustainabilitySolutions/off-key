@@ -31,7 +31,6 @@ telemetry_storage_cap_gb: 2
 demo_feed_selection:
   weather_station: 1003
   traffic_station: 23438
-  hamburg_detectors: [13, 30]
 # Run the whole demo on one worker, away from the manager and production's
 # nodes. Label it once from the manager:
 #   docker node update --label-add offkey-demo=true <worker>

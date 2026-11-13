@@ -107,7 +107,7 @@ async def test_initial_catalogue_records_exactly_the_selected_readings(monkeypat
     monkeypatch.setattr(setup, "SystemService", lambda _: service)
     assert await setup.seed_catalogue(Mock(), FeedSelection()) == {
         "status": "loaded",
-        "readings": 14,
+        "readings": 12,
     }
     document = service.save.call_args.args[0].document
     request = service.apply_collection.call_args.args[0]

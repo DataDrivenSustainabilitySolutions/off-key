@@ -40,6 +40,22 @@ Shared steps live in `.github/actions/setup-backend` (Python, the pinned uv rele
 and the locked backend sync). Test lanes select their tests by pytest marker; see
 [Testing and debugging](testing-debugging.md#radar-production-integration).
 
+### Pull requests and the merge queue
+
+Every push to a pull request runs only the fast suites of its plan: `lint`,
+`backend`, `frontend`, `frontend browser` and `contracts`. The heavy suites
+(`images`, both `deployment-smoke` lanes, `radar`, `collection`, `infrastructure`
+and `worker observability`) run once in the merge queue, on exactly the commit
+that lands on `main`, and again on the `main` push that releases it. A pull
+request is merged by adding it to the queue; the queue may test several pull
+requests together and removes one that fails.
+
+To run the heavy suites on a pull request before queueing it, for example for a
+deployment or broker change, add the `full-ci` label and re-run CI (or push). The
+planner reads the labels when the run starts, and runs the whole plan if it
+cannot read them. Run `make check` before pushing; see
+[Local quality gate](#local-quality-gate).
+
 ### Planned runs
 
 `.github/scripts/ci_plan.py` selects checks from the complete change:
@@ -142,6 +158,12 @@ traffic and repeated storage; the first installation remains approximately the
 same size.
 
 ## Local quality gate
+
+Run `make check` before every push. It runs the fast CI suites for the paths the
+branch changed since `origin/main` (`make check ARGS=--all` runs all of them), so
+a push does not spend CI minutes on a failure a local run would have caught.
+Push once per finished step rather than for work in progress: each push of a pull
+request starts a CI run.
 
 Match local work to the changed surface. For landing copy, CSS and images, run
 `python assets/brand/export.py --check`, `python assets/landing/export.py --check`

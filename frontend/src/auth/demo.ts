@@ -1,6 +1,6 @@
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
-export interface DemoSource {
+interface DemoSource {
   id: string;
   name: string;
   url: string;

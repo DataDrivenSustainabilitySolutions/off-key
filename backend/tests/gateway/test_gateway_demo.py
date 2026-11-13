@@ -74,7 +74,12 @@ async def answer(method, path, **kwargs):
     if path == "/api/v1/dojo/datasets":
         return dict(items=[], next_offset=None)
     if path == "/api/v1/monitors/pipeline-proposals":
-        return dict(items=[PROPOSAL, PROPOSAL | dict(id="p2", author_kind="agent", author="Scout")])
+        return dict(
+            items=[
+                PROPOSAL,
+                PROPOSAL | dict(id="p2", author_kind="agent", author="Scout"),
+            ]
+        )
     return {}
 
 

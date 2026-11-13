@@ -255,7 +255,10 @@ async def list_pipeline_proposals(
         params=None if status is None else {"status": status},
     )
     if getattr(request.state, "demo_guest", False):
-        result = {**result, "items": [_without_members(item) for item in result["items"]]}
+        result = {
+            **result,
+            "items": [_without_members(item) for item in result["items"]],
+        }
     return result
 
 

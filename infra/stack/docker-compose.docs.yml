@@ -7,7 +7,7 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: [node.labels.frontend == true]
+        constraints: ["${FRONTEND_CONSTRAINT:-node.labels.frontend == true}"]
       restart_policy:
         condition: any
       update_config:

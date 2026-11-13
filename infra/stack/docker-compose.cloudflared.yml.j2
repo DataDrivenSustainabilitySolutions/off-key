@@ -18,6 +18,6 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.role == manager
+          - "${INGRESS_CONSTRAINT:-node.role == manager}"
       restart_policy:
         condition: any

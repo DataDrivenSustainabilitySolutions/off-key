@@ -19,31 +19,39 @@ monitoring evidence, pipelines and Dojo datasets become public.
 
 ## Public feeds
 
-The initial catalogue contains five providers, six devices and fourteen numeric
-readings, recorded every five seconds. A small relay separates individual assets
+The initial catalogue contains four providers, five devices and fourteen numeric
+readings, recorded every five seconds. Every selected source reports around the
+clock, so monitors see a continuous signal with daily patterns rather than the
+gaps of a single vehicle going in and out of service. A small relay separates individual assets
 and gives moving or multiplexed upstream topics stable application topics.
 The normal collection and monitoring services process those topics.
 
 | Provider | Selected readings | Reference |
 | --- | --- | --- |
-| HSL Helsinki tram | Speed, acceleration, schedule offset, door state | [HFP documentation](https://digitransit.fi/en/developers/apis/5-realtime-api/vehicle-positions/high-frequency-positioning/) |
+| Fintraffic road weather | Air and road surface temperature, mean wind, humidity at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
+| Fintraffic traffic counts | Vehicles per hour and average speed in both directions at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
 | Hamburg traffic | Occupancy for detectors 13 and 30 | [Hamburg SensorThings](https://tld.iot.hamburg.de/v1.1/) |
-| Fintraffic marine | Vessel speed, course, heading | [Marine API](https://www.digitraffic.fi/en/marine-traffic/) |
-| Fintraffic rail | Train speed | [Rail API](https://www.digitraffic.fi/en/railway-traffic/) |
 | TDengine solar | Inverter power, voltage, temperature, efficiency | [Simulated solar feed](https://tdengine.com/free-public-mqtt-data-feed-real-time-solar-fleet-simulation-now-available/) |
 
 TDengine is explicitly labeled **Simulated**. PONTOS is excluded for now.
 Provider attribution and license links are available from **Demo → Data sources**.
 
+The Fintraffic road stations publish about once a minute; traffic counts are
+five-minute sliding values. Hamburg detectors are event-driven and quieter at
+night. TDengine simulates a few-second cadence. Single trams, trains and vessels
+were dropped from the initial selection because they only report while that one
+vehicle is in service.
+
 The relay rejects retained messages, duplicates, out-of-order readings, non-finite
-values and observations older than two minutes or more than ten seconds in the
-future. It preserves observation and arrival timestamps in the normalized payload;
+values and observations older than two minutes (ten for the Fintraffic road
+stations, which publish a measurement about a minute after taking it) or more
+than ten seconds in the future. It preserves observation and arrival timestamps in the normalized payload;
 the current application's charts use arrival time. Missing upstream data stays
 missing. There is no fallback generator. The relay retries failed connections
 with bounded backoff and keeps no history queue to replay as fresh data.
 
-Each feed is pinned to a particular asset in `demo_feed_selection`. Train services
-and vessels can stop reporting, and a public broker may be unavailable. Check
+Each feed is pinned to a particular asset in `demo_feed_selection`. A station can
+be out of service, and a public broker may be unavailable. Check
 freshness on the deployment network before launch:
 
 ```sh
@@ -52,11 +60,13 @@ backend/.venv/bin/python -m off_key_mqtt_proxy.demo.probe --selection /tmp/demo-
 ```
 
 Discovery subscribes briefly to the relevant fleet, selects a fresh asset and
-narrows the subscription. It never publishes to a provider. Review the output
+narrows the subscription. For the road networks it picks the first station heard,
+so prefer a known station with every sensor and check it with `--selection`. It never publishes to a provider. Review the output
 before copying it into the inventory. A zero count means no fresh observation was
 received during that bounded check, not proof that a source is permanently down.
-The implementation check on 2026-11-12 received Hamburg, marine and rail data;
-HSL and TDengine did not connect.
+The implementation check on 2026-11-12 received Hamburg data and TDengine did not
+connect. The road stations 4057 and 23438 are unverified defaults; probe them on
+the deployment network first.
 
 When changing an asset after launch, update the relay selection and import an
 updated catalogue through normal administration. Generate it with:
@@ -75,6 +85,11 @@ deployment selection alone deliberately does not overwrite saved configuration.
 1. Use `infra/ansible/inventories/demo/`. Copy `hosts.yml.example` to the ignored
    `hosts.yml`. This can target an existing Swarm; the stack is `off-key-demo`.
    It shares production's non-secret defaults and image manifest, never its vault.
+   The whole demo runs on one worker. Choose the one with the most free CPU and
+   memory, list it as both backend and frontend node, and label it once from the
+   manager with `docker node update --label-add offkey-demo=true <worker>`. Only
+   the demo's socket proxy runs on a manager. Production's labels and nodes are
+   left alone.
 2. Copy `group_vars/all/vault.yml.example` to the ignored `vault.yml`, fill it
    with dedicated credentials and encrypt it with `ansible-vault`. Generate a
    separate 32–72 byte viewer password, for example `openssl rand -hex 32`.
@@ -82,8 +97,10 @@ deployment selection alone deliberately does not overwrite saved configuration.
    Supply the administrator email, mail credentials, registry access and a
    dedicated Cloudflare tunnel token.
 3. Configure that tunnel's public hostname `demo.aberration.app` to reach this
-   stack's Traefik. The demo ingress exposes only the frontend and API. Review
-   backend placement and persistence as for [production](production.md).
+   stack's Traefik: service type HTTP, URL `traefik:80`. The demo's networks are
+   its own, so that name reaches the demo's Traefik. The demo ingress exposes only
+   the frontend and API. Persistence works as in [production](production.md);
+   with a single node, node-local volumes stay with the stack.
 4. Deploy from a clean, committed checkout whose SHA has passed the normal image
    and release checks:
 

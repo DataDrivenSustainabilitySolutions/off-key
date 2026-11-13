@@ -34,7 +34,7 @@ services:
         # still needs verified shutdown or isolation before this identity is reused.
         order: stop-first
       placement:
-        constraints: [ node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 

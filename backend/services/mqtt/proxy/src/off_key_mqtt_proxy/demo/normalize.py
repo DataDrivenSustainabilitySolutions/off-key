@@ -4,9 +4,18 @@ import json
 import math
 from datetime import datetime
 
-from off_key_core.demo.catalogue import FeedSelection, topic
+from off_key_core.demo.catalogue import (
+    TRAFFIC_SENSORS,
+    WEATHER_SENSORS,
+    FeedSelection,
+    topic,
+)
 
 MAX_PAYLOAD = 65_536
+# Seconds an observation may be old on arrival. Road stations measure, then
+# publish about a minute later, so they get a wider window than the live feeds.
+MAX_AGE = {"weather": 600, "traffic": 600}
+DEFAULT_MAX_AGE = 120
 
 
 def timestamp(value) -> float:
@@ -21,24 +30,23 @@ def timestamp(value) -> float:
     return value / 1000 if value > 100_000_000_000 else float(value)
 
 
-def _hsl(mqtt_topic: str, data: dict, selection: FeedSelection):
-    data = data["VP"]
-    entity = f"{int(data['oper']):04d}/{int(data['veh']):05d}"
-    if entity != selection.hsl_vehicle:
+def _road(sensors: dict[str, int], station: int, mqtt_topic: str, data: dict):
+    # <network>-v2/<station>/<sensor>; the status topic carries no measurement.
+    _network, entity, sensor = mqtt_topic.split("/")
+    if entity != str(station):
         return None
-    return (
-        entity,
-        data["tst"],
-        {
-            name: data.get(key)
-            for name, key in {
-                "speed": "spd",
-                "acceleration": "acc",
-                "delay": "dl",
-                "doors": "drst",
-            }.items()
-        },
-    )
+    field = {value: key for key, value in sensors.items()}.get(int(sensor))
+    if field is None:
+        return None
+    return entity, data["time"], {field: data.get("value")}
+
+
+def _weather(mqtt_topic: str, data: dict, selection: FeedSelection):
+    return _road(WEATHER_SENSORS, selection.weather_station, mqtt_topic, data)
+
+
+def _traffic(mqtt_topic: str, data: dict, selection: FeedSelection):
+    return _road(TRAFFIC_SENSORS, selection.traffic_station, mqtt_topic, data)
 
 
 def _hamburg(mqtt_topic: str, data: dict, selection: FeedSelection):
@@ -46,32 +54,6 @@ def _hamburg(mqtt_topic: str, data: dict, selection: FeedSelection):
     if entity not in {str(value) for value in selection.hamburg_detectors}:
         return None
     return entity, data["phenomenonTime"], {"occupancy": data.get("result")}
-
-
-def _marine(mqtt_topic: str, data: dict, selection: FeedSelection):
-    entity = mqtt_topic.split("/")[1]
-    if entity != selection.marine_mmsi:
-        return None
-    # AIS uses special numeric values for unavailable measurements.
-    fields = {
-        name: data.get(key)
-        for name, key in {
-            "speed": "sog",
-            "course": "cog",
-            "heading": "heading",
-        }.items()
-    }
-    for field, sentinel in {"speed": 102.3, "course": 360, "heading": 511}.items():
-        if fields[field] == sentinel:
-            fields[field] = None
-    return entity, data["time"], fields
-
-
-def _rail(mqtt_topic: str, data: dict, selection: FeedSelection):
-    entity = str(data["trainNumber"])
-    if entity != selection.rail_train:
-        return None
-    return entity, data["timestamp"], {"speed": data.get("speed")}
 
 
 def _solar(mqtt_topic: str, data: dict, selection: FeedSelection):
@@ -94,10 +76,9 @@ def _solar(mqtt_topic: str, data: dict, selection: FeedSelection):
 
 
 _DECODERS = {
-    "hsl": _hsl,
+    "weather": _weather,
+    "traffic": _traffic,
     "hamburg": _hamburg,
-    "marine": _marine,
-    "rail": _rail,
     "solar": _solar,
 }
 
@@ -136,7 +117,8 @@ class Normalizer:
                 return []
             entity, source_time, fields = decoded
             observed_at = timestamp(source_time)
-            if not received_at - 120 <= observed_at <= received_at + 10:
+            max_age = MAX_AGE.get(source, DEFAULT_MAX_AGE)
+            if not received_at - max_age <= observed_at <= received_at + 10:
                 return []
         except (
             ValueError,

@@ -18,12 +18,23 @@ class Source:
 CC_BY = "https://creativecommons.org/licenses/by/4.0/"
 SOURCES = (
     Source(
-        "hsl",
-        "Helsinki trams",
-        "https://digitransit.fi/en/developers/apis/5-realtime-api/vehicle-positions/high-frequency-positioning/",
-        "HSL / Digitransit",
+        "weather",
+        "Finnish road weather",
+        "https://www.digitraffic.fi/en/road-traffic/",
+        "Fintraffic / Digitraffic",
         "CC BY 4.0",
         CC_BY,
+        "One roadside weather station, reporting about once a minute.",
+    ),
+    Source(
+        "traffic",
+        "Finnish road traffic counts",
+        "https://www.digitraffic.fi/en/road-traffic/",
+        "Fintraffic / Digitraffic",
+        "CC BY 4.0",
+        CC_BY,
+        "One automatic traffic measurement station: five-minute sliding "
+        "averages, updated about once a minute.",
     ),
     Source(
         "hamburg",
@@ -33,22 +44,6 @@ SOURCES = (
         "DL-DE BY 2.0",
         "https://www.govdata.de/dl-de/by-2-0",
         "Event-driven observations; quiet periods are expected.",
-    ),
-    Source(
-        "marine",
-        "Finnish marine traffic",
-        "https://www.digitraffic.fi/en/marine-traffic/",
-        "Fintraffic / Digitraffic",
-        "CC BY 4.0",
-        CC_BY,
-    ),
-    Source(
-        "rail",
-        "Finnish trains",
-        "https://www.digitraffic.fi/en/railway-traffic/",
-        "Fintraffic / Digitraffic",
-        "CC BY 4.0",
-        CC_BY,
     ),
     Source(
         "solar",

@@ -234,6 +234,11 @@ stack_interpolation_environment:
   OAUTH2_IMAGE: "{{ release.images.oauth2 }}"
   CLOUDFLARED_IMAGE: "{{ release.images.cloudflared }}"
   LANDING_IMAGE: "{{ release.images.landing }}"
+  # Placement. An inventory sharing a Swarm with another stack can pin all of its
+  # services to one labelled node; the socket proxy always stays on a manager.
+  BACKEND_CONSTRAINT: "{{ stack_backend_constraint | default('node.labels.backend == true') }}"
+  FRONTEND_CONSTRAINT: "{{ stack_frontend_constraint | default('node.labels.frontend == true') }}"
+  INGRESS_CONSTRAINT: "{{ stack_ingress_constraint | default('node.role == manager') }}"
   DEMO_BROKER_CONFIG_HASH: "{{ (lookup('file', stack_source_dir ~ '/demo-broker.conf') | hash('sha256'))[:12] }}"
 
 stack_nfs_opts: rw,nfsvers=4,hard,timeo=150,retrans=3

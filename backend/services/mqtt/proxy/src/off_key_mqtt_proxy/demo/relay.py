@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from off_key_core.demo.catalogue import FeedSelection, catalogue
+from off_key_core.demo.catalogue import (
+    TRAFFIC_SENSORS,
+    WEATHER_SENSORS,
+    FeedSelection,
+    catalogue,
+)
 from paho.mqtt.client import Client
 from paho.mqtt.enums import CallbackAPIVersion
 
@@ -36,12 +41,28 @@ class Feed:
 
 def feeds(selected: FeedSelection) -> tuple[Feed, ...]:
     return (
+        # Digitraffic drops idle clients that subscribe to no status topic.
         Feed(
-            "hsl",
-            "mqtt.hsl.fi",
-            (f"/hfp/v2/journey/ongoing/vp/tram/{selected.hsl_vehicle}/#",),
-            443,
-            "/",
+            "weather",
+            "tie.digitraffic.fi",
+            (
+                *(
+                    f"weather-v2/{selected.weather_station}/{sensor}"
+                    for sensor in WEATHER_SENSORS.values()
+                ),
+                "weather-v2/status",
+            ),
+        ),
+        Feed(
+            "traffic",
+            "tie.digitraffic.fi",
+            (
+                *(
+                    f"tms-v2/{selected.traffic_station}/{sensor}"
+                    for sensor in TRAFFIC_SENSORS.values()
+                ),
+                "tms-v2/status",
+            ),
         ),
         Feed(
             "hamburg",
@@ -50,14 +71,6 @@ def feeds(selected: FeedSelection) -> tuple[Feed, ...]:
                 f"v1.1/Datastreams({value})/Observations"
                 for value in selected.hamburg_detectors
             ),
-        ),
-        Feed(
-            "marine",
-            "meri.digitraffic.fi",
-            (f"vessels-v2/{selected.marine_mmsi}/location",),
-        ),
-        Feed(
-            "rail", "rata.digitraffic.fi", (f"train-locations/+/{selected.rail_train}",)
         ),
         Feed("solar", "mqtt.tdengine.com", ("inverters",), 1883, None, False),
     )

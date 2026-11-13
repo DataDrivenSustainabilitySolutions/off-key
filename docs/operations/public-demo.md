@@ -20,10 +20,10 @@ monitoring evidence, pipelines and Dojo datasets become public.
 ## Public feeds
 
 The initial catalogue contains four providers, five devices and fourteen numeric
-readings, recorded every five seconds. Every selected source reports around the
-clock, so monitors see a continuous signal with daily patterns rather than the
-gaps of a single vehicle going in and out of service. A small relay separates individual assets
-and gives moving or multiplexed upstream topics stable application topics.
+readings, sampled at five-second intervals when new messages arrive. The sources
+report at different cadences; a quiet or unavailable upstream never produces
+invented readings. A small relay separates individual assets and gives upstream
+topics stable application topics.
 The normal collection and monitoring services process those topics.
 
 | Provider | Selected readings | Reference |
@@ -31,22 +31,27 @@ The normal collection and monitoring services process those topics.
 | Fintraffic road weather | Air and road surface temperature, mean wind, humidity at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
 | Fintraffic traffic counts | Vehicles per hour and average speed in both directions at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
 | Hamburg traffic | Occupancy for detectors 13 and 30 | [Hamburg SensorThings](https://tld.iot.hamburg.de/v1.1/) |
-| TDengine solar | Inverter power, voltage, temperature, efficiency | [Simulated solar feed](https://tdengine.com/free-public-mqtt-data-feed-real-time-solar-fleet-simulation-now-available/) |
+| Mosquitto public broker | Connected clients, received/sent messages per minute, received bytes per minute | [Public test broker](https://test.mosquitto.org/) |
 
-TDengine is explicitly labeled **Simulated**. PONTOS is excluded for now.
 Provider attribution and license links are available from **Demo → Data sources**.
 
-The Fintraffic road stations publish about once a minute; traffic counts are
-five-minute sliding values. Hamburg detectors are event-driven and quieter at
-night. TDengine simulates a few-second cadence. Single trams, trains and vessels
+Fintraffic weather updates can be several minutes apart; traffic counts are
+five-minute sliding values. Hamburg detectors report short vehicle-presence
+pulses: zero and sharp occupancy peaks are normal, with quiet periods between
+vehicles. Five-second sampling can omit intermediate changes. Mosquitto reports
+real operational metrics, typically about every ten seconds. It is a public test
+service, so interruptions are possible. Single trams, trains and vessels
 were dropped from the initial selection because they only report while that one
 vehicle is in service.
 
 The relay rejects retained messages, duplicates, out-of-order readings, non-finite
 values and observations older than two minutes (ten for the Fintraffic road
 stations, which publish a measurement about a minute after taking it) or more
-than ten seconds in the future. It preserves observation and arrival timestamps in the normalized payload;
-the current application's charts use arrival time. Missing upstream data stays
+than ten seconds in the future. It preserves observation and arrival timestamps
+where the provider supplies them. Mosquitto's numeric `$SYS` messages have no source
+timestamp: their observation time remains null and fresh delivery is recorded
+at arrival. Retained snapshots are discarded. The current application's charts
+use arrival time. Missing upstream data stays
 missing. There is no fallback generator. The relay retries failed connections
 with bounded backoff and keeps no history queue to replay as fresh data.
 
@@ -59,14 +64,17 @@ backend/.venv/bin/python -m off_key_mqtt_proxy.demo.probe --discover --seconds 2
 backend/.venv/bin/python -m off_key_mqtt_proxy.demo.probe --selection /tmp/demo-selection.json --seconds 20
 ```
 
-Discovery subscribes briefly to the relevant fleet, selects a fresh asset and
-narrows the subscription. For the road networks it picks the first station heard,
+Discovery subscribes briefly to the documented `weather-v2/#` and `tms-v2/#`
+network topics, selects a fresh asset and narrows the subscription. For the road
+networks it picks the first station heard,
 so prefer a known station with every sensor and check it with `--selection`. It never publishes to a provider. Review the output
 before copying it into the inventory. A zero count means no fresh observation was
 received during that bounded check, not proof that a source is permanently down.
-The implementation check on 2026-11-12 received Hamburg data and TDengine did not
-connect. The road stations 4057 and 23438 are unverified defaults; probe them on
-the deployment network first.
+On 2026-11-13, weather station 1003 supplied all four selected measurements,
+traffic station 23438 and Hamburg supplied fresh readings, and all four Mosquitto
+metrics arrived over verified TLS from the demo worker. The invalid weather
+station 4057 and unreachable TDengine endpoint were replaced. These checks do not
+guarantee future provider availability; verify freshness before each launch.
 
 When changing an asset after launch, update the relay selection and import an
 updated catalogue through normal administration. Generate it with:

@@ -28,10 +28,9 @@ telemetry_storage_cap_gb: 2
 # Pin chosen assets. Review the probe's --discover output after a bounded live check;
 # never silently switch entities underneath an existing monitor.
 demo_feed_selection:
-  weather_station: 4057
+  weather_station: 1003
   traffic_station: 23438
   hamburg_detectors: [13, 30]
-  solar_inverter: INV_001_001
 # Run the whole demo on one worker, away from the manager and production's
 # nodes. Label it once from the manager:
 #   docker node update --label-add offkey-demo=true <worker>

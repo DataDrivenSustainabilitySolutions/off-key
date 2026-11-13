@@ -18,18 +18,15 @@ from ..schemas.system import (
 )
 from .sources import SOURCES
 
-Identifier = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,60}$")]
-
 
 class FeedSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    weather_station: int = Field(default=4057, gt=0, lt=1_000_000)
+    weather_station: int = Field(default=1003, gt=0, lt=1_000_000)
     traffic_station: int = Field(default=23438, gt=0, lt=1_000_000)
     hamburg_detectors: list[Annotated[int, Field(gt=0)]] = Field(
         default_factory=lambda: [13, 30], min_length=1, max_length=3
     )
-    solar_inverter: Identifier = "INV_001_001"
 
     @field_validator("hamburg_detectors")
     @classmethod
@@ -39,8 +36,7 @@ class FeedSelection(BaseModel):
         return values
 
 
-# Digitraffic road sensor ids by normalized field. Both networks report every
-# station around the clock, about once a minute.
+# Digitraffic road sensor ids by normalized field. Cadence varies by station.
 WEATHER_SENSORS = {
     "air_temperature": 1,
     "road_temperature": 3,
@@ -52,6 +48,13 @@ TRAFFIC_SENSORS = {
     "volume_2": 5119,
     "speed_1": 5122,
     "speed_2": 5125,
+}
+MOSQUITTO_ENTITY = "test-mosquitto-org"
+MOSQUITTO_SENSORS = {
+    "clients": "$SYS/broker/clients/connected",
+    "messages_received": "$SYS/broker/load/messages/received/1min",
+    "messages_sent": "$SYS/broker/load/messages/sent/1min",
+    "bytes_received": "$SYS/broker/load/bytes/received/1min",
 }
 
 # (field in normalized message, visible label, unit)
@@ -69,11 +72,11 @@ FIELDS = {
         ("speed_2", "Average speed, direction 2", "km/h"),
     ],
     "hamburg": [("occupancy", "Occupancy", "%")],
-    "solar": [
-        ("power", "AC power", "kW"),
-        ("voltage", "DC voltage", "V"),
-        ("temperature", "Module temperature", "°C"),
-        ("efficiency", "Efficiency", "%"),
+    "mosquitto": [
+        ("clients", "Connected clients", "clients"),
+        ("messages_received", "Messages received, 1-minute average", "messages/min"),
+        ("messages_sent", "Messages sent, 1-minute average", "messages/min"),
+        ("bytes_received", "Bytes received, 1-minute average", "B/min"),
     ],
 }
 
@@ -83,7 +86,7 @@ def entities(selection: FeedSelection) -> dict[str, list[str]]:
         "weather": [str(selection.weather_station)],
         "traffic": [str(selection.traffic_station)],
         "hamburg": [str(value) for value in selection.hamburg_detectors],
-        "solar": [selection.solar_inverter],
+        "mosquitto": [MOSQUITTO_ENTITY],
     }
 
 

@@ -22,8 +22,6 @@ from .relay import feeds, subscriber
 def candidate(source: str, mqtt_topic: str, data: dict) -> dict:
     if source in ("weather", "traffic"):
         return {f"{source}_station": int(mqtt_topic.split("/")[1])}
-    if source == "solar":
-        return {"solar_inverter": data["Inverter_ID"]}
     return {}
 
 
@@ -69,10 +67,11 @@ def probe(selection: FeedSelection, seconds: int, discover: bool) -> FeedSelecti
     counts: dict[str, int] = {}
     clients = []
     discovery = {
-        # One sensor per network, so the first station heard is one that reports.
-        "weather": ("weather-v2/+/1",),
-        "traffic": ("tms-v2/+/5122",),
-        "solar": ("inverters",),
+        # Use Digitraffic's documented network subscription. The '+' filters
+        # do not deliver measurements on this service. Narrow after the first
+        # valid observation, retaining only a bounded selected catalogue.
+        "weather": ("weather-v2/#",),
+        "traffic": ("tms-v2/#",),
     }
 
     try:
@@ -80,7 +79,16 @@ def probe(selection: FeedSelection, seconds: int, discover: bool) -> FeedSelecti
             if discover and feed.id in discovery:
                 feed = replace(feed, topics=discovery[feed.id])
             clients.append(
-                subscriber(feed, _receiver(feed, selection, discover, chosen, counts))
+                subscriber(
+                    feed,
+                    _receiver(
+                        feed,
+                        selection,
+                        discover and feed.id in discovery,
+                        chosen,
+                        counts,
+                    ),
+                )
             )
         threading.Event().wait(seconds)
     finally:

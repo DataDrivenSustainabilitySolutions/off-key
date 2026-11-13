@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { memberInitials } from "@/lib/utils";
 import { useSettingsNavigation, type SettingsSection } from "@/lib/settings-navigation";
 import { loginHref } from "@/auth/login-navigation";
+import { DEMO_VISITOR } from "@/auth/demo";
 import { DemoSources } from "./DemoSources";
 
 type Props = {
@@ -41,7 +42,7 @@ export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSet
   return <><DropdownMenu>
     <DropdownMenuTrigger asChild ref={menuTrigger}>
       {trigger ?? <button className="app-menu-trigger app-avatar-trigger" aria-label={isGuest ? "Demo menu" : "Account menu"} title={member?.email}>
-        <span className="app-avatar" aria-hidden="true">{isGuest ? "Demo" : memberInitials(member?.email)}</span>
+        <span className="app-avatar" aria-hidden="true">{isGuest ? DEMO_VISITOR.initials : memberInitials(member?.email)}</span>
       </button>}
     </DropdownMenuTrigger>
     <DropdownMenuContent side={side} align={align} sideOffset={8} className="app-popover app-menu z-[90]"
@@ -53,7 +54,7 @@ export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSet
         }
       }}>
       {member && <p className="app-menu-account" title={member.email}>{member.email}</p>}
-      {isGuest && <p className="app-menu-account">Public demo · Read only</p>}
+      {isGuest && <p className="app-menu-account">{DEMO_VISITOR.name} · Read only</p>}
       {isGuest && <DropdownMenuItem className="app-menu-item" aria-haspopup="dialog" onSelect={() => {
         openingSettings.current = true;
         setSourcesOpen(true);

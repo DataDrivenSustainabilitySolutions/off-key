@@ -11,6 +11,9 @@ interface DemoSource {
   note: string;
 }
 
+/** Public demo visitors appear as a signed-in, read-only account. */
+export const DEMO_VISITOR = { name: 'Demo visitor', initials: 'DV' } as const;
+
 export interface DemoStatus { enabled: boolean; sources?: DemoSource[] }
 let enabled = false;
 export const isPublicDemo = () => enabled;

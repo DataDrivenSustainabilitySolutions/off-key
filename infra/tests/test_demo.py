@@ -30,6 +30,14 @@ class PublicDemoTests(unittest.TestCase):
         self.assertNotIn(
             ">Demo <svg", templates.get_template("landing.html.j2").render(context)
         )
+        for name in ("landing.md.j2", "landing-llms.txt.j2"):
+            with self.subTest(template=name):
+                template = templates.get_template(name)
+                self.assertIn(
+                    "[Public demo](https://demo.example.org/sources)",
+                    template.render(context | {"demo_base_url": "https://demo.example.org"}),
+                )
+                self.assertNotIn("[Public demo](", template.render(context))
 
     def test_demo_uses_its_own_networks_credentials_and_ingress(self):
         demo = yaml.safe_load(

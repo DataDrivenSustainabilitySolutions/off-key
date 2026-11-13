@@ -830,15 +830,13 @@ class DeploymentTests(unittest.TestCase):
         api_env = config["services"]["api"]["environment"]
         self.assertEqual(api_env["FRONTEND_BASE_URL"], dashboard)
         self.assertEqual(json.loads(api_env["CORS_ALLOWED_ORIGINS"]), [dashboard])
+        self.assertEqual(api_env["DEMO_MODE"], "false")
         self.assertIn(f'href="{dashboard}/"', result["landing_html"])
         self.assertNotIn("{{", result["landing_html"])
-        # Embedded photographs are base64, where any four letters can occur.
-        page_text = re.sub(
-            r"data:[a-z]+/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+",
-            "",
+        self.assertIn(
+            'href="https://demo.aberration.app/sources">Demo ',
             result["landing_html"],
         )
-        self.assertNotIn("demo", page_text.lower())
 
         landing = config["services"]["landing"]
         self.assertEqual(set(landing["networks"]), {"public-network"})
@@ -953,7 +951,7 @@ class DeploymentTests(unittest.TestCase):
         for text in (llms, markdown):
             self.assertNotIn("{{", text)
             self.assertIn("https://dashboard.aberration.app/api/openapi.json", text)
-            self.assertNotIn("demo", text.lower())
+            self.assertIn("[Public demo](https://demo.aberration.app/sources)", text)
         self.assertIn("(https://aberration.app/index.md)", llms)
         self.assertIn(
             "https://docs.aberration.app/llms.txt",

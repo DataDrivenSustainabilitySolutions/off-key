@@ -192,9 +192,7 @@ def _run_one_hour(publishes: dict[str, tuple[float, float]], intervals: dict[str
         ),
     ],
 )
-def test_a_monitor_scores_once_per_most_frequent_reading_interval(
-    publishes, intervals
-):
+def test_a_monitor_scores_once_per_most_frequent_reading_interval(publishes, intervals):
     scored, forwarded, statuses, shown = _run_one_hour(publishes, intervals)
 
     # The composer's estimate: one observation per most frequent reading interval.

@@ -514,7 +514,7 @@ def test_a_feature_that_never_changes_is_pointed_out_where_something_learns():
         (
             "constant_feature",
             "detector",
-            message.format("Aberrant MovingMahalanobisDistance"),
+            message.format("Moving Mahalanobis distance"),
         )
     ]
     used = ("over", "prepare.condition", {"name": "over", "condition": "a > limit"})

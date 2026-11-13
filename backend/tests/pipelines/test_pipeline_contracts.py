@@ -9,6 +9,7 @@ from off_key_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
     pipeline_catalog,
+    pipeline_component,
     validate_pipeline,
 )
 from off_key_core.schemas.pipelines import BoundInput, PipelineDefinition
@@ -31,10 +32,15 @@ def test_complete_catalog_and_templates_have_bounded_controls():
     assert {item.definition.strategy for item in catalog.templates} == {None}
     for item in catalog.templates:
         assert compile_pipeline(item.definition).valid
-    for component in catalog.components:
+    # The listing leaves the schemas out; a component read alone has its own.
+    assert not any(item.parameter_schema for item in catalog.components)
+    for listed in catalog.components:
+        component = pipeline_component(listed.id)
+        assert component.model_copy(update={"parameter_schema": {}}) == listed
         assert {field.name for field in component.fields} == set(
             component.parameter_schema.get("properties", {})
         )
+    assert pipeline_component("detector:unknown") is None
     gadget = next(
         item for item in catalog.components if item.id == "detector:aberrant_gadget_svm"
     )

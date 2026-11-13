@@ -156,8 +156,7 @@
   margin: -16px -16px 12px;
   padding: 12px 12px 10px 16px;
   border-bottom: 1px solid hsl(var(--border) / 0.7);
-  background: color-mix(in srgb, hsl(var(--card)) 88%, transparent);
-  backdrop-filter: blur(10px);
+  background: hsl(var(--card));
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading button {
   border-color: transparent;

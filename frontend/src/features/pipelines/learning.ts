@@ -15,6 +15,14 @@ const LABELS: Record<Learning, string | undefined> = {
   pretrained: "Pretrained",
 };
 
+/** What choosing a detector that learns this way means for what it reports. */
+export const LEARNING_HELP: Record<Learning, string | undefined> = {
+  none: undefined,
+  batch: "Learn from a training window, then stay as they are. A fault that develops slowly does not become normal.",
+  online: "Keep learning from every observation. They follow a slow change instead of reporting it.",
+  pretrained: "Arrive trained, and score from the first values on.",
+};
+
 /** What a detector that learns nothing is called: a rule detector scores a feature as it is. */
 export const UNTRAINED = "No training";
 
@@ -90,19 +98,9 @@ export function learningBlocker(
       : "Fitted once, and the detector here learns continuously.";
 }
 
-/** Learned steps and models that do the same job fitted once and learning continuously. */
-const COUNTERPARTS: [fitted: string, continuous: string][] = [
-  ["static.standard_scaler", "adaptive.standard_scaler"],
-  ["static.min_max_scaler", "adaptive.min_max_scaler"],
-  ["static.robust_scaler", "adaptive.robust_scaler"],
-  ["static.pca", "adaptive.uncentered_pca"],
-  ["static.random_projection", "adaptive.random_projection"],
-  ["static.expected_value", "adaptive.expected_value"],
-];
-
+/** The step that does a learned step's job learning the given way, which the catalog names. */
 function counterpart(node: PipelineNode, mode: Learning, components: PipelineComponent[]) {
-  const pair = COUNTERPARTS.find((item) => item.includes(node.component));
-  const wanted = pair?.[mode === "batch" ? 0 : 1];
+  const wanted = components.find((component) => component.id === node.component)?.counterpart;
   return components.find((component) => component.id === wanted && component.kind === node.kind && component.learning === mode);
 }
 

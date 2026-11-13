@@ -287,5 +287,6 @@ def test_forecaster_steps_are_described_as_forecasts_in_the_composer():
         component = components[f"detector:{model_type}"]
         assert (component.kind, component.learning) == ("detector", "online")
         assert component.output_type == "forecasts"
-        assert "forecast" in component.description
+        assert component.group == "forecaster"
+        assert "Forecast" in component.description
         assert {field.name for field in component.fields} >= {"lead", "score"}

@@ -9,7 +9,7 @@ import { calculateLine, writtenNames } from "@/features/pipelines/formula";
 import { PipelineFormula } from "@/features/pipelines/PipelineFormula";
 import { PipelineApart } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix } from "@/features/pipelines/scope";
-import { CONDITION_STEPS, FORMULA_STEPS, stepDescription, stepFamily, stepFields } from "@/features/pipelines/steps";
+import { CONDITION_STEPS, FORMULA_STEPS, stepFamily, stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
 
@@ -25,8 +25,8 @@ const scope: Field[] = [
   option("result", "add", ["replace", "add"]),
   { name: "suffix", label: "Suffix", type: "string", default: null, has_default: true, nullable: true },
 ];
-const step = (id: string, fields: Field[]): PipelineComponent => ({
-  id, kind: "transform", label: id, description: "", input_type: "features", output_type: "features", fields,
+const step = (id: string, fields: Field[], group: PipelineComponent["group"] = "prepare"): PipelineComponent => ({
+  id, kind: "transform", group, label: id, description: "", input_type: "features", output_type: "features", fields,
 });
 const accumulate = step("prepare.accumulate", [
   ...scope, option("function", "sum", ["sum", "min", "max", "count"]), text("reset_when", "Reset when"),
@@ -37,7 +37,7 @@ const relation = step("prepare.relation", [
   option("statistic", "correlation", ["correlation", "covariance", "slope", "residual"]),
   { name: "window_size", label: "Window", type: "integer", default: 60, has_default: true },
 ]);
-const calculate = step("prepare.calculate", [text("formulas", "Formulas", true)]);
+const calculate = step("prepare.calculate", [text("formulas", "Formulas", true)], "combine");
 
 const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
   ({ id: "step", kind: "transform", component: component.id, params });
@@ -65,10 +65,9 @@ const offered = () => [...document.querySelectorAll("[role=option] code")].map((
 
 describe("steps that read the row, in the composer", () => {
   it("sit in the add-step menu and keep their own controls out of the generic list", () => {
-    expect(stepFamily("transform", "prepare.calculate")).toBe("combine");
-    expect(stepFamily("transform", "prepare.hold")).toBe("prepare");
-    expect(stepFamily("transform", "prepare.relation")).toBe("prepare");
-    for (const component of [accumulate, hold, relation, calculate]) expect(stepDescription(component)).not.toBe("");
+    expect(stepFamily(node(calculate), calculate)).toBe("combine");
+    expect(stepFamily(node(hold), hold)).toBe("prepare");
+    expect(stepFamily(node(relation), relation)).toBe("prepare");
     const names = (component: PipelineComponent) => stepFields(node(component), component).map((field) => field.name);
     expect(names(accumulate)).toEqual(["function"]);
     expect(names(hold)).toEqual([]);

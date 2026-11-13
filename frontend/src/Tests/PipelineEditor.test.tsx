@@ -65,6 +65,7 @@ const catalog = normalizeCatalog({
     {
       id: "source.aligned",
       kind: "source",
+      group: "input",
       label: "Inputs",
       description: "Aligned values",
       input_type: null,
@@ -73,6 +74,7 @@ const catalog = normalizeCatalog({
     {
       id: "detector:test",
       kind: "detector",
+      group: "detector",
       label: "Detector",
       description: "Scores",
       learning: "online",
@@ -82,6 +84,7 @@ const catalog = normalizeCatalog({
     {
       id: "calibrate.fixed_split",
       kind: "calibration",
+      group: "calibration",
       label: "Fixed split",
       description: "Calibration",
       family: "conformal",
@@ -92,6 +95,7 @@ const catalog = normalizeCatalog({
     {
       id: "policy.quantile",
       kind: "policy",
+      group: "policy",
       label: "Threshold",
       description: "Threshold",
       input_type: "p_values",
@@ -100,6 +104,7 @@ const catalog = normalizeCatalog({
     {
       id: "output.evidence",
       kind: "output",
+      group: "output",
       label: "Evidence",
       description: "Evidence",
       input_type: "decisions",

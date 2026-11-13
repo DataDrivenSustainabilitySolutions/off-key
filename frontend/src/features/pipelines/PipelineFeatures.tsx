@@ -38,11 +38,11 @@ function AddForFeature({ row, document, components, report, view, disabled, onAd
 }) {
   const [open, setOpen] = useState(false);
   const steps = rowSteps(document.definition, components, view.detector);
-  const placed = (component: PipelineComponent) => rowPlacement(document.definition, report, view, row, component);
+  const placed = (component: PipelineComponent) => rowPlacement(document.definition, report, components, view, row, component);
   const choices = steps.filter((component) => !("reason" in placed(component)));
   const refused = steps.map(placed).find((placement) => "reason" in placement);
   // A Prepare step runs before anything learns, so it can sit on a path other detectors share.
-  const prepare = choices.find((component) => stepFamily(component.kind, component.id) === "prepare");
+  const prepare = choices.find((component) => component.group === "prepare");
   const placement = prepare && placed(prepare);
   const label = nodeOptionLabeler(document, components);
   const node = (id: string) => document.definition.nodes.find((item) => item.id === id);
@@ -103,7 +103,7 @@ export function PipelineFeatures({ document, components, report, stale, selected
     const component = componentFor(node, components);
     const summary = nodeSummary(node, component, definition);
     return <button type="button" key={id} className={`pl-feature-step${selected === id ? " is-selected" : ""}`}
-      data-family={stepFamily(node.kind, node.component)} aria-current={selected === id ? "true" : undefined}
+      data-family={stepFamily(node, component)} aria-current={selected === id ? "true" : undefined}
       title={summary.text} onClick={() => onSelect(id)}>
       {nodeLabel(node, components, layout)}
     </button>;

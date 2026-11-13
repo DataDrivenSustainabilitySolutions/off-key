@@ -14,10 +14,11 @@ import {
 } from "@/features/pipelines/learning";
 import { addDetector, connectionIssue, insertBlocker } from "@/features/pipelines/model";
 import type * as Wire from "@/types/pipelines.generated";
+import { groupOf } from "./support/fixtures/pipelines";
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], learning: Wire.PipelineComponent["learning"],
   fields: Wire.ComponentField[] = [], facts: Partial<Wire.PipelineComponent> = {}): Wire.PipelineComponent => ({
-  id, kind, label: id, description: "", learning, fields,
+  id, kind, group: groupOf(kind), label: id, description: "", learning, fields,
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions" : "features",
   ...facts,
@@ -29,13 +30,14 @@ const catalog = normalizeCatalog({
   components: [
     component("source.aligned", "source", "none"),
     component("prepare.smooth", "transform", "none"),
+    // The catalog names the step that learns the other way.
     component("static.standard_scaler", "transform", "batch", [
       { name: "with_mean", label: "Center", type: "boolean", default: true, has_default: true },
       { name: "with_std", label: "Scale", type: "boolean", default: true, has_default: true },
-    ]),
+    ], { group: "normalize", counterpart: "adaptive.standard_scaler" }),
     component("adaptive.standard_scaler", "transform", "online", [
       { name: "with_std", label: "Scale", type: "boolean", default: true, has_default: true },
-    ]),
+    ], { group: "normalize", counterpart: "static.standard_scaler" }),
     component("adaptive.only", "transform", "online"),
     component("detector:pyod_iforest", "detector", "batch", [
       { name: "n_estimators", label: "Trees", type: "integer", default: 100, has_default: true },

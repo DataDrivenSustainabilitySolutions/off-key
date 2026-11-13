@@ -58,7 +58,10 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
 
       await page.getByRole("combobox", { name: "Detector model", exact: true })
         .selectOption("detector:aberrant_x_stream");
+      // The settings that do not decide a detector's behavior wait under More settings.
       const cache = page.getByRole("spinbutton", { name: "Max Feature Cache Size", exact: true });
+      await expect(cache).toBeHidden();
+      await page.getByText("More settings", { exact: true }).click();
       await page.getByRole("checkbox", { name: "Max Feature Cache Size automatic", exact: true }).check();
       await expect(cache).toBeDisabled();
       await cache.locator("..").getByRole("button", { name: "Use default", exact: true }).click();

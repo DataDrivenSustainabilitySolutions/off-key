@@ -84,6 +84,8 @@ export type ComponentField = {
   options?: Array<string> | null;
   nullable?: boolean;
   description?: string;
+  advanced?: boolean;
+  shown_when?: FieldCondition | null;
   fields?: Array<ComponentField>;
   discriminator?: string | null;
   variants?: Record<string, Array<ComponentField>> | null;
@@ -128,6 +130,12 @@ export type FeatureDescription = {
   raw?: boolean;
   previous?: string | null;
   steps?: Array<string>;
+};
+
+export type FieldCondition = {
+  field: string;
+  equals?: Array<string | number | number | boolean | null> | null;
+  not_equals?: Array<string | number | number | boolean | null> | null;
 };
 
 export type ForecastModelCatalog = {
@@ -331,9 +339,13 @@ export type PipelineComponent = {
   id: string;
   contract_version?: 1;
   kind: "source" | "transform" | "merge" | "detector" | "calibration" | "policy" | "output";
+  group: "input" | "prepare" | "combine" | "normalize" | "reduce" | "route" | "forecaster" | "detector" | "calibration" | "policy" | "output";
   label: string;
   description: string;
+  details?: string;
+  library?: string | null;
   learning?: "none" | "batch" | "online" | "pretrained";
+  counterpart?: string | null;
   parameter_schema?: Record<string, unknown>;
   fields?: Array<ComponentField>;
   input_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence" | null;

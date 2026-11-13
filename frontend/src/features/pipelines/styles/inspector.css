@@ -115,6 +115,15 @@
   padding: 10px;
   border-radius: 6px;
 }
+/* A setting is its name, its control and one line of help. Space sets it apart, not a box. */
+.pl-inspector .parameter-field {
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+}
+.pl-inspector .parameter-editor {
+  gap: 1.25rem;
+}
 
 .pl-repeat-item {
   padding: 8px 0;
@@ -483,3 +492,33 @@
   color: hsl(var(--foreground));
   font-weight: 500;
 }
+
+/* A calibration method's formula and reference wait behind one quiet line. */
+.pl-method-details {
+  margin: 0 0 12px;
+  font-size: var(--text-body);
+  color: hsl(var(--muted-foreground));
+}
+.pl-method-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: fit-content;
+  min-height: 2rem;
+  cursor: pointer;
+  list-style: none;
+}
+.pl-method-details > summary::-webkit-details-marker { display: none; }
+.pl-method-details > summary::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  margin: 0 0.2rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms;
+}
+.pl-method-details[open] > summary::before { transform: rotate(45deg); }
+.pl-method-details > summary:hover { color: hsl(var(--foreground)); }
+.pl-method-details .pl-help { margin: 4px 0 0; }

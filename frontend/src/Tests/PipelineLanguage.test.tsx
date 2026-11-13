@@ -14,6 +14,7 @@ const components: PipelineComponent[] = [
   {
     id: "source.aligned",
     kind: "source",
+    group: "input",
     label: "Aligned inputs",
     description: "Aligned readings",
     fields: [],
@@ -23,6 +24,7 @@ const components: PipelineComponent[] = [
   {
     id: "features.passthrough",
     kind: "transform",
+    group: "route",
     label: "Pass through",
     description: "Preserve incoming values",
     fields: [],
@@ -32,6 +34,7 @@ const components: PipelineComponent[] = [
   {
     id: "features.merge",
     kind: "merge",
+    group: "route",
     label: "Merge features",
     description: "Ordered columns",
     fields: [],
@@ -41,6 +44,7 @@ const components: PipelineComponent[] = [
   {
     id: "detector:test",
     kind: "detector",
+    group: "detector",
     label: "Detector",
     description: "Online model",
     fields: [],
@@ -50,6 +54,7 @@ const components: PipelineComponent[] = [
   {
     id: "policy.test",
     kind: "policy",
+    group: "policy",
     label: "Threshold",
     description: "Alarm threshold",
     fields: [],
@@ -59,6 +64,7 @@ const components: PipelineComponent[] = [
   {
     id: "output.evidence",
     kind: "output",
+    group: "output",
     label: "Evidence",
     description: "Persist evidence",
     fields: [],

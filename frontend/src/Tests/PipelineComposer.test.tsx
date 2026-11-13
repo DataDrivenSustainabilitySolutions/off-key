@@ -25,13 +25,13 @@ vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme
 
 const catalog = normalizeCatalog({
   catalog_id: "test", authoring_enabled: true, templates: [], components: [
-    { id: "source.aligned", kind: "source", label: "Aligned inputs", description: "",
+    { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
       input_type: null, output_type: "features" },
-    { id: "features.passthrough", kind: "transform", label: "Pass through", description: "",
+    { id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
       input_type: "features", output_type: "features" },
-    { id: "detector:a", kind: "detector", label: "Detector A", description: "",
+    { id: "detector:a", kind: "detector", group: "detector", label: "Detector A", description: "",
       input_type: "features", output_type: "scores" },
-    { id: "detector:static", kind: "detector", label: "Static detector", description: "",
+    { id: "detector:static", kind: "detector", group: "detector", label: "Static detector", description: "",
       input_type: "features", output_type: "p_values" },
   ],
 });
@@ -285,9 +285,16 @@ describe("component menu", () => {
 
   it("groups steps by what they do, with one line each, and adds from the keyboard", () => {
     const added: string[] = [];
-    const steps = [...components, ...normalizeCatalog({ catalog_id: "steps", authoring_enabled: true, templates: [], components:
-      ["adaptive.standard_scaler", "adaptive.uncentered_pca", "features.select"].map((id) => ({
-        id, kind: "transform" as const, label: id, description: "Catalog text",        input_type: "features" as const, output_type: "features" as const })),
+    // Group and description are the catalog's own.
+    const listed = [
+      ["adaptive.standard_scaler", "normalize", "Center and scale with running statistics."],
+      ["adaptive.uncentered_pca", "reduce", "Keep the main directions, updated as data arrives."],
+      ["features.select", "route", "Keep only the chosen features."],
+    ] as const;
+    const steps = [...components, ...normalizeCatalog({ catalog_id: "steps", authoring_enabled: true, templates: [],
+      components: listed.map(([id, group, description]) => ({
+        id, kind: "transform" as const, group, label: id, description,
+        input_type: "features" as const, output_type: "features" as const })),
     }).components];
     render(<PipelineToolbox components={steps} document={pipeline()} onAdd={(id) => added.push(id)} />);
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["Normalize", "Reduce", "Route"]);

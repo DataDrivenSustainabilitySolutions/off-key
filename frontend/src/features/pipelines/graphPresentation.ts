@@ -40,7 +40,7 @@ export function presentGraph(
       data: {
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,
-        family: familyLabel(stepFamily(node.kind, node.component)),
+        family: familyLabel(stepFamily(node, component)),
         learning: learningLabel(component),
         operation: component?.label ?? node.component,
         available: !!component,

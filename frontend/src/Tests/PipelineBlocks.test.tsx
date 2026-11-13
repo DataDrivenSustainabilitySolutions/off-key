@@ -16,9 +16,13 @@ import { PipelineSaveBlock } from "@/features/pipelines/PipelineSaveBlock";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
 import type * as Wire from "@/types/pipelines.generated";
 
+/** A step as the catalog lists it; `facts` are the group it is filed in and the step that learns the other way. */
 const component = (id: string, kind: Wire.PipelineComponent["kind"], label: string,
-  learning: Wire.PipelineComponent["learning"] = "none", fields: Wire.ComponentField[] = []): Wire.PipelineComponent => ({
+  learning: Wire.PipelineComponent["learning"] = "none", fields: Wire.ComponentField[] = [],
+  facts: Partial<Pick<Wire.PipelineComponent, "group" | "counterpart">> = {}): Wire.PipelineComponent => ({
   id, kind, label, description: "", learning, fields,
+  group: kind === "source" ? "input" : kind === "transform" ? "prepare" : kind === "merge" ? "route" : kind,
+  ...facts,
   input_type: kind === "source" ? null : kind === "policy" ? "scores" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : "features",
 });
@@ -27,11 +31,13 @@ const components = normalizeCatalog({
   catalog_id: "blocks", authoring_enabled: true, templates: [],
   components: [
     component("source.aligned", "source", "Aligned inputs"),
-    component("prepare.formula", "transform", "Formula"),
+    component("prepare.formula", "transform", "Formula", "none", [], { group: "combine" }),
     component("prepare.smooth", "transform", "Smooth"),
-    component("static.standard_scaler", "transform", "Standard scaling", "batch", [flag("with_mean"), flag("with_std")]),
-    component("adaptive.standard_scaler", "transform", "Standard scaling", "online", [flag("with_std")]),
-    component("adaptive.only", "transform", "Online only", "online"),
+    component("static.standard_scaler", "transform", "Standard scaling", "batch", [flag("with_mean"), flag("with_std")],
+      { group: "normalize", counterpart: "adaptive.standard_scaler" }),
+    component("adaptive.standard_scaler", "transform", "Standard scaling", "online", [flag("with_std")],
+      { group: "normalize", counterpart: "static.standard_scaler" }),
+    component("adaptive.only", "transform", "Online only", "online", [], { group: "normalize" }),
     component("detector:pyod_iforest", "detector", "Isolation Forest", "batch"),
     component("detector:aberrant_x_stream", "detector", "xStream", "online"),
     component("policy.quantile", "policy", "Calibrated score threshold"),

@@ -1,6 +1,8 @@
 """Allowlisted component metadata, independent of scientific runtime imports."""
 
+from collections.abc import Mapping
 from copy import deepcopy
+from dataclasses import dataclass
 from functools import cache
 from typing import Any
 
@@ -12,18 +14,29 @@ from ..schemas.pipeline_versions import (
     component_learning,
 )
 from ..schemas.pipelines import (
+    ComponentField,
+    Learning,
     NodeKind,
     PipelineCatalog,
     PipelineComponent,
     PipelineDefinition,
     PipelineLayout,
     PipelineTemplate,
+    PortType,
+    StepGroup,
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE, detector_component
 from .pipeline_calibration import CALIBRATION_MODELS, CALIBRATORS, EXCEEDANCE_RULE
 from .pipeline_digest import digest
 from .pipeline_fields import component_fields
+from .pipeline_guidance import (
+    CALIBRATIONS,
+    DETECTORS,
+    SETTINGS,
+    STEPS,
+    library,
+)
 from .pipeline_parameters import PARAMETER_MODELS
 from .static import STATIC_MODELS
 
@@ -44,340 +57,468 @@ def _json_schema(model: type[BaseModel]) -> dict[str, Any]:
     return deepcopy(_generated_schema(model))
 
 
-def pipeline_components() -> list[PipelineComponent]:
-    specifications: list[tuple[str, NodeKind, str, str]] = [
-        (
-            "source.aligned",
-            "source",
-            "Aligned inputs",
-            "One coherent observation of the bound numeric readings.",
-        ),
-        (
-            "features.select",
-            "transform",
-            "Select features",
-            "Keep selected features in the explicit selection order.",
-        ),
-        (
-            "features.rename",
-            "transform",
-            "Rename features",
-            "Explicit names prevent collisions when branches merge.",
-        ),
-        (
-            "features.passthrough",
-            "transform",
-            "Pass through",
-            (
-                "Preserve incoming values and names. "
-                "Connect directly to aligned inputs to retain raw readings."
-            ),
-        ),
-        (
-            "features.merge",
-            "merge",
-            "Merge features",
-            "Concatenate branches in connection order.",
-        ),
-        (
-            "prepare.smooth",
-            "transform",
-            "Smooth",
-            "Average recent values: exponentially, over a window or over time.",
-        ),
-        (
-            "prepare.despike",
-            "transform",
-            "Despike",
-            "Replace values far from the recent median with the median.",
-        ),
-        (
-            "prepare.change",
-            "transform",
-            "Change",
-            "Difference, percent change or the value a few observations back.",
-        ),
-        (
-            "prepare.rolling",
-            "transform",
-            "Rolling statistic",
-            "Sum, quantile, spread, trend, shape and scores of recent values.",
-        ),
-        (
-            "prepare.math",
-            "transform",
-            "Math",
-            "log, log1p, square root, absolute value, square or scale and offset.",
-        ),
-        (
-            "prepare.range",
-            "transform",
-            "Range check",
-            "Clip values to a range, or skip observations outside it.",
-        ),
-        (
-            "prepare.aggregate",
-            "transform",
-            "Aggregate",
-            "Mean, sum, minimum, maximum, spread or range across features.",
-        ),
-        (
-            "prepare.formula",
-            "transform",
-            "Formula",
-            "One feature computed from the features arriving here.",
-        ),
-        (
-            "prepare.gate",
-            "transform",
-            "Gate",
-            "Learn and score only the observations where a condition holds.",
-        ),
-        (
-            "prepare.mute",
-            "transform",
-            "Mute alarms",
-            "Raise no alarm while a condition holds. Learning and scoring go on.",
-        ),
-        (
-            "prepare.constant",
-            "transform",
-            "Constant",
-            "Add a named constant for later calculations and conditions.",
-        ),
-        (
-            "prepare.condition",
-            "transform",
-            "Condition",
-            "Add a 1 or 0 feature from a condition, keeping every observation.",
-        ),
-        (
-            "prepare.set",
-            "transform",
-            "Set feature",
-            "Compute or replace one named feature, preserving the others.",
-        ),
-        (
-            "prepare.accumulate",
-            "transform",
-            "Accumulate",
-            "Keep a running total, minimum, maximum or count of accepted values.",
-        ),
-        (
-            "prepare.hold",
-            "transform",
-            "Hold",
-            "Keep each value from the last observation where a condition held.",
-        ),
-        (
-            "prepare.relation",
-            "transform",
-            "Rolling relation",
-            "Correlation, covariance, slope or residual against one other feature.",
-        ),
-        (
-            "prepare.calculate",
-            "transform",
-            "Calculate",
-            "Compute several named features in order, one formula per line.",
-        ),
-        (
-            "prepare.time",
-            "transform",
-            "Time features",
-            "Add the seconds since the previous observation, the hour or the weekday.",
-        ),
-        (
-            "static.standard_scaler",
-            "transform",
-            "Standard scaling",
-            "Fit means and variances on training observations only.",
-        ),
-        (
-            "static.min_max_scaler",
-            "transform",
-            "Min-max scaling",
-            "Fit bounds on training observations; clipping is explicit.",
-        ),
-        (
-            "static.robust_scaler",
-            "transform",
-            "Robust scaling",
-            "Center on the training median and divide by its interquartile range.",
-        ),
-        (
-            "static.pca",
-            "transform",
-            "Centered PCA",
-            "Batch centered principal components fitted on training data.",
-        ),
-        (
-            "static.random_projection",
-            "transform",
-            "Random projection",
-            "A seeded fixed random projection.",
-        ),
-        (
-            "static.expected_value",
-            "transform",
-            "Expected value",
-            "Fit one feature from the others on training data; give its residual.",
-        ),
-        (
-            "adaptive.standard_scaler",
-            "transform",
-            "Online standard scaling",
-            "Score with previous statistics, then update.",
-        ),
-        (
-            "adaptive.min_max_scaler",
-            "transform",
-            "Online min-max scaling",
-            "Online observed bounds; clipping is explicit.",
-        ),
-        (
-            "adaptive.robust_scaler",
-            "transform",
-            "Online robust scaling",
-            "Center on the recent median and divide by the recent interquartile range.",
-        ),
-        (
-            "adaptive.uncentered_pca",
-            "transform",
-            "Online uncentered PCA",
-            "Online uncentered components, with explicit initialization.",
-        ),
-        (
-            "adaptive.random_projection",
-            "transform",
-            "Random projection",
-            "A seeded fixed random projection.",
-        ),
-        (
-            "adaptive.expected_value",
-            "transform",
-            "Online expected value",
-            "Expect one feature from the others with the previous fit, then update.",
-        ),
-        (
-            FIXED_SPLIT,
+@dataclass(frozen=True)
+class _Step:
+    id: str
+    kind: NodeKind
+    group: StepGroup
+    label: str
+    # One sentence for whoever chooses the step: what it does to the data.
+    description: str
+    # What is worth knowing beyond that sentence.
+    details: str = ""
+
+
+_STEPS: tuple[_Step, ...] = (
+    _Step(
+        "source.aligned",
+        "source",
+        "input",
+        "Aligned inputs",
+        "The chosen readings as one observation.",
+    ),
+    _Step(
+        "features.select",
+        "transform",
+        "route",
+        "Select features",
+        "Keep only the chosen features.",
+        "The features leave in the order they are chosen.",
+    ),
+    _Step(
+        "features.rename",
+        "transform",
+        "route",
+        "Rename features",
+        "Give features new names.",
+        "Distinct names keep branches from colliding where they merge.",
+    ),
+    _Step(
+        "features.passthrough",
+        "transform",
+        "route",
+        "Pass through",
+        "Forward features unchanged.",
+        "Connected to the input, it carries the raw readings past other steps.",
+    ),
+    _Step(
+        "features.merge",
+        "merge",
+        "route",
+        "Merge features",
+        "Join branches into one feature list.",
+        "The features follow the order of the connections.",
+    ),
+    _Step(
+        "prepare.smooth",
+        "transform",
+        "prepare",
+        "Smooth",
+        "Average recent values to calm noise, over observations or over time.",
+    ),
+    _Step(
+        "prepare.despike",
+        "transform",
+        "prepare",
+        "Despike",
+        "Replace sudden spikes with the recent median.",
+    ),
+    _Step(
+        "prepare.change",
+        "transform",
+        "prepare",
+        "Change",
+        "Add the change since earlier observations.",
+    ),
+    _Step(
+        "prepare.rolling",
+        "transform",
+        "prepare",
+        "Rolling statistic",
+        "Add a sum, quantile, spread, trend, shape or score of recent values.",
+    ),
+    _Step(
+        "prepare.math",
+        "transform",
+        "prepare",
+        "Math",
+        "Take a log, root, absolute value, square or scale.",
+    ),
+    _Step(
+        "prepare.range",
+        "transform",
+        "prepare",
+        "Range check",
+        "Clip values to a range, or skip observations outside it.",
+    ),
+    _Step(
+        "prepare.aggregate",
+        "transform",
+        "combine",
+        "Aggregate",
+        "Combine features into their mean, sum, extreme, spread or range.",
+    ),
+    _Step(
+        "prepare.formula",
+        "transform",
+        "combine",
+        "Formula",
+        "Compute a feature from others, such as dc_voltage * dc_current.",
+    ),
+    # A Gate decides whether an observation goes on, so it sits with the routes.
+    _Step(
+        "prepare.gate",
+        "transform",
+        "route",
+        "Gate",
+        "Learn and score only while a condition holds.",
+    ),
+    # Mute alarms decides whether an observation may alarm, so it sits there too.
+    _Step(
+        "prepare.mute",
+        "transform",
+        "route",
+        "Mute alarms",
+        "Raise no alarm while a condition holds.",
+        "Learning and scoring go on, unlike at a Gate.",
+    ),
+    _Step(
+        "prepare.constant",
+        "transform",
+        "combine",
+        "Constant",
+        "Add a named constant to use in later steps.",
+    ),
+    _Step(
+        "prepare.condition",
+        "transform",
+        "combine",
+        "Condition",
+        "Turn a comparison or Boolean condition into a 1 or 0 feature.",
+        "Every observation goes on, unlike at a Gate.",
+    ),
+    _Step(
+        "prepare.set",
+        "transform",
+        "combine",
+        "Set feature",
+        "Calculate or replace one feature, keeping the others.",
+    ),
+    _Step(
+        "prepare.accumulate",
+        "transform",
+        "prepare",
+        "Accumulate",
+        "Keep a running total, minimum, maximum or count, "
+        "and start over on a condition.",
+    ),
+    _Step(
+        "prepare.hold",
+        "transform",
+        "prepare",
+        "Hold",
+        "Keep each value from the last time a condition held.",
+    ),
+    _Step(
+        "prepare.relation",
+        "transform",
+        "prepare",
+        "Rolling relation",
+        "Add how features move with one other feature: correlation, slope or residual.",
+    ),
+    _Step(
+        "prepare.calculate",
+        "transform",
+        "combine",
+        "Calculate",
+        "Calculate several named features, one formula per line.",
+        "The lines run in order, so a line can read the features above it.",
+    ),
+    _Step(
+        "prepare.time",
+        "transform",
+        "prepare",
+        "Time features",
+        "Add the seconds since the previous observation, the hour or the weekday.",
+    ),
+    _Step(
+        "static.standard_scaler",
+        "transform",
+        "normalize",
+        "Standard scaling",
+        "Center and scale with training statistics.",
+        "Means and variances are fitted on the training window and then stay.",
+    ),
+    _Step(
+        "static.min_max_scaler",
+        "transform",
+        "normalize",
+        "Min-max scaling",
+        "Scale to 0 to 1 with training bounds.",
+        "Later values beyond the training bounds leave 0 to 1 unless clipped.",
+    ),
+    _Step(
+        "static.robust_scaler",
+        "transform",
+        "normalize",
+        "Robust scaling",
+        "Center on the median and divide by the quartile range of training data.",
+    ),
+    _Step(
+        "static.pca",
+        "transform",
+        "reduce",
+        "Centered PCA",
+        "Keep the main directions of the training data.",
+        "Centered principal components, fitted on the training window.",
+    ),
+    _Step(
+        "static.random_projection",
+        "transform",
+        "reduce",
+        "Random projection",
+        "Fewer dimensions through a fixed random map.",
+        "The map follows from the seed alone, so nothing is learned.",
+    ),
+    # An Expected value leaves one residual in place of the features it uses.
+    _Step(
+        "static.expected_value",
+        "transform",
+        "reduce",
+        "Expected value",
+        "Give how far one feature is from what the others imply, "
+        "by a fit on training data.",
+    ),
+    _Step(
+        "adaptive.standard_scaler",
+        "transform",
+        "normalize",
+        "Online standard scaling",
+        "Center and scale with running statistics.",
+        "Each observation is scaled with the statistics before it, then joins them.",
+    ),
+    _Step(
+        "adaptive.min_max_scaler",
+        "transform",
+        "normalize",
+        "Online min-max scaling",
+        "Scale to 0 to 1 with the bounds seen so far.",
+        "A value beyond the bounds so far leaves 0 to 1 unless clipped.",
+    ),
+    _Step(
+        "adaptive.robust_scaler",
+        "transform",
+        "normalize",
+        "Online robust scaling",
+        "Center on the recent median and divide by the recent quartile range.",
+    ),
+    _Step(
+        "adaptive.uncentered_pca",
+        "transform",
+        "reduce",
+        "Online uncentered PCA",
+        "Keep the main directions, updated as data arrives.",
+        "The components are taken around zero. Center or standardize the "
+        "features first for a conventional PCA.",
+    ),
+    _Step(
+        "adaptive.random_projection",
+        "transform",
+        "reduce",
+        "Random projection",
+        "Fewer dimensions through a fixed random map.",
+        "The map follows from the seed alone, so nothing is learned.",
+    ),
+    _Step(
+        "adaptive.expected_value",
+        "transform",
+        "reduce",
+        "Online expected value",
+        "Give how far one feature is from what the others imply, "
+        "by a fit updated as data arrives.",
+        "Each observation is compared with the fit before it, then joins it.",
+    ),
+    _Step(
+        FIXED_SPLIT,
+        "calibration",
+        "calibration",
+        "Fixed split",
+        "Rank every score against the calibration window, which then stays as it is.",
+    ),
+    *(
+        _Step(
+            f"{CALIBRATION_PREFIX}{identifier}",
             "calibration",
-            "Fixed split",
-            (
-                "Freeze each detector's scores on the calibration window and rank "
-                "every later score against them."
-            ),
-        ),
-        *(
-            (
-                f"{CALIBRATION_PREFIX}{identifier}",
-                "calibration",
-                method["name"],
-                method["summary"],
-            )
-            for identifier, method in CALIBRATORS.items()
-        ),
-        (
-            "policy.martingale",
-            "policy",
-            "Conformal alarm policy",
-            "Existing calibrated martingale alarm policy.",
-        ),
-        (
-            "policy.quantile",
-            "policy",
-            "Calibrated score threshold",
-            "Existing frozen empirical quantile alarm policy.",
-        ),
-        (
-            EXCEEDANCE_RULE,
-            "policy",
-            "Exceedance rule",
-            "Alarm when scores stay above the boundary a calibration step adapts.",
-        ),
-        (
-            "output.evidence",
-            "output",
-            "Evidence and alarms",
-            "Persist the existing inference evidence and anomaly output.",
-        ),
-    ]
+            "calibration",
+            method["name"],
+            CALIBRATIONS[identifier],
+            method["summary"],
+        )
+        for identifier, method in CALIBRATORS.items()
+    ),
+    _Step(
+        "policy.martingale",
+        "policy",
+        "policy",
+        "Conformal alarm policy",
+        "Alarm when evidence of change builds up.",
+        "A conformal martingale over the p-values of a fixed split.",
+    ),
+    _Step(
+        "policy.quantile",
+        "policy",
+        "policy",
+        "Calibrated score threshold",
+        "Alarm when scores pass a calibrated threshold.",
+        "The threshold is a quantile of the calibration scores and then stays.",
+    ),
+    _Step(
+        EXCEEDANCE_RULE,
+        "policy",
+        "policy",
+        "Exceedance rule",
+        "Alarm when scores stay above the boundary the calibration step adapts.",
+    ),
+    _Step(
+        "output.evidence",
+        "output",
+        "output",
+        "Evidence and alarms",
+        "Store scores, evidence and alarms.",
+    ),
+)
+
+# Learned steps that do the same job fitted once and learning continuously.
+_COUNTERPARTS: tuple[tuple[str, str], ...] = (
+    ("static.standard_scaler", "adaptive.standard_scaler"),
+    ("static.min_max_scaler", "adaptive.min_max_scaler"),
+    ("static.robust_scaler", "adaptive.robust_scaler"),
+    ("static.pca", "adaptive.uncentered_pca"),
+    ("static.random_projection", "adaptive.random_projection"),
+    ("static.expected_value", "adaptive.expected_value"),
+)
+_COUNTERPART = {
+    one: other
+    for fitted, continuous in _COUNTERPARTS
+    for one, other in ((fitted, continuous), (continuous, fitted))
+}
+
+_PORTS: dict[NodeKind, tuple[PortType | None, PortType]] = {
+    "source": (None, "features"),
+    "transform": ("features", "features"),
+    "merge": ("features", "features"),
+    "calibration": ("scores", "p_values"),
+    "policy": ("p_values", "decisions"),
+    "output": ("decisions", "evidence"),
+}
+
+
+def _guided(
+    fields: list[ComponentField],
+    settings: Mapping[str, str],
+    key: tuple[str, ...] | None = None,
+    parent: str = "",
+) -> list[ComponentField]:
+    """Settings with the composer's help where their schema has none.
+
+    A detector names its key settings; all its others are advanced, and help
+    shared by a setting's name fills what is still empty.
+    """
     result = []
-    for identifier, kind, label, description in specifications:
+    for item in fields:
+        name = f"{parent}{item.name}"
+        update: dict[str, Any] = {
+            "description": settings.get(name)
+            or item.description
+            or (SETTINGS.get(item.name, "") if key is not None else ""),
+            "fields": _guided(item.fields, settings, key, f"{name}."),
+        }
+        if item.variants is not None:
+            update["variants"] = {
+                choice: _guided(variant, settings, key, f"{name}.")
+                for choice, variant in item.variants.items()
+            }
+        if key is not None and not parent:
+            update["advanced"] = name not in key
+        result.append(item.model_copy(update=update))
+    return result
+
+
+def detector_fields(model_type: str, schema: dict[str, Any]) -> list[ComponentField]:
+    """A detector's settings as every editor shows them, with their help."""
+    guide = DETECTORS[model_type]
+    return _guided(component_fields(schema), guide.settings, guide.key)
+
+
+def _detector(
+    model_type: str,
+    identifier: str,
+    schema: dict[str, Any],
+    learning: Learning,
+    output_type: PortType,
+) -> PipelineComponent:
+    guide = DETECTORS[model_type]
+    return PipelineComponent(
+        id=identifier,
+        kind="detector",
+        group="forecaster" if output_type == "forecasts" else "detector",
+        label=guide.label,
+        description=guide.description,
+        library=library(model_type),
+        learning=learning,
+        parameter_schema=schema,
+        fields=detector_fields(model_type, schema),
+        output_type=output_type,
+    )
+
+
+def pipeline_components() -> list[PipelineComponent]:
+    result = []
+    for step in _STEPS:
         schema = _json_schema(
-            PARAMETER_MODELS.get(identifier)
-            or CALIBRATION_MODELS.get(identifier)
-            or _POLICY_SCHEMAS[identifier]
+            PARAMETER_MODELS.get(step.id)
+            or CALIBRATION_MODELS.get(step.id)
+            or _POLICY_SCHEMAS[step.id]
         )
-        input_type = (
-            None
-            if kind == "source"
-            else (
-                "scores"
-                if kind == "calibration"
-                else "p_values"
-                if kind == "policy"
-                else "decisions"
-                if kind == "output"
-                else "features"
-            )
-        )
-        output_type = (
-            "decisions"
-            if kind == "policy"
-            else "evidence"
-            if kind == "output"
-            else "p_values"
-            if kind == "calibration"
-            else "features"
-        )
+        input_type, output_type = _PORTS[step.kind]
         result.append(
             PipelineComponent(
-                id=identifier,
-                kind=kind,
-                label=label,
-                description=description,
-                learning=component_learning(identifier),
+                id=step.id,
+                kind=step.kind,
+                group=step.group,
+                label=step.label,
+                description=step.description,
+                details=step.details,
+                learning=component_learning(step.id),
+                counterpart=_COUNTERPART.get(step.id),
                 parameter_schema=schema,
-                fields=component_fields(schema),
+                fields=_guided(component_fields(schema), STEPS.get(step.id, {})),
                 input_type=input_type,
                 output_type=output_type,
-                **_calibration_facts(identifier),
+                **_calibration_facts(step.id),
             )
         )
     for identifier, model in STATIC_MODELS.items():
-        schema = _json_schema(model.parameters)
         result.append(
-            PipelineComponent(
-                id=f"detector:{identifier}",
-                kind="detector",
-                label=model.name,
-                description="Detector fitted once on the training window.",
-                learning="batch",
-                parameter_schema=schema,
-                fields=component_fields(schema),
-                output_type="scores",
+            _detector(
+                identifier,
+                f"detector:{identifier}",
+                _json_schema(model.parameters),
+                "batch",
+                "scores",
             )
         )
     for identifier, model in ADAPTIVE_MODELS_BY_TYPE.items():
-        schema = model["parameter_schema"]
+        component = detector_component(identifier)
         result.append(
-            PipelineComponent(
-                id=detector_component(identifier),
-                kind="detector",
-                label=model["name"],
-                description=model.get("description")
-                or (
-                    "Scores a feature by how far it misses its forecast."
-                    if "forecaster_id" in model
-                    else "Adaptive score-before-learn anomaly detector."
-                ),
-                learning=component_learning(detector_component(identifier)),
-                parameter_schema=schema,
-                fields=component_fields(schema),
+            _detector(
+                identifier,
+                component,
+                model["parameter_schema"],
+                component_learning(component),
                 # A forecaster hands its forecast on with the score, so the
                 # calibration step can give the band its boundary leaves.
-                output_type="forecasts" if "forecaster_id" in model else "scores",
+                "forecasts" if "forecaster_id" in model else "scores",
             )
         )
     return result
@@ -454,9 +595,20 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
                 ),
             )
         )
+    components = pipeline_components()
     return PipelineCatalog(
-        catalog_id=_catalog_id(pipeline_components()),
+        catalog_id=_catalog_id(components),
         authoring_enabled=authoring_enabled,
-        components=pipeline_components(),
+        # The settings say what an editor needs. The JSON schema they are
+        # compiled from doubles the listing, so one component is read with it.
+        components=[
+            component.model_copy(update={"parameter_schema": {}})
+            for component in components
+        ],
         templates=templates,
     )
+
+
+def pipeline_component(identifier: str) -> PipelineComponent | None:
+    """One component as the catalog lists it, with its parameter schema."""
+    return next((item for item in pipeline_components() if item.id == identifier), None)

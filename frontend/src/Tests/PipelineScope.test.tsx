@@ -12,7 +12,6 @@ import { presentGraph } from "@/features/pipelines/graphPresentation";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { hasScope, isWarning, stepScope } from "@/features/pipelines/scope";
-import { stepFamily } from "@/features/pipelines/steps";
 import { changeDetector } from "@/features/pipelines/learning";
 import type { JsonValue } from "@/types/monitoring";
 
@@ -24,19 +23,22 @@ const scopeFields = (suffix?: string): Field[] => [
   { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
   ...(suffix ? [{ name: "suffix", label: "Suffix", type: "string", default: suffix, has_default: true } satisfies Field] : []),
 ];
-const transform = (id: string, learning: PipelineComponent["learning"], fields: PipelineComponent["fields"]) =>
-  ({ id, kind: "transform", label: id, description: "", learning, input_type: "features",
-    output_type: "features", fields }) as PipelineComponent;
+const transform = (id: string, learning: PipelineComponent["learning"], fields: PipelineComponent["fields"],
+  facts: Partial<PipelineComponent> = {}): PipelineComponent =>
+  ({ id, kind: "transform", group: "normalize", label: id, description: "", learning, input_type: "features",
+    output_type: "features", fields, ...facts });
 
+// Each names the step that learns the other way, as the catalog does.
 const robust = transform("adaptive.robust_scaler", "online", [
   ...scopeFields("robust"),
   { name: "window_size", label: "Window Size", type: "integer", default: 256, has_default: true },
-]);
-const staticRobust = transform("static.robust_scaler", "batch", scopeFields("robust"));
+], { counterpart: "static.robust_scaler" });
+const staticRobust = transform("static.robust_scaler", "batch", scopeFields("robust"),
+  { counterpart: "adaptive.robust_scaler" });
 const pca = transform("static.pca", "batch", [
   ...scopeFields(),
   { name: "n_components", label: "N Components", type: "integer", default: 1, has_default: true },
-]);
+], { group: "reduce" });
 const incoming = ["dc_voltage", "dc_current", "temp"];
 const labels = { dc_voltage: "DC voltage", dc_current: "DC current" };
 
@@ -178,15 +180,11 @@ describe("scope settings", () => {
     expect(isWarning({})).toBe(false);
   });
 
-  it("puts robust scaling with the other normalizing steps", () => {
-    expect(stepFamily("transform", "static.robust_scaler")).toBe("normalize");
-    expect(stepFamily("transform", "adaptive.robust_scaler")).toBe("normalize");
-  });
-
   it("keeps a step's scope when it moves to its counterpart with the detector", () => {
-    const detector = (id: string, learning: PipelineComponent["learning"]) => ({
-      id, kind: "detector", label: id, description: "", learning, fields: [], input_type: "features", output_type: "scores",
-    }) as PipelineComponent;
+    const detector = (id: string, learning: PipelineComponent["learning"]): PipelineComponent => ({
+      id, kind: "detector", group: "detector", label: id, description: "", learning, fields: [],
+      input_type: "features", output_type: "scores",
+    });
     const continuous = detector("detector:continuous", "online");
     const scope = { apply_to: ["dc_voltage"], result: "add", suffix: "iqr" };
     const definition = normalizeDefinition({ input_slots: [{ id: "dc_voltage", label: "" }],
@@ -218,8 +216,8 @@ describe("warnings", () => {
     }),
     layout: normalizeLayout(),
   });
-  const source = { id: "source.aligned", kind: "source", label: "Aligned inputs", description: "",
-    input_type: null, output_type: "features", fields: [] } as PipelineComponent;
+  const source: PipelineComponent = { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs",
+    description: "", input_type: null, output_type: "features", fields: [] };
   const warning = { node_id: "scale", code: "unused", message: "dc_current is not used after this step.",
     severity: "warning" as const };
 

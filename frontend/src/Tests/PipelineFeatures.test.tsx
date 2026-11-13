@@ -19,6 +19,7 @@ import { pipelinesApi } from "@/features/pipelines/api";
 import type { GraphDocument } from "@/features/pipelines/model";
 import { PipelineFeatures } from "@/features/pipelines/PipelineFeatures";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
+import { groupOf } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
@@ -27,8 +28,10 @@ const scoped: Field[] = [
   { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
   { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
 ];
-const component = (id: string, kind: PipelineComponent["kind"], fields: Field[] = [], label = id): PipelineComponent => ({
-  id, kind, label, description: "", fields,  input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
+const component = (id: string, kind: PipelineComponent["kind"], fields: Field[] = [], label = id,
+  group = groupOf(kind)): PipelineComponent => ({
+  id, kind, group, label, description: "", fields,
+  input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : kind === "output" ? "evidence" : "features",
 });
 const components = [
@@ -36,11 +39,11 @@ const components = [
   component("prepare.smooth", "transform", scoped, "Smooth"),
   component("prepare.change", "transform", scoped, "Change"),
   component("prepare.range", "transform", scoped, "Range check"),
-  component("prepare.formula", "transform", [], "Formula"),
-  component("prepare.gate", "transform", [], "Gate"),
-  component("prepare.mute", "transform", [], "Mute alarms"),
-  component("adaptive.standard_scaler", "transform", scoped, "Standard scaling"),
-  component("features.select", "transform", [], "Select"),
+  component("prepare.formula", "transform", [], "Formula", "combine"),
+  component("prepare.gate", "transform", [], "Gate", "route"),
+  component("prepare.mute", "transform", [], "Mute alarms", "route"),
+  component("adaptive.standard_scaler", "transform", scoped, "Standard scaling", "normalize"),
+  component("features.select", "transform", [], "Select", "route"),
   component("features.merge", "merge", [], "Merge"),
   component("detector:aberrant_moving_mahalanobis_distance", "detector", [], "Mahalanobis"),
   component("policy.quantile", "policy", [], "Quantile"),
@@ -124,10 +127,10 @@ describe("the Features view", () => {
 
   it("places a Prepare step before the first learned step, under the feature's name there", () => {
     const view = featuresView(chain.definition, chainReport);
-    expect(rowPlacement(chain.definition, chainReport, view, row(view, "a"), find("prepare.smooth")))
+    expect(rowPlacement(chain.definition, chainReport, components, view, row(view, "a"), find("prepare.smooth")))
       .toEqual({ link: { source: "power", target: "scale" }, feature: "a" });
     // The scaler uses only a and power, but b_diff1 passes it, so the step goes before it too.
-    expect(rowPlacement(chain.definition, chainReport, view, row(view, "b_diff1"), find("prepare.range")))
+    expect(rowPlacement(chain.definition, chainReport, components, view, row(view, "b_diff1"), find("prepare.range")))
       .toEqual({ link: { source: "power", target: "scale" }, feature: "b_diff1" });
     // Without a learned step on the way, it goes just before the detector.
     const plain = document([transform("smooth", "prepare.smooth")],
@@ -135,19 +138,19 @@ describe("the Features view", () => {
     const report = { features: { input: chainReport.features.input,
       smooth: [{ name: "a", slots: ["a"], previous: "input.a", steps: ["smooth"] }] } } as unknown as PipelineValidation;
     const flat = featuresView(plain.definition, report);
-    expect(rowPlacement(plain.definition, report, flat, flat.rows[0]!, find("prepare.range")))
+    expect(rowPlacement(plain.definition, report, components, flat, flat.rows[0]!, find("prepare.range")))
       .toEqual({ link: { source: "smooth", target: "model" }, feature: "a" });
     // Learned steps always go just before the detector.
-    expect(rowPlacement(chain.definition, chainReport, view, row(view, "c"), find("adaptive.standard_scaler")))
+    expect(rowPlacement(chain.definition, chainReport, components, view, row(view, "c"), find("adaptive.standard_scaler")))
       .toEqual({ link: { source: "scale", target: "model" }, feature: "c" });
   });
 
   it("follows a feature through a merge to its own branch", () => {
     const view = featuresView(branched.definition, branchedReport);
     // b reaches the merge raw, but the merge is after a scaler, so b's step goes on b's branch.
-    expect(rowPlacement(branched.definition, branchedReport, view, row(view, "b"), find("prepare.smooth")))
+    expect(rowPlacement(branched.definition, branchedReport, components, view, row(view, "b"), find("prepare.smooth")))
       .toEqual({ link: { source: "pick_b", target: "merge" }, feature: "b" });
-    expect(rowPlacement(branched.definition, branchedReport, view, row(view, "a"), find("prepare.smooth")))
+    expect(rowPlacement(branched.definition, branchedReport, components, view, row(view, "a"), find("prepare.smooth")))
       .toEqual({ link: { source: "pick_a", target: "scale" }, feature: "a" });
   });
 
@@ -161,7 +164,7 @@ describe("the Features view", () => {
       },
     } as unknown as PipelineValidation;
     const view = featuresView(branched.definition, report);
-    expect(rowPlacement(branched.definition, report, view, view.rows[0]!, find("prepare.smooth")))
+    expect(rowPlacement(branched.definition, report, components, view, view.rows[0]!, find("prepare.smooth")))
       .toEqual({ reason: "pca.component_1 comes from a learned step, and Prepare steps run before anything learns." });
   });
 

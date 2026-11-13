@@ -40,6 +40,22 @@ IssueSeverity = Literal["error", "warning"]
 PortType = Literal[
     "features", "scores", "forecasts", "p_values", "decisions", "evidence"
 ]
+# Where a step sits in the composer's menus: what it does for the operator, which
+# its kind alone does not say. Every transform prepares, combines, normalizes,
+# reduces or routes features, and a forecaster is a detector that forecasts.
+StepGroup = Literal[
+    "input",
+    "prepare",
+    "combine",
+    "normalize",
+    "reduce",
+    "route",
+    "forecaster",
+    "detector",
+    "calibration",
+    "policy",
+    "output",
+]
 MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
 # Detectors that can feed one policy, and how the policy combines them.
 MAX_DETECTORS = 4
@@ -363,6 +379,60 @@ FieldType = Literal[
 ]
 
 
+def _empty(value: Any) -> bool:
+    return value is None or value is False or value in ("", [], {})
+
+
+def _without_empty(
+    model: BaseModel, data: dict[str, Any], keep: tuple[str, ...] = ()
+) -> dict[str, Any]:
+    """A dump without the keys that hold their empty default.
+
+    Most settings have no bounds, options, condition or nested settings, and
+    most steps no library, twin or method facts. Written out, those nulls are
+    the larger part of the catalog. A reader gets the same value from the
+    key's default.
+    """
+    declared = type(model).model_fields
+    return {
+        key: value
+        for key, value in data.items()
+        if key in keep
+        or not _empty(value)
+        or not _empty(declared[key].get_default(call_default_factory=True))
+    }
+
+
+class FieldCondition(PipelineModel):
+    """When a setting applies: while another setting of the same step holds one
+    of ``equals``, or none of ``not_equals``. Exactly one of the two is given."""
+
+    field: str
+    equals: list[str | int | float | bool | None] | None = None
+    not_equals: list[str | int | float | bool | None] | None = None
+
+    @model_validator(mode="after")
+    def one_comparison(self) -> "FieldCondition":
+        if (self.equals is None) == (self.not_equals is None):
+            raise ValueError("Give equals or not_equals, not both")
+        return self
+
+
+def shown_when(field: str, *equals: Any, unless: tuple[Any, ...] = ()) -> dict:
+    """Schema annotation for a setting that applies only with another one.
+
+    ``Field(json_schema_extra=shown_when("statistic", "quantile"))`` shows the
+    setting while ``statistic`` is ``quantile``; ``unless`` names the values
+    that hide it instead.
+    """
+    condition = FieldCondition(
+        field=field,
+        equals=list(equals) or None,
+        not_equals=list(unless) or None,
+    )
+    return {"x-shown-when": condition.model_dump(mode="json", exclude_none=True)}
+
+
 class ComponentField(PipelineModel):
     name: str
     label: str
@@ -377,18 +447,39 @@ class ComponentField(PipelineModel):
     options: list[str] | None = None
     nullable: bool = False
     description: str = ""
+    # A setting most designs leave alone; editors list it after the others.
+    advanced: bool = False
+    # The setting only applies with another one; editors hide it otherwise.
+    shown_when: FieldCondition | None = None
     fields: list["ComponentField"] = Field(default_factory=list)
     discriminator: str | None = None
     variants: dict[str, list["ComponentField"]] | None = None
+
+    @model_serializer(mode="wrap")
+    def _compact(self, handler):
+        # A default of null is a default, so it stays where there is one.
+        return _without_empty(
+            self, handler(self), ("default",) if self.has_default else ()
+        )
 
 
 class PipelineComponent(PipelineModel):
     id: str
     contract_version: Literal[1] = 1
     kind: NodeKind
+    group: StepGroup
     label: str
+    # One sentence for whoever chooses the step: what it does to the data.
     description: str
+    # What is worth knowing beyond that sentence, such as a method's formula.
+    details: str = ""
+    # The library a detector's model comes from, shown beside its name.
+    library: str | None = None
     learning: Learning = "none"
+    # The step that does the same job learning the other way, fitted once or
+    # continuously; a design moves to it when its detector learns differently.
+    counterpart: str | None = None
+    # Left out of the catalog listing; one component is read with it.
     parameter_schema: dict[str, Any] = Field(default_factory=dict)
     fields: list[ComponentField] = Field(default_factory=list)
     input_type: PortType | None = "features"
@@ -397,6 +488,10 @@ class PipelineComponent(PipelineModel):
     family: Literal["conformal", "bayesian"] | None = None
     coverage: Literal["exchangeable", "long_run", "none"] | None = None
     reference: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _compact(self, handler):
+        return _without_empty(self, handler(self))
 
 
 class PipelineTemplate(PipelineModel):
@@ -986,7 +1081,10 @@ class ElementwiseScopeParameters(ScopeParameters):
 
 class StandardScalerParameters(ElementwiseScopeParameters):
     suffix: str = _suffix("std")
-    with_std: bool = True
+    with_std: bool = Field(
+        default=True,
+        description="Divide by the standard deviation. Off only centers each feature.",
+    )
 
 
 class RobustScalerParameters(ElementwiseScopeParameters):
@@ -1017,8 +1115,14 @@ class RollingRobustScalerParameters(ElementwiseScopeParameters):
 
 class MinMaxScalerParameters(ElementwiseScopeParameters):
     suffix: str = _suffix("minmax")
-    feature_range: tuple[float, float] = (0.0, 1.0)
-    clip: bool = False
+    feature_range: tuple[float, float] = Field(
+        default=(0.0, 1.0),
+        description="The range that the lowest and the highest value seen map to.",
+    )
+    clip: bool = Field(
+        default=False,
+        description="Keep values beyond the bounds at the ends of the range.",
+    )
 
     @model_validator(mode="after")
     def ordered_range(self) -> "MinMaxScalerParameters":
@@ -1028,7 +1132,11 @@ class MinMaxScalerParameters(ElementwiseScopeParameters):
 
 
 class SelectParameters(PipelineModel):
-    features: list[str] = Field(min_length=1, max_length=100)
+    features: list[str] = Field(
+        min_length=1,
+        max_length=100,
+        description="The features to keep, in this order.",
+    )
 
     @field_validator("features")
     @classmethod
@@ -1039,7 +1147,9 @@ class SelectParameters(PipelineModel):
 
 
 class RenameParameters(PipelineModel):
-    mapping: dict[str, str]
+    mapping: dict[str, str] = Field(
+        description="The new name of each feature to rename."
+    )
 
     @field_validator("mapping")
     @classmethod
@@ -1052,15 +1162,51 @@ class RenameParameters(PipelineModel):
 
 
 class ProjectionParameters(ScopeParameters):
-    n_components: int = Field(default=1, ge=1, le=100)
-    seed: int | None = None
+    n_components: int = Field(
+        default=1,
+        ge=1,
+        le=100,
+        description="Features that leave the step. No more than arrive.",
+    )
+    seed: int | None = Field(
+        default=None,
+        description="Seed for the random choices. Empty uses the design's seed.",
+    )
 
 
 class OnlinePCAParameters(ScopeParameters):
-    n_components: int = Field(default=1, ge=1, le=100)
-    n0: int = Field(default=50, ge=2, le=1_000_000)
-    tol: float = Field(default=1e-7, gt=0)
-    forgetting_factor: float | None = Field(default=None, gt=0, lt=1)
+    n_components: int = Field(
+        default=1,
+        ge=1,
+        le=100,
+        description="Features that leave the step. No more than arrive.",
+    )
+    n0: int = Field(
+        default=50,
+        ge=2,
+        le=1_000_000,
+        description=(
+            "Observations collected before the first components are set. At "
+            "least as many as the components."
+        ),
+    )
+    tol: float = Field(
+        default=1e-7,
+        gt=0,
+        description=(
+            "What is left of an observation below this size counts as nothing "
+            "new. Rarely needs changing."
+        ),
+    )
+    forgetting_factor: float | None = Field(
+        default=None,
+        gt=0,
+        lt=1,
+        description=(
+            "Weight of each new observation, between 0 and 1. Empty weighs all "
+            "observations alike."
+        ),
+    )
 
     @model_validator(mode="after")
     def enough_initial_observations(self) -> "OnlinePCAParameters":
@@ -1099,6 +1245,7 @@ def _window(
     *,
     minimum: int = 2,
     maximum: int = PREPARE_WINDOW_LIMIT,
+    shown: dict | None = None,
 ) -> Any:
     return Field(
         default=default,
@@ -1106,6 +1253,7 @@ def _window(
         le=maximum,
         title="Window",
         description=description,
+        json_schema_extra=shown,
     )
 
 
@@ -1123,7 +1271,11 @@ class SmoothParameters(PrepareScopeParameters):
             "and every ten are smoothed alike."
         ),
     )
-    window_size: int = _window(10, "Observations to smooth over.")
+    window_size: int = _window(
+        10,
+        "Observations to smooth over.",
+        shown=shown_when("method", unless=("time_constant",)),
+    )
     time_constant: float = Field(
         default=60.0,
         gt=0,
@@ -1133,6 +1285,7 @@ class SmoothParameters(PrepareScopeParameters):
             "Seconds until a lasting change shows to 63% in the result; after "
             "three times as long it shows to 95%."
         ),
+        json_schema_extra=shown_when("method", "time_constant"),
     )
 
 
@@ -1231,7 +1384,8 @@ class RollingParameters(PrepareScopeParameters):
         default=0.5,
         ge=0,
         le=1,
-        description="Quantile to compute, from 0 to 1; used only by quantile.",
+        description="Quantile to compute, from 0 to 1.",
+        json_schema_extra=shown_when("statistic", "quantile"),
     )
 
 
@@ -1247,7 +1401,14 @@ def _row_condition(title: str, description: str, *, default: Any = ...) -> Any:
 
 
 class AccumulateParameters(PrepareScopeParameters):
-    result: Literal["replace", "add"] = Field(default="add", title="Result")
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Keep the features this step uses and add the running value, or "
+            "replace them with it."
+        ),
+    )
     function: Literal["sum", "min", "max", "count"] = Field(
         default="sum",
         description=(
@@ -1268,7 +1429,14 @@ class AccumulateParameters(PrepareScopeParameters):
 class HoldParameters(PrepareScopeParameters):
     """Keep each feature's value from the last observation a condition held."""
 
-    result: Literal["replace", "add"] = Field(default="add", title="Result")
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Keep the features this step uses and add the held value, or "
+            "replace them with it."
+        ),
+    )
     update_when: str = _row_condition(
         "Update when",
         "Take the current value on each observation where this condition "
@@ -1280,7 +1448,14 @@ class HoldParameters(PrepareScopeParameters):
 class RelationParameters(PrepareScopeParameters):
     """How each feature moves with one other feature over recent observations."""
 
-    result: Literal["replace", "add"] = Field(default="add", title="Result")
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Keep the features this step uses and add the statistic, or "
+            "replace them with it."
+        ),
+    )
     against: str = Field(
         min_length=1,
         max_length=120,
@@ -1403,8 +1578,16 @@ class MathParameters(PrepareScopeParameters):
             "linear computes scale * x + offset."
         ),
     )
-    scale: float = Field(default=1.0, description="Factor of linear.")
-    offset: float = Field(default=0.0, description="Constant added by linear.")
+    scale: float = Field(
+        default=1.0,
+        description="Factor of linear.",
+        json_schema_extra=shown_when("function", "linear"),
+    )
+    offset: float = Field(
+        default=0.0,
+        description="Constant added by linear.",
+        json_schema_extra=shown_when("function", "linear"),
+    )
 
 
 class RangeParameters(PrepareScopeParameters):
@@ -1596,7 +1779,15 @@ class ConditionParameters(PipelineModel):
 
 
 class SetFeatureParameters(PipelineModel):
-    name: str = Field(default="feature", min_length=1, max_length=120, title="Name")
+    name: str = Field(
+        default="feature",
+        min_length=1,
+        max_length=120,
+        title="Name",
+        description=(
+            "The feature to calculate. An existing one of that name is replaced."
+        ),
+    )
     expression: str = Field(
         min_length=1,
         max_length=512,

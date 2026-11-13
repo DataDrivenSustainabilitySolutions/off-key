@@ -24,6 +24,7 @@ import { PipelineFeatures } from "@/features/pipelines/PipelineFeatures";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
 import { nodeSummary } from "@/features/pipelines/summaries";
+import { groupOf } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
@@ -39,9 +40,9 @@ const quantile: Field = { name: "quantile", label: "Quantile", type: "number", d
 const alpha: Field = { name: "alpha", label: "Alarm rate", type: "number", default: 0.01, has_default: true };
 const component = (
   id: string, kind: PipelineComponent["kind"], fields: Field[] = [], label = id,
-  learning: PipelineComponent["learning"] = "none",
+  learning: PipelineComponent["learning"] = "none", group = groupOf(kind),
 ): PipelineComponent => ({
-  id, kind, label, description: "", fields, learning,
+  id, kind, group, label, description: "", fields, learning,
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values"
     : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions"
@@ -50,8 +51,8 @@ const component = (
 const components = [
   component("source.aligned", "source", [], "Input"),
   component("prepare.smooth", "transform", scoped, "Smooth"),
-  component("adaptive.standard_scaler", "transform", scoped, "Standard scaling", "online"),
-  component("features.select", "transform", [], "Select"),
+  component("adaptive.standard_scaler", "transform", scoped, "Standard scaling", "online", "normalize"),
+  component("features.select", "transform", [], "Select", "none", "route"),
   component("detector:mahalanobis", "detector", [{ name: "window_size", label: "Window", type: "integer", default: 20, has_default: true }], "Mahalanobis", "online"),
   component("detector:knn", "detector", [], "Nearest neighbours", "online"),
   { ...component("calibrate.fixed_split", "calibration", [fusion], "Fixed split"), family: "conformal" as const, coverage: "exchangeable" as const },

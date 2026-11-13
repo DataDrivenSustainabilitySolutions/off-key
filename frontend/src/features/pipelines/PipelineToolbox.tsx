@@ -5,7 +5,7 @@ import {
 } from "./model";
 import { blockedBy, type BlockChoice } from "./blocks";
 import { learningLabel } from "./learning";
-import { familyLabel, STEP_FAMILIES, stepDescription, stepFamily } from "./steps";
+import { familyLabel, STEP_FAMILIES } from "./steps";
 
 const singleNames: Record<string, string> = {
   detector: "detector", calibration: "calibration step", policy: "detection rule", output: "output",
@@ -50,11 +50,11 @@ export function PipelineToolbox({
     (isMultiInstanceKind(component.kind) || !definition.nodes.some((node) => node.kind === component.kind))
     && (!link || !insertBlocker(definition, link, component, components)));
   const matches = offered.filter((component) =>
-    `${component.label} ${stepDescription(component)} ${component.description} ${familyLabel(stepFamily(component.kind, component.id))}`
+    `${component.label} ${component.description} ${familyLabel(component.group)}`
       .toLocaleLowerCase()
       .includes(search));
   const sections = STEP_FAMILIES
-    .map((family) => ({ ...family, items: matches.filter((component) => stepFamily(component.kind, component.id) === family.id) }))
+    .map((family) => ({ ...family, items: matches.filter((component) => component.group === family.id) }))
     .filter((section) => section.items.length);
   const offeredBlocks = blocks.filter(({ block, detail }) => `${block.name} ${detail} block`.toLocaleLowerCase().includes(search));
   // The detector, calibration step, detection rule and output are changed in their own settings, not added again.
@@ -143,7 +143,7 @@ export function PipelineToolbox({
                 >
                   <strong>{component.label}</strong>
                   {/* A step the deployment cannot run says why instead of what it does. */}
-                  <small id={`${id}-${component.id}`}>{component.unavailable ?? stepDescription(component)}</small>
+                  <small id={`${id}-${component.id}`}>{component.unavailable ?? component.description}</small>
                   {learningLabel(component) && <small className="pl-learning-tag">{learningLabel(component)}</small>}
                 </button>;
               })}

@@ -21,6 +21,7 @@ import type * as Wire from "@/types/pipelines.generated";
 const component = (id: string, kind: Wire.PipelineComponent["kind"], learning: Wire.PipelineComponent["learning"],
   label = id): Wire.PipelineComponent => ({
   id, kind, label, description: "", learning, fields: [],
+  group: kind === "source" ? "input" : kind === "transform" ? "prepare" : kind === "merge" ? "route" : kind,
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions" : "features",
 });

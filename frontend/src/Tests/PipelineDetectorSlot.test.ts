@@ -6,10 +6,11 @@ import {
 import type { GraphDocument } from "@/features/pipelines/model";
 import { NODE_SIZE } from "@/features/pipelines/semantics";
 import type * as Wire from "@/types/pipelines.generated";
+import { groupOf } from "./support/fixtures/pipelines";
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], learning: Wire.PipelineComponent["learning"],
   facts: Partial<Wire.PipelineComponent> = {}): Wire.PipelineComponent => ({
-  id, kind, label: id, description: "Scores each observation.", learning, fields: [],
+  id, kind, group: groupOf(kind), label: id, description: "Scores each observation.", learning, fields: [],
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values"
     : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions"
@@ -40,12 +41,15 @@ const catalog = normalizeCatalog({
   catalog_id: "slot", authoring_enabled: true,
   components: [
     component("source.aligned", "source", "none"),
-    component("features.passthrough", "transform", "none", { label: "Pass through" }),
-    component("adaptive.standard_scaler", "transform", "online", { label: "Online standard scaling" }),
-    component("static.standard_scaler", "transform", "batch", { label: "Standard scaling" }),
-    component("detector:pyod_iforest", "detector", "batch", { label: "Isolation forest" }),
-    component("detector:aberrant_half_space", "detector", "online", { label: "Half-space trees" }),
-    component("detector:aberrant_x_stream", "detector", "online", { label: "xStream" }),
+    component("features.passthrough", "transform", "none", { label: "Pass through", group: "route" }),
+    // Each names the step that learns the other way, as the catalog does.
+    component("adaptive.standard_scaler", "transform", "online",
+      { label: "Online standard scaling", group: "normalize", counterpart: "static.standard_scaler" }),
+    component("static.standard_scaler", "transform", "batch",
+      { label: "Standard scaling", group: "normalize", counterpart: "adaptive.standard_scaler" }),
+    component("detector:pyod_iforest", "detector", "batch", { label: "Isolation forest", library: "PyOD" }),
+    component("detector:aberrant_half_space", "detector", "online", { label: "Half-space trees", library: "Aberrant" }),
+    component("detector:aberrant_x_stream", "detector", "online", { label: "xStream", library: "Aberrant" }),
     component("forecast.timestral", "detector", "pretrained", { label: "Timestral" }),
     component("calibrate.fixed_split", "calibration", "none"),
     component("policy.quantile", "policy", "none"),
@@ -183,7 +187,13 @@ describe("detectorMenu", () => {
       ["pretrained", "Pretrained", "1"],
     ]);
     expect(menu.items[1]!.separated).toBe(true);
-    expect(menu.items[1]!.submenu!.items.map((item) => item.label)).toEqual(["Half-space trees", "xStream"]);
+    // The list names the detectors; what each does is read in full for the one in focus.
+    expect(menu.items[1]!.submenu!.items.map((item) => [item.label, item.detail, item.help])).toEqual([
+      ["Half-space trees", undefined, "Scores each observation."], ["xStream", undefined, "Scores each observation."],
+    ]);
+    expect(menu.items[0]!.help).toBe("Scores each observation.");
+    expect(menu.items[1]!.help).toMatch(/^Keep learning from every observation\./);
+    expect(menu.items[2]!.help).toMatch(/^Learn from a training window/);
     menu.items[0]!.run!();
     expect(pick).toHaveBeenCalledExactlyOnceWith(find("detector:aberrant_x_stream"));
   });
@@ -192,13 +202,16 @@ describe("detectorMenu", () => {
     const menu = detectorMenu(components, undefined, vi.fn());
     expect(menu.items.map((item) => item.key)).toEqual(["online", "batch", "pretrained"]);
     expect(menu.search!.results("forest").map((item) => item.label)).toEqual(["Isolation forest"]);
+    // Two detectors can share a name, so a match says which library it is from and how it learns.
     expect(menu.search!.results("learns continuously").map((item) => [item.label, item.detail]))
-      .toEqual([["Half-space trees", "Learns continuously"], ["xStream", "Learns continuously"]]);
+      .toEqual([["Half-space trees", "Aberrant · Learns continuously"], ["xStream", "Aberrant · Learns continuously"]]);
+    expect(menu.search!.results("pyod").map((item) => [item.label, item.detail])).toEqual([["Isolation forest", "PyOD · Fitted once"]]);
     expect(menu.search!.results("no such model")).toEqual([]);
   });
 
   it("lists a detector that learns nothing under what it is called, after those that learn", () => {
-    const rule = { ...find("detector:pyod_iforest"), id: "rule.score", label: "Rule detector", learning: "none" as const };
+    const rule = { ...find("detector:pyod_iforest"), id: "rule.score", label: "Rule detector", learning: "none" as const,
+      library: undefined };
     const menu = detectorMenu([...components, rule], undefined, vi.fn());
     expect(menu.items.map((item) => [item.key, item.label, item.detail])).toEqual([
       ["online", "Learns continuously", "2"], ["batch", "Fitted once", "1"], ["pretrained", "Pretrained", "1"],

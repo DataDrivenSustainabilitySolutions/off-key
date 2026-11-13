@@ -22,6 +22,7 @@ import {
   normalizeLayout,
   type PipelineComponent,
 } from "@/features/pipelines/contracts";
+import { groupOf } from "./support/fixtures/pipelines";
 
 const definition = () =>
   normalizeDefinition({
@@ -45,6 +46,7 @@ const definition = () =>
 const components: PipelineComponent[] = definition().nodes.map((node) => ({
   id: node.component,
   kind: node.kind,
+  group: groupOf(node.kind),
   label: node.component,
   description: "",
   fields: [],
@@ -101,6 +103,7 @@ describe("visual pipeline documents", () => {
     const component: PipelineComponent = {
       id: "adaptive.standard_scaler",
       kind: "transform",
+      group: "normalize",
       label: "Scale",
       description: "",
       fields: [
@@ -128,7 +131,7 @@ describe("visual pipeline documents", () => {
 
   it("names a second Formula or Aggregate so the features they compute do not clash", () => {
     const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
-      id, kind: "transform", label: id, description: "", fields,
+      id, kind: "transform", group: "combine", label: id, description: "", fields,
     });
     const name = { name: "name", label: "Name", type: "string", has_default: true, nullable: true } as const;
     const formula = step("prepare.formula", [name]);
@@ -149,6 +152,7 @@ describe("visual pipeline documents", () => {
     const component: PipelineComponent = {
       id: "features.passthrough",
       kind: "transform",
+      group: "route",
       label: "Raw",
       description: "",
       fields: [],

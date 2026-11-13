@@ -15,6 +15,7 @@ from off_key_core.schemas.pipelines import (
     PipelineBlockList,
     PipelineBlockView,
     PipelineCatalog,
+    PipelineComponent,
     PipelineCreate,
     PipelineDraftSave,
     PipelineHistoryPage,
@@ -115,10 +116,25 @@ async def get_monitor_overview(
 @components_router.get("", response_model=PipelineCatalog)
 @read_limit
 async def list_pipeline_components(request: Request):
-    """The components a design may use, with descriptions and parameter schemas,
-    and the starting templates.
+    """The components a design may use and the starting templates.
+
+    Each component has its `group`, one `description`, `details` where there
+    is more to know, and its settings as `fields` with help, bounds and
+    defaults. Keys that would be empty are left out. The JSON schema of a
+    component's settings is not part of the listing; read the component for it.
     """
     return await forward(request, "GET", "/pipelines/catalog")
+
+
+@components_router.get("/{component_id}", response_model=PipelineComponent)
+@read_limit
+async def get_pipeline_component(request: Request, component_id: str):
+    """One component as the listing has it, with the JSON schema of its
+    settings as `parameter_schema`.
+    """
+    return await forward(
+        request, "GET", f"/pipelines/catalog/components/{path_segment(component_id)}"
+    )
 
 
 @forecast_models_router.get("", response_model=ForecastModelCatalog)

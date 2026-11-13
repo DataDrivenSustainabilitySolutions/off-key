@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from off_key_core.auth.permissions import Permission
 from off_key_core.models.pipeline_reports import bounded_validation_report
-from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
+from off_key_core.models.pipelines import (
+    pipeline_catalog,
+    pipeline_component,
+    validate_pipeline,
+)
 from off_key_core.schemas.forecast import ForecastModelInfo
 from off_key_core.schemas.pipelines import (
     ForecastModelCatalog,
@@ -18,6 +22,7 @@ from off_key_core.schemas.pipelines import (
     PipelineBlockList,
     PipelineBlockView,
     PipelineCatalog,
+    PipelineComponent,
     PipelineCreate,
     PipelineDraftSave,
     PipelineHistoryPage,
@@ -82,6 +87,18 @@ async def invoke(operation):
 @router.get("/pipelines/catalog", response_model=PipelineCatalog)
 async def catalog():
     return pipeline_catalog(get_tactic_settings().config.pipeline_authoring_enabled)
+
+
+@router.get(
+    "/pipelines/catalog/components/{component_id}",
+    response_model=PipelineComponent,
+)
+async def catalog_component(component_id: str):
+    """One component with its parameter schema, which the listing leaves out."""
+    component = pipeline_component(component_id)
+    if component is None:
+        raise HTTPException(404, "Pipeline component not found")
+    return component
 
 
 @router.get("/pipelines/forecast-models", response_model=ForecastModelCatalog)

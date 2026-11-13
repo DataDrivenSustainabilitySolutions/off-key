@@ -1,10 +1,9 @@
 import { fieldDefaults } from "@/components/parameter-editor/types";
 import type { PipelineCatalog, PipelineComponent, PipelineNode } from "./contracts";
 import type { Menu, MenuItem } from "./contextMenu";
-import { changeDetector, changeNotice, hasFittedDetector, learningLabel, type Learning } from "./learning";
+import { changeDetector, changeNotice, hasFittedDetector, LEARNING_HELP, learningLabel, type Learning } from "./learning";
 import { addBlocker, connectionIssue, detectorIds, freePosition, removeElements, type GraphDocument } from "./model";
 import { componentFor, NODE_SIZE, nodePosition, outputKind } from "./semantics";
-import { stepDescription } from "./steps";
 
 /** The flow a new service starts from: the one whose detector learns from the stream. */
 export const starterTemplate = (catalog: PipelineCatalog) =>
@@ -112,7 +111,8 @@ export function fillDetectorSlot(
 const GROUPS: Learning[] = ["online", "batch", "pretrained", "none"];
 
 /** The detectors to choose from: the suggested one first, then all of them by how they
- * learn. Typing lists the matching detectors directly. */
+ * learn. Typing lists the matching detectors directly. The list names them; what the one
+ * in focus does is read in full below it. */
 export function detectorMenu(
   components: PipelineComponent[],
   suggested: PipelineComponent | undefined,
@@ -120,11 +120,8 @@ export function detectorMenu(
 ): Menu {
   const detectors = components.filter((component) => component.kind === "detector")
     .sort((left, right) => left.label.localeCompare(right.label));
-  // Most detectors share one catalog sentence; only a line of their own says something here.
-  const own = (component: PipelineComponent) =>
-    stepDescription(component) === component.description ? undefined : stepDescription(component);
-  const entry = (component: PipelineComponent, detail = own(component)): MenuItem => ({
-    key: component.id, label: component.label, detail, blocked: component.unavailable,
+  const entry = (component: PipelineComponent, detail?: string): MenuItem => ({
+    key: component.id, label: component.label, detail, help: component.description, blocked: component.unavailable,
     run: () => pick(component),
   });
   const groups = GROUPS.map((mode) => ({
@@ -139,7 +136,8 @@ export function detectorMenu(
     items: [
       ...(offered ? [{ ...entry(offered, "Suggested"), key: `suggested:${offered.id}` }] : []),
       ...groups.map((group, position): MenuItem => ({
-        key: group.mode, label: group.label, detail: `${group.items.length}`, separated: position === 0 && !!offered,
+        key: group.mode, label: group.label, detail: `${group.items.length}`, help: LEARNING_HELP[group.mode],
+        separated: position === 0 && !!offered,
         submenu: { label: group.label, items: group.items.map((component) => entry(component)) },
       })),
     ],
@@ -149,10 +147,11 @@ export function detectorMenu(
         const words = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
         return detectors
           .filter((component) => {
-            const text = `${component.label} ${component.description} ${learningLabel(component) ?? ""}`.toLocaleLowerCase();
+            const text = `${component.label} ${component.description} ${component.library ?? ""} ${learningLabel(component) ?? ""}`
+              .toLocaleLowerCase();
             return words.every((word) => text.includes(word));
           })
-          .map((component) => entry(component, learningLabel(component)));
+          .map((component) => entry(component, [component.library, learningLabel(component)].filter(Boolean).join(" · ")));
       },
     },
   };

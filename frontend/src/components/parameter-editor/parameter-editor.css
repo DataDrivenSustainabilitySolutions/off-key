@@ -6,6 +6,11 @@
   background: hsl(var(--card)); padding: .5rem .65rem; min-height: 2.75rem;
 }
 .parameter-editor button { min-height: 2.75rem; border: 1px solid hsl(var(--border)); border-radius: var(--radius-control); padding: .3rem .65rem; }
+/* Going back to the default is a quiet line under the setting, not a second control. */
+.parameter-editor .parameter-reset { justify-self: start; min-height: 0; border: 0; padding: 0; background: none; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); text-decoration: underline; text-decoration-color: hsl(var(--border)); text-underline-offset: 3px; cursor: pointer; }
+.parameter-editor .parameter-reset:hover:not(:disabled) { color: hsl(var(--foreground)); text-decoration-color: currentColor; }
+.parameter-editor .parameter-reset:disabled { cursor: default; text-decoration: none; }
+@media (pointer: coarse) { .parameter-editor .parameter-reset { min-height: 2.75rem; } }
 .parameter-editor .parameter-check, .parameter-editor .pl-check { display: flex; align-items: center; gap: .5rem; min-height: 2.75rem; }
 .parameter-editor .parameter-list, .parameter-editor .pl-number-list { display: grid; gap: .5rem; }
 .parameter-editor .parameter-list > div { display: flex; gap: .5rem; }
@@ -13,3 +18,9 @@
 .parameter-editor .parameter-help { font-size: var(--text-caption); color: hsl(var(--muted-foreground)); }
 .parameter-editor .parameter-error { font-size: var(--text-caption); color: hsl(var(--destructive)); }
 .parameter-editor [aria-invalid=true] { border-color: hsl(var(--destructive)); }
+.parameter-editor .parameter-more > summary { min-height: 2.75rem; display: flex; align-items: center; gap: .4rem; font-size: var(--text-body); color: hsl(var(--muted-foreground)); cursor: pointer; list-style: none; }
+.parameter-editor .parameter-more > summary::-webkit-details-marker { display: none; }
+.parameter-editor .parameter-more > summary::before { content: ""; width: .4rem; height: .4rem; margin: 0 .2rem; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 120ms; }
+.parameter-editor .parameter-more[open] > summary::before { transform: rotate(45deg); }
+.parameter-editor .parameter-more > summary:hover { color: hsl(var(--foreground)); }
+.parameter-editor .parameter-more[open] > summary { margin-bottom: .5rem; }

@@ -39,10 +39,10 @@ develops slowly, such as a drifting sensor, does not become the new normal.
 ## What you build
 
 ```text
-Inputs → Rename → Gate → Aggregate → Formula for each → Select → PyOD PCA → alarm policy
+Inputs → Rename → Gate → Aggregate → Formula for each → Select → Principal components → alarm policy
 ```
 
-![The finished design in the composer: Rename features, Gate, Aggregate, Phase deviations, Select features, PyOD PCA and the alarm policy, connected left to right.](../assets/phase-monitoring/graph.png)
+![The finished design in the composer: Rename features, Gate, Aggregate, Phase deviations, Select features, the Principal components detector and the alarm policy, connected left to right.](../assets/phase-monitoring/graph.png)
 
 | Step | What it does here |
 | --- | --- |
@@ -51,7 +51,7 @@ Inputs → Rename → Gate → Aggregate → Formula for each → Select → PyO
 | Aggregate | Adds the mean of the three phases, `i_mean`. |
 | Formula, for each feature | Adds `L1_dev`, `L2_dev` and `L3_dev`: each phase over the mean, minus 1. |
 | Select features | Hands two of the deviations, `L1_dev` and `L2_dev`, to the detector. |
-| PyOD PCA | Learns how the deviations normally relate, and scores how far an observation strays from that. |
+| Principal components | Learns how the deviations normally relate, and scores how far an observation strays from that. |
 
 ## Step by step
 
@@ -147,9 +147,10 @@ that step, and **Go to** opens it. Once it is fixed, the list fills.
 
 ### 7. Choose the detector
 
-Select the detector card and set **Detector model** to **PyOD PCA**. PCA learns
-the directions in which the deviations normally vary together during training,
-and scores an observation by how far it lies outside them. A phase that drifts,
+Select the detector card and set **Detector model** to **Principal components**,
+listed under Fitted once. It learns the directions in which the deviations
+normally vary together during training, and scores an observation by how far it
+lies outside them. A phase that drifts,
 drops or sticks breaks that pattern even when every single value is in a normal
 range. Leave the alarm policy as it is to start with.
 
@@ -190,8 +191,8 @@ scored again.
 
 - **Phase voltages.** Use the same steps with the three voltages and a Gate such
   as `min(V1, V2, V3) > 100` to skip outages.
-- **Adaptive stream.** With an adaptive strategy, **Aberrant
-  MovingMahalanobisDistance** on the same two deviations works the same way. An adaptive detector keeps learning, so it follows a slow drift
+- **Adaptive stream.** With an adaptive strategy, **Moving Mahalanobis
+  distance** on the same two deviations works the same way. An adaptive detector keeps learning, so it follows a slow drift
   instead of reporting it; use a Static baseline when slow faults matter.
 - **One number for the imbalance.** A Formula such as
   `max(abs(L1_dev), abs(L2_dev), abs(L3_dev))` gives the largest deviation as

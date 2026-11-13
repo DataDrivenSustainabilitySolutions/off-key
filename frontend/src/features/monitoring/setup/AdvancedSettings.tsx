@@ -134,7 +134,7 @@ export function AdvancedSettings({
               </HelpTooltip>
             </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <ParameterFields fields={modelFields} values={draft.modelParams}
+              <ParameterFields key={draft.modelType} fields={modelFields} values={draft.modelParams}
                 issues={formParameterIssues(fieldErrors)}
                 onChange={modelParams => {
                   setDraft(current => ({ ...current, modelParams }));

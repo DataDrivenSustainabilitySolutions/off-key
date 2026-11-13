@@ -16,7 +16,12 @@ from ..utils.mqtt_topics import (
 )
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE, detector_component
 from .pipeline_calibration import EXCEEDANCE_RULE
-from .pipeline_catalog import pipeline_catalog, pipeline_catalog_id, pipeline_components
+from .pipeline_catalog import (
+    pipeline_catalog,
+    pipeline_catalog_id,
+    pipeline_component,
+    pipeline_components,
+)
 from .pipeline_compiler import compile_pipeline, validate_pipeline
 from .pipeline_digest import digest
 from .pipeline_parameters import PARAMETER_MODELS, policy_settings
@@ -30,6 +35,7 @@ __all__ = [
     "lower_form_monitor",
     "pipeline_catalog",
     "pipeline_catalog_id",
+    "pipeline_component",
     "pipeline_components",
     "validate_pipeline",
 ]

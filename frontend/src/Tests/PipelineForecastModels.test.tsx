@@ -10,6 +10,7 @@ import { addBlocker, type GraphDocument } from "@/features/pipelines/model";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
 import type { ForecastModelCatalog, ForecastModelInfo } from "@/types/pipelines.generated";
+import { groupOf } from "./support/fixtures/pipelines";
 
 vi.mock("@/features/pipelines/api", () => ({
   pipelinesApi: { forecastModels: vi.fn(), downloadForecastModel: vi.fn() },
@@ -17,14 +18,14 @@ vi.mock("@/features/pipelines/api", () => ({
 
 const CHECKPOINTS = ["mistralai/Timestral-5M", "mistralai/Timestral-28M", "mistralai/Timestral-123M", "mistralai/Timestral-209M"];
 const component = (id: string, kind: PipelineComponent["kind"], label: string, fields: PipelineComponent["fields"] = []) => ({
-  id, kind, label, description: "", fields, learning: kind === "detector" ? "online" : "none",
+  id, kind, group: groupOf(kind), label, description: "", fields, learning: kind === "detector" ? "online" : "none",
   input_type: kind === "source" ? null : "features", output_type: kind === "detector" ? "scores" : "features",
 }) as PipelineComponent;
 const timestral = {
   ...component("forecast.timestral", "detector", "Timestral forecaster", [
     { name: "checkpoint", label: "Checkpoint", type: "enum", default: CHECKPOINTS[0], has_default: true, options: CHECKPOINTS },
   ]),
-  learning: "pretrained", output_type: "forecasts",
+  group: "forecaster", learning: "pretrained", output_type: "forecasts",
 } as PipelineComponent;
 const components = [
   component("source.aligned", "source", "Input"),

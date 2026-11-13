@@ -95,7 +95,7 @@ export function featuresView(
 }
 
 /** Steps that learn, and every node after one: Prepare steps cannot follow them. */
-function learnedStage(definition: PipelineDefinition) {
+function learnedStage(definition: PipelineDefinition, components: PipelineComponent[]) {
   const memo = new Map<string, boolean>();
   const learned = (id: string): boolean => {
     const known = memo.get(id);
@@ -103,7 +103,7 @@ function learnedStage(definition: PipelineDefinition) {
     // A cycle, which the editor refuses to draw, ends here.
     memo.set(id, false);
     const node = definition.nodes.find((item) => item.id === id);
-    const family = node && stepFamily(node.kind, node.component);
+    const family = node && stepFamily(node, components.find((component) => component.id === node.component));
     const result = family === "normalize" || family === "reduce"
       || incomingEdges(definition, id).some((edge) => learned(edge.source));
     memo.set(id, result);
@@ -116,8 +116,7 @@ function learnedStage(definition: PipelineDefinition) {
  * they learn, learn as the row's detector does. */
 export function rowSteps(definition: PipelineDefinition, components: PipelineComponent[], detector?: string) {
   return components.filter((component) => {
-    const family = stepFamily(component.kind, component.id);
-    return (family === "prepare" || family === "normalize")
+    return (component.group === "prepare" || component.group === "normalize")
       && component.fields.some((field) => field.name === "apply_to")
       && !(detector && learningBlocker(definition, detector, component, components));
   });
@@ -131,16 +130,17 @@ export type RowPlacement = { link: Link; feature: string } | { reason: string };
 export function rowPlacement(
   definition: PipelineDefinition,
   report: Pick<PipelineValidation, "features">,
+  components: PipelineComponent[],
   view: FeaturesView,
   row: FeatureRow,
   component: PipelineComponent,
 ): RowPlacement {
   const { last, detector } = view;
   if (!last || !detector) return { reason: "Connect a detector first." };
-  if (stepFamily(component.kind, component.id) !== "prepare")
+  if (component.group !== "prepare")
     return { link: { source: last, target: detector }, feature: row.name };
   const path = featurePath(report.features, last, row.name);
-  const learned = learnedStage(definition);
+  const learned = learnedStage(definition, components);
   const first = path.findIndex(([node]) => learned(node));
   if (first < 0) return { link: { source: last, target: detector }, feature: row.name };
   if (first === 0) return { reason: `${row.name} comes from a learned step, and Prepare steps run before anything learns.` };
@@ -170,7 +170,7 @@ export function addForFeature(
   row: FeatureRow,
   component: PipelineComponent,
 ): { document: GraphDocument; id: string } | undefined {
-  const placement = rowPlacement(document.definition, report, view, row, component);
+  const placement = rowPlacement(document.definition, report, components, view, row, component);
   if ("reason" in placement) return;
   const inserted = insertOnEdge(document, placement.link, component, components);
   if (!inserted) return;

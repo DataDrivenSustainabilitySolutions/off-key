@@ -327,9 +327,9 @@ A monitor start body contains:
 - `monitoring`: the strategy configuration, including `strategy`
   (`static_baseline` or `adaptive_stream`), `model_type`, `model_params`, and
   the strategy's training, calibration, and alarm settings
-- optional `performance_config`: `sensor_freshness_seconds`,
-  `observation_max_age_seconds`, `observation_future_tolerance_seconds` and
-  `alignment_max_skew_seconds`
+- optional `performance_config`: `hold_intervals` (default 3),
+  `minimum_hold_seconds` (default 30) and `future_tolerance_seconds`
+  (default 5); see [Observation time and alignment](../user-guide/monitoring.md#observation-time-and-alignment)
 
 Omitting `monitoring` selects the default static baseline. Other fields,
 including the former top-level `mqtt_topics`, `strategy`, `model_type` and
@@ -528,8 +528,8 @@ same series and instant are rejected.
 A run is compiled and bound when it is created, so a design error is refused
 at once. The Dojo worker, a service on the RADAR image, then replays the bound
 series in time order through the same alignment and detector code as a live
-monitor. The clock is the data's own time, so `alignment.freshness_seconds`
-and `alignment.max_skew_seconds` mean what the live monitor settings mean. A
+monitor. The clock is the data's own time, so `alignment.hold_intervals` and
+`alignment.minimum_hold_seconds` mean what the live monitor settings mean. A
 static baseline's fitting is awaited instead of discarding observations, so
 the same run gives the same results again. Each worker replica executes one
 run at a time; at most 20 runs wait or run at once. A run's `stats` count

@@ -29,6 +29,7 @@ from off_key_core.schemas.collection_status import (
 )
 from off_key_core.schemas.collection_wire import encode_ingress_envelope
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
+from off_key_core.utils.arrival_cadence import ArrivalCadence
 from off_key_core.utils.mqtt_lifecycle import close_client
 from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES, resolve_pointer
 from paho.mqtt.client import MQTT_ERR_SUCCESS, Client
@@ -37,7 +38,6 @@ from sqlalchemy import select, text, update
 
 from ...config.config import get_tactic_settings
 from ...config.system_live import get_system_live_settings
-from .arrival_cadence import ArrivalCadence
 from .broker_access import ResolvedHttpSource, peer, resolve_broker
 from .system_live_http import HttpPollWorker
 from .system_live_mqtt import LiveMqttWorker

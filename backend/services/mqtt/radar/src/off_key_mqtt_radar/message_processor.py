@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.config.logs import logger
+from off_key_core.schemas.radar import MonitorTiming
 from off_key_core.utils.mqtt_topics import normalize_sensor_key_strategy
 from off_key_core.utils.timestamps import as_utc, parse_utc_timestamp
 
@@ -57,13 +58,10 @@ class MessageProcessor:
         detector: DetectorHandle,
         feature_validator: TelemetryFeatureValidator,
         memory_manager: MemoryManager,
-        state_cache: SensorStateCache | None = None,
         required_sensors: set | None = None,
+        timing: MonitorTiming | None = None,
         sensor_key_strategy: str = "full_hierarchy",
         coverage: CoverageTracker | None = None,
-        observation_max_age_seconds: float = 30.0,
-        observation_future_tolerance_seconds: float = 5.0,
-        sensor_freshness_seconds: float = 30.0,
         clock: Callable[[], float] | None = None,
         monotonic: Callable[[], float] | None = None,
     ):
@@ -74,27 +72,20 @@ class MessageProcessor:
             detector: Anomaly detection component
             feature_validator: Input validation component
             memory_manager: Memory management component
-            state_cache: Optional sensor state cache for alignment
-            required_sensors: Set of required sensors for alignment
+            required_sensors: Feature keys every observation needs
+            timing: How long each reading's last value stays usable
             sensor_key_strategy: Feature key extraction strategy for MQTT hierarchy.
                 Allowed values: "full_hierarchy", "top_level", "leaf".
-            clock, monotonic: Clocks for the single-input cache; see
-                SensorStateCache.
+            clock, monotonic: Clocks for alignment; see SensorStateCache.
         """
         self.detector = detector
         self.feature_validator = feature_validator
         self.memory_manager = memory_manager
         self.coverage = coverage
-        self.state_cache = state_cache
         self.required_sensors = required_sensors or set()
         self.activity = ActivityTracker(self.required_sensors)
-        self._direct_state_cache = SensorStateCache(
-            set(),
-            max_sensor_age_seconds=sensor_freshness_seconds,
-            observation_max_age_seconds=observation_max_age_seconds,
-            observation_future_tolerance_seconds=observation_future_tolerance_seconds,
-            clock=clock,
-            monotonic=monotonic,
+        self.alignment = SensorStateCache(
+            self.required_sensors, timing, clock=clock, monotonic=monotonic
         )
         self.sensor_key_strategy = normalize_sensor_key_strategy(sensor_key_strategy)
 
@@ -265,108 +256,53 @@ class MessageProcessor:
         sample_timestamp: float | None = None,
         received_monotonic: float | None = None,
     ) -> tuple[dict[str, float] | None, dict[str, Any]]:
-        """Align multi-sensor streams if required."""
+        """Form an observation from the latest value of every reading."""
         normalized_data = self._normalize_sensor_reading(sensor_type, data)
-
-        direct = (
-            not self.state_cache
-            or len(self.required_sensors) <= 1
-            or not (charger_id and sensor_type)
-        )
-        cache = self._direct_state_cache if direct else self.state_cache
         receipt = (
             {"received_monotonic": received_monotonic}
             if received_monotonic is not None
             else {}
         )
-        alignment_update: AlignmentUpdate = cache.update_with_status(
+        update: AlignmentUpdate = self.alignment.update_with_status(
             charger_id or "",
             sensor_type or "",
             normalized_data,
             sample_timestamp=sample_timestamp,
             **receipt,
         )
-        if alignment_update.status == "observation_rejected":
-            self._record_coverage_drop(alignment_update.rejection_reason)
+        if update.status == "observation_rejected":
+            self._record_coverage_drop(update.rejection_reason)
             return None, {
-                "alignment_status": alignment_update.status,
-                "rejection_reason": alignment_update.rejection_reason,
+                "alignment_status": update.status,
+                "rejection_reason": update.rejection_reason,
             }
-        if direct:
-            return normalized_data, self._direct_alignment_context(
-                sensor_type, alignment_update.sample_timestamp
-            )
-        base_context: dict[str, Any] = {
-            "alignment_status": alignment_update.status,
-            "aligned_vector": bool(
-                alignment_update.features and len(alignment_update.features) > 1
-            ),
+        context: dict[str, Any] = {
+            "alignment_status": update.status,
+            "aligned_vector": bool(update.features and len(update.features) > 1),
             "required_sensor_count": len(self.required_sensors),
             "required_sensors": sorted(self.required_sensors),
-            "sensor_ages": alignment_update.sensor_ages,
-            "input_timestamps": alignment_update.input_timestamps,
-            "sample_timestamp": alignment_update.sample_timestamp,
+            "sensor_ages": update.sensor_ages,
+            "input_timestamps": update.input_timestamps,
+            "sample_timestamp": update.sample_timestamp,
         }
-
-        if alignment_update.status == "waiting_for_all":
-            logger.debug(
-                "Sensor alignment waiting_for_all",
-                extra={
-                    **self._log_context,
-                    "event": "waiting_for_all",
-                    "charger_id": charger_id,
-                    "sensor_type": sensor_type,
-                    "missing_sensors": list(alignment_update.missing_sensors),
-                    "sensor_ages": alignment_update.sensor_ages,
-                },
-            )
-            base_context["missing_sensors"] = list(alignment_update.missing_sensors)
-            return None, base_context
-
-        if alignment_update.status == "stale_sensor_block":
+        if update.status == "aligned":
+            if update.held_sensors:
+                context["held_sensors"] = list(update.held_sensors)
+            return update.features, context
+        if update.status == "missing_reading":
+            context["missing_sensors"] = list(update.missing_sensors)
+        elif update.status == "waiting_for_reading":
+            context["pending_sensors"] = list(update.pending_sensors)
+        elif update.status == "stale_reading":
+            context["stale_sensors"] = list(update.stale_sensors)
+            # The values were used up without an observation: a counted gap.
+            self._record_coverage_drop("stale_reading")
             logger.warning(
-                "Sensor alignment blocked by stale sensor data",
-                extra={
-                    **self._log_context,
-                    "event": "stale_sensor_block",
-                    "charger_id": charger_id,
-                    "sensor_type": sensor_type,
-                    "stale_sensors": list(alignment_update.stale_sensors),
-                    "sensor_ages": alignment_update.sensor_ages,
-                },
+                "event=radar.observation_dropped reason=stale_reading sensors=%s",
+                ",".join(update.stale_sensors),
+                extra=self._log_context,
             )
-            base_context["stale_sensors"] = list(alignment_update.stale_sensors)
-            return None, base_context
-
-        if alignment_update.status == "waiting_for_barrier":
-            logger.debug(
-                "Sensor alignment waiting_for_barrier",
-                extra={
-                    **self._log_context,
-                    "event": "waiting_for_barrier",
-                    "charger_id": charger_id,
-                    "sensor_type": sensor_type,
-                    "pending_sensors": list(alignment_update.pending_sensors),
-                    "sensor_ages": alignment_update.sensor_ages,
-                },
-            )
-            base_context["pending_sensors"] = list(alignment_update.pending_sensors)
-            return None, base_context
-
-        if alignment_update.status == "aligned_emit":
-            logger.debug(
-                "Aligned multivariate feature vector emitted",
-                extra={
-                    **self._log_context,
-                    "event": "aligned_emit",
-                    "charger_id": charger_id,
-                    "sensor_type": sensor_type,
-                    "required_sensors": sorted(self.required_sensors),
-                    "sensor_ages": alignment_update.sensor_ages,
-                },
-            )
-
-        return alignment_update.features, base_context
+        return None, context
 
     @staticmethod
     def _receipt_monotonic(message: MQTTMessage) -> float | None:
@@ -376,26 +312,6 @@ class MessageProcessor:
             return None
         age = max((datetime.now(UTC) - as_utc(message.timestamp)).total_seconds(), 0.0)
         return time.monotonic() - age
-
-    def _direct_alignment_context(
-        self,
-        sensor_type: str | None,
-        sample_timestamp: float | None = None,
-    ) -> dict[str, Any]:
-        """Build alignment context for messages that bypass multi-sensor alignment."""
-        input_timestamps = (
-            {sensor_type: sample_timestamp}
-            if sensor_type and isinstance(sample_timestamp, int | float)
-            else {}
-        )
-        return {
-            "alignment_status": "direct_pass_through",
-            "aligned_vector": False,
-            "required_sensor_count": len(self.required_sensors),
-            "sensor_ages": {},
-            "input_timestamps": input_timestamps,
-            "sample_timestamp": sample_timestamp,
-        }
 
     @staticmethod
     def _normalize_sensor_reading(
@@ -534,24 +450,18 @@ class MessageProcessor:
 
     def export_observation_watermarks(self) -> dict[str, dict[str, float]]:
         """Persist accepted observation times without retaining partial vectors."""
-        watermarks: dict[str, dict[str, float]] = {}
-        for cache in (self._direct_state_cache, self.state_cache):
-            if cache is None:
-                continue
-            for entity, sensors in cache.export_watermarks().items():
-                target = watermarks.setdefault(entity, {})
-                for sensor, timestamp in sensors.items():
-                    target[sensor] = max(target.get(sensor, timestamp), timestamp)
-        return watermarks
+        return self.alignment.export_watermarks()
 
     def restore_observation_watermarks(
         self,
         payload: dict[str, dict[str, float]],
     ) -> None:
         """Restore rejection history while requiring new input for each vector."""
-        for cache in (self._direct_state_cache, self.state_cache):
-            if cache is not None:
-                cache.restore_watermarks(payload)
+        self.alignment.restore_watermarks(payload)
+
+    def stale_after_seconds(self) -> dict[str, float]:
+        """Each reading's current limit before its last value counts as stale."""
+        return self.alignment.stale_after_seconds()
 
     def get_metrics(self) -> dict[str, Any]:
         """Get current processing metrics."""

@@ -17,10 +17,6 @@ def _build_radar_config(subscription_topics):
         model_params={},
         subscription_topics=subscription_topics,
         sensor_key_strategy="full_hierarchy",
-        sensor_freshness_seconds=30.0,
-        observation_max_age_seconds=30.0,
-        observation_future_tolerance_seconds=5.0,
-        alignment_max_skew_seconds=5.0,
     )
 
 
@@ -38,7 +34,6 @@ def test_radar_service_enables_alignment_for_explicit_sensor_topics(monkeypatch)
     radar_service = RadarService()
 
     assert radar_service.required_sensors == {"sine", "cosine"}
-    assert radar_service.state_cache is not None
 
 
 def test_radar_service_disables_alignment_for_wildcard_subscription(monkeypatch):
@@ -48,4 +43,3 @@ def test_radar_service_disables_alignment_for_wildcard_subscription(monkeypatch)
     radar_service = RadarService()
 
     assert radar_service.required_sensors == set()
-    assert radar_service.state_cache is None

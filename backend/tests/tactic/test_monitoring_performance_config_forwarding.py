@@ -54,10 +54,9 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
             "model_params": {"n_estimators": 128},
         },
         performance_config={
-            "sensor_freshness_seconds": 25.0,
-            "observation_max_age_seconds": 45.0,
-            "observation_future_tolerance_seconds": 2.0,
-            "alignment_max_skew_seconds": 3.0,
+            "hold_intervals": 4.0,
+            "minimum_hold_seconds": 45.0,
+            "future_tolerance_seconds": 2.0,
         },
     )
     expected = {
@@ -82,10 +81,9 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
     assert forwarded["reading_ids"] == ["sine", "cosine"]
     assert forwarded["monitoring"]["strategy"] == "static_baseline"
     assert forwarded["performance_config"] == {
-        "sensor_freshness_seconds": 25.0,
-        "observation_max_age_seconds": 45.0,
-        "observation_future_tolerance_seconds": 2.0,
-        "alignment_max_skew_seconds": 3.0,
+        "hold_intervals": 4.0,
+        "minimum_hold_seconds": 45.0,
+        "future_tolerance_seconds": 2.0,
     }
     assert forwarded["monitoring"]["martingale_config"] == {
         "trackers": [
@@ -107,7 +105,7 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
     form = setup.form(["telemetry/charger-1/sine", "telemetry/charger-1/cosine"])
     assert form.container_name == form.display_name == "radar-charger-1"
     assert form.performance_config.sensor_key_strategy == "full_hierarchy"
-    assert form.performance_config.sensor_freshness_seconds == 25.0
+    assert form.performance_config.hold_intervals == 4.0
 
 
 @pytest.mark.parametrize(
@@ -293,7 +291,7 @@ def test_tactic_builds_static_environment(monkeypatch):
             mqtt_config={},
             performance_config={
                 "sensor_key_strategy": "leaf",
-                "sensor_freshness_seconds": 20.0,
+                "minimum_hold_seconds": 20.0,
             },
             static_baseline_config={
                 "model_type": "pyod_iforest",
@@ -319,6 +317,8 @@ def test_tactic_builds_static_environment(monkeypatch):
     )
 
     static_config = json.loads(env["RADAR_MONITORING_CONFIG"])
+    assert env["RADAR_MINIMUM_HOLD_SECONDS"] == "20.0"
+    assert env["RADAR_HOLD_INTERVALS"] == "3.0"
     assert json.loads(env["RADAR_MONITORING_CONFIG"])["strategy"] == "static_baseline"
     assert json.loads(env["RADAR_MONITORING_CONFIG"])["model_type"] == "pyod_iforest"
     assert "RADAR_ALIGNMENT_MODE" not in env

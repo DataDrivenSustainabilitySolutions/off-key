@@ -442,7 +442,7 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
         "bindings": [{"slot_id": "value", "series_id": "s1", "series_name": "Power"}],
         "alignment": {},
         "cancel_requested": False,
-        "stats": {"waiting_for_all": 2},
+        "stats": {"missing_reading": 2},
     }
     metrics = {
         "run_id": "run-1",
@@ -512,7 +512,7 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
         # It waits for the run to finish, and spares the agent the compiled design.
         result = said(await client.call_tool("get_test", {"run_id": "run-1"}))
         assert (result["status"], result["alarm_count"]) == ("succeeded", 7)
-        assert result["stats"] == {"waiting_for_all": 2}
+        assert result["stats"] == {"missing_reading": 2}
         assert "definition" not in result
         assert result["metrics"]["false_alarms_per_day"] == 2
         assert "note" not in result

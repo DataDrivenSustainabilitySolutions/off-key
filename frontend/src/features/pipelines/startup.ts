@@ -28,16 +28,17 @@ export function startupPhases(
   ];
 }
 
-/** Seconds between observations. An observation needs a new value from every reading,
- * so the slowest reading paces them; unknown while any reading has no measured interval. */
+/** Seconds between observations. An observation uses the latest value of every reading,
+ * so the most frequent reading paces them while the others hold their last value; unknown
+ * while any reading has no measured interval. */
 export function observationSeconds(intervals: ReadonlyArray<number | null | undefined>) {
   if (!intervals.length) return undefined;
-  let slowest = 0;
+  let fastest = Number.POSITIVE_INFINITY;
   for (const interval of intervals) {
     if (typeof interval !== "number" || !Number.isFinite(interval) || interval <= 0) return undefined;
-    slowest = Math.max(slowest, interval);
+    fastest = Math.min(fastest, interval);
   }
-  return slowest;
+  return fastest;
 }
 
 /** A readable duration for an estimate: "0.5 s", "45 s", "26 min", "2 h 10 min", "30 h", "3 days". */

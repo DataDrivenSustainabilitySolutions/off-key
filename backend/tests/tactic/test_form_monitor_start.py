@@ -60,7 +60,7 @@ def form(**changes):
         {
             "container_name": "radar-c1-1",
             "mqtt_topics": ["telemetry/c1/L2", "telemetry/c1/L1"],
-            "performance_config": {"sensor_freshness_seconds": 12},
+            "performance_config": {"hold_intervals": 4},
             **changes,
         }
     )
@@ -71,7 +71,7 @@ def setup(**changes):
         {
             "display_name": "Pump",
             "reading_ids": ["reading-l2", "reading-l1"],
-            "performance_config": {"sensor_freshness_seconds": 12},
+            "performance_config": {"hold_intervals": 4},
             **changes,
         }
     )
@@ -91,7 +91,7 @@ async def test_setup_binds_slots_in_sensor_key_order_and_keeps_performance(submi
     assert request.bindings == {"input_1": "reading-l1", "input_2": "reading-l2"}
     assert request.display_name == "Pump"
     assert request.idempotency_key.startswith("form-")
-    assert performance == PerformanceConfig(sensor_freshness_seconds=12)
+    assert performance == PerformanceConfig(hold_intervals=4)
 
 
 @pytest.mark.asyncio

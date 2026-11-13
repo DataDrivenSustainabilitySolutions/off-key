@@ -29,8 +29,8 @@ async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_futu
         broker_host="127.0.0.1",
         broker_port=port,
         db_write_enabled=False,
-        observation_max_age_seconds=2,
-        observation_future_tolerance_seconds=1,
+        minimum_hold_seconds=2,
+        future_tolerance_seconds=1,
         health_check_interval=0.05,
     )
     monkeypatch.setattr(
@@ -45,10 +45,13 @@ async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_futu
         await publisher.connect(f"mqtt://127.0.0.1:{port}")
         now = datetime.now(UTC)
         for timestamp in (
+            # Accepted: nothing says yet when the reading's next value is due.
+            now - timedelta(seconds=100),
+            # Ten seconds later: a value of a reading every 10 s counts for 30 s.
+            now - timedelta(seconds=90),
             now,
             now,
             now - timedelta(milliseconds=100),
-            now - timedelta(seconds=10),
             now + timedelta(seconds=10),
         ):
             await publisher.publish(
@@ -61,8 +64,8 @@ async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_futu
                 ).encode(),
                 qos=1,
             )
-        await wait_until(lambda: monitor.message_processor.received_message_count == 5)
-        assert monitor.detector.primary_service.processed_count == 1
+        await wait_until(lambda: monitor.message_processor.received_message_count == 6)
+        assert monitor.detector.primary_service.processed_count == 2
         assert monitor.mqtt_client.coverage.snapshot().dropped_by_reason == {
             "observation_duplicate": 1,
             "observation_regression": 1,
@@ -81,7 +84,7 @@ async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_futu
             ).encode(),
             qos=1,
         )
-        await wait_until(lambda: monitor.detector.primary_service.processed_count == 2)
+        await wait_until(lambda: monitor.detector.primary_service.processed_count == 3)
         assert (
             monitor.message_processor.activity.snapshot()["last_input_at"]
             >= previous_input

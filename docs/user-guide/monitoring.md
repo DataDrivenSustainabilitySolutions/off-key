@@ -51,7 +51,7 @@ counted and reported as lost monitoring coverage.
 
 Monitoring activity separates runtime heartbeats from valid input, inference and
 evidence persistence. A running detector becomes degraded if a required input is
-older than the configured sensor freshness budget, scoring stops, or evidence
+older than its hold limit (see [Observation time and alignment](#observation-time-and-alignment)), scoring stops, or evidence
 waits too long to commit. The service overview names missing or stale inputs and
 shows the last successful inference and evidence commit. Activity recovers when
 fresh inputs and scoring resume; historical coverage warnings remain visible.
@@ -75,10 +75,9 @@ Shiryaev-Roberts statistic. An anomaly is emitted when any tracker records a new
 threshold crossing. The default is power betting with epsilon `0.5`, the
 restarted statistic, and threshold `100`.
 
-The setup form is deliberately stricter than the server on two values: it asks
-for a reading freshness of at least 1 second and a betting epsilon, minimum
-epsilon or jumper redistribution of at least `0.0001`. Smaller values are almost
-certainly typos.
+The setup form is deliberately stricter than the server on one value: it asks
+for a betting epsilon, minimum epsilon or jumper redistribution of at least
+`0.0001`. Smaller values are almost certainly typos.
 
 Ville thresholds on the all-history and harmonic restarted statistics retain
 their anytime-valid interpretation. CUSUM and Shiryaev-Roberts thresholds are
@@ -479,8 +478,8 @@ history instead.
 
 In **Service settings**, **Before the first alarm** shows the observations Prepare steps need first, then
 the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
-shows durations. The slowest reading paces observations, because each
-observation waits for all of its readings.
+shows durations. The most frequent reading paces observations, because each
+observation uses the latest value of every other reading.
 
 To keep features raw, branch from **Aligned inputs** and select the required
 features. **Pass through** preserves the values at its input. **Merge features**
@@ -876,8 +875,8 @@ extremes are clipped before scoring. Without scaling, values outside `[0, 1]`
 are rejected. The UI warns when a model has growing memory requirements.
 
 Matrix-profile subsequences count aligned observations, not elapsed seconds.
-Use consistently sampled telemetry: the sensor barrier synchronizes incoming
-updates but does not resample them onto a uniform clock. Normalized profiles
+Use consistently sampled telemetry: alignment combines the latest value of
+every reading but does not resample them onto a uniform clock. Normalized profiles
 compare shape independently of per-channel level and amplitude; disable
 normalization when those changes should contribute to the score, taking care
 that channels with larger units can dominate raw distances.
@@ -926,26 +925,42 @@ forced termination does not guarantee delivery.
 ## Observation time and alignment
 
 RADAR uses a payload's `timestamp` as observation time, falling back to MQTT
-receipt time when it is absent. It rejects nonfinite times, observations older
-than 30 seconds, times more than 5 seconds ahead of the worker, and duplicate or
-regressing timestamps for the same reading. Rejected inputs are counted as
-coverage gaps and cannot refresh valid-input activity or advance the detector.
-Without a source timestamp or event identity, distinct deliveries cannot be
-deduplicated reliably.
+receipt time when it is absent. Readings arrive on their own topics, at their
+own rates and at their own moments, and an observation is formed from the
+latest value of every reading:
+
+- RADAR learns each reading's usual interval from its own arrivals. Its last
+  value stays usable for `hold_intervals` of those intervals (3 by default) and
+  never for less than `minimum_hold_seconds` (30 by default). A reading reported
+  once a minute is therefore usable for three minutes, one reported every second
+  for 30 seconds.
+- An observation forms as soon as every reading has a new value. It waits for a
+  reading only while that reading is due before the arriving reading's next
+  value; otherwise it uses the reading's last value. The most frequent reading
+  therefore paces observations.
+- An observation that would use a value older than its reading's limit is
+  dropped and counted as a `stale_reading` coverage gap, and the monitor names
+  the stale input.
+- A reading that has arrived only once has no interval yet. It is waited for
+  and never held, so a monitor starts with fresh values only.
+
+RADAR rejects nonfinite times, values older than their reading's limit, times
+more than `future_tolerance_seconds` (5 by default) ahead of the worker, and
+duplicate or regressing timestamps for the same reading. Rejected inputs are
+counted as coverage gaps and cannot refresh valid-input activity or advance the
+detector. Without a source timestamp or event identity, distinct deliveries
+cannot be deduplicated reliably.
 
 Pipeline steps that read time, **Time features** and **Smooth** by time
 constant, use the latest observation time among the readings of the aligned
 vector.
 
-An aligned vector also requires fresh receipts and observation times within
-5 seconds of one another. Newer compatible readings unblock alignment; a blocked
-frame never advances the model. Set `performance_config.observation_max_age_seconds`,
-`observation_future_tolerance_seconds`, and `alignment_max_skew_seconds` in the
-monitor API configuration to match measured source delays and sampling periods.
-Standalone workers expose the corresponding `RADAR_*` environment settings.
-Keep source and worker clocks synchronized. These settings form part of the
-checkpoint compatibility signature; a changed alignment contract requires a new
-monitor baseline.
+Set `performance_config.hold_intervals`, `minimum_hold_seconds` and
+`future_tolerance_seconds` in the monitor API configuration; standalone workers
+expose them as `RADAR_HOLD_INTERVALS`, `RADAR_MINIMUM_HOLD_SECONDS` and
+`RADAR_FUTURE_TOLERANCE_SECONDS`. Keep source and worker clocks synchronized.
+These settings form part of the checkpoint compatibility signature; a changed
+alignment contract requires a new monitor baseline.
 
 ## Related pages
 

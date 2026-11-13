@@ -156,15 +156,15 @@ class DatasetPointsPage(DojoModel):
 
 
 class RunAlignment(DojoModel):
-    """How readings sampled at different instants combine into one input.
+    """How series sampled at different moments combine into one input.
 
-    The same rules a live monitor applies, measured in the data's own time:
-    a value older than ``freshness_seconds`` no longer counts, and readings
-    further apart than ``max_skew_seconds`` do not form one observation.
+    The rules a live monitor applies, measured in the data's own time: each
+    series' last value counts for ``hold_intervals`` of that series' usual
+    interval, and never for less than ``minimum_hold_seconds``.
     """
 
-    freshness_seconds: float = Field(default=30.0, gt=0, le=7 * 86400)
-    max_skew_seconds: float = Field(default=5.0, ge=0, le=7 * 86400)
+    hold_intervals: float = Field(default=3.0, ge=1, le=1000)
+    minimum_hold_seconds: float = Field(default=30.0, gt=0, le=7 * 86400)
 
 
 class RunCreate(DojoModel):
@@ -225,8 +225,8 @@ class RunView(RunSummary):
     alignment: RunAlignment
     cancel_requested: bool
     stats: dict[str, int] = Field(
-        description="Observations that produced no result, by reason, for "
-        "example 'waiting_for_all' or 'observation_skew_block'."
+        description="Points that formed no observation, by reason, for "
+        "example 'missing_reading' or 'waiting_for_reading'."
     )
 
 

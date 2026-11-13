@@ -184,9 +184,11 @@ def test_radar_settings_require_a_pipeline(monkeypatch):
         RadarSettings()
 
 
-def test_radar_settings_parse_sensor_freshness_seconds(monkeypatch):
-    monkeypatch.setenv("RADAR_SENSOR_FRESHNESS_SECONDS", "12.5")
-    assert RadarSettings().config.sensor_freshness_seconds == 12.5
+def test_radar_settings_parse_the_hold_timing(monkeypatch):
+    monkeypatch.setenv("RADAR_HOLD_INTERVALS", "4.5")
+    monkeypatch.setenv("RADAR_MINIMUM_HOLD_SECONDS", "12.5")
+    config = RadarSettings().config
+    assert (config.hold_intervals, config.minimum_hold_seconds) == (4.5, 12.5)
 
 
 def test_static_baseline_rejects_removed_calibration_fraction():

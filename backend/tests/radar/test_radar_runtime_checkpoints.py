@@ -162,7 +162,7 @@ def test_authentic_checkpoint_is_bound_to_service_configuration_and_runtime():
         RuntimeCheckpointCodec("another-monitor", config, SECRET),
         RuntimeCheckpointCodec(
             "monitor",
-            config.model_copy(update={"sensor_freshness_seconds": 1.0}),
+            config.model_copy(update={"hold_intervals": 5.0}),
             SECRET,
         ),
     ):

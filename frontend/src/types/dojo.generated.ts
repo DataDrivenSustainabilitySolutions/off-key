@@ -205,8 +205,8 @@ export type PromotedBinding = {
 };
 
 export type RunAlignment = {
-  freshness_seconds?: number;
-  max_skew_seconds?: number;
+  hold_intervals?: number;
+  minimum_hold_seconds?: number;
 };
 
 export type RunBinding = {

@@ -328,6 +328,61 @@ def test_run_timeline_migration_keeps_existing_runs(disposable_database):
         )
 
 
+def test_reading_hold_migration_retires_freshness_and_skew(disposable_database):
+    retired = {
+        "sensor_key_strategy": "leaf",
+        "sensor_freshness_seconds": 30.0,
+        "observation_max_age_seconds": 30.0,
+        "observation_future_tolerance_seconds": 5.0,
+        "alignment_max_skew_seconds": 5.0,
+    }
+    activity = {"freshness_seconds": 30.0, "inputs_stalled": False}
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        rewind_ledger(connection, "033_reading_hold_timing.sql")
+        connection.execute(
+            insert(MonitoringService).values(
+                id="held",
+                container_name="held",
+                mqtt_topic=[],
+                launch_config={"display_name": "Held", "performance_config": retired},
+                operational_status={"stage": "operational", "activity": activity},
+            )
+        )
+        connection.execute(
+            insert(PipelineRun).values(
+                id="held-run",
+                service_id="held",
+                launch_config={"performance_config": retired},
+                layout={},
+                status="stopped",
+                final_status={"stage": "stopped", "activity": activity},
+            )
+        )
+    with disposable_database.begin() as connection:
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "033_reading_hold_timing.sql"
+        )
+        launch, status = connection.execute(
+            text(
+                "SELECT launch_config, operational_status FROM services WHERE id='held'"
+            )
+        ).one()
+        assert launch == {
+            "display_name": "Held",
+            "performance_config": {"sensor_key_strategy": "leaf"},
+        }
+        assert status == {"stage": "operational", "activity": {"inputs_stalled": False}}
+        run_launch, final = connection.execute(
+            text(
+                "SELECT launch_config, final_status FROM monitoring_pipeline_runs "
+                "WHERE id='held-run'"
+            )
+        ).one()
+        assert run_launch == {"performance_config": {"sensor_key_strategy": "leaf"}}
+        assert final == {"stage": "stopped", "activity": {"inputs_stalled": False}}
+
+
 def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
     disposable_database,
 ):

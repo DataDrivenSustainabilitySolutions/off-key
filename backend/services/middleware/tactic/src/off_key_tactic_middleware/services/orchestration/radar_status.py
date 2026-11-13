@@ -46,6 +46,10 @@ def name_inputs_by_reading(
     ):
         keys = activity.pop(internal, None) or []
         activity[public] = [readings[key] for key in keys if key in readings]
+    limits = activity.pop("stale_after_seconds", None) or {}
+    activity["stale_after_seconds"] = {
+        readings[key]: seconds for key, seconds in limits.items() if key in readings
+    }
     return {**status, "activity": activity}
 
 

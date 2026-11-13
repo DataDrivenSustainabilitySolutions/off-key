@@ -272,7 +272,7 @@ describe("service-centred monitoring workspace", () => {
   it("identifies stale inputs separately from a current runtime heartbeat", async () => {
     const monitor = service();
     monitor.operational_status.activity = {
-      freshness_seconds: 30, last_input_at: "2026-10-11T10:00:00Z",
+      stale_after_seconds: { temperature: 30 }, last_input_at: "2026-10-11T10:00:00Z",
       last_inference_at: "2026-10-11T09:59:00Z", stale_reading_ids: ["temperature"],
       missing_reading_ids: [], inputs_stalled: true, inference_stalled: true,
       persistence_stalled: false,
@@ -282,6 +282,7 @@ describe("service-centred monitoring workspace", () => {
     const details = await screen.findByRole("region", { name: "Monitoring service details" });
     expect(within(details).getByText("No recent inputs")).toBeTruthy();
     expect(within(details).getByText("Stale inputs: Air temperature")).toBeTruthy();
+    expect(within(details).getByText("Inputs count as stale after: Air temperature 30 s.")).toBeTruthy();
     expect(within(details).getByText("Last inference")).toBeTruthy();
     expect(within(details).getByText("Last evidence saved")).toBeTruthy();
   });

@@ -199,12 +199,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             ),
             "subscription_topics": sorted(config.subscription_topics),
             "sensor_key_strategy": config.sensor_key_strategy,
-            "sensor_freshness_seconds": config.sensor_freshness_seconds,
-            "observation_max_age_seconds": config.observation_max_age_seconds,
-            "observation_future_tolerance_seconds": (
-                config.observation_future_tolerance_seconds
-            ),
-            "alignment_max_skew_seconds": config.alignment_max_skew_seconds,
+            "timing": config.timing().model_dump(mode="json"),
         }
         payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()

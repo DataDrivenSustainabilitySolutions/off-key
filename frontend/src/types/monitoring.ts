@@ -84,14 +84,15 @@ interface MonitoringCoverage {
 }
 
 interface MonitoringActivity {
-  freshness_seconds: number;
+  /** How old each reading's value may be before it counts as stale, by catalogue id. */
+  stale_after_seconds: Record<string, number>;
   last_input_at?: string | null;
   last_processed_at?: string | null;
   last_inference_at?: string | null;
   last_persisted_at?: string | null;
   /** Readings the monitor has not received, by catalogue id. */
   missing_reading_ids: string[];
-  /** Readings whose latest value is older than the freshness, by catalogue id. */
+  /** Readings whose latest value is older than their limit, by catalogue id. */
   stale_reading_ids: string[];
   inputs_stalled: boolean;
   inference_stalled: boolean;
@@ -127,12 +128,14 @@ export interface ActiveService {
   created_at?: string;
 }
 
-/** How fresh and how closely aligned a monitor's readings must be. */
+/**
+ * How long a reading's last value stays usable: `hold_intervals` of its own
+ * learned interval, never less than `minimum_hold_seconds`.
+ */
 interface MonitorTiming {
-  sensor_freshness_seconds: number;
-  observation_max_age_seconds?: number;
-  observation_future_tolerance_seconds?: number;
-  alignment_max_skew_seconds?: number;
+  hold_intervals?: number;
+  minimum_hold_seconds?: number;
+  future_tolerance_seconds?: number;
 }
 
 export type MartingaleBettingFunction =

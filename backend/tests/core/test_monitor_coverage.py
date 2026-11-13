@@ -81,7 +81,7 @@ def test_monitor_activity_names_its_inputs_by_reading():
         operational_status={
             "stage": "degraded",
             "activity": {
-                "freshness_seconds": 30,
+                "stale_after_seconds": {"temperature": 90.0, "removed": 30.0},
                 "missing_sensors": ["pressure"],
                 "stale_sensors": ["temperature", "removed"],
             },
@@ -100,3 +100,4 @@ def test_monitor_activity_names_its_inputs_by_reading():
     # A key no binding names any more is left out rather than shown.
     assert activity["stale_reading_ids"] == ["line-temperature"]
     assert "missing_sensors" not in activity and "stale_sensors" not in activity
+    assert activity["stale_after_seconds"] == {"line-temperature": 90.0}

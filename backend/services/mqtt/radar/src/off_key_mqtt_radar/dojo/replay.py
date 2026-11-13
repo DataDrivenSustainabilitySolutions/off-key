@@ -1,9 +1,9 @@
 """Run one detection design over historical points, as a live monitor would.
 
-Each point goes through the same message processor, alignment cache and
-detector as live MQTT input. Only the clocks differ: both read the time of the
-point being replayed, so freshness and skew limits measure the data's own
-time instead of the wall clock. Background fitting is awaited, so no point is
+Each point goes through the same message processor, alignment and detector as
+live MQTT input. Only the clocks differ: both read the time of the point being
+replayed, so how long a value stays usable is measured in the data's own time
+instead of the wall clock. Background fitting is awaited, so no point is
 discarded while a static baseline trains and a replay is reproducible.
 
 A replay also keeps what a few observations looked like at every step: the
@@ -31,7 +31,6 @@ from ..feature_validation import TelemetryFeatureValidator
 from ..memory import MemoryManager
 from ..message_processor import MessageProcessor
 from ..models import AnomalyResult, MQTTMessage, inference_key, strategy_context_key
-from ..state_cache import SensorStateCache
 from ..topic_parser import TopicParser
 
 SENSOR_KEY_STRATEGY = DOJO_SENSOR_KEY_STRATEGY
@@ -76,11 +75,10 @@ def detection_config(
         {
             "pipeline": execution.model_dump(mode="json"),
             "sensor_key_strategy": SENSOR_KEY_STRATEGY,
-            "sensor_freshness_seconds": alignment.freshness_seconds,
-            "observation_max_age_seconds": alignment.freshness_seconds,
+            "hold_intervals": alignment.hold_intervals,
+            "minimum_hold_seconds": alignment.minimum_hold_seconds,
             # Every point arrives exactly at its own time.
-            "observation_future_tolerance_seconds": 0.0,
-            "alignment_max_skew_seconds": alignment.max_skew_seconds,
+            "future_tolerance_seconds": 0.0,
             "memory_limit_mb": memory_limit_mb,
         }
     )
@@ -96,21 +94,6 @@ class Replay:
         self._clock = _ReplayClock()
         required = TopicParser.derive_required_sensors(
             config.subscription_topics, sensor_key_strategy=SENSOR_KEY_STRATEGY
-        )
-        cache = (
-            SensorStateCache(
-                required,
-                max_sensor_age_seconds=config.sensor_freshness_seconds,
-                observation_max_age_seconds=config.observation_max_age_seconds,
-                observation_future_tolerance_seconds=(
-                    config.observation_future_tolerance_seconds
-                ),
-                alignment_max_skew_seconds=config.alignment_max_skew_seconds,
-                clock=self._clock,
-                monotonic=self._clock,
-            )
-            if required
-            else None
         )
         service_cls = detector_service_class(config)
         service = service_cls(config)
@@ -130,15 +113,10 @@ class Replay:
             detector=self.detector,
             feature_validator=TelemetryFeatureValidator(),
             memory_manager=MemoryManager(max_memory_mb=config.memory_limit_mb),
-            state_cache=cache,
             required_sensors=required,
+            timing=config.timing(),
             sensor_key_strategy=SENSOR_KEY_STRATEGY,
             coverage=self.coverage,
-            observation_max_age_seconds=config.observation_max_age_seconds,
-            observation_future_tolerance_seconds=(
-                config.observation_future_tolerance_seconds
-            ),
-            sensor_freshness_seconds=config.sensor_freshness_seconds,
             clock=self._clock,
             monotonic=self._clock,
         )
@@ -166,8 +144,12 @@ class Replay:
         self.detector.primary_service.wait_for_background()
         if result is None:
             status = self.processor.last_alignment_status
-            # Rejections are counted by the coverage tracker with their reason.
-            if status and status not in {"observation_rejected", "aligned_emit"}:
+            # Rejections and stale readings are counted by the coverage tracker.
+            if status and status not in {
+                "observation_rejected",
+                "aligned",
+                "stale_reading",
+            }:
                 self._waiting[status] += 1
             return None
         row = self._row(result)

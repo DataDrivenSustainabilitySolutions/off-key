@@ -918,7 +918,7 @@ class DatabaseWriter:
             if oldest is not None
             else None,
             "persistence_timeout_seconds": max(
-                self.config.sensor_freshness_seconds, self.config.db_batch_timeout * 2
+                self.config.minimum_hold_seconds, self.config.db_batch_timeout * 2
             ),
         }
 

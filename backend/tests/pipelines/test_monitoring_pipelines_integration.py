@@ -578,7 +578,7 @@ async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
         config = MonitorSetup(
             display_name="radar-device",
             reading_ids=["temperature", "current"],
-            performance_config={"sensor_freshness_seconds": 12},
+            performance_config={"hold_intervals": 4},
         )
         with pytest.raises(ConflictError, match="disabled"):
             await PipelineActivations(session).apply(
@@ -594,7 +594,7 @@ async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
         run = await session.get(PipelineRun, activation.run_id)
         launch = run.launch_config
         assert launch["display_name"] == "radar-device"
-        assert launch["performance_config"]["sensor_freshness_seconds"] == 12
+        assert launch["performance_config"]["hold_intervals"] == 4
         assert launch["container_name"] == f"pipeline-{activation.service_id}"
         execution = PipelineExecutionConfig.model_validate(run.execution)
         assert {item.reading_id for item in execution.bindings} == {
@@ -641,7 +641,7 @@ async def test_release_converts_a_saved_form_monitor_or_retires_it(pipeline_data
             "display_name": "Device",
             "mqtt_topics": [topics["temperature"], topics["current"]],
             "monitoring": {"strategy": "static_baseline"},
-            "performance_config": {"sensor_freshness_seconds": 12},
+            "performance_config": {"hold_intervals": 4},
             "mqtt_config": {"qos": 1},
             "pipeline": None,
         }
@@ -649,7 +649,7 @@ async def test_release_converts_a_saved_form_monitor_or_retires_it(pipeline_data
 
         assert launch.container_name == "radar-device"
         assert launch.mqtt_config.qos == 1
-        assert launch.performance_config.sensor_freshness_seconds == 12
+        assert launch.performance_config.hold_intervals == 4
         assert {item.reading_id for item in launch.pipeline.bindings} == {
             "current",
             "temperature",

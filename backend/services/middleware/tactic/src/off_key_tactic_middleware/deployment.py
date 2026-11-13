@@ -57,9 +57,6 @@ def captured_configuration(name: str, environment: list[str]) -> dict:
             "monitoring": json.loads(values["RADAR_MONITORING_CONFIG"]),
             "performance_config": {
                 "sensor_key_strategy": values["RADAR_SENSOR_KEY_STRATEGY"],
-                "sensor_freshness_seconds": float(
-                    values["RADAR_SENSOR_FRESHNESS_SECONDS"]
-                ),
             },
             "mqtt_config": {
                 "qos": int(values["RADAR_SUBSCRIPTION_QOS"]),

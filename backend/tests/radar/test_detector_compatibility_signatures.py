@@ -1,7 +1,8 @@
 """Pin the hashes that decide whether a saved detector state may be restored.
 
 A changed digest silently discards every checkpoint written by the previous
-release, so each one is a literal here.
+release, so each one is a literal here. They last changed when last-known-value
+alignment replaced the strict barrier, which changes every monitor's input.
 """
 
 from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
@@ -25,7 +26,7 @@ def _static():
             calibration_window_size=5,
         ),
         TOPICS,
-        sensor_freshness_seconds=20.0,
+        minimum_hold_seconds=20.0,
     )
 
 
@@ -38,7 +39,7 @@ def _adaptive():
             calibration_window_size=360,
         ),
         TOPICS,
-        alignment_max_skew_seconds=2.5,
+        hold_intervals=2.5,
     )
 
 
@@ -52,14 +53,14 @@ def _pipeline():
 def test_static_detector_schema_signature_is_unchanged():
     assert (
         StaticConformalDetectionService._build_schema_signature_from_config(_static())
-        == "b0f51a0f8f43c57ce52495035991203a6a537449be6109b3a323999e525eebee"
+        == "d2c81cd9dabe0eba38bea6024e9b21be44eca72119c4af39cb7e1cbac7c2de03"
     )
 
 
 def test_adaptive_detector_schema_signature_requires_relearning_on_upgrade():
     # Includes the installed Aberrant version: an upgrade invalidates states.
     assert AdaptiveStreamDetectionService._build_schema_signature(_adaptive()) == (
-        "1550e554e96260bc0ee7b1f456be74fea9360bd5ba4f260675b656fe09840f9d"
+        "b003fb768bd493a845e0155ea9b4e0765dfe65dbc1f00a0b7bc07ea96997268e"
     )
 
 
@@ -76,8 +77,8 @@ def test_checkpoint_fingerprints_preserve_static_and_upgrade_adaptive():
     }
 
     assert fingerprints == {
-        "static": "8a48accbec59655e0409bcd2955797ae1049ea94c166853a9a9dbbc33994e176",
+        "static": "637ffafe60e52e798353308ea399d5212063dc73a7457ceaea6e76c66103340a",
         # The explicit library version is the migration boundary: 1.4.0 -> 1.5.0.
-        "adaptive": "a849083eda0ac55415f7e48cbb462356ff4b912f517c3c012f97af7a9fcfbc9d",
-        "pipeline": "d4f00448d44de0e86c95f0e553a0fa20f189e1ad6bf4878cd59ed3ce6c323c21",
+        "adaptive": "01319902a4cf80aef44ba730acb827273f7b04042053f7ebf47f8c36e0258921",
+        "pipeline": "2836dbeed6e86737c1b6a205d39947f3448a004d8ad3d1cb25a66cf737a7b909",
     }

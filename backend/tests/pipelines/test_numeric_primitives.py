@@ -610,11 +610,7 @@ def test_primitives_replay_historical_data_without_filtering_observations(strate
             "ready" if strategy == "static_baseline" else "operational"
         )
         assert rows[-1].score is not None and math.isfinite(rows[-1].score)
-        assert set(run.stats()) <= {
-            "stale_sensor_block",
-            "waiting_for_all",
-            "waiting_for_barrier",
-        }
+        assert set(run.stats()) <= {"missing_reading", "waiting_for_reading"}
     finally:
         run.close()
 

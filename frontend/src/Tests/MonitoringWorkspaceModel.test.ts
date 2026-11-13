@@ -30,7 +30,7 @@ describe("monitoring workspace identity and scale", () => {
   ] as const)("shows %s even while runtime heartbeats are current", (field, label) => {
     const service = monitor("one", []);
     service.operational_status.activity = {
-      freshness_seconds: 30, missing_reading_ids: [], stale_reading_ids: [],
+      stale_after_seconds: {}, missing_reading_ids: [], stale_reading_ids: [],
       inputs_stalled: false, inference_stalled: false, persistence_stalled: false,
       [field]: true,
     };

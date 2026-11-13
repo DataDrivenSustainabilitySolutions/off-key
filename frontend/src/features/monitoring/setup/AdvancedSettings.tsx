@@ -11,7 +11,7 @@ import { ChevronDown, Plus, Settings2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useId, useState } from "react";
 
-import { MIN_BETTING_TOLERANCE, MIN_READING_FRESHNESS_SECONDS, createDefaultMartingaleTracker } from "./config";
+import { HOLD_INTERVAL_RANGE, MIN_BETTING_TOLERANCE, createDefaultMartingaleTracker } from "./config";
 import type {
   FieldErrors,
   StaticDraft,
@@ -565,26 +565,28 @@ export function AdvancedSettings({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <SettingLabel
-                label="Reading freshness (s)"
-                help="Maximum receive-time age allowed for every required sensor in a strict multivariate alignment. An older sensor blocks inference until it updates."
-                htmlFor="advanced-sensor-freshness"
+                label="Hold readings for (intervals)"
+                help="Each observation uses the latest value of every reading. A reading that reports less often keeps its last value for this many of its own intervals, and never less than 30 seconds. An older value drops the observation."
+                htmlFor="advanced-hold-intervals"
               />
               <input
-                id="advanced-sensor-freshness"
+                id="advanced-hold-intervals"
                 type="number"
-                min={MIN_READING_FRESHNESS_SECONDS}
+                min={HOLD_INTERVAL_RANGE.min}
+                max={HOLD_INTERVAL_RANGE.max}
+                step="any"
                 className={cn(CONTROL_CLASS, "mt-2")}
-                value={draft.sensorFreshness}
-                aria-invalid={Boolean(fieldErrors.sensorFreshness)}
+                value={draft.holdIntervals}
+                aria-invalid={Boolean(fieldErrors.holdIntervals)}
                 onChange={(event) => {
                   setDraft((current) => ({
                     ...current,
-                    sensorFreshness: event.target.value,
+                    holdIntervals: event.target.value,
                   }));
-                  clearError("sensorFreshness");
+                  clearError("holdIntervals");
                 }}
               />
-              <FieldError field="sensorFreshness" errors={fieldErrors} />
+              <FieldError field="holdIntervals" errors={fieldErrors} />
             </div>
           </div>
         </div>

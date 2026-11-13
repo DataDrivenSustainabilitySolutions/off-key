@@ -1,16 +1,29 @@
-"""
-State cache for aligning multi-sensor MQTT streams.
+"""Last-known-value alignment of a monitor's readings.
 
-Uses strict barrier alignment semantics:
-- emit one aligned sample only after all required sensors have produced at
-  least one new value since the last emit for that charger.
+Readings arrive on their own topics, at their own rates and at their own
+moments. An observation is formed from the latest value of every reading:
 
-Includes TTL-based cleanup to prevent memory growth from stale entries.
+- Each reading's usual interval is learned from its own arrivals. Its last
+  value stays usable for ``hold_intervals`` of those intervals, and never for
+  less than ``minimum_hold_seconds``. A value that arrives older than that is
+  rejected.
+- An observation forms as soon as every reading has a new value. It waits for a
+  reading only while that reading's next value is expected to arrive before the
+  arriving reading's next one; otherwise it uses the reading's last value. This
+  is judged by when values reach this worker, not by their observation time,
+  because a sampler can forward one reading much later than another.
+- An observation that would use a value older than its reading's limit, measured
+  in observation time, is dropped, and the caller counts it.
+
+A reading whose interval is not known yet, because it has arrived once, is
+waited for and never held, so a monitor starts with fresh values only. Nothing
+says yet when its next value is due, so none of its values is a gap: one of any
+age is accepted, and one older than ``minimum_hold_seconds`` within an
+observation is replaced by its next value instead of dropping the observation.
 """
 
 from __future__ import annotations
 
-import logging
 import math
 import time
 from collections.abc import Callable
@@ -18,118 +31,76 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Literal
 
-from off_key_core.schemas.radar import PerformanceConfig
+from off_key_core.schemas.radar import MonitorTiming
+from off_key_core.utils.arrival_cadence import ArrivalCadence
 from pydantic import FiniteFloat, TypeAdapter
 
-logger = logging.getLogger(__name__)
-
-# Default TTL: 1 hour in seconds
-DEFAULT_TTL_SECONDS = 3600
-# Default freshness gate for aligned sensor values
-DEFAULT_MAX_SENSOR_AGE_SECONDS = 30.0
-# Default max chargers to prevent unbounded growth
 DEFAULT_MAX_CHARGERS = 10000
 DEFAULT_MAX_SENSOR_KEYS = 100
 
 
 def _extract_numeric_value(values: dict[str, float], sensor_type: str) -> float | None:
-    """
-    Extract a single numeric value to represent this sensor.
-    Preference order:
-    1) Explicit key matching the sensor type
-    2) A "value" key
-    3) The sole value if only one is present
-    """
+    """The one number that represents this reading: its own key, ``value`` or
+    the only value present."""
     if sensor_type in values and isinstance(values[sensor_type], int | float):
         return float(values[sensor_type])
-
     if "value" in values and isinstance(values["value"], int | float):
         return float(values["value"])
-
     if len(values) == 1:
         only_value = next(iter(values.values()))
         if isinstance(only_value, int | float):
             return float(only_value)
-
     return None
 
 
-def _wall_time() -> float:
-    return time.time()
-
-
-def _monotonic_time() -> float:
-    return time.monotonic()
-
-
 @dataclass(frozen=True, slots=True)
-class _SensorReading:
-    """Stored snapshot of the latest reading received for one sensor."""
+class _Reading:
+    """The latest accepted value of one reading."""
 
-    values: dict[str, float]
-    received_at: float
+    value: float
     event_timestamp: float
-    sequence: int
-    received_monotonic: float | None
+    # When this worker received it, on the receipt clock.
+    received: float
+
+
+@dataclass(slots=True)
+class _Entity:
+    readings: dict[str, _Reading] = field(default_factory=dict)
+    cadences: dict[str, ArrivalCadence] = field(default_factory=dict)
+    # Readings with a value no observation has used yet.
+    fresh: set[str] = field(default_factory=set)
 
 
 class SensorStateCache:
-    """Caches latest sensor values per charger and emits aligned feature vectors.
-
-    Includes TTL-based cleanup and max chargers limit to prevent memory growth.
-    """
+    """Accept observations per reading and form observations from them."""
 
     def __init__(
         self,
         required_sensors: set[str],
-        ttl_seconds: float = DEFAULT_TTL_SECONDS,
-        max_sensor_age_seconds: float = DEFAULT_MAX_SENSOR_AGE_SECONDS,
+        timing: MonitorTiming | None = None,
+        *,
         max_chargers: int = DEFAULT_MAX_CHARGERS,
-        observation_max_age_seconds: float = 30.0,
-        observation_future_tolerance_seconds: float = 5.0,
-        alignment_max_skew_seconds: float = 5.0,
         clock: Callable[[], float] | None = None,
         monotonic: Callable[[], float] | None = None,
     ):
         """
-        Initialize the sensor state cache.
-
         Args:
-            required_sensors: Set of sensor types required for alignment
-            ttl_seconds: Time-to-live for cache entries in seconds (default: 1 hour)
-            max_sensor_age_seconds: Maximum allowed age for each required sensor
-                when emitting aligned vectors
-            max_chargers: Maximum number of chargers to cache (default: 10000)
+            required_sensors: Feature keys of the readings an observation needs.
+                Without any, every accepted value passes through on its own.
+            timing: How long each reading's last value stays usable.
             clock, monotonic: Wall and receipt clocks. A Dojo replay passes the
                 event time for both, so historical data ages as it did live.
         """
-        self._clock = clock or _wall_time
-        self._monotonic = monotonic or _monotonic_time
+        self._clock = clock or time.time
+        self._monotonic = monotonic or time.monotonic
         self._lock = Lock()
+        self.timing = timing or MonitorTiming()
         self.required_sensors = set(required_sensors)
         self.required_sensor_order = tuple(sorted(self.required_sensors))
-        self._max_sensor_keys = max(DEFAULT_MAX_SENSOR_KEYS, len(self.required_sensors))
-        self.ttl_seconds = ttl_seconds
         self.max_chargers = max_chargers
-        policy = PerformanceConfig(
-            sensor_freshness_seconds=max_sensor_age_seconds,
-            observation_max_age_seconds=observation_max_age_seconds,
-            observation_future_tolerance_seconds=observation_future_tolerance_seconds,
-            alignment_max_skew_seconds=alignment_max_skew_seconds,
-        )
-        self.observation_max_age_seconds = policy.observation_max_age_seconds
-        self.max_sensor_age_seconds = policy.sensor_freshness_seconds
-        self.observation_future_tolerance_seconds = (
-            policy.observation_future_tolerance_seconds
-        )
-        self.alignment_max_skew_seconds = policy.alignment_max_skew_seconds
-        self._readings_by_charger: dict[str, dict[str, _SensorReading]] = {}
+        self._max_sensor_keys = max(DEFAULT_MAX_SENSOR_KEYS, len(self.required_sensors))
+        self._entities: dict[str, _Entity] = {}
         self._watermarks: dict[str, dict[str, float]] = {}
-        # Tracks last emitted sensor update sequence in strict-barrier mode.
-        self._last_emitted_versions: dict[str, dict[str, int]] = {}
-        self._next_update_seq = 0
-        self._last_cleanup = self._clock()
-        self._cleanup_interval = 300  # Run cleanup every 5 minutes
 
     def update_with_status(
         self,
@@ -140,170 +111,75 @@ class SensorStateCache:
         sample_timestamp: float | None = None,
         received_monotonic: float | None = None,
     ) -> AlignmentUpdate:
-        """
-        Update cache with a new sensor reading.
-
-        Returns a full feature vector (latest values for all required sensors)
-        when every required sensor has at least one fresh value.
-
-        Thread-safe: uses internal lock for concurrent access.
-        """
-        current_time = self._clock()
-        event_timestamp = current_time if sample_timestamp is None else sample_timestamp
-
+        """Accept one reading's value and form an observation if one is due."""
+        now = self._clock()
+        event_timestamp = now if sample_timestamp is None else sample_timestamp
+        received = (
+            self._monotonic() if received_monotonic is None else received_monotonic
+        )
         with self._lock:
-            if received_monotonic is not None:
-                if not math.isfinite(received_monotonic):
-                    return AlignmentUpdate(
-                        status="observation_rejected",
-                        rejection_reason="receipt_nonfinite",
-                    )
-                if self._monotonic() - received_monotonic > self.max_sensor_age_seconds:
-                    return AlignmentUpdate(
-                        status="observation_rejected",
-                        rejection_reason="receipt_too_old",
-                    )
-            rejection = self._observation_rejection(
-                charger_id, sensor_type, event_timestamp, current_time
+            rejection = self._admission(
+                charger_id, sensor_type, event_timestamp, received_monotonic, now
             )
-            if rejection:
+            if rejection is not None:
                 return AlignmentUpdate(
                     status="observation_rejected", rejection_reason=rejection
                 )
-            # Periodic cleanup
-            if current_time - self._last_cleanup > self._cleanup_interval:
-                self._cleanup_stale_entries(current_time)
-                self._last_cleanup = current_time
-
-            charger_cache = self._readings_by_charger.setdefault(charger_id, {})
-            self._watermarks.setdefault(charger_id, {})[sensor_type] = event_timestamp
-            self._next_update_seq += 1
-            charger_cache[sensor_type] = _SensorReading(
-                values=dict(values),
-                received_at=current_time,
-                event_timestamp=event_timestamp,
-                sequence=self._next_update_seq,
-                received_monotonic=received_monotonic,
-            )
-
-            if not self.required_sensors:
-                # No alignment requested; emit the incoming values as-is
+            entity = self._entities.setdefault(charger_id, _Entity())
+            # Every well-formed arrival teaches the reading's interval, also one
+            # that is too old to use.
+            cadence = entity.cadences.setdefault(sensor_type, ArrivalCadence())
+            cadence.add(event_timestamp)
+            interval = cadence.typical_seconds
+            limit = self._limit(interval)
+            if interval is not None and now - event_timestamp > limit:
                 return AlignmentUpdate(
-                    status="aligned_emit",
-                    features=values,
+                    status="observation_rejected",
+                    rejection_reason="observation_too_old",
+                )
+            if self._monotonic() - received > limit:
+                return AlignmentUpdate(
+                    status="observation_rejected", rejection_reason="receipt_too_old"
+                )
+            value = _extract_numeric_value(values, sensor_type)
+            if self.required_sensors and value is None:
+                return AlignmentUpdate(
+                    status="observation_rejected",
+                    rejection_reason="observation_without_value",
+                )
+            self._watermarks.setdefault(charger_id, {})[sensor_type] = event_timestamp
+            if not self.required_sensors:
+                return AlignmentUpdate(
+                    status="aligned",
+                    features=dict(values),
                     input_timestamps={sensor_type: event_timestamp},
                     sample_timestamp=event_timestamp,
                 )
+            # A reading that reports again before the observation formed
+            # replaces its value: the observation keeps waiting for the others.
+            entity.readings[sensor_type] = _Reading(value, event_timestamp, received)
+            entity.fresh.add(sensor_type)
+            return self._form(entity, sensor_type, received)
 
-            sensor_ages = self._collect_sensor_ages(charger_cache, current_time)
-            blocker = self._alignment_blocker(
-                charger_id,
-                charger_cache,
-                sensor_ages,
-                current_time,
-            )
-            if blocker is not None:
-                return blocker
-
-            aligned, invalid_sensor = self._build_aligned_features(
-                charger_id,
-                charger_cache,
-            )
-            if invalid_sensor is not None:
-                return AlignmentUpdate(
-                    status="waiting_for_all",
-                    missing_sensors=(invalid_sensor,),
-                    sensor_ages=sensor_ages,
-                )
-
-            last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
-            last_emitted.update(
-                {
-                    sensor: charger_cache[sensor].sequence
-                    for sensor in self.required_sensor_order
-                }
-            )
-
-            input_timestamps = {
-                sensor: charger_cache[sensor].event_timestamp
-                for sensor in self.required_sensor_order
-            }
-
-            return AlignmentUpdate(
-                status="aligned_emit",
-                features=aligned,
-                sensor_ages=sensor_ages,
-                input_timestamps=input_timestamps,
-                sample_timestamp=max(input_timestamps.values()),
-            )
-
-    def _alignment_blocker(
+    def _admission(
         self,
         charger_id: str,
-        charger_cache: dict[str, _SensorReading],
-        sensor_ages: dict[str, float],
-        current_time: float,
-    ) -> AlignmentUpdate | None:
-        """Return the first condition preventing a strict-barrier emission."""
-        missing_sensors = tuple(sorted(self.required_sensors - charger_cache.keys()))
-        if missing_sensors:
-            return AlignmentUpdate(
-                status="waiting_for_all",
-                missing_sensors=missing_sensors,
-                sensor_ages=sensor_ages,
-            )
-
-        stale_sensors = tuple(
-            sorted(
-                sensor
-                for sensor, age in sensor_ages.items()
-                if age > self.max_sensor_age_seconds
-                or current_time - charger_cache[sensor].event_timestamp
-                > self.observation_max_age_seconds
-            )
-        )
-        if stale_sensors:
-            return AlignmentUpdate(
-                status="stale_sensor_block",
-                stale_sensors=stale_sensors,
-                sensor_ages=sensor_ages,
-            )
-
-        timestamps = [
-            charger_cache[sensor].event_timestamp
-            for sensor in self.required_sensor_order
-        ]
-        if max(timestamps) - min(timestamps) > self.alignment_max_skew_seconds:
-            return AlignmentUpdate(
-                status="observation_skew_block", sensor_ages=sensor_ages
-            )
-
-        last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
-        pending_sensors = tuple(
-            sensor
-            for sensor in self.required_sensor_order
-            if charger_cache[sensor].sequence <= last_emitted.get(sensor, 0)
-        )
-        if not pending_sensors:
-            return None
-
-        return AlignmentUpdate(
-            status="waiting_for_barrier",
-            pending_sensors=pending_sensors,
-            sensor_ages=sensor_ages,
-        )
-
-    def _observation_rejection(self, charger_id, sensor_type, timestamp, now):
+        sensor_type: str,
+        timestamp: float,
+        received_monotonic: float | None,
+        now: float,
+    ) -> str | None:
+        """Why this arrival is not a new observation of a known reading."""
         if self.required_sensors and sensor_type not in self.required_sensors:
             return "observation_unexpected_sensor"
+        if received_monotonic is not None and not math.isfinite(received_monotonic):
+            return "receipt_nonfinite"
         if not math.isfinite(timestamp):
             return "observation_nonfinite"
-        if now - timestamp > self.observation_max_age_seconds:
-            return "observation_too_old"
-        if timestamp - now > self.observation_future_tolerance_seconds:
+        if timestamp - now > self.timing.future_tolerance_seconds:
             return "observation_in_future"
-        charger_watermarks = self._watermarks.get(charger_id, {})
-        previous = charger_watermarks.get(sensor_type)
+        watermarks = self._watermarks.get(charger_id, {})
+        previous = watermarks.get(sensor_type)
         if previous is not None and timestamp <= previous:
             return (
                 "observation_duplicate"
@@ -315,126 +191,140 @@ class SensorStateCache:
             and len(self._watermarks) >= self.max_chargers
         ):
             return "observation_capacity"
-        if (
-            sensor_type not in charger_watermarks
-            and len(charger_watermarks) >= self._max_sensor_keys
-        ):
+        if sensor_type not in watermarks and len(watermarks) >= self._max_sensor_keys:
             return "observation_capacity"
         return None
 
-    def _build_aligned_features(
-        self,
-        charger_id: str,
-        charger_cache: dict[str, _SensorReading],
-    ) -> tuple[dict[str, float], str | None]:
-        """Extract the canonical numeric value for each required sensor."""
-        aligned: dict[str, float] = {}
-        for sensor in self.required_sensor_order:
-            latest = charger_cache[sensor].values
-            value = _extract_numeric_value(latest, sensor)
-            if value is None:
-                logger.debug(
-                    "event=radar.sensor_value_extract_failed "
-                    "sensor=%s charger_id=%s values=%s",
-                    sensor,
-                    charger_id,
-                    latest,
-                )
-                return aligned, sensor
-            aligned[sensor] = value
-        return aligned, None
-
-    def _collect_sensor_ages(
-        self, charger_cache: dict[str, _SensorReading], current_time: float
-    ) -> dict[str, float]:
-        """Collect age in seconds for each required sensor that has a cached value."""
-        ages: dict[str, float] = {}
-        for sensor in self.required_sensors:
-            sensor_entry = charger_cache.get(sensor)
-            if not sensor_entry:
-                continue
-            age = (
-                current_time - sensor_entry.received_at
-                if sensor_entry.received_monotonic is None
-                else self._monotonic() - sensor_entry.received_monotonic
-            )
-            ages[sensor] = max(age, 0.0)
-        return ages
-
-    def _cleanup_stale_entries(self, current_time: float) -> None:
-        """Remove stale cache entries based on TTL.
-
-        Must be called while holding the lock.
-        """
-        stale_chargers: list[str] = []
-        stale_sensor_entries = 0
-
-        for charger_id, sensors in self._readings_by_charger.items():
-            stale_sensors = [
-                sensor_name
-                for sensor_name, sensor_data in sensors.items()
-                if current_time - sensor_data.received_at > self.ttl_seconds
-            ]
-            for sensor_name in stale_sensors:
-                stale_sensor_entries += 1
-                del sensors[sensor_name]
-
-            if not sensors:
-                stale_chargers.append(charger_id)
-
-        # Remove stale entries
-        for charger_id in stale_chargers:
-            del self._readings_by_charger[charger_id]
-            self._last_emitted_versions.pop(charger_id, None)
-
-        if stale_sensor_entries or stale_chargers:
-            logger.debug(
-                "Cleaned stale sensor cache entries",
-                extra={
-                    "stale_sensor_entries": stale_sensor_entries,
-                    "stale_chargers": len(stale_chargers),
-                },
-            )
-
-        # Enforce max chargers limit by removing oldest entries
-        if len(self._readings_by_charger) > self.max_chargers:
-            self._evict_oldest_entries()
-
-    def _evict_oldest_entries(self) -> None:
-        """Evict oldest entries when max_chargers limit is exceeded.
-
-        Must be called while holding the lock.
-        """
-        # Build list of (charger_id, latest receipt timestamp)
-        charger_times: list[tuple[str, float]] = []
-        for charger_id, sensors in self._readings_by_charger.items():
-            latest_ts = max(
-                (sensor.received_at for sensor in sensors.values()),
-                default=0,
-            )
-            charger_times.append((charger_id, latest_ts))
-
-        # Sort by timestamp (oldest first)
-        charger_times.sort(key=lambda x: x[1])
-
-        # Remove oldest entries to get under limit
-        entries_to_remove = len(self._readings_by_charger) - self.max_chargers
-        for i in range(entries_to_remove):
-            charger_id = charger_times[i][0]
-            del self._readings_by_charger[charger_id]
-            self._last_emitted_versions.pop(charger_id, None)
-
-        logger.warning(
-            "event=radar.sensor_cache_evicted count=%s max_chargers=%s",
-            entries_to_remove,
-            self.max_chargers,
+    def _form(self, entity: _Entity, arriving: str, at: float) -> AlignmentUpdate:
+        """The observation this arrival, received ``at``, completes, or why
+        there is none yet."""
+        sensor_ages = self._sensor_ages(entity)
+        missing = tuple(
+            sensor
+            for sensor in self.required_sensor_order
+            if sensor not in entity.readings
         )
+        if missing:
+            return AlignmentUpdate(
+                status="missing_reading",
+                missing_sensors=missing,
+                sensor_ages=sensor_ages,
+            )
+        pending = [
+            sensor
+            for sensor in self.required_sensor_order
+            if sensor not in entity.fresh
+        ]
+        due = tuple(
+            sensor for sensor in pending if self._is_due(entity, sensor, arriving, at)
+        )
+        if due:
+            return AlignmentUpdate(
+                status="waiting_for_reading",
+                pending_sensors=due,
+                sensor_ages=sensor_ages,
+            )
+        input_timestamps = {
+            sensor: entity.readings[sensor].event_timestamp
+            for sensor in self.required_sensor_order
+        }
+        observed_at = max(input_timestamps.values())
+        stale = tuple(
+            sensor
+            for sensor, timestamp in input_timestamps.items()
+            if observed_at - timestamp > self._limit(self._interval(entity, sensor))
+        )
+        if stale and all(self._interval(entity, sensor) is None for sensor in stale):
+            entity.fresh.difference_update(stale)
+            return AlignmentUpdate(
+                status="waiting_for_reading",
+                pending_sensors=stale,
+                sensor_ages=sensor_ages,
+            )
+        # Either way these values are used up: the next observation needs new ones.
+        entity.fresh.clear()
+        if stale:
+            return AlignmentUpdate(
+                status="stale_reading",
+                stale_sensors=stale,
+                sensor_ages=sensor_ages,
+                input_timestamps=input_timestamps,
+            )
+        return AlignmentUpdate(
+            status="aligned",
+            features={
+                sensor: entity.readings[sensor].value
+                for sensor in self.required_sensor_order
+            },
+            held_sensors=tuple(pending),
+            sensor_ages=sensor_ages,
+            input_timestamps=input_timestamps,
+            sample_timestamp=observed_at,
+        )
+
+    def _is_due(self, entity: _Entity, sensor: str, arriving: str, at: float) -> bool:
+        """Whether to wait for ``sensor`` instead of using its last value.
+
+        A reading is waited for while its next value is expected to arrive
+        before the arriving reading's next one, and is not overdue by more than
+        half its interval. Both are on the receipt clock: waiting is about when
+        values reach this worker. A reading whose interval is not known yet is
+        always waited for.
+        """
+        interval = self._interval(entity, sensor)
+        if interval is None:
+            return True
+        expected = entity.readings[sensor].received + interval
+        if expected <= at - interval / 2:
+            return False
+        arriving_interval = self._interval(entity, arriving)
+        return arriving_interval is None or expected < at + arriving_interval
+
+    @staticmethod
+    def _interval(entity: _Entity | None, sensor: str) -> float | None:
+        cadence = None if entity is None else entity.cadences.get(sensor)
+        return None if cadence is None else cadence.typical_seconds
+
+    def _limit(self, interval: float | None) -> float:
+        """How old a reading's value may be when an observation uses it."""
+        minimum = self.timing.minimum_hold_seconds
+        if interval is None:
+            return minimum
+        return max(minimum, self.timing.hold_intervals * interval)
+
+    def _sensor_ages(self, entity: _Entity) -> dict[str, float]:
+        """Seconds since each cached value was received by this worker."""
+        now = self._monotonic()
+        return {
+            sensor: max(now - reading.received, 0.0)
+            for sensor, reading in entity.readings.items()
+        }
+
+    def stale_after_seconds(self) -> dict[str, float]:
+        """Each reading's current limit, for health reporting: the required
+        ones, or without any, every reading seen so far."""
+        with self._lock:
+            entities = list(self._entities.values())
+            sensors = self.required_sensor_order or tuple(
+                sorted({sensor for entity in entities for sensor in entity.cadences})
+            )
+            return {
+                sensor: max(
+                    (
+                        self._limit(self._interval(entity, sensor))
+                        for entity in entities
+                    ),
+                    default=self._limit(None),
+                )
+                for sensor in sensors
+            }
 
     def export_watermarks(self) -> dict[str, dict[str, float]]:
         with self._lock:
             return {key: dict(values) for key, values in self._watermarks.items()}
 
     def restore_watermarks(self, payload: dict[str, dict[str, float]]) -> None:
+        """Restore rejection history; values and learned intervals start over."""
         watermarks = TypeAdapter(dict[str, dict[str, FiniteFloat]]).validate_python(
             payload
         )
@@ -451,17 +341,15 @@ class SensorStateCache:
                     "Observation watermark checkpoint exceeds cache capacity"
                 )
             self._watermarks = merged
-            self._readings_by_charger.clear()
-            self._last_emitted_versions.clear()
+            self._entities.clear()
 
 
 AlignmentStatus = Literal[
-    "aligned_emit",
-    "stale_sensor_block",
-    "waiting_for_all",
-    "waiting_for_barrier",
+    "aligned",
+    "missing_reading",
+    "waiting_for_reading",
+    "stale_reading",
     "observation_rejected",
-    "observation_skew_block",
 ]
 
 
@@ -474,6 +362,8 @@ class AlignmentUpdate:
     missing_sensors: tuple[str, ...] = ()
     pending_sensors: tuple[str, ...] = ()
     stale_sensors: tuple[str, ...] = ()
+    # Readings whose earlier value this observation used again.
+    held_sensors: tuple[str, ...] = ()
     sensor_ages: dict[str, float] = field(default_factory=dict)
     input_timestamps: dict[str, float] = field(default_factory=dict)
     sample_timestamp: float | None = None

@@ -19,6 +19,9 @@ class _FakeMessageProcessor:
     def get_metrics(self):
         return self.metrics
 
+    def stale_after_seconds(self):
+        return {}
+
 
 class _FakeDetector:
     def __init__(self, stats, state="healthy"):
@@ -153,7 +156,7 @@ def test_static_detector_operational_stage_mapping(
             {
                 "message_count": 5,
                 "processed_message_count": 5,
-                "last_alignment_status": "aligned_emit",
+                "last_alignment_status": "aligned",
             }
         ),
     )
@@ -164,7 +167,7 @@ def test_static_detector_operational_stage_mapping(
     assert operational.get("progress") == expected_progress
     assert operational["message_count"] == 5
     assert operational["processed_message_count"] == 5
-    assert operational["last_alignment_status"] == "aligned_emit"
+    assert operational["last_alignment_status"] == "aligned"
     assert operational["is_stale"] is False
 
 
@@ -313,7 +316,7 @@ async def test_database_writer_updates_service_operational_status(monkeypatch):
                 "stage": "operational",
                 "message_count": 3,
                 "processed_message_count": 2,
-                "last_alignment_status": "aligned_emit",
+                "last_alignment_status": "aligned",
                 "is_stale": False,
             },
         }

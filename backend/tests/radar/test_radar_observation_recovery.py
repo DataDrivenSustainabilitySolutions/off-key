@@ -68,7 +68,7 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
         broker_port=port,
         db_write_enabled=True,
         checkpoint_interval=1,
-        observation_max_age_seconds=120,
+        minimum_hold_seconds=120,
         health_check_interval=0.1,
     )
     monkeypatch.setattr(
@@ -251,10 +251,9 @@ async def test_managed_restore_requires_history_after_first_observation(
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("sensor_freshness_seconds", 10.0),
-        ("observation_max_age_seconds", 15.0),
-        ("observation_future_tolerance_seconds", 1.0),
-        ("alignment_max_skew_seconds", 1.0),
+        ("hold_intervals", 10.0),
+        ("minimum_hold_seconds", 15.0),
+        ("future_tolerance_seconds", 1.0),
     ],
 )
 def test_checkpoint_rejects_changed_alignment_policy(

@@ -175,10 +175,10 @@ class RadarSettings(BaseSettings):
     RADAR_SUBSCRIPTION_TOPICS: str = "telemetry/charger-sim-1/sine"  # Comma-separated
     RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
-    RADAR_SENSOR_FRESHNESS_SECONDS: float = 30.0
-    RADAR_OBSERVATION_MAX_AGE_SECONDS: float = Field(default=30.0, gt=0.0)
-    RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS: float = Field(default=5.0, ge=0.0)
-    RADAR_ALIGNMENT_MAX_SKEW_SECONDS: float = Field(default=5.0, ge=0.0)
+    # MonitorTiming: how long each reading's last value stays usable.
+    RADAR_HOLD_INTERVALS: float = 3.0
+    RADAR_MINIMUM_HOLD_SECONDS: float = 30.0
+    RADAR_FUTURE_TOLERANCE_SECONDS: float = 5.0
 
     # Database
     RADAR_DB_WRITE_ENABLED: bool = True
@@ -281,10 +281,9 @@ class RadarSettings(BaseSettings):
             subscription_topics=topics,
             subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
             sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
-            sensor_freshness_seconds=self.RADAR_SENSOR_FRESHNESS_SECONDS,
-            observation_max_age_seconds=self.RADAR_OBSERVATION_MAX_AGE_SECONDS,
-            observation_future_tolerance_seconds=self.RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS,
-            alignment_max_skew_seconds=self.RADAR_ALIGNMENT_MAX_SKEW_SECONDS,
+            hold_intervals=self.RADAR_HOLD_INTERVALS,
+            minimum_hold_seconds=self.RADAR_MINIMUM_HOLD_SECONDS,
+            future_tolerance_seconds=self.RADAR_FUTURE_TOLERANCE_SECONDS,
             db_write_enabled=self.RADAR_DB_WRITE_ENABLED,
             db_batch_size=self.RADAR_DB_BATCH_SIZE,
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,

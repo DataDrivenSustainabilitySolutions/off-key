@@ -21,8 +21,8 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
   const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
   const [bindings, setBindings] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
-  const [freshness, setFreshness] = useState("30");
-  const [skew, setSkew] = useState("5");
+  const [holdIntervals, setHoldIntervals] = useState("3");
+  const [minimumHold, setMinimumHold] = useState("30");
   const [compare, setCompare] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -85,8 +85,9 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
     const values = slots.map(slot => bindings[slot.id]).filter(Boolean);
     return new Set(values).size !== values.length;
   }, [slots, bindings]);
-  const alignment = { freshness_seconds: Number(freshness), max_skew_seconds: Number(skew) };
-  const alignmentValid = alignment.freshness_seconds > 0 && alignment.max_skew_seconds >= 0;
+  const alignment = { hold_intervals: Number(holdIntervals), minimum_hold_seconds: Number(minimumHold) };
+  const alignmentValid = alignment.hold_intervals >= 1 && alignment.hold_intervals <= 1000
+    && alignment.minimum_hold_seconds > 0 && alignment.minimum_hold_seconds <= 7 * 86400;
   const comparable = !!definition && comparesCalibration(definition);
   const submit = async () => {
     if (!definition) return;
@@ -142,10 +143,10 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
             <label className="dj-field">Run name<input maxLength={120} value={name} disabled={busy}
               onChange={event => setName(event.target.value)} /></label>
             <div className="dj-field-row">
-              <label className="dj-field"><span>Values stay fresh for <small>(seconds)</small></span><input type="number" min={0.001} step="any"
-                value={freshness} disabled={busy} onChange={event => setFreshness(event.target.value)} /></label>
-              <label className="dj-field"><span>Readings combine within <small>(seconds)</small></span><input type="number" min={0} step="any"
-                value={skew} disabled={busy} onChange={event => setSkew(event.target.value)} /></label>
+              <label className="dj-field"><span>Hold values for <small>(intervals)</small></span><input type="number" min={1} max={1000} step="any"
+                value={holdIntervals} disabled={busy} onChange={event => setHoldIntervals(event.target.value)} /></label>
+              <label className="dj-field"><span>But at least <small>(seconds)</small></span><input type="number" min={0.001} step="any"
+                value={minimumHold} disabled={busy} onChange={event => setMinimumHold(event.target.value)} /></label>
             </div>
             <label className="dj-check"><input type="checkbox" checked={compare && comparable} disabled={busy || !comparable}
               aria-describedby="dj-compare-help" onChange={event => setCompare(event.target.checked)} />

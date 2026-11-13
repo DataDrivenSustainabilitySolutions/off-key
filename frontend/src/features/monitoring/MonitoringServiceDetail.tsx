@@ -104,7 +104,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
             <div><dt>Last evidence saved</dt><dd><RelativeTime value={activity.last_persisted_at} fallback="Awaiting update" /></dd></div></dl>
           {activity.missing_reading_ids.length > 0 && <p className="ex-muted">Missing inputs: {describeInputs(activity.missing_reading_ids)}</p>}
           {activity.stale_reading_ids.length > 0 && <p className="ex-muted">Stale inputs: {describeInputs(activity.stale_reading_ids)}</p>}
-          <p className="ex-muted">Inputs count as stale after {activity.freshness_seconds} s.</p>
+          {Object.keys(activity.stale_after_seconds).length > 0 && <p className="ex-muted">Inputs count as stale after: {Object.entries(activity.stale_after_seconds)
+            .map(([id, seconds]) => `${inputNames.get(id) ?? id} ${Math.round(seconds)} s`).join(", ")}.</p>}
         </section>}
         <section className="mn-section"><h3>Coverage</h3>
           <p className="ex-muted">Delivery is best effort. Missing observations cannot be replayed.</p>

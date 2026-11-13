@@ -2,6 +2,7 @@
   padding: 0;
 }
 .pl-component-menu,
+.pl-shortcuts,
 .pl-issue-popover {
   width: min(320px, calc(100vw - 24px));
   max-height: min(600px, var(--radix-popover-content-available-height));
@@ -282,6 +283,82 @@
 .pl-lineage small {
   color: hsl(var(--muted-foreground));
   margin-top: 2px;
+}
+
+/* The keys of the canvas: what each does on the left, its keys on the right, in two
+   columns where the window has room for them. */
+.pl-shortcuts {
+  width: min(560px, calc(100vw - 24px));
+  font-size: var(--text-body);
+}
+.pl-shortcut-groups {
+  columns: 2 220px;
+  column-gap: 28px;
+}
+.pl-shortcut-groups section {
+  break-inside: avoid;
+  margin-bottom: 12px;
+}
+.pl-shortcuts h4 {
+  margin: 0 0 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pl-shortcuts dl {
+  margin: 0;
+}
+.pl-shortcuts dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+.pl-shortcuts dd {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  margin: 0;
+}
+.pl-shortcuts kbd {
+  padding: 1px 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pl-shortcuts > .pl-help {
+  margin: 0;
+}
+
+/* Steps chosen together: one row each, which leads to that step's settings. */
+.pl-chosen-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pl-chosen-steps li {
+  border-bottom: 1px solid hsl(var(--border));
+}
+.pl-inspector .pl-chosen-steps button {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.pl-inspector .pl-chosen-steps button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .pl-inspector .pl-danger {

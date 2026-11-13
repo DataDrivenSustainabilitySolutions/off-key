@@ -47,9 +47,10 @@ export function useGraphEditor({
   const present = selected && document.definition.nodes.some((node) => node.id === selected)
     ? selected : undefined;
 
-  const select = (id?: string) => {
+  /** Put a step in focus; a quiet change does not report it, so no settings open for it. */
+  const select = (id?: string, quiet = false) => {
     setSelected(id || undefined);
-    if (id) onSelect?.(id);
+    if (id && !quiet) onSelect?.(id);
   };
   const requestFit = () => setFitRequest((value) => value + 1);
   const resetHistory = () => {

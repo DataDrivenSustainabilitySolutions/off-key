@@ -44,6 +44,13 @@ export type CalculateParameters = {
   formulas: string;
 };
 
+export type CanvasNote = {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+};
+
 export type CanvasPosition = {
   x: number;
   y: number;
@@ -371,6 +378,16 @@ export type PipelineDefinition = {
   settings?: PipelineSettings;
 };
 
+export type PipelineDesignFile = {
+  $schema?: string | null;
+  format: "aberration-design";
+  schema_version?: 1;
+  name?: string;
+  description?: string;
+  definition: PipelineDefinition;
+  layout?: PipelineLayout;
+};
+
 export type PipelineDraftSave = {
   expected_version: number;
   definition: PipelineDefinition;
@@ -417,6 +434,8 @@ export type PipelineLayout = {
   version?: number;
   nodes?: Record<string, CanvasPosition>;
   viewport?: CanvasViewport | null;
+  switched_off?: Record<string, SwitchedOffStep>;
+  notes?: Array<CanvasNote>;
 };
 
 export type PipelineListPage = {
@@ -812,6 +831,12 @@ export type StandardScalerParameters = {
   with_std?: boolean;
 };
 
+export type SwitchedOffStep = {
+  component: string;
+  contract_version?: number;
+  params?: Record<string, unknown>;
+};
+
 export type TimeParameters = {
   elapsed?: boolean;
   hour?: boolean;
@@ -822,3 +847,5 @@ export type TimeParameters = {
 };
 
 export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4, blockSteps: 16 } as const;
+
+export const DESIGN_FILE = { format: "aberration-design", version: 1, schema: "https://docs.aberration.app/reference/design-file.schema.json" } as const;

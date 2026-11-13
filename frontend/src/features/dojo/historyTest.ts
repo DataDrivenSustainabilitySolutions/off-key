@@ -51,8 +51,25 @@ export type TestedRun = {
   metrics?: RunMetrics;
   /** The design as it was tested, to tell when it has changed since. */
   definition: PipelineDefinition;
+  /** The series each input read; a test on other series is not compared with it. */
+  bindings: Record<string, string>;
+  /** The dataset, spanning only the series the test read. */
   dataset: Pick<DatasetView, "id" | "name" | "start_at" | "end_at">;
 };
+
+const sameBindings = (one: Record<string, string>, other: Record<string, string>) =>
+  Object.keys(one).length === Object.keys(other).length && Object.entries(one).every(([slot, series]) => other[slot] === series);
+
+/** From the first to the last value of the series a test read: other series of the dataset are not replayed. */
+function boundSpan(dataset: DatasetView, bindings: Record<string, string>) {
+  const read = new Set(Object.values(bindings));
+  const series = dataset.series.filter((item) => read.has(item.id));
+  const starts = series.flatMap((item) => item.start_at ? [item.start_at] : []);
+  const ends = series.flatMap((item) => item.end_at ? [item.end_at] : []);
+  const pick = (times: string[], earliest: boolean) => times.reduce<string | null>((best, time) =>
+    best === null || (Date.parse(time) < Date.parse(best)) === earliest ? time : best, null);
+  return { start_at: pick(starts, true) ?? dataset.start_at, end_at: pick(ends, false) ?? dataset.end_at };
+}
 
 type Snapshot = {
   /** A window of recorded values to copy, or the id of a Dojo dataset. */
@@ -63,7 +80,7 @@ type Snapshot = {
   chosen: Record<string, string>;
   step?: "copying" | "starting";
   current?: TestedRun;
-  /** The finished test before the current one, on the same values. */
+  /** The finished test before the current one, on the same series. */
   previous?: TestedRun;
   /** Whether the values of a step in the last test are unfolded, and which of its observations they show.
    * Both hold from step to step, so one observation can be followed through the design. */
@@ -134,16 +151,17 @@ export function createHistoryTest() {
         }
         if (!dataset) return;
         update({ ...getSnapshot(), step: "starting", error: "" });
+        const bindings = bindSeries(slots, readings, dataset.series, getSnapshot().chosen);
         const run = await dojoApi.createRun({
-          dataset_id: dataset.id, definition,
+          dataset_id: dataset.id, definition, bindings,
           name: `${name.trim() || "Unnamed service"} · ${formatInstant(Date.now())}`.slice(0, 120),
-          bindings: bindSeries(slots, readings, dataset.series, getSnapshot().chosen),
         });
         const { current, previous } = getSnapshot();
         // A new test has observations of its own; its latest is shown first.
+        // It compares only with a test that read the same series.
         update({ ...getSnapshot(), step: undefined, observation: undefined,
-          current: { run, definition, dataset: { id: dataset.id, name: dataset.name, start_at: dataset.start_at, end_at: dataset.end_at } },
-          previous: [scored(current), previous].find((item) => item?.dataset.id === dataset.id) });
+          current: { run, definition, bindings, dataset: { id: dataset.id, name: dataset.name, ...boundSpan(dataset, bindings) } },
+          previous: [scored(current), previous].find((item) => item?.dataset.id === dataset.id && sameBindings(item.bindings, bindings)) });
       } catch (reason) {
         update({ ...getSnapshot(), step: undefined, error: getErrorMessage(reason) });
       }

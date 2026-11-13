@@ -94,7 +94,7 @@ export function PipelineNodeCard({
         : Clock3;
   return (
     <div
-      className={`pl-node${selected ? " is-selected" : ""}`}
+      className={`pl-node${selected ? " is-selected" : ""}${data.off ? " is-off" : ""}`}
       data-kind={data.kind}
       onClick={(event) => {
         // A dot tap connects; only the card body opens component settings.

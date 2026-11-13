@@ -18,6 +18,7 @@ import { useCreationSession, type CreationDraft } from "./creationSession";
 import { pipelinesApi } from "./api";
 import { useGraphMetadata } from "./useGraphMetadata";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { SHORTCUTS } from "./shortcuts";
 import { useGraphEditor } from "./useGraphEditor";
 import { PipelineDesignSettings } from "./PipelineDesignSettings";
 import { PipelineTemplateMenu } from "./PipelineTemplateMenu";
@@ -33,6 +34,7 @@ import { learningWindow } from "./learning";
 import { starterTemplate, withoutDetector } from "./detectorSlot";
 import { startupEstimate } from "./startup";
 import { DesignTestContext } from "./designTest";
+import { downloadDesign, openDesignFile } from "./designFile";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -168,14 +170,25 @@ export function PipelineCreate(props: PipelineSetupProps) {
     const next = selectReadings(target!, slots, draft.bindings ?? {}, [initialReading!]);
     changeInputs(next.slots, next.bindings);
   });
-  const load = (document: GraphDocument, name: string, description: string, bindings?: Record<string, string>) => {
+  const load = (document: GraphDocument, name: string, description: string, bindings?: Record<string, string>, fromFile = false) => {
     commit(document);
     session.detachTemplate();
     setDraft((previous) => ({ ...previous, startingId: undefined, name: previous.name || name, description,
       bindings: bindings ?? suggestBindings(document.definition.input_slots, target, previous.bindings) }));
     // A new service goes on to its readings; a design's own editor returns to the graph.
     select(opensAtInput ? inputNode(document) : undefined); graph.requestFit();
-    toast.success(`Loaded ${name}. Your changes will not affect the original template.`, { id: "pipeline-template-load" });
+    toast.success(fromFile ? `Opened ${name}.` : `Loaded ${name}. Your changes will not affect the original template.`,
+      { id: "pipeline-template-load" });
+  };
+  /** A design saved as a file takes the place of the one on the canvas; Undo brings that one back. */
+  const openFile = async (file: File) => {
+    if (!canAuthor || busy) return;
+    setLoadingTemplate(true); setError("");
+    try {
+      const design = await openDesignFile(file);
+      load(design.document, design.name, design.description, undefined, true);
+    } catch (reason) { setError(getErrorMessage(reason)); }
+    finally { setLoadingTemplate(false); }
   };
   const start = async () => {
     if (!canAuthor || busy) return;
@@ -247,13 +260,16 @@ export function PipelineCreate(props: PipelineSetupProps) {
       {(canAuthor || props.menu) && <div className="pl-actions pl-setup-actions">
         {canAuthor && <>
           <PipelineTemplateMenu catalog={catalog} disabled={busy} onLoading={setLoadingTemplate} onManage={props.onManage} onLoad={load}
+            onOpenFile={(file) => void openFile(file)}
             onBuiltIn={(id) => { const item = catalog.templates.find((item) => item.id === id)!;
               const setup = startingSetup(catalog, id, target, initialReading);
               load(setup.document, item.name, "", setup.bindings);
               setDraft((previous) => ({ ...previous, startingId: id })); }} />
           <PipelineSaveTemplate name={template?.name ?? draft.name} description={template?.description ?? draft.description}
             existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
-            onSave={async (details) => !!await session.save(details)} />
+            onSave={async (details) => !!await session.save(details)}
+            onDownload={(details) => toast.success(`Downloaded ${downloadDesign(draft.document, details.name, details.description)}.`,
+              { id: "pipeline-design-download" })} />
         </>}
         {props.menu}
         {canAuthor && <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
@@ -284,9 +300,10 @@ export function PipelineCreate(props: PipelineSetupProps) {
       selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
       onPlace={graph.place}
       onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}
+      onOpenFile={(file) => void openFile(file)}
       actions={canAuthor && !locked && <>
-        <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title="Undo (Ctrl+Z)" onClick={graph.undo}><Undo2 size={15} /></button>
-        <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title="Redo (Ctrl+Shift+Z)" onClick={graph.redo}><Redo2 size={15} /></button>
+        <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title={`Undo (${SHORTCUTS.undo.label})`} onClick={graph.undo}><Undo2 size={15} /></button>
+        <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title={`Redo (${SHORTCUTS.redo.label})`} onClick={graph.redo}><Redo2 size={15} /></button>
         <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
         {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {
           if (!await confirm({ title: "Discard this setup?", description: "Your changes to this flow are cleared and the setup starts again.",

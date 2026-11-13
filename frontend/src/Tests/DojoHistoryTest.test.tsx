@@ -196,6 +196,36 @@ describe("a test on history", () => {
     expect(test.getSnapshot().previous).toBeUndefined();
   });
 
+  it("compares only with a test that read the same series of a dataset", async () => {
+    vi.mocked(dojoApi.dataset).mockResolvedValue(bench);
+    vi.mocked(dojoApi.createRun).mockResolvedValueOnce(run("run-1", "queued", { dataset_id: "bench" }))
+      .mockResolvedValueOnce(run("run-2", "queued", { dataset_id: "bench" }));
+    vi.mocked(dojoApi.metrics).mockImplementation(async id => metrics(id));
+    const test = createHistoryTest();
+    await test.choose("bench");
+    await test.start({ definition, readings, name: "" });
+    vi.mocked(dojoApi.run).mockResolvedValueOnce(run("run-1", "succeeded", { dataset_id: "bench" }));
+    await test.refresh(signal());
+    test.bind("current", "b3");
+    await test.start({ definition, readings, name: "" });
+    expect(vi.mocked(dojoApi.createRun).mock.calls[1]![0].bindings).toEqual({ voltage: "b1", current: "b3" });
+    expect(test.getSnapshot().previous).toBeUndefined();
+  });
+
+  it("spans a test over the series it read, not over the rest of the dataset", async () => {
+    const later = "2024-01-05T00:00:00Z";
+    const mixed = dataset("mixed", "Mixed", [{ ...series("m1", "U", "V", null), start_at: later },
+      { ...series("m2", "I", "A", null, 1), start_at: later }, series("m3", "Spare", "A", null, 2)]);
+    vi.mocked(dojoApi.dataset).mockResolvedValue(mixed);
+    vi.mocked(dojoApi.createRun).mockResolvedValueOnce(run("run-1", "queued", { dataset_id: "mixed" }));
+    const test = createHistoryTest();
+    await test.choose("mixed");
+    test.bind("voltage", "m1");
+    test.bind("current", "m2");
+    await test.start({ definition, readings, name: "" });
+    expect(test.getSnapshot().current?.dataset).toMatchObject({ start_at: later, end_at: T1 });
+  });
+
   it("does nothing while a test is under way, reports what the server refuses and cancels on request", async () => {
     vi.mocked(dojoApi.importHistory).mockRejectedValueOnce(new Error("The chosen readings recorded nothing in this window"));
     const test = createHistoryTest();

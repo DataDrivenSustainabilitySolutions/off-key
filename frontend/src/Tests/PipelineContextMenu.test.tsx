@@ -2,8 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ReactFlowProvider, type NodeProps } from "@xyflow/react";
 import { stepMenu } from "@/features/pipelines/contextMenu";
+import { duplicateSteps } from "@/features/pipelines/clipboard";
 import {
-  addAfter, afterBlocker, disconnectNode, duplicateBlocker, duplicateNode, type GraphDocument,
+  addAfter, afterBlocker, disconnectNode, duplicateBlocker, type GraphDocument,
 } from "@/features/pipelines/model";
 import { PipelineContextMenu } from "@/features/pipelines/PipelineContextMenu";
 import { PipelineNodeCard } from "@/features/pipelines/PipelineNodeCard";
@@ -43,18 +44,19 @@ const document = (): GraphDocument => ({
 
 describe("card menu operations", () => {
   it("duplicates a step with its settings and title below the original, unconnected", () => {
-    const result = duplicateNode(document(), "smooth", components)!;
-    const copy = result.document.definition.nodes.find((node) => node.id === result.id)!;
+    const result = duplicateSteps(document(), ["smooth"], components)!;
+    const id = result.ids[0]!;
+    const copy = result.document.definition.nodes.find((node) => node.id === id)!;
     expect(copy.params).toEqual({ window: 7 });
-    expect(result.document.layout.nodes[result.id]).toMatchObject({ x: 320, label: "Calm copy" });
-    expect(result.document.layout.nodes[result.id]!.y).toBeGreaterThan(0);
-    expect(result.document.definition.edges.some((edge) => edge.source === result.id || edge.target === result.id)).toBe(false);
+    expect(result.document.layout.nodes[id]).toMatchObject({ x: 320, label: "Calm copy" });
+    expect(result.document.layout.nodes[id]!.y).toBeGreaterThan(0);
+    expect(result.document.definition.edges.some((edge) => edge.source === id || edge.target === id)).toBe(false);
   });
 
   it("does not copy one-per-design steps or detectors", () => {
     expect(duplicateBlocker(document().definition, "input", components)).toBe("A design has one of these.");
     expect(duplicateBlocker(document().definition, "model", components)).toMatch(/detector's settings/);
-    expect(duplicateNode(document(), "model", components)).toBeUndefined();
+    expect(duplicateSteps(document(), ["model"], components)).toMatchObject({ ids: [], skipped: [expect.stringMatching(/detector's settings/)] });
   });
 
   it("puts a step after a card on its only connection, so the chain stays a chain", () => {

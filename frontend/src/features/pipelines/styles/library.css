@@ -101,7 +101,9 @@
 .pl-template-popover .pl-library-tools { margin-top: 12px; }
 .pl-template-popover .pl-library-list button { padding: 12px; }
 .pl-template-popover .pl-library-list small { margin-top: 2px; }
-.pl-library .pl-manage-designs { border: 0; padding-left: 0; margin-top: 16px; color: hsl(var(--muted-foreground)); }
+.pl-template-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.pl-library .pl-template-footer button { border: 0; padding-inline: 0; color: hsl(var(--muted-foreground)); }
+.pl-library .pl-template-footer button:hover:not(:disabled) { color: hsl(var(--foreground)); background: none; }
 
 .pl-starting-points {
   display: grid;

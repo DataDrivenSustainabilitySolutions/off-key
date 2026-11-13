@@ -71,25 +71,57 @@ class PipelineModel(BaseModel):
 
 
 class InputSlot(PipelineModel):
-    id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
-    label: str = Field(min_length=1, max_length=120)
+    """A reading the design takes in; a service binds a real reading to it."""
+
+    id: str = Field(
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z][A-Za-z0-9_-]*$",
+        description="Name of the input in formulas and feature names.",
+    )
+    label: str = Field(
+        min_length=1, max_length=120, description="Name of the input as it is shown."
+    )
     unit: str | None = Field(default=None, max_length=32)
 
 
 class PipelineNode(PipelineModel):
-    id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
-    kind: NodeKind
-    component: str = Field(min_length=1, max_length=160)
-    contract_version: int = Field(default=1, ge=1)
-    params: dict[str, Any] = Field(default_factory=dict)
+    """One step of a design."""
+
+    id: str = Field(
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z][A-Za-z0-9_-]*$",
+        description="Name of the step within the design; connections refer to it.",
+    )
+    kind: NodeKind = Field(description="What the step is; its component has the same.")
+    component: str = Field(
+        min_length=1,
+        max_length=160,
+        description="Id of a component in the catalog, such as prepare.smooth.",
+    )
+    contract_version: int = Field(
+        default=1, ge=1, description="Version of the component the step was made for."
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings of the step, named as the component's fields are.",
+    )
     label: str | None = Field(default=None, max_length=120)
 
 
 class PipelineEdge(PipelineModel):
-    source: str
-    target: str
+    """A connection from the output of one step to the input of another."""
+
+    source: str = Field(description="Id of the step the connection leaves.")
+    target: str = Field(description="Id of the step the connection enters.")
     # Explicit order is executable; visual positions have no processing meaning.
-    order: int = Field(default=0, ge=0, le=127)
+    order: int = Field(
+        default=0,
+        ge=0,
+        le=127,
+        description="Place among the inputs of a step that takes several.",
+    )
 
 
 class PipelineSettings(PipelineModel):
@@ -166,20 +198,79 @@ EditorDefinition = Annotated[PipelineDefinition, WrapSerializer(_editor_form)]
 
 
 class CanvasPosition(PipelineModel):
+    """Where a card stands on the canvas, by its upper left corner."""
+
     x: float
     y: float
-    label: str | None = Field(default=None, max_length=120)
+    label: str | None = Field(
+        default=None, max_length=120, description="Title of the card, if it has one."
+    )
 
 
 class CanvasViewport(CanvasPosition):
     zoom: float = Field(default=1, gt=0, le=10)
 
 
+class SwitchedOffStep(PipelineModel):
+    """What a step was before it was switched off, to switch it on again as it was."""
+
+    component: str = Field(min_length=1, max_length=160)
+    contract_version: int = Field(default=1, ge=1)
+    params: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def bounded(self) -> "SwitchedOffStep":
+        if not fits_json_budget(self.params, MAX_PIPELINE_EXECUTION_BYTES):
+            raise ValueError("The settings of a switched-off step exceed 96 KiB")
+        return self
+
+
+class CanvasNote(PipelineModel):
+    """A note on the canvas: a few lines beside the steps they are about."""
+
+    id: str = Field(
+        min_length=1, max_length=64, description="Tells the notes of a design apart."
+    )
+    x: float
+    y: float
+    text: str = Field(min_length=1, max_length=2000, description="What the note says.")
+
+
 class PipelineLayout(PipelineModel):
+    """How a design is drawn; it has no effect on what the design computes."""
+
     schema_version: Literal[1] = 1
     version: int = Field(default=1, ge=1)
-    nodes: dict[str, CanvasPosition] = Field(default_factory=dict)
+    nodes: dict[str, CanvasPosition] = Field(
+        default_factory=dict, description="The place of each card, by the step's id."
+    )
     viewport: CanvasViewport | None = None
+    # A step that is switched off is a pass-through step in the definition, so
+    # the design runs exactly as it reads. Only the editor needs what it was.
+    switched_off: dict[str, SwitchedOffStep] = Field(
+        default_factory=dict,
+        max_length=64,
+        description=(
+            "Steps that are switched off, by id. In the definition such a step "
+            "passes its features through; this keeps what it was."
+        ),
+    )
+    notes: list[CanvasNote] = Field(
+        default_factory=list,
+        max_length=50,
+        description=(
+            "Notes on the canvas. They say why a design is built the way it is "
+            "and have no effect on what it computes."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def notes_are_told_apart(self) -> "PipelineLayout":
+        ids = [note.id for note in self.notes]
+        for note_id in ids:
+            if ids.count(note_id) > 1:
+                raise ValueError(f"Two notes have the id {note_id!r}")
+        return self
 
 
 class BoundInput(PipelineModel):
@@ -531,6 +622,62 @@ class PipelineCreate(PipelineModel):
     description: str = Field(default="", max_length=2000)
     definition: PipelineDefinition
     layout: PipelineLayout = Field(default_factory=PipelineLayout)
+
+
+DESIGN_FILE_FORMAT = "aberration-design"
+# Where the schema of a design file is published, with the documentation.
+DESIGN_FILE_SCHEMA = "https://docs.aberration.app/reference/design-file.schema.json"
+
+
+class PipelineDesignFile(PipelineModel):
+    """A monitoring design as a file.
+
+    The composer saves and opens this document, and other tools may write it.
+    It holds what a saved template holds: a name, a description, the steps and
+    connections, and where the cards stand.
+    """
+
+    schema_: str | None = Field(
+        default=None,
+        alias="$schema",
+        description="Where this schema is published, for editors that check the file.",
+    )
+    format: Literal["aberration-design"] = Field(
+        description="Marks the document as a monitoring design."
+    )
+    schema_version: Literal[1] = Field(
+        default=1, description="Version of this file format."
+    )
+    name: str = Field(
+        default="", max_length=120, description="Name of the design; may be empty."
+    )
+    description: str = Field(
+        default="", max_length=2000, description="When to use the design."
+    )
+    definition: PipelineDefinition = Field(
+        description=(
+            "The steps, their settings and the connections between them, as "
+            "schema 2. The component catalog lists the steps and their settings."
+        ),
+        json_schema_extra={
+            "properties": {"schema_version": {"const": 2}},
+            "required": ["schema_version"],
+        },
+    )
+    layout: PipelineLayout = Field(
+        default_factory=PipelineLayout,
+        description=(
+            "Where each card stands on the canvas and the title it carries. "
+            "Steps without a place are arranged when the file is opened."
+        ),
+    )
+
+    @field_validator("definition", mode="before")
+    @classmethod
+    def schema_2(cls, value: Any) -> Any:
+        if isinstance(value, dict) and value.get("schema_version") != 2:
+            raise ValueError('The design in a design file says "schema_version": 2')
+        return value
 
 
 class PipelineDraftSave(PipelineModel):

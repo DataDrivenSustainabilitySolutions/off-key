@@ -147,6 +147,17 @@ flow. **Save template** stores the current graph and layout under its own
 template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
+A design also travels as a file. **Download as a file** in the **Save
+template** dialog saves the graph and layout under the name and description
+entered there, as `<name>.design.json`, without saving a template. **Open a
+file…** under **Load template** opens such a file, and so does dropping it on
+the canvas. The opened design takes the place of the one on the canvas, and
+**Undo** brings that one back. A file that is not a design, or whose design
+cannot be read, is refused with the reason. The file holds no readings, so map
+them at the Input step as after loading a template. Its format is described
+under [Design file](../reference/design-file.md), for keeping designs under
+version control or writing them with other tools.
+
 Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
 Detection rule or Evidence output), its title and its underlying operation; a
@@ -209,6 +220,55 @@ stays listed and says why, for example **Holds a step this version does not
 offer.** **Manage templates** lists the blocks below the templates, where
 **Delete** removes one. A block is not edited: save the changed steps under
 another name and delete the old block.
+
+A click chooses one step and opens its settings. To choose several, hold Shift
+and click each step, or hold Shift and drag a box over them; Ctrl or Cmd with a
+click works as well, and Ctrl/Cmd+A chooses every step. No settings open for
+several steps: **Step settings** names them instead, and each name leads to
+that step. Chosen steps move together when one of them is dragged and are
+removed together by Delete. Ctrl/Cmd+C copies them with their settings, titles
+and the connections among them, Ctrl/Cmd+X cuts them, Ctrl/Cmd+V pastes them
+under the pointer, or in the middle of the view when the pointer is elsewhere,
+and Ctrl/Cmd+D duplicates them below the originals. Copies arrive chosen, on
+the first free rows, and are not connected to the rest of the design. They
+travel through the clipboard, so steps can be pasted into another design or
+another browser window, also from a running service into a new one. A design
+keeps one input, calibration step, detection rule and output and adds detectors
+from a detector's settings, so a paste leaves such a step out and says so.
+Right-click a step, or hold a finger on it, for the same commands with their
+keys; the menu of a step chosen with others answers for all of them, and
+right-clicking empty canvas offers **Paste** after a copy in the same window.
+Text fields keep these keys for their own text.
+
+A step that changes features can be switched off without removing it: choose
+**Switch off** in its menu, or press Ctrl/Cmd+B while it is chosen. The card
+stays in its place with its connections and reads **Switched off**. Features
+pass through it unchanged, so the design runs as if the step were not there,
+and the steps after it no longer receive a feature it added. Its settings are
+kept: **Switch on**, in the menu or in the step's settings, or Ctrl/Cmd+B
+again, brings the step back as it was. With several steps chosen, the key
+switches off those that are on, and switches them on once none of them is. The
+input, detectors, calibration, the detection rule, the output and steps that
+combine features cannot be switched off. A copy of a switched-off step is
+switched off as well.
+
+A note says why a design is built the way it is. Press **N** to start one
+where the pointer is, or choose **Add a note** in the menu of empty canvas.
+Enter starts a new line; Ctrl/Cmd+Enter or a click elsewhere keeps the note,
+and Escape gives it up. A note is as wide as a card and grows with its text.
+Drag it to move it, double-click it to change it, and remove it with Delete
+while it is in focus or from its menu. Notes belong to the design: they are
+saved with it and with a template, they travel in a design file, and
+**Arrange** keeps each beside the card it stood nearest to. They have no
+effect on what the design computes.
+
+The canvas has keys of its own while it is in focus: click it, or move into it
+with Tab. **A** opens the list of steps where the pointer is, and so does a
+double-click on empty canvas; type to search and press Enter to add the first
+match. **1** shows the whole graph, **0** returns to readable size, and **+**
+and **−** zoom. Zooming out stops at a quarter of full size, or further out
+where a large graph needs it to be seen whole. **?** or the keyboard button
+beside the zoom buttons lists every key and gesture.
 
 Every edit is checked shortly after it is made. The status chip beside the
 panel buttons shows the result: **Valid** with the time until the first alarm

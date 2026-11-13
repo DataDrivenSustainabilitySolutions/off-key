@@ -59,6 +59,8 @@
 .pl-template-dialog .pl-field { margin: 20px 0; }
 .pl-template-dialog .pl-field small { font-weight: 400; color: hsl(var(--muted-foreground)); }
 .pl-template-dialog-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); }
+.pl-library .pl-template-download { margin-right: auto; border: 0; padding-inline: 0; color: hsl(var(--muted-foreground)); }
+.pl-library .pl-template-download:hover { color: hsl(var(--foreground)); background: none; }
 .pl-template-popover h4 { font-size: var(--text-caption); margin: 24px 0 0; }
 .pl-template-popover .pl-starting-points button { gap: 8px; border-radius: 10px; padding: 18px; }
 .pl-template-popover .pl-starting-points span { line-height: 1.5; }

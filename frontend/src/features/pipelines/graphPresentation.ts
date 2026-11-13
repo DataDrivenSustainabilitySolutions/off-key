@@ -10,6 +10,8 @@ import {
   NODE_SIZE,
   nodePosition,
   outputKind,
+  shownComponent,
+  switchedOff,
 } from "./semantics";
 import { learningLabel } from "./learning";
 import { showIssues } from "./issues";
@@ -30,7 +32,10 @@ export function presentGraph(
     const component = componentFor(node, components);
     const input = inputKind(component);
     const output = outputKind(node, component);
-    const summary = nodeSummary(node, component, document.definition);
+    // A step that is switched off is drawn as what it was; its ports are those of the step that stands in.
+    const was = switchedOff(document.layout, node);
+    const standsFor = was ? shownComponent(node, components, document.layout) : component;
+    const summary = was ? { text: "Switched off", chips: undefined } : nodeSummary(node, component, document.definition);
     return {
       id: node.id,
       type: "component",
@@ -40,9 +45,10 @@ export function presentGraph(
       data: {
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,
-        family: familyLabel(stepFamily(node, component)),
-        learning: learningLabel(component),
-        operation: component?.label ?? node.component,
+        family: familyLabel(stepFamily(node, standsFor)),
+        learning: was ? undefined : learningLabel(component),
+        operation: standsFor?.label ?? was?.component ?? node.component,
+        off: !!was,
         available: !!component,
         inputPort: component ? !!input : node.kind !== "source",
         outputPort: component ? !!output : node.kind !== "output",

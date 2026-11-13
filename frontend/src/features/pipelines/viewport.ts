@@ -25,6 +25,31 @@ function visibleArea(surface: HTMLElement, covered?: CoveredEdges) {
   return { top, width: width - right, height: height - top - bottom, empty: !width || !height };
 }
 
+/** Room a graph fitted whole keeps to the edges of the canvas, in pixels. */
+export const FIT_ROOM = 48;
+
+/** Zooming out stops here, where cards can still be told apart. */
+const MIN_ZOOM = 0.25;
+
+/**
+ * How far the canvas zooms out: to a quarter of full size, or further where a large graph
+ * needs it to be seen whole. It is a little under the scale that fits and moves in steps
+ * of a hundredth, so dragging a card does not change it at every move.
+ */
+export function smallestZoom(
+  boxes: Array<{ x: number; y: number; width: number; height: number }>,
+  room?: { width: number; height: number },
+  covered?: CoveredEdges,
+) {
+  if (!room || !boxes.length) return MIN_ZOOM;
+  const across = Math.max(...boxes.map((box) => box.x + box.width)) - Math.min(...boxes.map((box) => box.x));
+  const down = Math.max(...boxes.map((box) => box.y + box.height)) - Math.min(...boxes.map((box) => box.y));
+  const width = room.width - (covered?.right ?? 0) - 2 * FIT_ROOM;
+  const height = room.height - (covered?.top ?? 0) - (covered?.bottom ?? 0) - 2 * FIT_ROOM;
+  const whole = Math.floor(90 * Math.min(width / across, height / down)) / 100;
+  return Math.max(0.01, Math.min(MIN_ZOOM, whole));
+}
+
 /** The smallest a fitted graph is shown: seeing a whole flow is worth a little type size, not more. */
 export const READABLE_ZOOM = 0.8;
 
@@ -63,17 +88,17 @@ export async function fitReadableView(
   });
 }
 
-/** Pan, without zooming, until a component is fully inside the visible canvas. */
+/** Pan, without zooming, until a component, or several taken together, is fully inside the visible canvas. */
 export async function revealNode(
   flow: ReactFlowInstance<CanvasNode>,
   surface: HTMLElement,
-  id: string,
+  id: string | string[],
   margin = VIEW_MARGIN,
   covered?: CoveredEdges,
 ) {
-  const node = flow.getNode(id);
-  if (!node) return;
-  const bounds = flow.getNodesBounds([node]);
+  const nodes = [id].flat().flatMap((item) => flow.getNode(item) ?? []);
+  if (!nodes.length) return;
+  const bounds = flow.getNodesBounds(nodes);
   const { x, y, zoom } = flow.getViewport();
   const area = visibleArea(surface, covered);
   if (area.empty) return;

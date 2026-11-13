@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { PipelineComponent } from "./contracts";
+import type { Shortcut } from "./shortcuts";
 import { familyLabel, STEP_FAMILIES } from "./steps";
 
 export type MenuItem = {
@@ -9,6 +10,8 @@ export type MenuItem = {
   /** What the entry does, in full. Shown below the list while the entry is in focus. */
   help?: string;
   icon?: LucideIcon;
+  /** The key that does the same without the menu. */
+  keys?: Shortcut;
   /** Why the entry cannot be chosen; it stays listed so the reason can be read. */
   blocked?: string;
   destructive?: boolean;

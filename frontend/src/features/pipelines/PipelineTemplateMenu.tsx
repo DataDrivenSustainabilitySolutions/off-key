@@ -10,12 +10,14 @@ import { arrangeGraph } from "./layout";
 import { PipelineDesignBrowser } from "./PipelineDesignBrowser";
 
 export function PipelineTemplateMenu({
-  catalog, disabled, onBuiltIn, onLoad, onManage, onLoading,
+  catalog, disabled, onBuiltIn, onLoad, onOpenFile, onManage, onLoading,
 }: {
   catalog: PipelineCatalog;
   disabled: boolean;
   onBuiltIn: (id: string) => void;
   onLoad: (document: GraphDocument, name: string, description: string) => void;
+  /** A design saved as a file, chosen from the device. */
+  onOpenFile: (file: File) => void;
   onManage: () => void;
   onLoading: (busy: boolean) => void;
 }) {
@@ -23,6 +25,7 @@ export function PipelineTemplateMenu({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef<AbortController | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   useEffect(() => () => pending.current?.abort(), []);
   const load = async (id: string) => {
     if (disabled || pending.current) return;
@@ -72,7 +75,19 @@ export function PipelineTemplateMenu({
       <PipelineDesignBrowser selecting disabled={busy} onSelect={(id) => void load(id)} />
       {busy && <p role="status">Loading template…</p>}
       {error && <p className="pl-error" role="alert">{error}</p>}
-      <button type="button" className="pl-manage-designs" disabled={busy} onClick={() => { setOpen(false); onManage(); }}>Manage templates</button>
+      <div className="pl-template-footer">
+        <button type="button" disabled={busy} onClick={() => { setOpen(false); onManage(); }}>Manage templates</button>
+        <button type="button" disabled={busy} onClick={() => fileInput.current?.click()}>Open a file…</button>
+        <input ref={fileInput} type="file" hidden accept=".json,application/json" aria-label="Design file"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // The same file can be chosen again after it was changed.
+            event.target.value = "";
+            if (!file) return;
+            setOpen(false);
+            onOpenFile(file);
+          }} />
+      </div>
     </Popover.Content></Popover.Portal>
   </Popover.Root>;
 }

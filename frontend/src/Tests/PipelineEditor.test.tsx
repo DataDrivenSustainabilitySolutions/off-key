@@ -457,6 +457,46 @@ describe("simple monitoring setup", () => {
     expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Room pipeline");
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
+  it("downloads the design as a file and opens a file in its place", async () => {
+    const blobs: Blob[] = [];
+    // jsdom has no object URLs and follows no download link.
+    Object.assign(URL, { createObjectURL: (blob: Blob) => { blobs.push(blob); return "blob:design"; }, revokeObjectURL: () => {} });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mount(); const dialog = await saveDialog();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Template name" }), { target: { value: "Room health" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download as a file" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(click).toHaveBeenCalledTimes(1);
+    const written = JSON.parse(await blobs[0]!.text());
+    expect(written).toMatchObject({ format: "aberration-design", schema_version: 1, name: "Room health", definition });
+    expect(pipelinesApi.save).not.toHaveBeenCalled();
+
+    const open = async (contents: string) => {
+      fireEvent.click(screen.getByRole("button", { name: "Load template" }));
+      fireEvent.change(await screen.findByLabelText("Design file"), { target: { files: [new File([contents], "shorter.design.json")] } });
+    };
+    // A design without its last step, as another tool might have written it.
+    const shorter = { ...written, definition: { ...written.definition,
+      nodes: written.definition.nodes.filter((node: { id: string }) => node.id !== "output"),
+      edges: written.definition.edges.filter((edge: { target: string }) => edge.target !== "output") } };
+    expect((screen.getByRole("button", { name: "Undo graph change" }) as HTMLButtonElement).disabled).toBe(true);
+    await open(JSON.stringify(shorter));
+    // The design on the canvas is checked as every change is; Undo brings the previous one back.
+    await waitFor(() => expect((screen.getByRole("button", { name: "Undo graph change" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect(vi.mocked(pipelinesApi.validate).mock.lastCall![0].nodes!.map((node) => node.id))
+      .toEqual(["input", "detector", "calibrate", "policy"]));
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await open("not a design");
+    expect((await screen.findByRole("alert")).textContent).toBe("This file is not a design: it does not hold JSON.");
+
+    // A file dropped on the canvas is opened the same way.
+    fireEvent.drop(screen.getByLabelText("Pipeline graph"), { dataTransfer: { getData: () => "",
+      files: [new File([JSON.stringify(written)], "room-health.design.json")] } });
+    await waitFor(() => expect(vi.mocked(pipelinesApi.validate).mock.lastCall![0].nodes).toHaveLength(5));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    click.mockRestore();
+  });
   it("preserves a concurrent template conflict and allows saving a separate copy", async () => {
     vi.mocked(pipelinesApi.save).mockRejectedValueOnce(new ApiRequestError("The template changed", 409));
     vi.mocked(pipelinesApi.create).mockResolvedValue({ ...pipeline(), id: "copy" });

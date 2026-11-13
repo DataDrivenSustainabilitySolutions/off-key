@@ -11,6 +11,8 @@ type CanvasData = {
   /** How a learned step learns: "Fitted once", "Learns continuously" or "Pretrained". */
   learning?: string;
   operation: string;
+  /** The step is switched off: its features pass through, and the card keeps what it was. */
+  off?: boolean;
   available: boolean;
   inputPort: boolean;
   outputPort: boolean;

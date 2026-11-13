@@ -40,6 +40,10 @@
   flex: 1;
   min-height: 480px;
 }
+/* The canvas takes focus when it is clicked, so its keys work; the cards show where focus is. */
+.pl-flow-surface:focus {
+  outline: none;
+}
 .pl-canvas-wrap .react-flow {
   min-height: 480px;
 }
@@ -105,7 +109,8 @@
   max-width: 16px;
   max-height: 16px;
 }
-.pl-canvas-wrap .react-flow__controls-button[aria-pressed] svg {
+/* React Flow's own icons are filled shapes; the others are drawn in lines. */
+.pl-canvas-wrap .react-flow__controls-button svg.lucide {
   fill: none;
 }
 .pl-canvas-wrap .react-flow__controls-button[aria-pressed="true"] {
@@ -113,6 +118,16 @@
   background: color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--card)));
 }
 
+/* The box that gathers steps is drawn in the ink of the page. Once it is let go the
+   chosen cards show the group themselves, and each stays within reach of the pointer. */
+.pl-canvas-wrap .react-flow__selection {
+  border: 1px dashed hsl(var(--foreground) / 0.55);
+  border-radius: 6px;
+  background: hsl(var(--foreground) / 0.04);
+}
+.pl-canvas-wrap .react-flow__nodesselection {
+  display: none;
+}
 .pl-canvas-wrap .react-flow__attribution {
   background: hsl(var(--card));
   color: hsl(var(--muted-foreground));

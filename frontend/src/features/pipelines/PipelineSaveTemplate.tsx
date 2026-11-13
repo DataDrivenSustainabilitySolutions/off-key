@@ -2,10 +2,12 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Save, X } from "lucide-react";
 
-export function PipelineSaveTemplate({ name, description, existing, disabled, saving, error, conflict, onSave }: {
+export function PipelineSaveTemplate({ name, description, existing, disabled, saving, error, conflict, onSave, onDownload }: {
   name: string; description: string; existing: boolean; disabled: boolean; saving: boolean;
   error?: string; conflict?: boolean;
   onSave: (details: { name: string; description: string; copy?: boolean }) => Promise<boolean>;
+  /** The design as a file on the device, under the name and description entered here. */
+  onDownload: (details: { name: string; description: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(name);
@@ -33,6 +35,8 @@ export function PipelineSaveTemplate({ name, description, existing, disabled, sa
           {saving && <p className="pl-help" role="status">Saving template… You can close this window and continue editing.</p>}
           {existing && <p className="pl-help">Update this template or save a separate copy. Running services keep their current configuration.</p>}
           <div className="pl-template-dialog-footer">
+            <button type="button" className="pl-template-download" onClick={() => { onDownload({ name: title.trim(), description: notes }); setOpen(false); }}>
+              Download as a file</button>
             <Dialog.Close type="button">{saving ? "Close" : "Cancel"}</Dialog.Close>
             {existing && <button type="button" disabled={saving || !title.trim()} onClick={() => void save(true)}>Save as new template</button>}
             <button type="submit" className="mn-primary" disabled={saving || !title.trim() || conflict}>

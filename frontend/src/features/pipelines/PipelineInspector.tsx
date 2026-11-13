@@ -30,7 +30,9 @@ import { PipelineFormula } from "./PipelineFormula";
 import { PipelineApart, PipelineScope } from "./PipelineScope";
 import { PipelineTime } from "./PipelineTime";
 import { apartField, combinedName, hasScope, isWarning } from "./scope";
-import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
+import { componentFor, dataKinds, inputKind, outputKind, shownComponent, switchedOff } from "./semantics";
+import { switchOn } from "./stepSwitch";
+import { Power } from "lucide-react";
 import { CONDITION_STEPS, FORMULA_STEPS, FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
 import type { HistoryMode } from "./types";
 
@@ -46,6 +48,8 @@ type Props = {
   document: GraphDocument;
   catalog: PipelineCatalog;
   selected?: string;
+  /** Every chosen step. Several have no settings in common, so they are named instead. */
+  selection?: string[];
   validation?: PipelineValidation;
   /** The latest report while an edit is being checked; its features stay listed meanwhile. */
   lastValidation?: PipelineValidation;
@@ -66,6 +70,7 @@ export function PipelineInspector({
   document,
   catalog,
   selected,
+  selection,
   validation,
   lastValidation,
   readOnly,
@@ -81,8 +86,13 @@ export function PipelineInspector({
   const [modelQuery, setModelQuery] = useState("");
   // What a change of model or method did besides the step itself, until the next change.
   const [notice, setNotice] = useState<{ node: string; component: string; text: string }>();
-  const node = document.definition.nodes.find((item) => item.id === selected);
+  const several = selection && selection.length > 1
+    ? document.definition.nodes.filter((item) => selection.includes(item.id)) : [];
+  const node = several.length ? undefined : document.definition.nodes.find((item) => item.id === selected);
   const component = componentFor(node, catalog.components);
+  // A step that is switched off shows what it was, and no settings until it is on again.
+  const was = switchedOff(document.layout, node);
+  const standsFor = was ? shownComponent(node, catalog.components, document.layout) : undefined;
   const incoming = selected ? incomingEdges(document.definition, selected) : [];
   // Feature lists keep the latest report while an edit is checked, so choices do not jump.
   const report = validation ?? lastValidation;
@@ -193,7 +203,7 @@ export function PipelineInspector({
       <input
         maxLength={120}
         value={document.layout.nodes[node.id]?.label ?? ""}
-        placeholder={component?.label ?? node.component}
+        placeholder={was ? standsFor?.label ?? was.component : component?.label ?? node.component}
         disabled={readOnly}
         onChange={(event) =>
           onChange(setNodeLabel(document, node.id, event.target.value), `title:${node.id}`)
@@ -246,10 +256,10 @@ export function PipelineInspector({
       <label className="pl-field pl-step-picker">
         <span className="ex-sr-only">Selected step</span>
         <select
-          value={selected ?? ""}
+          value={node ? selected : ""}
           onChange={(event) => onSelect(event.target.value || undefined)}
         >
-          <option value="">Choose a step</option>
+          <option value="">{several.length ? `${several.length} steps` : "Choose a step"}</option>
           {document.definition.nodes.map((item) => (
             <option key={item.id} value={item.id}>
               {optionLabel(item)}
@@ -257,11 +267,33 @@ export function PipelineInspector({
           ))}
         </select>
       </label>
-      {node && node.kind === "source" && inputContent ? (
+      {several.length ? (
+        <>
+          <ul className="pl-chosen-steps" aria-label="Chosen steps">
+            {several.map((item) => <li key={item.id}>
+              <button type="button" onClick={() => onSelect(item.id)}>{optionLabel(item)}</button>
+            </li>)}
+          </ul>
+          <p className="pl-help">{readOnly ? "They are copied together." : "They move, copy and delete together."} Choose one for its settings.</p>
+        </>
+      ) : node && node.kind === "source" && inputContent ? (
         <>
           <h3>Input</h3>
           {values?.(node.id)}
           {inputContent}
+          {titleField}
+          {lineage}
+          {nodeIssues}
+        </>
+      ) : node && was ? (
+        <>
+          {document.layout.nodes[node.id]?.label && <h3>{standsFor?.label ?? was.component}</h3>}
+          <p className="pl-help">
+            This step is switched off. Features pass through it unchanged, and its settings are kept.
+            {!standsFor && " This deployment no longer offers the step, so it cannot run when it is switched on."}
+          </p>
+          {!readOnly && <button type="button" onClick={() => onChange(switchOn(document, [node.id]))}>
+            <Power size={15} aria-hidden="true" />Switch on</button>}
           {titleField}
           {lineage}
           {nodeIssues}

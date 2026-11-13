@@ -19,6 +19,7 @@ import {
   NODE_SIZE,
   nodePosition,
   outputKind,
+  switchedOff,
 } from "./semantics";
 
 export { PIPELINE_LIMITS };
@@ -53,10 +54,12 @@ export function nodeLabel(
   layout?: PipelineLayout,
 ): string {
   if (!node) return "Missing component";
+  // A step that is switched off keeps the name of what it was.
+  const component = switchedOff(layout, node)?.component ?? node.component;
   return (
     layout?.nodes[node.id]?.label ||
-    components.find((item) => item.id === node.component)?.label ||
-    node.component
+    components.find((item) => item.id === component)?.label ||
+    component
   );
 }
 
@@ -111,8 +114,9 @@ export function addComponent(
 ): GraphDocument {
   if (addBlocker(document.definition, component)) return document;
   const id = nextNodeId(document.definition.nodes, component.id);
+  // A step that is switched off counts as what it was, so the next of its kind is numbered after it.
   const instance =
-    document.definition.nodes.filter((node) => node.component === component.id)
+    document.definition.nodes.filter((node) => (switchedOff(document.layout, node)?.component ?? node.component) === component.id)
       .length + 1;
   const params = exact && initial ? structuredClone(initial)
     : newParams(document.definition.nodes, component, initial && structuredClone(initial));
@@ -143,11 +147,11 @@ export function addComponent(
   };
 }
 
-const PLACEMENT_GAP = { x: 64, y: 32 };
-const snap = (value: number) => Math.round(value / GRID_STEP) * GRID_STEP;
+export const PLACEMENT_GAP = { x: 64, y: 32 };
+export const snap = (value: number) => Math.round(value / GRID_STEP) * GRID_STEP;
 
 /** Whether a card at x, y would touch any box, including half a placement gap around it. */
-const collides = (boxes: { x: number; y: number }[], x: number, y: number) =>
+export const collides = (boxes: { x: number; y: number }[], x: number, y: number) =>
   boxes.some(
     (box) =>
       box.x < x + NODE_SIZE.width + PLACEMENT_GAP.x / 2 &&
@@ -263,6 +267,9 @@ export function removeElements(
     layout: {
       ...document.layout,
       nodes: Object.fromEntries(Object.entries(document.layout.nodes).filter(([id]) => !nodes.has(id))),
+      ...(document.layout.switched_off ? {
+        switched_off: Object.fromEntries(Object.entries(document.layout.switched_off).filter(([id]) => !nodes.has(id))),
+      } : {}),
     },
   };
 }
@@ -279,27 +286,7 @@ export const disconnectNode = (document: GraphDocument, id: string): GraphDocume
 });
 
 /** The step most recently added to a document. */
-const lastNode = (document: GraphDocument) => document.definition.nodes[document.definition.nodes.length - 1]!.id;
-
-/** Copy a step with its settings below the original, unconnected. One-per-design steps
- * and detectors are not copied; undefined says it cannot be. */
-export function duplicateNode(
-  document: GraphDocument,
-  nodeId: string,
-  components: PipelineComponent[],
-): { document: GraphDocument; id: string } | undefined {
-  const index = document.definition.nodes.findIndex((node) => node.id === nodeId);
-  const node = document.definition.nodes[index];
-  const component = componentFor(node, components);
-  if (!node || !component || duplicateBlocker(document.definition, nodeId, components)) return;
-  const boxes = document.definition.nodes.map((item, position) => nodePosition(document.layout, item.id, position));
-  const from = boxes[index]!;
-  const position = { x: from.x, y: freeRow(boxes, from.x, snap(from.y + NODE_SIZE.height + PLACEMENT_GAP.y)) };
-  const added = addComponent(document, component, position, undefined, node.params);
-  const id = lastNode(added);
-  const label = document.layout.nodes[nodeId]?.label;
-  return { id, document: label ? setNodeLabel(added, id, `${label} copy`) : added };
-}
+export const lastNode = (document: GraphDocument) => document.definition.nodes[document.definition.nodes.length - 1]!.id;
 
 /** Why a step cannot be duplicated; undefined when it can. */
 export function duplicateBlocker(

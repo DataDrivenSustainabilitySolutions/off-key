@@ -30,7 +30,8 @@
   border-color: color-mix(in srgb, var(--pl-node-accent) 42%, hsl(var(--border)));
   box-shadow: var(--pl-card-shadow-hover);
 }
-.pl-canvas-wrap .pl-node.is-selected {
+/* A chosen card keeps its ring under the pointer, where it was just chosen. */
+.pl-canvas-wrap .react-flow__node .pl-node.is-selected {
   outline: none;
   border-color: var(--pl-node-accent);
   box-shadow:
@@ -46,6 +47,15 @@
     0 0 0 4px hsl(var(--ring)),
     var(--pl-card-shadow-hover);
 }
+/* A step that is switched off stands aside: flat, dashed and quiet, like the place a detector goes. */
+.pl-canvas-wrap .pl-node.is-off {
+  border: 1.5px dashed hsl(var(--muted-foreground) / 0.55);
+  background: hsl(var(--card));
+  box-shadow: none;
+}
+.pl-canvas-wrap .pl-node.is-off .pl-node-kind,
+.pl-canvas-wrap .pl-node.is-off .pl-node-title strong { color: hsl(var(--muted-foreground)); }
+.pl-canvas-wrap .pl-node.is-off .pl-node-kind::before { background: hsl(var(--muted-foreground) / 0.55); }
 /* The kind reads as a small coloured tag. */
 .pl-canvas-wrap .pl-node-kind {
   font-weight: 600;
@@ -238,6 +248,71 @@
 .pl-canvas-wrap .pl-detector-slot:is(:hover, :focus-visible) {
   border-color: hsl(var(--foreground));
   background: hsl(var(--card));
+}
+
+/* A note is text beside the steps it is about: as wide as a card, with no ports and no shadow. */
+.pl-canvas-wrap .pl-note {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background) / 0.92);
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: all;
+  user-select: none;
+  touch-action: none;
+}
+.pl-canvas-wrap .pl-note.is-movable { cursor: grab; }
+.pl-canvas-wrap .pl-note.is-movable:active { cursor: grabbing; }
+.pl-canvas-wrap .pl-note:is(:hover, :focus-visible) {
+  border-color: hsl(var(--muted-foreground) / 0.55);
+  color: hsl(var(--foreground));
+}
+.pl-canvas-wrap .pl-note:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+/* While it is written the note is a field that grows with its text. */
+.pl-canvas-wrap .pl-note.is-writing {
+  padding: 0;
+  border-color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  user-select: text;
+}
+.pl-note-grow { display: grid; }
+.pl-note-grow::after,
+.pl-note-grow > textarea {
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 56px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pl-note-grow::after {
+  content: attr(data-value) " ";
+  visibility: hidden;
+}
+.pl-note-grow > textarea {
+  resize: none;
+  overflow: hidden;
+  background: none;
+  color: inherit;
+  outline: none;
 }
 
 /* Open work in a step's settings: plain, because an unfinished design is no fault. */

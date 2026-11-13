@@ -169,6 +169,7 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
                   className={`pl-context-item${item.destructive ? " is-destructive" : ""}`}
                   aria-disabled={!!item.blocked || undefined} aria-haspopup={item.submenu ? "menu" : undefined}
                   aria-expanded={item.submenu ? !!opened : undefined} title={item.blocked}
+                  aria-keyshortcuts={item.keys?.aria}
                   aria-describedby={active && item.help ? helpId : undefined}
                   onPointerMove={() => {
                     window.clearTimeout(intent.current);
@@ -183,6 +184,7 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
                   <span className="pl-context-label">{item.label}
                     {item.blocked ? <small className="is-reason">{item.blocked}</small> : item.detail && !item.submenu && <small>{item.detail}</small>}</span>
                   {item.submenu && <><span className="pl-context-count">{item.detail}</span><ChevronRight size={14} aria-hidden="true" /></>}
+                  {item.keys && <kbd className="pl-context-keys" aria-hidden="true">{item.keys.label}</kbd>}
                 </div>
               </div>;
             })}

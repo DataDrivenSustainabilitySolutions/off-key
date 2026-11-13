@@ -20,7 +20,10 @@ import { usePlaceToasts } from "@/hooks/use-toast-position";
 
 export type InspectorPanel = "service" | "component" | "test" | null;
 type Props = Omit<ComponentProps<typeof PipelineCanvas>,
-  "components" | "issues" | "features" | "featuresStale" | "insets" | "blocks" | "onSaveBlock"> & {
+  "components" | "issues" | "features" | "featuresStale" | "insets" | "selection" | "onSelectionChange" | "onSelect"
+  | "blocks" | "onSaveBlock"> & {
+  /** Put a step in focus, or none. A quiet change leaves the panels as they are. */
+  onSelect: (id?: string, quiet?: boolean) => void;
   catalog: PipelineCatalog;
   /** Takes steps the Add step menu placed, such as a block's, so the editor records and shows them. */
   onPlace?: (placed: { document: GraphDocument; id: string }) => void;
@@ -174,7 +177,17 @@ export function PipelineWorkbench({
     setPanel(null);
     (panel === "service" ? serviceButton : panel === "test" ? testButton : componentButton).current?.focus();
   };
+  // Steps chosen together on the canvas. The group stands while the step in focus is one of
+  // them, so focusing another step from anywhere lets it go.
+  const [group, setGroup] = useState<string[]>([]);
+  const focus = props.selected;
+  const nodes = props.document.definition.nodes;
+  const selection = useMemo(() => {
+    const chosen = focus && group.includes(focus) ? group.filter((id) => nodes.some((node) => node.id === id)) : [];
+    return chosen.length > 1 ? chosen : focus ? [focus] : [];
+  }, [group, focus, nodes]);
   const select = (id?: string) => {
+    setGroup([]);
     if (id) setPanel("component");
     props.onSelect(id);
   };
@@ -182,6 +195,12 @@ export function PipelineWorkbench({
   const selectOnCanvas = (id?: string) => {
     if (!id && panel === "component") setPanel(null);
     select(id);
+  };
+  // Gathering steps opens no settings; the last one gathered comes into focus when the one that was has left.
+  const choose = (ids: string[]) => {
+    if (!ids.length) return selectOnCanvas();
+    setGroup(ids);
+    if (!focus || !ids.includes(focus)) props.onSelect(ids[ids.length - 1], true);
   };
   // The detectors to choose from, opened at the place the design keeps for one or at the
   // status that asks for one. The choice belongs to the design it was opened on.
@@ -331,14 +350,16 @@ export function PipelineWorkbench({
       stale={checking || failed} selected={props.selected} readOnly={props.readOnly} onSelect={select}
       onChange={(document) => props.onChange(document)} />
     : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
-      features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={selectOnCanvas} onAdd={add} insets={insets}
-      onConfigure={select} onChooseDetector={chooseDetector} blocks={library.blocks} onSaveBlock={props.readOnly ? undefined : library.save} />;
+      features={(validation ?? lastValidation)?.features} featuresStale={checking || failed}
+      selection={selection} onSelect={selectOnCanvas} onSelectionChange={choose} onAdd={add} insets={insets}
+      onConfigure={select} onChooseDetector={chooseDetector}
+      blocks={library.blocks} onSaveBlock={props.readOnly ? undefined : library.save} />;
   const settingsContent = panel && <div className="pl-settings-panel" id={panelId} ref={settingsPanel} onKeyDown={(event) => {
     if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
       event.stopPropagation(); close();
     }
   }}>
-    <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
+    <PipelineInspector document={props.document} catalog={catalog} selected={props.selected} selection={selection}
       validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
       onChange={props.onChange} input={input} forecast={forecast} values={stepValues}
       header={<div className="pl-inspector-heading">

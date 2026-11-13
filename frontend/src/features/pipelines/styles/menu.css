@@ -126,6 +126,14 @@
   font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
 }
+.pl-context-keys {
+  flex-shrink: 0;
+  margin-left: 12px;
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
 .pl-context-separator {
   height: 1px;
   margin: 5px 8px;

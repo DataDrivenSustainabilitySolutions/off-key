@@ -147,6 +147,94 @@ inspector instead of narrowing the graph. Cards use larger titles, stage colors
 and typed ports; descriptions appear in component settings. Opening and arranging
 retain readable text size, while Fit entire graph explicitly requests an overview.
 
+A screen holds one step in focus (`selected`), which its metadata requests and
+the inspector follow. The steps chosen together are view state of
+`PipelineWorkbench`: its group stands while the step in focus is one of its
+members, so focusing another step from anywhere lets it go, and removed steps
+drop out. The canvas reports a single choice through `onSelect`, which opens
+**Step settings**, and gathered steps through `onSelectionChange`; the workbench
+then moves the focus with `onSelect(id, true)`, a quiet change that leaves the
+panels alone. React Flow owns the gestures (Shift for the box and Shift, Ctrl or
+Cmd for a click, `SelectionMode.Partial`); the canvas applies its `select`
+changes, and tells a single choice from a gathered one by the modifier held at
+the pointer or key event and by a box being drawn. React Flow's rectangle around
+a finished box selection is hidden, so chosen cards stay within reach.
+
+`clipboard.ts` holds the commands as functions of a document. `copySteps()`
+returns a `StepFragment` (`format: "aberration-steps"`, `schema_version: 1`):
+each step's component, settings, title and place relative to the group's
+corner, and the connections among them by index, in input order. `pasteSteps()` places a
+fragment on the first free rows at a point, skips a step `addBlocker()` refuses
+with its reason, keeps a connection `connectionIssue()` allows, and marks a
+title the design already has as a copy; `duplicateSteps()` is a paste below
+the originals. `useStepShortcuts()` listens for the window's `copy`, `cut` and
+`paste` events, so the fragment travels as JSON text on the system clipboard
+between designs and windows, and for Ctrl/Cmd+D, Ctrl/Cmd+B and Ctrl/Cmd+A;
+fields, dialogs and menus keep their keys, and text marked on the page is
+copied as text. A menu
+has no clipboard event, so its Copy asks `navigator.clipboard` and its Paste
+uses the fragment `holdSteps()` kept in this window. `SHORTCUTS` names each key
+once for menus (`MenuItem.keys`, shown as a hint and announced with
+`aria-keyshortcuts`). Inserted, pasted and duplicated cards are revealed
+together once they have been measured.
+
+`shortcuts.ts` also lists every key and gesture (`SHORTCUT_SHEET`), which
+`PipelineShortcuts` shows from a button in the canvas controls and on **?**; a
+design that is only shown leaves out the rows marked `edits`. Keys without
+Ctrl, Cmd or Alt (**A**, **N**, **1**, **0**, **+**, **−**, **?**) are handled
+on the canvas element, so they act only while focus is inside it and never in
+a field, a menu or the rest of the page; a click on empty canvas moves focus
+to the canvas surface for that. A double-click on empty canvas opens the same
+list of steps as **A**, so React Flow's zoom on double-click is off.
+`smallestZoom()` gives the canvas its `minZoom`: a quarter of full size, or
+less where the whole graph needs it, so **Fit entire graph** always fits.
+
+A step is switched off in `stepSwitch.ts`. `switchOff()` replaces the step in
+the definition with `features.passthrough` under the same id, so its
+connections stay, and keeps what it was (`component`, `contract_version`,
+`params`) in `layout.switched_off[id]` (`SwitchedOffStep`). `switchOn()` puts
+it back, and the definition is then exactly what it was. The definition
+therefore always says what runs: the compiler, fingerprints, stored revisions
+and RADAR know nothing of switched-off steps, and a design with one is a design
+with a pass-through step. `switchedOff(layout, node)` in `semantics.ts` is the
+only reader of that memory. It answers only while the node is the pass-through
+step, so what a file says of another step is ignored, and `removeElements()` drops the memory with the step.
+`presentGraph()` draws the card as what it was (`data.off`), `nodeLabel()`
+names it so, and the settings panel offers **Switch on** in place of the
+fields. A copied step travels as what it was with `off: true`, and a design
+file carries `layout.switched_off`. Only a `transform` step other than the
+pass-through step can be switched off (`switchOffBlocker()`), because only such
+a step takes features and gives features.
+
+Notes are part of the layout (`layout.notes`, `CanvasNote`: an id, a place and
+a text of up to 2000 characters; a design holds up to 50). `notes.ts` has the
+operations as functions of a document, and `PipelineNotes` draws the notes in
+React Flow's `ViewportPortal`, as the place for a missing detector is drawn.
+A note is therefore no node: it takes no part in choosing, copying, routing or
+fitting, and the definition never changes with it. The component moves a note
+with pointer events divided by the zoom, and the canvas keeps the note being
+written in `noteWriting`; a new note joins the document only once it says
+something, so giving it up leaves no entry in the history. `arrangeGraph()`
+ends with `notesWithCards()`, which moves each note by as much as the card
+nearest to it moved.
+
+A design is also a file (`designFile.ts`), in the format `PipelineDesignFile`
+describes: `format: "aberration-design"`, `schema_version: 1`, a name, a
+description, the definition and the layout. The type generator writes the
+model's JSON Schema to `docs/reference/design-file.schema.json`, which the
+documentation publishes, and exports `DESIGN_FILE` with the format, its version
+and the schema's address, so `--check` catches a file format that drifted from
+the model. `writeDesign()` writes the cards of the design's own steps only.
+`openDesign()` checks the marker itself and sends the definition to
+`POST /pipelines/validate`: the server reads it as it reads one sent through
+the API, so a malformed one is refused with the issues FastAPI names, of which
+the first three are shown. A file holds the design as schema 2
+(`PipelineDesignFile.schema_2`), and `openDesign()` opens no other form. Positions
+are read leniently; a step may carry its title in its own `label`, and a file
+that does not place every step is arranged. The setup opens a file from **Load
+template** or from a drop on the canvas (`onOpenFile`), through the same
+`load()` a template takes, so it is one undoable change.
+
 Detectors are the one step kind a design may repeat outside the add-step menu.
 `addDetector()` copies the selected detector, model and settings, as
 `detector_N`, connects it to the same input and appends it to the calibration

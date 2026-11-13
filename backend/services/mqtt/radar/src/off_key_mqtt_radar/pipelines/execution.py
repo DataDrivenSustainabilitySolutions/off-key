@@ -17,30 +17,59 @@ class PipelineExecutionMixin:
     plan: ExecutionPlan
     diagnostics: PipelineDiagnostics
     prepare: PrepareStage | None
+    _shadow: bool
     _execution_failed: bool
+    _alarm_muted: bool
 
     def _init_pipeline_execution(self, config) -> None:
         self.plan = ExecutionPlan(config.pipeline)
         self.diagnostics = PipelineDiagnostics(config.pipeline)
+        self._shadow = config.shadow
         self._execution_failed = False
+        # The policy fired on the current observation and the alarm was kept from
+        # being raised, by a Mute alarms step or because the run is a shadow run.
+        self._alarm_muted = False
         stage = self.plan.stage
         self.prepare = PrepareStage(self.plan) if stage is not None else None
         if stage is not None:
             self.diagnostics.external = frozenset(stage.frontier)
 
-    def _prepared(self, bound: dict[str, float]) -> dict[str, float] | Withheld:
+    def _prepared(
+        self, bound: dict[str, float], timestamp: float | None = None
+    ) -> dict[str, float] | Withheld:
         """The learned stage's input, or why it gets none from this observation.
 
         It gets none while the Prepare stage warms up, and none when a Gate
         holds the observation back. A rejected observation raises
-        PrepareRejected and changes no state.
+        PrepareRejected and changes no state. timestamp is when the
+        observation was measured, for the steps that read time.
         """
+        self._alarm_muted = False
         if self.prepare is None:
             return bound
-        prepared = self.prepare.run(bound, self.diagnostics)
+        prepared = self.prepare.run(bound, self.diagnostics, timestamp)
         if isinstance(prepared, Withheld) and prepared.reason == "preparing":
             self.diagnostics.phase = "preparing"
         return prepared
+
+    @property
+    def _muting(self) -> bool:
+        """Whether an alarm is kept back on the current observation.
+
+        A shadow run keeps every alarm back. Any other run does while a Mute
+        alarms step's condition holds.
+        """
+        return self._shadow or (self.prepare is not None and self.prepare.muting)
+
+    def _raised(self, fired: bool) -> bool:
+        """Whether an alarm the policy fired is raised.
+
+        It is not in a shadow run, nor while a Mute alarms step's condition
+        holds. The policy has counted the observation as any other, and the
+        evidence keeps the alarm as muted.
+        """
+        self._alarm_muted = bool(fired) and self._muting
+        return bool(fired) and not self._alarm_muted
 
     def _skip(
         self,

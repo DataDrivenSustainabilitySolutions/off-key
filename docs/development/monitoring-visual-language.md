@@ -41,9 +41,13 @@ dropping on it replaces its connection, and its hover text names the connection
 it replaces. These hints use the same authoring guard as the inspector, including
 cycle and resource limits. Dots have a 28px interaction area around their 16px
 visible circle; a features output dot widens to hold its feature count, which
-recedes while an edit is checked again.
+recedes while an edit is checked again. A dot and a count are both drawn around
+the middle of their port, on the edge of the card at the height of the wire.
 Every connection uses the same
-solid line, width and arrow style; data kinds change only its color. Runtime state
+solid line, width and arrow style; data kinds change only its color. A wire
+leaves the middle of its output dot and is drawn up to the rim of the input dot
+(`PORT_RADIUS` in `routing.ts`), so its arrowhead points at the dot instead of
+lying under it; the route itself still ends at the port. Runtime state
 uses its own labeled badge, so an invalid draft, an initializing model and a
 failed execution do not become the same red node. Wires do not animate imaginary
 messages. A sampled badge cannot establish current liveness; snapshot age,

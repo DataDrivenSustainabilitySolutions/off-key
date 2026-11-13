@@ -63,11 +63,52 @@ describe("pipeline obstacle routing", () => {
     expectClear(route(boxes), boxes);
   });
 
+  it("steps between ports that sit less than a routing cell apart in height", () => {
+    // Dropped without snapping, a card rarely lands on its neighbour's exact height.
+    for (let offset = -12; offset <= 12; offset += 0.17) {
+      const boxes = [box("source", 0, 100), box("target", 359.933, 100 + offset)];
+      const result = route(boxes);
+      expect(result.blocked, `offset ${offset.toFixed(2)}`).toBe(false);
+      expectClear(result, boxes);
+    }
+  });
+
   it("identifies a blocked port instead of drawing through an overlapping box", () => {
     const result = route([box("source", 0, 0), box("target", 100, 0)]);
     expect(result.blocked).toBe(true);
     expect(result.points).toEqual([]);
     expect(result.path.match(/M /g)).toHaveLength(2);
+    // The stub towards the input stops at the rim of its dot as well.
+    expect(result.path.endsWith(`L 91,${NODE_SIZE.height / 2}`)).toBe(true);
+  });
+
+  /** Where the drawn wire ends: the last pair of numbers of its path. */
+  const drawnEnd = (path: string) => {
+    const [x, y] = path.trim().split(/[ ,]+/).slice(-2).map(Number);
+    return { x, y };
+  };
+
+  it("draws a wire up to the rim of the dot it enters, so its arrowhead shows", () => {
+    const middle = NODE_SIZE.height / 2;
+    // The route still reaches the port; only what is drawn stops short of the dot's middle.
+    const direct = route([box("source", 0, 0), box("target", 320, 0)]);
+    expect(direct.points[direct.points.length - 1]).toEqual({ x: 320, y: middle });
+    expect(direct.path).toBe(`M 224,${middle} L 311,${middle} `);
+    // A wire that bends on its way ends the same way.
+    const boxes = [box("source", 0, 0), box("target", 640, 320)];
+    const bent = route(boxes);
+    expectClear(bent, boxes);
+    expect(bent.points.length).toBeGreaterThan(2);
+    expect(drawnEnd(bent.path)).toEqual({ x: 631, y: 320 + middle });
+  });
+
+  it("draws a last stretch too short for an arrowhead to the middle of the dot", () => {
+    const middle = NODE_SIZE.height / 2;
+    for (const [gap, end] of [[22, 246], [23, 238], [64, 279]] as const) {
+      const direct = route([box("source", 0, 0), box("target", NODE_SIZE.width + gap, 0)]);
+      expect(direct.blocked, `gap ${gap}`).toBe(false);
+      expect(drawnEnd(direct.path), `gap ${gap}`).toEqual({ x: end, y: middle });
+    }
   });
 
   it("routes 128 connections across a 64-box scene", () => {

@@ -28,12 +28,14 @@ export function serviceState(service: ActiveService): ServiceState {
   if (service.operational_status.activity?.persistence_stalled) return { label: "Persistence delayed", tone: "warning", category: "attention" };
   if (service.operational_status.coverage?.has_gaps) return { label: "Coverage gap", tone: "warning", category: "attention" };
   if (stage === "degraded") return { label: "Degraded", tone: "warning", category: "attention" };
-  if (stage === "operational") return { label: "Active", tone: "positive", category: "monitoring" };
+  // A shadow service records the alarms it would raise and raises none, so it does not read as watching.
+  if (stage === "operational") return service.shadow ? { label: "Shadow", tone: "neutral", category: "monitoring" }
+    : { label: "Active", tone: "positive", category: "monitoring" };
   const labels: Partial<Record<typeof stage, string>> = {
     starting: "Starting", waiting_for_data: "Waiting for data", collecting_training: "Learning",
     collecting_calibration: "Calibrating", training: "Training",
   };
-  return { label: labels[stage] ?? "Starting", tone: "neutral", category: "preparing" };
+  return { label: `${labels[stage] ?? "Starting"}${service.shadow ? " · shadow" : ""}`, tone: "neutral", category: "preparing" };
 }
 
 export function strategyName(service: Pick<ActiveService, "monitoring_strategy">): string {

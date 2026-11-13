@@ -8,7 +8,7 @@ import {
 import { rejectionSummary } from "@/features/pipelines/diagnostics";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix, stepScope } from "@/features/pipelines/scope";
-import { STEP_FAMILIES, stepDescription, stepFamily, stepFields } from "@/features/pipelines/steps";
+import { STEP_FAMILIES, stepFamily, stepFields } from "@/features/pipelines/steps";
 import { changeDetector } from "@/features/pipelines/learning";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
@@ -22,7 +22,7 @@ const amount = (name: string, value: number, type: "integer" | "number" = "numbe
 /** The catalog's Prepare steps, as core describes them. */
 function prepare(id: string, fields: Field[], result = "replace"): PipelineComponent {
   return {
-    id, kind: "transform", label: id, description: "", input_type: "features", output_type: "features",
+    id, kind: "transform", group: "prepare", label: id, description: "", input_type: "features", output_type: "features",
     fields: [
       { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
       option("result", result, ["replace", "add"]),
@@ -42,7 +42,10 @@ const rolling = prepare("prepare.rolling", [
   option("statistic", "mean", ["mean", "median", "min", "max", "std", "range"]), amount("window_size", 60, "integer"),
 ], "add");
 const math = prepare("prepare.math", [
-  option("function", "log", ["log", "log1p", "sqrt", "abs", "square", "linear"]), amount("scale", 1), amount("offset", 0),
+  option("function", "log", ["log", "log1p", "sqrt", "abs", "square", "linear"]),
+  // The catalog says which settings depend on another.
+  ...[amount("scale", 1), amount("offset", 0)].map((field): Field =>
+    ({ ...field, shown_when: { field: "function", equals: ["linear"] } })),
 ]);
 const range = prepare("prepare.range", [
   amount("low", 0, "number", true), amount("high", 1, "number", true), option("action", "clip", ["clip", "skip"]),
@@ -58,12 +61,9 @@ const summary = (component: PipelineComponent, params?: PipelineNode["params"]) 
   nodeSummary(node(component, params), component, definition);
 
 describe("Prepare steps in the composer", () => {
-  it("lead the add-step menu, each with one line of what it does", () => {
+  it("lead the add-step menu", () => {
     expect(STEP_FAMILIES[0]).toEqual({ id: "prepare", label: "Prepare" });
-    for (const component of STEPS) {
-      expect(stepFamily("transform", component.id)).toBe("prepare");
-      expect(stepDescription(component)).not.toBe("");
-    }
+    for (const component of STEPS) expect(stepFamily(node(component), component)).toBe("prepare");
   });
 
   it("name added features after their settings, as the compiler does", () => {
@@ -120,7 +120,8 @@ describe("Prepare steps in the composer", () => {
 
   it("stay as they are when the detector after them learns differently", () => {
     const detector = (id: string, learning: PipelineComponent["learning"]): PipelineComponent => ({
-      id, kind: "detector", label: id, description: "", learning, fields: [], input_type: "features", output_type: "scores",
+      id, kind: "detector", group: "detector", label: id, description: "", learning, fields: [],
+      input_type: "features", output_type: "scores",
     });
     const fitted = detector("detector:fitted", "batch");
     const definition = normalizeDefinition({

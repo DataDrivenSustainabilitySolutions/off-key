@@ -51,6 +51,47 @@ def wait_for_measurement(client, entity, value):
     pytest.fail(f"Measurement {value} did not reach persistent storage")
 
 
+# What a detector setting means to a saved monitor. Its label, help and where an
+# editor shows it are presentation, and an older binary may word them otherwise.
+# A listing may leave out a key at its empty value; it reads as that value.
+SETTING_CONTRACT = {
+    "name": None,
+    "type": None,
+    "default": None,
+    "required": False,
+    "has_default": False,
+    "minimum": None,
+    "maximum": None,
+    "exclusive_minimum": None,
+    "exclusive_maximum": None,
+    "options": None,
+    "nullable": False,
+    "discriminator": None,
+}
+
+
+def setting_contract(fields):
+    """Detector settings without their presentation, for comparing releases."""
+    return [
+        {
+            **{key: field.get(key, empty) for key, empty in SETTING_CONTRACT.items()},
+            "fields": setting_contract(field.get("fields") or []),
+            "variants": {
+                choice: setting_contract(variant)
+                for choice, variant in (field.get("variants") or {}).items()
+            },
+        }
+        for field in fields
+    ]
+
+
+def detector_settings(client):
+    return {
+        name: setting_contract(model["fields"])
+        for name, model in get_json(client, "/v1/detectors").items()
+    }
+
+
 def get_json(client, path, **kwargs):
     response = client.get(path, **kwargs)
     response.raise_for_status()
@@ -407,10 +448,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
     ):
         refresh_authentication(client)
         member = get_json(client, "/v1/me")
-        discovery_fields = {
-            name: model["fields"]
-            for name, model in get_json(client, "/v1/detectors").items()
-        }
+        discovery_fields = detector_settings(client)
         assert all(discovery_fields.values())
         entity = add_recorded_entity(
             client, label="Rehearsal entity", keys=("temperature",)
@@ -493,10 +531,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 subprocess.run(command, cwd=root, check=True, timeout=1200)
                 refresh_authentication(client)
                 assert get_json(client, "/v1/me") == member
-                assert {
-                    name: model["fields"]
-                    for name, model in get_json(client, "/v1/detectors").items()
-                } == discovery_fields
+                assert detector_settings(client) == discovery_fields
                 current = client.get("/v1/catalogue").json()
                 assert current["revision"] == snapshot["revision"]
                 assert current["document"] == snapshot["document"]

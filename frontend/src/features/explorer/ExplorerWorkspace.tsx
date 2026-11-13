@@ -13,8 +13,12 @@ import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SourceScope } from "../workspace/SourceScope";
 import { CopyToDojo } from "../dojo/CopyToDojo";
+import { useDesignTest } from "../dojo/designTest";
+import { DesignTestContext } from "../pipelines/designTest";
+import { useOpenProposals } from "../pipelines/proposals";
 import { catalogueSelectionLabel, withCatalogueSource } from "../workspace/catalogue-navigation";
 import "../monitoring/monitoring.css";
+import { setSourceAppearance } from "@/domain/system/sourceAppearance";
 
 const Preview = lazy(() => import("../readings/ExplorerPreview"));
 const ServiceDetail = lazy(() => import("../monitoring/MonitoringServiceDetail"));
@@ -25,6 +29,7 @@ const RetainedPipeline = lazy(() => import("../pipelines/PipelineRunView"));
 export function ExplorerWorkspace() {
   const { userId, isAuthenticated, can } = useAuth();
   const manageMonitors = can("manage_monitors");
+  const designTest = useDesignTest();
   const [params, setParams] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
     favourites: starred, toggleFavourite, openEditor, sectionHref } = useCatalogue();
@@ -34,7 +39,10 @@ export function ExplorerWorkspace() {
   const initialTarget = params.get("target") ?? (requestedStream && readingTargetId(requestedStream));
   const creating = params.get("create") === "monitoring";
   const monitoring = useMonitoringServices(isAuthenticated, requestedService ? 5_000 : 20_000, requestedService ?? params.get("replace") ?? undefined);
-  const pipelineView = !!params.get("pipeline") || params.get("view") === "pipelines" || creating && monitoring.authoringEnabled;
+  const pipelineView = !!params.get("pipeline") || ["pipelines", "proposals"].includes(params.get("view") ?? "") || params.has("proposal")
+    || creating && monitoring.authoringEnabled;
+  // Counted where the button shows, so the number is fresh on the way back from a decision.
+  const openProposals = useOpenProposals(isAuthenticated && !creating && !pipelineView);
   const loadingCreation = creating && !params.get("pipeline") && params.get("view") !== "pipelines" && isAuthenticated
     && (!monitoring.ready || !system.document || system.status === "loading");
   const creationError = monitoring.error || system.error;
@@ -60,7 +68,8 @@ export function ExplorerWorkspace() {
   else if (selectionMissing && !pipelineView) title = "Source not found";
   else if (pipelineView) {
     title = params.get("pipeline") ? (params.has("activation") ? "Starting service" : "Template")
-      : params.get("view") === "pipelines" ? "Templates" : params.has("replace") ? "Update service" : "New service";
+      : params.get("view") === "pipelines" ? "Templates" : params.get("view") === "proposals" ? "Proposals"
+        : params.has("replace") ? "Update service" : "New service";
   } else if (creating) title = "New service";
   else if (selectedService) title = serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? []);
   else if (requestedService) title = params.get("tab") === "pipeline" ? "Retained pipeline"
@@ -89,9 +98,10 @@ export function ExplorerWorkspace() {
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p>;
     if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Device not found." : "Source not found."}</p>;
-    if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
-      initialTarget={initialTarget} initialReading={requestedReading}
-      onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>;
+    if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}>
+      <DesignTestContext.Provider value={designTest}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
+        initialTarget={initialTarget} initialReading={requestedReading}
+        onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></DesignTestContext.Provider></Suspense>;
     if (creating) return <Suspense fallback={<p className="ex-muted" role="status">Opening setup…</p>}>
       {manageMonitors ? <ServiceCreate key={`${initialTarget ?? ""}:${requestedReading ?? ""}`}
         targets={monitoringIndex.targets} services={monitoring.services}
@@ -117,6 +127,7 @@ export function ExplorerWorkspace() {
       {preview && <Suspense fallback={<p className="ex-muted" role="status">Opening preview…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
         index={index} document={document} telemetry={telemetry} historyCache={history} canEdit={system.canEdit} saving={system.saving}
         error={system.error} onRename={rename} onEdit={openEditor}
+        onAppearanceChange={appearance => system.save(setSourceAppearance(document, selected, appearance), system.revision ?? 0)}
         runtime={system.snapshot?.runtime} collapseDefinition favourite={starred.some(item => item.kind === "reading" && item.id === selected.objectId)}
         onFavourite={id => toggleFavourite("reading", id)}
         actions={<CopyToDojo compact scope={selectedLabel ?? selected.label} readings={previewReadings} />}
@@ -143,6 +154,9 @@ export function ExplorerWorkspace() {
           {preview && selected.entityKind !== "stream" && <button className="ex-collection-action" onClick={closeView}><Info size={15} aria-hidden="true" />Hide source details</button>}
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         </>}
+        {openProposals > 0 && <button className="ex-collection-action" onClick={() => changeView({ view: "proposals" })}>
+          Proposals <span className="mn-filter-count">{openProposals}</span>
+        </button>}
         {manageMonitors && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>
           <Plus size={15} />Create
         </button>}

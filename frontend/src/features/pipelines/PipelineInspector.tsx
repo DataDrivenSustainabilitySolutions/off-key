@@ -15,21 +15,26 @@ import {
   removeNode,
   replaceComponent,
   setNodeLabel,
+  stepTitle,
   setNodeParams,
   type GraphDocument,
 } from "./model";
 import { afterGate, featureBlocker, rangeText, readyText } from "./features";
+import { showIssues } from "./issues";
 import {
   calibrationFamily, changeCalibration, changeDetector, changeNotice, coverage, FIXED_SPLIT, fittingPolicy,
-  learningLabel, type Learning,
+  learningLabel, type Learning, UNTRAINED,
 } from "./learning";
 import { usesForecastService, type ForecastModels } from "./forecastModels";
 import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
-import { PipelineScope } from "./PipelineScope";
-import { combinedName, hasScope, isWarning } from "./scope";
-import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
-import { FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
+import { PipelineApart, PipelineScope } from "./PipelineScope";
+import { PipelineTime } from "./PipelineTime";
+import { apartField, combinedName, hasScope, isWarning } from "./scope";
+import { componentFor, dataKinds, inputKind, outputKind, shownComponent, switchedOff } from "./semantics";
+import { switchOn } from "./stepSwitch";
+import { Power } from "lucide-react";
+import { CONDITION_STEPS, FORMULA_STEPS, FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
 import type { HistoryMode } from "./types";
 
 /** Detector models by how they learn, in the order the picker lists them. */
@@ -37,13 +42,15 @@ const LEARNING_GROUPS: { mode: Learning; label: string }[] = [
   { mode: "online", label: "Learns continuously" },
   { mode: "batch", label: "Fitted once" },
   { mode: "pretrained", label: "Pretrained" },
-  { mode: "none", label: "Other" },
+  { mode: "none", label: UNTRAINED },
 ];
 
 type Props = {
   document: GraphDocument;
   catalog: PipelineCatalog;
   selected?: string;
+  /** Every chosen step. Several have no settings in common, so they are named instead. */
+  selection?: string[];
   validation?: PipelineValidation;
   /** The latest report while an edit is being checked; its features stay listed meanwhile. */
   lastValidation?: PipelineValidation;
@@ -54,6 +61,8 @@ type Props = {
   input?: ReactNode;
   /** What the forecast service holds, for the steps whose model lives there. */
   forecast?: ForecastModels;
+  /** Shown under what a step does and above its settings, for example the values it had in a test. */
+  values?: (node: string) => ReactNode;
   onSelect: (id?: string) => void;
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
 };
@@ -62,6 +71,7 @@ export function PipelineInspector({
   document,
   catalog,
   selected,
+  selection,
   validation,
   lastValidation,
   readOnly,
@@ -69,6 +79,7 @@ export function PipelineInspector({
   content,
   input: inputContent,
   forecast,
+  values,
   onSelect,
   onChange,
 }: Props) {
@@ -76,8 +87,13 @@ export function PipelineInspector({
   const [modelQuery, setModelQuery] = useState("");
   // What a change of model or method did besides the step itself, until the next change.
   const [notice, setNotice] = useState<{ node: string; component: string; text: string }>();
-  const node = document.definition.nodes.find((item) => item.id === selected);
+  const several = selection && selection.length > 1
+    ? document.definition.nodes.filter((item) => selection.includes(item.id)) : [];
+  const node = several.length ? undefined : document.definition.nodes.find((item) => item.id === selected);
   const component = componentFor(node, catalog.components);
+  // A step that is switched off shows what it was, and no settings until it is on again.
+  const was = switchedOff(document.layout, node);
+  const standsFor = was ? shownComponent(node, catalog.components, document.layout) : undefined;
   const incoming = selected ? incomingEdges(document.definition, selected) : [];
   // Feature lists keep the latest report while an edit is checked, so choices do not jump.
   const report = validation ?? lastValidation;
@@ -173,7 +189,7 @@ export function PipelineInspector({
               ) : report.provenance_complete === false ? (
                 "Source provenance omitted"
               ) : (
-                "Source provenance unavailable"
+                "From no reading"
               )}
               {range && ` · ${range}`}
             </small>
@@ -187,8 +203,8 @@ export function PipelineInspector({
       <span>Step title</span>
       <input
         maxLength={120}
-        value={document.layout.nodes[node.id]?.label ?? ""}
-        placeholder={component?.label ?? node.component}
+        value={stepTitle(node)}
+        placeholder={was ? standsFor?.label ?? was.component : component?.label ?? node.component}
         disabled={readOnly}
         onChange={(event) =>
           onChange(setNodeLabel(document, node.id, event.target.value), `title:${node.id}`)
@@ -196,13 +212,16 @@ export function PipelineInspector({
       />
     </label>
   );
-  // Errors on a setting appear beside it; warnings never block and are listed here.
-  const nodeIssues = node && validation?.issues
+  // Errors on a setting appear beside it; warnings never block and are listed here, as is
+  // what the step still needs before the design is complete.
+  const nodeIssues = node && showIssues(document, catalog.components, validation?.issues
     .filter((issue) => issue.node_id === node.id
-      && (isWarning(issue) || !hasParameterControl(component?.fields ?? [], issue.parameter_path)))
-    .map((issue, index) => isWarning(issue)
+      && (isWarning(issue) || !hasParameterControl(component?.fields ?? [], issue.parameter_path))))
+    .filter((issue) => issue.node_id === node.id)
+    .map((issue, index) => issue.tone === "warning"
       ? <p key={index} className="pl-warning" role="status">{issue.message}</p>
-      : <p key={index} className="pl-error" role="alert">{issue.message}</p>);
+      : issue.tone === "open" ? <p key={index} className="pl-open" role="status">{issue.message}</p>
+        : <p key={index} className="pl-error" role="alert">{issue.message}</p>);
   const fieldIssues = (validation?.issues ?? [])
     .filter((issue) => node && issue.node_id === node.id && issue.parameter_path != null && !isWarning(issue))
     .map((issue) => ({ path: issue.parameter_path!, message: issue.message, fix: issue.fix }));
@@ -210,6 +229,8 @@ export function PipelineInspector({
   const ready = node && report?.ready_after?.[node.id];
   const computed = node && report?.features[node.id]?.find((feature) => feature.name === combinedName(node, component));
   const scoped = hasScope(component);
+  // The feature a Rolling relation compares with or an Expected value expects.
+  const apart = node && apartField(node.component);
   const changeParams = (params: PipelineNode["params"], changed: string) => {
     if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
   };
@@ -233,13 +254,13 @@ export function PipelineInspector({
     <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
       {header}
       {content ?? <>
-      <label className="pl-field">
-        <span>Selected step</span>
+      <label className="pl-field pl-step-picker">
+        <span className="ex-sr-only">Selected step</span>
         <select
-          value={selected ?? ""}
+          value={node ? selected : ""}
           onChange={(event) => onSelect(event.target.value || undefined)}
         >
-          <option value="">Choose a step</option>
+          <option value="">{several.length ? `${several.length} steps` : "Choose a step"}</option>
           {document.definition.nodes.map((item) => (
             <option key={item.id} value={item.id}>
               {optionLabel(item)}
@@ -247,19 +268,48 @@ export function PipelineInspector({
           ))}
         </select>
       </label>
-      {node && node.kind === "source" && inputContent ? (
+      {several.length ? (
+        <>
+          <ul className="pl-chosen-steps" aria-label="Chosen steps">
+            {several.map((item) => <li key={item.id}>
+              <button type="button" onClick={() => onSelect(item.id)}>{optionLabel(item)}</button>
+            </li>)}
+          </ul>
+          <p className="pl-help">{readOnly ? "They are copied together." : "They move, copy and delete together."} Choose one for its settings.</p>
+        </>
+      ) : node && node.kind === "source" && inputContent ? (
         <>
           <h3>Input</h3>
+          {values?.(node.id)}
           {inputContent}
+          {titleField}
+          {lineage}
+          {nodeIssues}
+        </>
+      ) : node && was ? (
+        <>
+          {stepTitle(node) && <h3>{standsFor?.label ?? was.component}</h3>}
+          <p className="pl-help">
+            This step is switched off. Features pass through it unchanged, and its settings are kept.
+            {!standsFor && " This deployment no longer offers the step, so it cannot run when it is switched on."}
+          </p>
+          {!readOnly && <button type="button" onClick={() => onChange(switchOn(document, [node.id]))}>
+            <Power size={15} aria-hidden="true" />Switch on</button>}
           {titleField}
           {lineage}
           {nodeIssues}
         </>
       ) : node ? (
         <>
-          <h3>{component?.label ?? node.component}</h3>
+          {/* The step picker above names the step; its kind is named again only under a title of its own. */}
+          {!["detector", "calibration", "policy"].includes(node.kind) && stepTitle(node)
+            && <h3>{component?.label ?? node.component}</h3>}
           {component?.description && (
             <p className="pl-help">{component.description}</p>
+          )}
+          {/* A calibration method's formula waits with its reference, below what it promises. */}
+          {component?.details && node.kind !== "calibration" && (
+            <p className="pl-help">{component.details}</p>
           )}
           {component && (
             <p className="pl-help pl-inspector-signature">
@@ -268,6 +318,7 @@ export function PipelineInspector({
             </p>
           )}
           {ready ? <p className="pl-help pl-ready">{readyText(ready, afterGate(document.definition, node.id))}</p> : null}
+          {values?.(node.id)}
           {node.kind === "detector" && (() => {
             const query = modelQuery.trim().toLocaleLowerCase();
             const models = catalog.components
@@ -275,7 +326,7 @@ export function PipelineInspector({
                 (item) =>
                   item.kind === "detector" &&
                   (item.id === node.component ||
-                    `${item.label} ${item.description} ${learningLabel(item) ?? ""}`.toLocaleLowerCase().includes(query)),
+                    `${item.label} ${item.description} ${item.library ?? ""} ${learningLabel(item) ?? ""}`.toLocaleLowerCase().includes(query)),
               )
               .sort((left, right) => left.label.localeCompare(right.label));
             return (
@@ -316,10 +367,8 @@ export function PipelineInspector({
                   {query && models.length <= 1
                     ? "No other model matches this filter. "
                     : ""}
-                  {learningLabel(component) ? `${learningLabel(component)}. ` : ""}
-                  Changing the model resets its parameters to catalog defaults.
-                  Connections are retained. A model that learns differently takes
-                  the learned steps before it and the detection rule along.
+                  {[component?.library, learningLabel(component)].filter(Boolean).map((fact) => `${fact}. `).join("")}
+                  Changing the model resets its settings and keeps its connections.
                 </small>
                 {swapNotice}
               </div>
@@ -350,7 +399,11 @@ export function PipelineInspector({
                 {promise && <small className={`pl-help pl-coverage is-${component!.coverage}`}>
                   <strong>{promise.label}.</strong> {promise.help}
                 </small>}
-                {component?.reference && <small className="pl-help">{component.reference}</small>}
+                {(component?.details || component?.reference) && <details className="pl-method-details">
+                  <summary>Details</summary>
+                  {component.details && <p className="pl-help">{component.details}</p>}
+                  {component.reference && <p className="pl-help">{component.reference}</p>}
+                </details>}
                 <small className="pl-help">
                   {node.component === FIXED_SPLIT
                     ? "The calibration window stays as it is. Methods that adapt keep moving their boundary and alarm by the exceedance rule."
@@ -405,7 +458,7 @@ export function PipelineInspector({
                   Add another detector
                 </button>
                 <small className="pl-help">
-                  {blocked ?? "Adds a detector like this one that reads the same features. The calibration step combines them; change its model or input afterwards."}
+                  {blocked ?? "Adds a detector like this one on the same features. The calibration step combines them."}
                 </small>
               </div>
             );
@@ -433,17 +486,28 @@ export function PipelineInspector({
             </div>
           )}
           {titleField}
-          {component && scoped && (
-            <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
+          {component && apart && (
+            <PipelineApart field={apart} node={node} features={features} featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
-          {component && ["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set"].includes(node.component) && (
+          {component && node.component === "prepare.time" && (
+            <PipelineTime node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && scoped && (
+            // The feature a step sets apart is never among the ones it uses.
+            <PipelineScope node={node} component={component}
+              features={features.filter((feature) => !apart || feature !== node.params[apart])}
+              featureLabels={featureLabels}
+              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && FORMULA_STEPS.has(node.component) && (
             <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
               readings={readings} featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
               range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />
           )}
           {component && (
             <ParameterFields
+              key={`${node.id}:${node.component}`}
               fields={stepFields(node, component)}
               issues={fieldIssues}
               values={node.params}
@@ -457,6 +521,10 @@ export function PipelineInspector({
                 .sort()
                 .join(","))}
             />
+          )}
+          {component && CONDITION_STEPS.has(node.component) && (
+            <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
+              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && forecast && usesForecastService(node.component) && (
             <PipelineForecastModels node={node} component={component} forecast={forecast} />

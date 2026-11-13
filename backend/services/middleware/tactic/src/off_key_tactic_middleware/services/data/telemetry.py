@@ -1,9 +1,16 @@
 """Use cases for telemetry data queries."""
 
+import math
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from off_key_core.config.logs import logger
+from off_key_core.models.reading_profile import (
+    RECENT_VALUES,
+    bucket_width,
+    profile_reading,
+)
+from off_key_core.schemas.devices import MeasurementHistory, ReadingProfile
 
 from ...domain import ValidationError
 from ...repositories import TelemetryRepository
@@ -78,7 +85,9 @@ class TelemetryQueryService:
         start: datetime | None,
         end: datetime | None,
         buckets: int,
-    ) -> list[dict[str, Any]]:
+        view: Literal["auto", "raw"] | None = None,
+        window_ms: int | None = None,
+    ) -> list[dict[str, Any]] | MeasurementHistory:
         """Return a downsampled view of stored history; no start means all of it."""
         end = end or datetime.now(UTC)
         if start is not None and start >= end:
@@ -89,9 +98,21 @@ class TelemetryQueryService:
             )
             # A stored series that begins after the requested end has nothing to show.
             if start is None or start > end:
-                return []
+                return (
+                    MeasurementHistory(representation="raw", points=[]) if view else []
+                )
             if start == end:
                 start = end - timedelta(seconds=1)
+        if view is not None:
+            return await self._repository.history(
+                charger_id=charger_id,
+                telemetry_type=telemetry_type,
+                start=start,
+                end=end,
+                buckets=buckets,
+                view=view,
+                window_ms=window_ms,
+            )
         records = await self._repository.list_range(
             charger_id=charger_id,
             telemetry_type=telemetry_type,
@@ -110,3 +131,32 @@ class TelemetryQueryService:
             {"timestamp": timestamp.isoformat(), "value": value}
             for timestamp, value in records
         ]
+
+    async def get_reading_profile(
+        self, *, reading_id: str, charger_id: str, telemetry_type: str, days: int
+    ) -> ReadingProfile:
+        """What a reading looked like over its last days, from two bounded reads."""
+        end = datetime.now(UTC)
+        start = end - timedelta(days=days)
+        extremes = await self._repository.list_range(
+            charger_id=charger_id,
+            telemetry_type=telemetry_type,
+            start=start,
+            end=end,
+            buckets=math.ceil((end - start) / bucket_width(start, end)),
+        )
+        newest = await self._repository.list_data(
+            charger_id=charger_id,
+            telemetry_type=telemetry_type,
+            limit=RECENT_VALUES,
+            after_timestamp=None,
+            after_created=None,
+            after_event_timestamp=None,
+        )
+        return profile_reading(
+            reading_id,
+            start,
+            end,
+            extremes,
+            [(timestamp, value) for timestamp, value, _ in reversed(newest)],
+        )

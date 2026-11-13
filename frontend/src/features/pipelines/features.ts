@@ -95,7 +95,7 @@ export function featuresView(
 }
 
 /** Steps that learn, and every node after one: Prepare steps cannot follow them. */
-function learnedStage(definition: PipelineDefinition) {
+function learnedStage(definition: PipelineDefinition, components: PipelineComponent[]) {
   const memo = new Map<string, boolean>();
   const learned = (id: string): boolean => {
     const known = memo.get(id);
@@ -103,7 +103,7 @@ function learnedStage(definition: PipelineDefinition) {
     // A cycle, which the editor refuses to draw, ends here.
     memo.set(id, false);
     const node = definition.nodes.find((item) => item.id === id);
-    const family = node && stepFamily(node.kind, node.component);
+    const family = node && stepFamily(node, components.find((component) => component.id === node.component));
     const result = family === "normalize" || family === "reduce"
       || incomingEdges(definition, id).some((edge) => learned(edge.source));
     memo.set(id, result);
@@ -116,8 +116,7 @@ function learnedStage(definition: PipelineDefinition) {
  * they learn, learn as the row's detector does. */
 export function rowSteps(definition: PipelineDefinition, components: PipelineComponent[], detector?: string) {
   return components.filter((component) => {
-    const family = stepFamily(component.kind, component.id);
-    return (family === "prepare" || family === "normalize")
+    return (component.group === "prepare" || component.group === "normalize")
       && component.fields.some((field) => field.name === "apply_to")
       && !(detector && learningBlocker(definition, detector, component, components));
   });
@@ -131,16 +130,17 @@ export type RowPlacement = { link: Link; feature: string } | { reason: string };
 export function rowPlacement(
   definition: PipelineDefinition,
   report: Pick<PipelineValidation, "features">,
+  components: PipelineComponent[],
   view: FeaturesView,
   row: FeatureRow,
   component: PipelineComponent,
 ): RowPlacement {
   const { last, detector } = view;
   if (!last || !detector) return { reason: "Connect a detector first." };
-  if (stepFamily(component.kind, component.id) !== "prepare")
+  if (component.group !== "prepare")
     return { link: { source: last, target: detector }, feature: row.name };
   const path = featurePath(report.features, last, row.name);
-  const learned = learnedStage(definition);
+  const learned = learnedStage(definition, components);
   const first = path.findIndex(([node]) => learned(node));
   if (first < 0) return { link: { source: last, target: detector }, feature: row.name };
   if (first === 0) return { reason: `${row.name} comes from a learned step, and Prepare steps run before anything learns.` };
@@ -170,7 +170,7 @@ export function addForFeature(
   row: FeatureRow,
   component: PipelineComponent,
 ): { document: GraphDocument; id: string } | undefined {
-  const placement = rowPlacement(document.definition, report, view, row, component);
+  const placement = rowPlacement(document.definition, report, components, view, row, component);
   if ("reason" in placement) return;
   const inserted = insertOnEdge(document, placement.link, component, components);
   if (!inserted) return;
@@ -190,16 +190,24 @@ export function addForFeature(
 }
 
 const amount = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 4 });
-const known = (value?: number | null) =>
-  typeof value === "number" && Number.isFinite(value) ? amount.format(value) : undefined;
+/** The check writes "above 0" as the smallest positive number, as for the seconds between
+ * observations, and what is computed from it can stay as close to 0. Written out it would
+ * be hundreds of zeros, so an end this close to 0 reads as the side of 0 it is on. */
+const NEAR_ZERO = 1e-9;
+function known(value: number | null | undefined, end: "low" | "high") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value === 0 || Math.abs(value) >= NEAR_ZERO) return amount.format(value);
+  return end === "low" ? value > 0 ? "above 0" : "0" : value < 0 ? "below 0" : "0";
+}
 
-/** A feature's range as the check inferred it: "0 to 1,200", "at least 0", or nothing when unbounded. */
+/** A feature's range as the check inferred it: "0 to 1,200", "at least 0", "above 0", or
+ * nothing when unbounded. */
 export function rangeText(minimum?: number | null, maximum?: number | null) {
-  const low = known(minimum);
-  const high = known(maximum);
+  const low = known(minimum, "low");
+  const high = known(maximum, "high");
   if (low !== undefined && high !== undefined) return low === high ? `always ${low}` : `${low} to ${high}`;
-  if (low !== undefined) return `at least ${low}`;
-  if (high !== undefined) return `at most ${high}`;
+  if (low !== undefined) return low === "above 0" ? low : `at least ${low}`;
+  if (high !== undefined) return high === "below 0" ? high : `at most ${high}`;
 }
 
 /** Whether a Gate can hold observations back before a step reaches it: the step is a

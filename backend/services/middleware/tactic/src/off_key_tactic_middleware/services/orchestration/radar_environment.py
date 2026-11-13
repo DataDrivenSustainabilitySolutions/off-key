@@ -190,6 +190,10 @@ def build_radar_environment(
     # The pipeline defines the monitoring; RADAR rejects any other copy.
     environment["RADAR_MONITORING_CONFIG"] = monitoring.model_dump_json()
     environment["RADAR_PIPELINE_CONFIG"] = config.pipeline.model_dump_json()
+    if config.shadow:
+        # Only a shadow run carries the key, so the environment of every other
+        # monitor, and with it its configuration fingerprint, stays as it was.
+        environment["RADAR_SHADOW"] = "true"
     if config.runtime_image is not None:
         environment["RADAR_RUNTIME_IMAGE"] = config.runtime_image
     return environment

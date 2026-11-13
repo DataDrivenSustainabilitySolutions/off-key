@@ -1,22 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { stepMenu } from "@/features/pipelines/contextMenu";
 import { normalizeDefinition, type PipelineComponent } from "@/features/pipelines/contracts";
-import { familyLabel, STEP_FAMILIES, stepDescription, stepFamily } from "@/features/pipelines/steps";
+import { familyLabel, STEP_FAMILIES, stepFamily } from "@/features/pipelines/steps";
 import { connectionIssue } from "@/features/pipelines/model";
 import { dataKinds, takes } from "@/features/pipelines/semantics";
 
+/** As the catalog lists them: a detector whose output is forecasts is filed as a forecaster. */
 const detector = (id: string, label: string, output_type = "forecasts") => ({
-  id, kind: "detector", label, description: "Scores a feature by how far it misses its forecast.",
+  id, kind: "detector", group: output_type === "forecasts" ? "forecaster" : "detector", label,
+  description: "Forecast the value of one cycle ago, and score the miss.",
   fields: [], input_type: "features", output_type,
 }) as PipelineComponent;
 
-const holtWinters = detector("detector:aberrant_holt_winters_forecaster", "Aberrant HoltWinters forecaster");
-const seasonalNaive = detector("detector:aberrant_seasonal_naive_forecaster", "Aberrant SeasonalNaive forecaster");
+const holtWinters = detector("detector:aberrant_holt_winters_forecaster", "Holt-Winters forecaster");
+const seasonalNaive = detector("detector:aberrant_seasonal_naive_forecaster", "Seasonal naive forecaster");
 const timestral = detector("forecast.timestral", "Timestral forecaster");
-const knn = detector("detector:aberrant_knn", "Aberrant KNN", "scores");
-const calibration = { id: "calibrate.aci", kind: "calibration", label: "ACI", description: "", fields: [],
+const knn = detector("detector:aberrant_knn", "k-nearest neighbors", "scores");
+const calibration = { id: "calibrate.aci", kind: "calibration", group: "calibration", label: "ACI", description: "", fields: [],
   input_type: "scores", output_type: "p_values" } as PipelineComponent;
-const policy = { id: "policy.exceedance", kind: "policy", label: "Exceedance rule", description: "", fields: [],
+const policy = { id: "policy.exceedance", kind: "policy", group: "policy", label: "Exceedance rule", description: "", fields: [],
   input_type: "p_values", output_type: "decisions" } as PipelineComponent;
 
 describe("Forecaster steps in the composer", () => {
@@ -24,19 +26,13 @@ describe("Forecaster steps in the composer", () => {
     const ids = STEP_FAMILIES.map((family) => family.id);
     expect(ids.indexOf("forecaster")).toBe(ids.indexOf("detector") - 1);
     expect(familyLabel("forecaster")).toBe("Forecaster");
-    expect(stepFamily("detector", holtWinters.id)).toBe("forecaster");
-    expect(stepFamily("detector", seasonalNaive.id)).toBe("forecaster");
+    const step = { kind: "detector" } as const;
+    expect(stepFamily(step, holtWinters)).toBe("forecaster");
     // A pretrained forecaster is one too, whichever service provides it.
-    expect(stepFamily("detector", timestral.id)).toBe("forecaster");
-    expect(stepFamily("detector", knn.id)).toBe("detector");
-    // The seasonal residual detector keeps its place: it has no lead to choose.
-    expect(stepFamily("detector", "detector:aberrant_seasonal_residual_detector")).toBe("detector");
-  });
-
-  it("say what they expect in one line each", () => {
-    expect(stepDescription(holtWinters)).toMatch(/level, a trend and a repeating cycle/);
-    expect(stepDescription(seasonalNaive)).toMatch(/one cycle ago/);
-    expect(stepDescription(timestral)).toMatch(/pretrained model forecasts/);
+    expect(stepFamily(step, timestral)).toBe("forecaster");
+    expect(stepFamily(step, knn)).toBe("detector");
+    // A detector the catalog does not list stays a detector.
+    expect(stepFamily(step, undefined)).toBe("detector");
   });
 
   it("hand their forecasts to the calibration step and to nothing else", () => {

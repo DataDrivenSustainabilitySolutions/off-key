@@ -6,6 +6,7 @@ import { useChartColors } from "@/features/charts/use-chart-colors";
 import { useDetectorSelection } from "@/features/charts/use-detector-selection";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTimeZone } from "@/features/charts/telemetry-chart";
+import { alarmText } from "@/features/charts/telemetry-detectors";
 import { getChartDomain } from "@/features/charts/telemetry-thresholds";
 import type { ActiveService } from "@/types/monitoring";
 import type { SystemConnection } from "@/types/system";
@@ -13,6 +14,11 @@ import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache"
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildServiceHistoryModel, MAX_VISIBLE_READINGS } from "./historyModel";
 import { useServiceHistory } from "./useServiceHistory";
+import { HistoryViewControls } from "@/features/charts/HistoryViewControls";
+import { combineHistory, DEFAULT_HISTORY_PREFERENCE, historyInterval, presentHistory } from "@/features/charts/history-presentation";
+import { summarizeDetection } from "@/features/charts/detection-summary";
+import { useHistoryWidth } from "@/features/charts/use-history-width";
+import type { HistoryPreference } from "@/types/telemetry-history";
 import { useHistoryPresentation } from "./useHistoryPresentation";
 import { ForecastControls } from "./ForecastControls";
 import { forecastLeadKey } from "@/features/charts/forecast-evidence";
@@ -30,6 +36,8 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const [chosen, setChosen] = useNavigationDraft<string[]>(`${key}:readings`,
     initialReading ? [initialReading] : inputs.slice(0, MAX_VISIBLE_READINGS).map(input => input.stream.id));
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(`${key}:inspection`, undefined);
+  const [preference, setPreference] = useNavigationDraft<HistoryPreference>(`${key}:presentation`, DEFAULT_HISTORY_PREFERENCE);
+  const { ref: chartWidthRef, buckets } = useHistoryWidth();
   const [chosenLead, setChosenLead] = useNavigationDraft<string>(`${key}:lead`, "");
   const [showScores, setShowScores] = useNavigationDraft<boolean>(`${key}:scores`, false);
   const [forecastView, setForecastView] = useNavigationDraft<ForecastView>(`${key}:forecast-view`, "overlay");
@@ -61,9 +69,27 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
     + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}`
     + `${forecasts.length ? `${FORECAST_VIEW_LABELS[forecastView]}; ${showResiduals ? "signed residuals below; " : ""}future times are estimated from recent cadence. ` : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
-  const option = useMemo(() => buildMonitoringChartOption({ model, colors, timeZone, accessibleDescription: description,
+  // One interval for the whole chart, so every pane's means and peaks cover the same spans of time.
+  const displayModel = useMemo(() => {
+    const shown = inspection && [inspection.startMs, inspection.endMs] as const;
+    const interval = (span?: readonly [number, number]) => span && preference.mode !== "raw"
+      ? historyInterval(span[1] - span[0], buckets, preference.windowMs) : undefined;
+    const overviewMs = interval(model.extent), detailMs = interval(shown);
+    const readings = model.readings.map(reading => {
+      const view: HistoryPreference = reading.valueType === "boolean" ? { mode: "raw" } : preference;
+      const overview = presentHistory(reading.data, view, buckets, undefined, overviewMs);
+      return { ...reading, presentation: shown ? combineHistory(overview,
+        presentHistory(reading.data, view, buckets, shown, detailMs), inspection) : overview };
+    });
+    return summarizeDetection({ ...model, readings }, detailMs ?? overviewMs ?? 0, buckets, shown);
+  }, [model, preference, buckets, inspection]);
+  const meanMs = displayModel.readings.find(reading => reading.presentation.representation === "mean")?.presentation.interval_ms;
+  const option = useMemo(() => buildMonitoringChartOption({ model: displayModel, colors, timeZone, accessibleDescription: description,
     viewport: inspection ? { mode: "absolute", ...inspection } : { mode: "live" }, layout: "monitoring" }),
-  [model, colors, timeZone, description, inspection]);
+  [displayModel, colors, timeZone, description, inspection]);
+  // The key names open dots only where the chart shows one.
+  const anyMuted = useMemo(() => displayModel.secondarySeries.some(series =>
+    series.data.some(point => point.observation?.alarmMuted)), [displayModel.secondarySeries]);
   const inspect = useCallback((startMs: number, endMs: number) => {
     if (!domain || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
     setInspection(current => current && Math.abs(current.startMs - startMs) < 1 && Math.abs(current.endMs - endMs) < 1
@@ -93,10 +119,11 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     + (showResiduals ? model.forecasts?.length ?? 0 : 0) + new Set(model.secondarySeries.map(series => series.pane)).size;
   const latest = completeModel.secondarySeries[0]?.latestObservation;
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
-  return <section className="ex-preview-history mn-history" aria-label="Monitoring history">
+  return <section ref={chartWidthRef} className="ex-preview-history mn-history" aria-label="Monitoring history">
     <div className="ex-preview-section-heading"><h3>{forecasts.length ? "Forecast and deviations" : "Inputs and detection"}</h3>
       {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
         {forecasts.length > 0 && <ForecastViewButton view={forecastView} onChange={setForecastView} />}
+        {model.readings.some(reading => reading.valueType !== "boolean") && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={meanMs} />}
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
         <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>
@@ -134,9 +161,9 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     {latest && <output className="mn-history-result" aria-label="Latest detector result">
       <span>Latest {inputs.length > 1 ? "joint " : ""}result · {formatChartTime(latest.timeMs, timeZone, "tooltip")}</span>
       {(!forecasts.length || showScores) && <strong>{completeModel.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>}
-      <span>{(!forecasts.length || showScores) && <>Score threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · </>}{latest.alarmActive ? "Service alarm active" : "Service alarm inactive"}</span>
+      <span>{(!forecasts.length || showScores) && <>Score threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · </>}Service alarm {alarmText(latest)}</span>
     </output>}
-    {model.extent && <p className="mn-history-key">{(!forecasts.length || showScores) && "Dashed red: score threshold · "}Red vertical lines: service alarms. Each reading keeps its own scale.</p>}
+    {model.extent && <p className="mn-history-key">{(!forecasts.length || showScores) && "Dashed red: score threshold · "}Red line and shading: a service alarm and how long it lasted{(!forecasts.length || showScores) && " · Red dot: where the selected detector's alarm begins"}{anyMuted ? ` · Open dots: ${service.shadow ? "alarms recorded in shadow, not raised" : "muted alarms"}` : ""}. Each reading keeps its own scale.</p>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

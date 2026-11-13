@@ -75,7 +75,14 @@ class MartingaleTrackerController:
         self.alarm_count = 0
         self.tested_count = 0
         self._alarm_active = False
+        # The statistic crossed its threshold while alarms were muted, and has
+        # stayed above it since.
+        self._held_alarm = False
         self._martingale = self._new_martingale()
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        # Checkpoints from before Mute alarms steps hold no alarm back.
+        self.__dict__.update({"_held_alarm": False, **state})
 
     def _new_martingale(self) -> Any:
         from nonconform.martingales import AlarmConfig
@@ -104,7 +111,14 @@ class MartingaleTrackerController:
         # reconstructed from the public state. Keep the JSON representation honest.
         return float("nan")
 
-    def update(self, p_value: float) -> dict[str, Any]:
+    def update(self, p_value: float, muted: bool = False) -> dict[str, Any]:
+        """Take one p-value in and say whether the tracker alarms on it.
+
+        A tracker alarms once, when its statistic crosses the threshold. While
+        ``muted``, a crossing is held back instead: it is raised by the first
+        observation that is not muted if the statistic is still above the
+        threshold then, and dropped if it has fallen back.
+        """
         threshold_window_reset = False
         if (
             self.threshold_horizon is not None
@@ -112,6 +126,7 @@ class MartingaleTrackerController:
         ):
             self._martingale = self._new_martingale()
             self._alarm_active = False
+            self._held_alarm = False
             self.threshold_window_position = 0
             threshold_window_reset = True
 
@@ -130,8 +145,11 @@ class MartingaleTrackerController:
             fields.trigger in state.triggered_alarms
             or raw_selected_value >= self.threshold
         )
-        alarm_fired = threshold_crossed and not self._alarm_active
+        crossed = threshold_crossed and not self._alarm_active
         self._alarm_active = threshold_crossed
+        standing = threshold_crossed and (crossed or self._held_alarm)
+        alarm_fired = standing and not muted
+        self._held_alarm = standing and muted
         if alarm_fired:
             self.alarm_count += 1
 
@@ -174,6 +192,8 @@ class MartingaleTrackerController:
             ),
             "threshold_window_reset": threshold_window_reset,
             "alarm_fired": alarm_fired,
+            # The crossing itself, held back by a mute.
+            "alarm_muted": crossed and muted,
             "alarm_active": self._alarm_active,
             "alarm_count": self.alarm_count,
             "tested_count": self.tested_count,
@@ -236,8 +256,8 @@ class MartingaleAlarmController:
     def tested_count(self) -> int:
         return max((tracker.tested_count for tracker in self.trackers), default=0)
 
-    def update(self, p_value: float) -> dict[str, Any]:
-        tracker_results = [tracker.update(p_value) for tracker in self.trackers]
+    def update(self, p_value: float, muted: bool = False) -> dict[str, Any]:
+        tracker_results = [tracker.update(p_value, muted) for tracker in self.trackers]
         primary = tracker_results[0]
         primary_restarted = primary["statistics"]["restarted_martingale"]
         fired_tracker_ids = [
@@ -261,6 +281,8 @@ class MartingaleAlarmController:
             "restarted_martingale_is_infinite": primary_restarted["is_infinite"],
             "log_restarted_martingale": primary_restarted["log_value"],
             "alarm_fired": bool(fired_tracker_ids),
+            # A tracker crossed its threshold and a mute held the alarm back.
+            "alarm_muted": any(result["alarm_muted"] for result in tracker_results),
             "alarm_active": any(result["alarm_active"] for result in tracker_results),
             "alarm_count": self.alarm_count,
             "tested_count": self.tested_count,

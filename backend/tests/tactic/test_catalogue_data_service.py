@@ -91,6 +91,7 @@ def evidence(sequence_number: int, **overrides):
         "forecasts": None,
         "threshold": 100.0,
         "alarm": False,
+        "muted": False,
         "created": NOW + timedelta(milliseconds=1),
     }
     return SimpleNamespace(**(row | overrides))
@@ -293,6 +294,7 @@ async def test_chart_evidence_of_a_device_covers_its_readings_by_catalogue_id():
         "forecasts": [],
         "threshold": 100.0,
         "alarm": False,
+        "muted": False,
         "created": NOW + timedelta(milliseconds=1),
     }
 
@@ -329,7 +331,7 @@ async def test_chart_evidence_of_readings_and_its_scope_rules():
 @pytest.mark.asyncio
 async def test_reading_evidence_is_oldest_first_with_its_device():
     data = service()
-    data._evidence.list_by_scope.return_value = [evidence(2), evidence(1)]
+    data._evidence.list_by_scope.return_value = [evidence(2, muted=True), evidence(1)]
 
     rows = await data.evidence("flow", limit=50)
 
@@ -337,6 +339,11 @@ async def test_reading_evidence_is_oldest_first_with_its_device():
         scope={PUMP: frozenset({"key-flow"})}, limit=50
     )
     assert [row["sequence_number"] for row in rows] == [1, 2]
+    # An alarm a Mute alarms step held back is kept beside the alarm itself.
+    assert [(row["alarm"], row["muted"]) for row in rows] == [
+        (False, False),
+        (False, True),
+    ]
     assert rows[0]["device_id"] == "pump"
     assert rows[0]["reading_ids"] == ["flow"]
     assert rows[0]["monitor_id"] == "monitor-1"

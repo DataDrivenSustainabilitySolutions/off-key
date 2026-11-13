@@ -361,7 +361,10 @@ describe("telemetry ECharts option", () => {
       lineStyle: { width: 2.25, type: "solid" },
       data: [{ value: [Date.parse(timestamp), 2.5] }],
     });
-    expect(option.series).toHaveLength(2);
+    // A line draws nothing for one result, so a dot marks it.
+    expect(option.series[2]).toMatchObject({ id: "history-dot:adaptive-score:adaptive-a", type: "scatter",
+      data: [[Date.parse(timestamp), 2.5]] });
+    expect(option.series).toHaveLength(3);
     expect(option.series[1]?.markArea?.data).toEqual([[
       { xAxis: Date.parse(timestamp) - 500, yAxis: 2 },
       { xAxis: Date.parse(timestamp), yAxis: option.yAxis[1]?.max },

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   chooseTab, createPipeline, dropReplacement, editFromRun, monitoringNavigationKey, openPipeline, resetView,
-  setRevision, showLibrary, suggestedBindings, templateHref,
+  reviewProposal, setRevision, showLibrary, showProposals, suggestedBindings, templateHref,
 } from "@/domain/monitoring/monitoringView";
 
 const search = (query: string) => new URLSearchParams(query);
@@ -41,6 +41,16 @@ describe("monitoring URL contract", () => {
     ["showLibrary keeps from and create",
       () => showLibrary(search("pipeline=p&revision=r&activation=a&replace=x&from=y&create=monitoring")),
       "from=y&create=monitoring&view=pipelines"],
+    ["showProposals leaves the setup and keeps the selected source",
+      () => showProposals(search("source=s&create=monitoring&proposal=p1&replace=x&bind=a:r")), "source=s&view=proposals"],
+    ["reviewProposal opens the setup on the proposal",
+      () => reviewProposal(search("source=s&view=proposals"), "p1"), "source=s&create=monitoring&proposal=p1"],
+    ["reviewProposal opens a replacement as an update of its service",
+      () => reviewProposal(search("view=proposals&pipeline=p"), "p1", "old"), "create=monitoring&proposal=p1&replace=old"],
+    ["createPipeline leaves a proposal behind",
+      () => createPipeline(search("create=monitoring&proposal=p1")), "create=monitoring"],
+    ["resetView closes a proposal",
+      () => resetView(search("create=monitoring&proposal=p1")), ""],
     ["setRevision replaces the revision and forgets the activation",
       () => setRevision(search("pipeline=p&revision=old&activation=a"), "new"), "pipeline=p&revision=new"],
     ["setRevision without one clears it",

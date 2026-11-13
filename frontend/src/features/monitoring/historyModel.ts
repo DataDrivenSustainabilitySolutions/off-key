@@ -37,14 +37,19 @@ export function buildServiceHistoryModel({
   const readings = inputs.map(input => {
     const { stream } = input;
     const data = normalizeTelemetry(histories.get(stream.id) ?? []);
-    // One parse per evidence row yields both the latest scored time and the alarm times.
-    let lastScore: number | undefined;
-    const alarmTimes = new Set<number>();
-    for (const row of rows) {
+    // One parse per evidence row yields both the latest scored time and the alarm episodes:
+    // results in a row that all alarm are one episode, ended by the next quiet result.
+    const scored = rows.flatMap(row => {
       const time = epochMilliseconds(row.input_timestamps[stream.id] ?? "");
-      if (!Number.isFinite(time)) continue;
-      if (lastScore === undefined || time > lastScore) lastScore = time;
-      if (row.alarm) alarmTimes.add(time);
+      return Number.isFinite(time) ? [{ time, alarm: row.alarm }] : [];
+    }).sort((left, right) => left.time - right.time);
+    const lastScore = scored[scored.length - 1]?.time;
+    const alarmSpans: Array<[number, number]> = [];
+    let open: [number, number] | undefined;
+    for (const { time, alarm } of scored) {
+      if (!alarm) open = undefined;
+      else if (open) open[1] = time;
+      else alarmSpans.push(open = [time, time]);
     }
     const index = allInputs.findIndex(item => item.stream.id === stream.id);
     const duplicate = inputs.some(other => other.stream.id !== stream.id && other.stream.label === stream.label);
@@ -53,7 +58,7 @@ export function buildServiceHistoryModel({
       unit: stream.unit, color: palette[index % palette.length]!, data,
       pendingTelemetry: !operational || lastScore === undefined ? [] : data.filter(([time]) => time > lastScore),
       anomalyMarkers: [],
-      alarmTimes: [...alarmTimes],
+      alarmSpans,
     };
   });
   // Detector times and normalized telemetry are sorted, so their ends bound the extent

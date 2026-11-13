@@ -58,6 +58,13 @@ def require_authoring() -> None:
         raise ConflictError("Pipeline authoring is disabled by the operator")
 
 
+async def begin_library_write(session) -> None:
+    """Require authoring, serialize library writes and refuse them in a release."""
+    require_authoring()
+    await lock_collection_configuration(session)
+    await require_application_writes(session)
+
+
 def revision_view(revision) -> PipelineRevisionView:
     return PipelineRevisionView.model_validate(
         {key: getattr(revision, key) for key in PipelineRevisionView.model_fields}
@@ -111,9 +118,7 @@ class PipelineLibrary:
         )
 
     async def _write(self):
-        require_authoring()
-        await lock_collection_configuration(self.session)
-        await require_application_writes(self.session)
+        await begin_library_write(self.session)
 
     async def create(self, change: PipelineCreate):
         await self._write()

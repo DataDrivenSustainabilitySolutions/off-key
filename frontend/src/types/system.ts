@@ -1,9 +1,12 @@
 import type { CollectionPolicy } from "./collection";
+import type { SourceAppearance, TopicAppearance } from "./source-appearance";
 
 export type SystemConnection = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
-  protocol: "mqtt";
+  /** An MQTT broker pushes messages; an HTTP API is polled with GET requests. */
+  protocol: "mqtt" | "http";
   host: string;
   port: number;
   transport: "tcp" | "websocket";
@@ -13,6 +16,7 @@ export type SystemConnection = {
 };
 
 export type SystemDevice = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
   broker_id?: string;
@@ -21,12 +25,16 @@ export type SystemDevice = {
 };
 
 export type SystemStream = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
   broker_id: string;
   device_id?: string;
+  /** The MQTT topic, or the request path with any query on an HTTP source. */
   topic: string;
   payload_pointer?: string;
+  /** HTTP only: where a reply says when its value was measured. */
+  timestamp_pointer?: string;
   value_type: "number" | "boolean" | "text" | "identifier";
   unit?: string;
   category: string;
@@ -34,6 +42,7 @@ export type SystemStream = {
 };
 
 export type SystemGroup = {
+  appearance?: SourceAppearance;
   id: string;
   label: string;
   color?: string;
@@ -50,9 +59,10 @@ export type SystemDocument = {
   devices: SystemDevice[];
   readings: SystemStream[];
   groups: SystemGroup[];
+  topic_appearances?: TopicAppearance[];
 };
 
-/** One on-demand CONNECT to a saved broker; nothing is subscribed or stored. */
+/** One on-demand MQTT CONNECT or HTTP GET to a saved source; nothing is stored. */
 export type SystemConnectionCheck = {
   broker_id: string;
   status: "reachable" | "auth_rejected" | "refused" | "tls_error" | "unreachable" | "timeout" | "blocked";

@@ -160,6 +160,7 @@ export function AdaptiveMonitoringSetup({
               {modelDefinition?.algorithm_family === "time_series" && <p className={HELP_CLASS}>Windows count aligned observations, not seconds. Use consistently sampled telemetry.</p>}
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <ParameterFields
+                  key={draft.modelType}
                   fields={modelDefinition?.fields ?? []}
                   values={draft.modelParams}
                   issues={formParameterIssues(fieldErrors)}

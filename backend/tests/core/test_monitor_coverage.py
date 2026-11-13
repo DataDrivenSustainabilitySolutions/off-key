@@ -57,6 +57,18 @@ def test_every_monitor_summary_lists_its_readings():
     assert summary["stream_ids"] == ["line-pressure", "line-temperature"]
     # The recorded topics name internal identities and stay inside.
     assert "mqtt_topics" not in summary
+    assert summary["shadow"] is False
+
+
+def test_a_monitor_summary_says_when_the_monitor_runs_in_shadow():
+    service = MonitoringService(
+        id="m1",
+        container_name="workload",
+        mqtt_topic=["telemetry/line/temperature"],
+        status=True,
+        launch_config={"shadow": True},
+    )
+    assert service_summary(service, CATALOGUE)["shadow"] is True
 
 
 def test_monitor_activity_names_its_inputs_by_reading():

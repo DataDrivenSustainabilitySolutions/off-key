@@ -1,3 +1,6 @@
+/* The way back is a link in a line of text, not a boxed button. */
+.pl-library .ex-breadcrumb button { border: 0; background: none; }
+
 .pl-library-tools {
   justify-content: space-between;
   margin: 24px 0 12px;
@@ -67,6 +70,23 @@
   font-size: var(--text-body);
 }
 
+.pl-block-library { margin-top: 40px; }
+.pl-block-library h2 { margin: 0 0 6px; font-size: var(--text-title3); }
+.pl-block-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+}
+.pl-block-list li { display: flex; align-items: center; gap: 16px; padding: 12px 16px; }
+.pl-block-list li + li { border-top: 1px solid hsl(var(--border)); }
+.pl-block-list div { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.pl-block-list strong { font-size: var(--text-body); font-weight: 500; }
+.pl-block-list :is(strong, span) { overflow-wrap: anywhere; }
+.pl-block-list :is(span, small) { font-size: var(--text-caption); color: hsl(var(--muted-foreground)); }
+.pl-block-list small { white-space: nowrap; }
+
 .pl-template-popover {
   z-index: 70;
   width: min(660px, calc(100vw - 32px));
@@ -75,7 +95,7 @@
   padding: 20px;
   border: 1px solid hsl(var(--border));
   border-radius: 12px;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   box-shadow: 0 12px 36px hsl(var(--foreground) / 0.14);
 }
 
@@ -84,7 +104,9 @@
 .pl-template-popover .pl-library-tools { margin-top: 12px; }
 .pl-template-popover .pl-library-list button { padding: 12px; }
 .pl-template-popover .pl-library-list small { margin-top: 2px; }
-.pl-library .pl-manage-designs { border: 0; padding-left: 0; margin-top: 16px; color: hsl(var(--muted-foreground)); }
+.pl-template-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.pl-library .pl-template-footer button { border: 0; padding-inline: 0; color: hsl(var(--muted-foreground)); }
+.pl-library .pl-template-footer button:hover:not(:disabled) { color: hsl(var(--foreground)); background: none; }
 
 .pl-starting-points {
   display: grid;

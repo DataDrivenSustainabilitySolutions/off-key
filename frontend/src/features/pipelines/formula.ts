@@ -5,7 +5,13 @@ const FUNCTIONS: Record<string, string> = {
   abs: "abs(x)", sqrt: "sqrt(x)", log: "log(x)", log1p: "log1p(x)", exp: "exp(x)",
   min: "min(a, b, …)", max: "max(a, b, …)", clip: "clip(x, low, high)",
   if: "if(condition, when_true, when_false)",
+  mean: "mean(a, b, …)", sum: "sum(a, b, …)", hypot: "hypot(a, b, …)",
+  sign: "sign(x): -1, 0 or 1", round: "round(x)", floor: "floor(x)", ceil: "ceil(x)",
+  mod: "mod(x, divisor)", sin: "sin(radians)", cos: "cos(radians)", atan2: "atan2(y, x)",
+  pi: "pi()",
 };
+/** Functions that take no value: accepting one writes its parentheses closed. */
+export const CONSTANTS = new Set(["pi"]);
 const KEYWORDS: Record<string, string> = { and: "both hold", or: "either holds", not: "the opposite" };
 
 export type Suggestion = { kind: "feature" | "function" | "keyword"; value: string; detail?: string };
@@ -29,6 +35,21 @@ export function inCondition(text: string, caret: number, condition: boolean) {
   return call ? call.name === "if" && call.commas === 0 : condition;
 }
 
+const ASSIGNMENT = /^\s*(?:`([^`]+)`|([A-Za-z_][A-Za-z0-9_]*))\s*=(?!=)/;
+
+/** The features the lines of a Calculate step write, in order; notes and other lines write none. */
+export const writtenNames = (text: string) => [...new Set(text.split("\n").flatMap((line) => {
+  const match = ASSIGNMENT.exec(line);
+  return match ? [match[1] ?? match[2]!] : [];
+}))];
+
+/** In a Calculate step, the line the caret is in: where it starts, whether the caret is
+ * still in the name before the equals sign, and the features the lines above write. */
+export function calculateLine(text: string, caret: number) {
+  const start = text.lastIndexOf("\n", caret - 1) + 1;
+  return { start, naming: !text.slice(start, caret).includes("="), above: writtenNames(text.slice(0, start)) };
+}
+
 /** The word being typed just before the caret: a bare name, or a name in an open backtick. */
 export function typedWord(text: string, caret: number) {
   const before = text.slice(0, caret);
@@ -45,7 +66,8 @@ export function typedWord(text: string, caret: number) {
 }
 
 /** What can complete a word: the arriving features first, then functions or, in a
- * condition, and, or and not. Names that start with the word come before ones that hold it. */
+ * condition, and, or and not. Features that start with the word come before ones that
+ * hold it; a function or a keyword is offered only by its beginning. */
 export function suggestions(
   word: { prefix: string; quoted: boolean },
   features: string[],
@@ -62,7 +84,7 @@ export function suggestions(
   ];
   const rank = (item: Suggestion) => {
     const value = item.value.toLocaleLowerCase();
-    return value.startsWith(typed) ? 0 : value.includes(typed) ? 1 : 2;
+    return value.startsWith(typed) ? 0 : item.kind === "feature" && value.includes(typed) ? 1 : 2;
   };
   const found = all.filter((item) => rank(item) < 2)
     .sort((left, right) => rank(left) - rank(right));

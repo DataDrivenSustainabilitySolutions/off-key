@@ -1,9 +1,10 @@
 import { epochMilliseconds } from "@/lib/timestamps";
 import { forecastIntervalText } from "./detector-inputs";
 import type { MonitoringChartReading } from "./types";
-import type { DetectionObservation } from "./telemetry-detectors";
+import { alarmText, type DetectionObservation } from "./telemetry-detectors";
 
-type Entry = { seriesId?: unknown; seriesName?: unknown; value?: unknown; data?: { observation?: DetectionObservation } };
+type Entry = { seriesId?: unknown; seriesName?: unknown; value?: unknown;
+  data?: { observation?: DetectionObservation; summary?: unknown; peak?: { count: number } } };
 
 /** Read the exact recorded inputs for a joint result, rather than nearby samples. */
 export function formatMonitoringObservationTooltip(
@@ -15,6 +16,9 @@ export function formatMonitoringObservationTooltip(
   const entries = (Array.isArray(params) ? params : [params]).filter(
     (value): value is Entry => typeof value === "object" && value !== null,
   );
+  // A mean is not an evaluated input, and the highest result of an interval is not the
+  // one under the pointer. Their tooltip names the interval, the range and the peak.
+  if (entries.some(entry => entry.data?.summary || (entry.data?.peak?.count ?? 1) > 1)) return undefined;
   const evaluated = entries.filter(entry => entry.data?.observation?.inputTimestamps);
   const observation = evaluated[0]?.data?.observation;
   if (!observation?.inputTimestamps) return undefined;
@@ -51,7 +55,7 @@ export function formatMonitoringObservationTooltip(
     if (result.timeMs !== observation.timeMs) continue;
     lines.push(`${String(entry.seriesName)}: ${result.value === null ? result.isInfinite ? "∞" : "unavailable" : String(result.value)}`);
     lines.push(`Alarm threshold: ${result.threshold === null ? "unavailable" : String(result.threshold)}`);
-    lines.push(`Alarm: ${result.alarmActive ? "active" : "inactive"}`);
+    lines.push(`Alarm: ${alarmText(result)}`);
   }
   // A policy that combines detectors names each one's part, so an alarm names its detector.
   for (const detector of observation.detectors ?? []) {

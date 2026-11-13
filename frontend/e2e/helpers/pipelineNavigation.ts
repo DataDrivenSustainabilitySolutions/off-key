@@ -14,11 +14,23 @@ export async function openPipelineInput(scope: Page | Locator) {
 
 /** The status chip reports the compiler's check of the latest edit; it replaced the Validate button. */
 export async function expectValidPipeline(page: Page) {
-  const status = page.getByRole("button", { name: /^(Graph is valid|Graph not checked|\d+\+? graph issues?)/ });
-  await expect(status).toHaveAccessibleName(/^Graph is valid(?!.*checking changes$)/);
+  const status = page.getByRole("button", { name: /^(Design is complete|Design is not complete|Design not checked|\d+\+? design issues?)/ });
+  await expect(status).toHaveAccessibleName(/^Design is complete(?!.*checking changes$)/);
   await status.click();
-  await expect(page.getByRole("heading", { name: "Valid processing graph", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Design is complete", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
+}
+
+/**
+ * A new service leaves its detector to choose. The status chip lists that as left to do
+ * and opens the same choice as the place kept on the canvas; its first entry is the
+ * detector the starting flow suggests.
+ */
+export async function choosePipelineDetector(page: Page) {
+  await page.getByRole("button", { name: /^Design is not complete/ }).click();
+  await page.getByRole("button", { name: "Choose a detector.", exact: true }).click();
+  await page.getByRole("menu", { name: "Choose a detector", exact: true }).getByRole("menuitem", { name: /Suggested$/ }).click();
+  await expect(page.getByRole("combobox", { name: "Selected step", exact: true })).toHaveValue("detector");
 }
 
 export async function savePipelineTemplate(page: Page, name?: string, copy = false): Promise<PipelineView> {
@@ -37,11 +49,13 @@ export async function savePipelineTemplate(page: Page, name?: string, copy = fal
   return response.json() as Promise<PipelineView>;
 }
 
+/** A readable graph is shown at full size, or a little smaller when that shows the whole of it. */
 export async function expectReadablePipeline(page: Page) {
   const graph = page.getByLabel("Pipeline graph", { exact: true });
-  await expect.poll(() => graph.locator(".react-flow__viewport").evaluate((element) =>
-    new DOMMatrix(getComputedStyle(element).transform).a,
-  )).toBe(1);
+  await expect.poll(() => graph.locator(".react-flow__viewport").evaluate((element) => {
+    const zoom = new DOMMatrix(getComputedStyle(element).transform).a;
+    return zoom >= 0.8 && zoom <= 1;
+  })).toBe(true);
   await expect(graph.locator(".pl-node-kind svg")).toHaveCount(0);
   await expect(graph.locator(".pl-node strong").first()).toHaveCSS("font-size", "16px");
 }

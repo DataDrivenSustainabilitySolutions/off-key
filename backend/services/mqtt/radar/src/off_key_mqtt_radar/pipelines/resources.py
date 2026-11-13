@@ -90,6 +90,22 @@ def _rolling_windows(node, width: int, _outputs: int) -> tuple[int, int]:
     return floats, pointers
 
 
+def _least_squares(_node, width: int, _outputs: int) -> tuple[int, int]:
+    """At most a weight and a centre per feature the step uses."""
+    return 2 * width * 8, 0
+
+
+def _recursive_least_squares(_node, width: int, _outputs: int) -> tuple[int, int]:
+    """The covariance of the coefficients, a square matrix of doubles.
+
+    The fit holds one coefficient per feature the target is expected from and
+    a constant, as many as the features the step uses. An update builds the
+    next covariance from a handful of matrices of that size while the learning
+    transaction holds a copy of the fit, so up to eight are alive at once.
+    """
+    return 8 * width * width * 8, 0
+
+
 # Learned state as (numeric bytes, retained container bytes) per component.
 STATE_ESTIMATORS: dict[str, Callable[[Any, int, int], tuple[int, int]]] = {
     "adaptive.uncentered_pca": lambda node, width, outputs: _adaptive_pca_allocations(
@@ -99,6 +115,8 @@ STATE_ESTIMATORS: dict[str, Callable[[Any, int, int], tuple[int, int]]] = {
     "static.random_projection": _dense_projection,
     "adaptive.random_projection": _dense_projection,
     "adaptive.robust_scaler": _rolling_windows,
+    "static.expected_value": _least_squares,
+    "adaptive.expected_value": _recursive_least_squares,
 }
 
 

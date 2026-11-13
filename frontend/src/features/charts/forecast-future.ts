@@ -2,7 +2,7 @@ import type { MonitoringIssuedForecast } from "@/types/monitoring";
 import { epochMilliseconds } from "@/lib/timestamps";
 
 export type ForecastView = "overlay" | "ahead" | "data";
-export const FORECAST_VIEWS: readonly ForecastView[] = ["overlay", "ahead", "data"];
+const FORECAST_VIEWS: readonly ForecastView[] = ["overlay", "ahead", "data"];
 export const FORECAST_VIEW_LABELS: Record<ForecastView, string> = {
   overlay: "Overlay", ahead: "Forecast ahead", data: "Data only",
 };

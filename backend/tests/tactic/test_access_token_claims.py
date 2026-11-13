@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 from off_key_api_gateway.api.v1.auth import access_token_response
 from off_key_core.config.auth import get_auth_settings
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import signed_in_member
 
 from tests.support.env import set_auth_env
 
@@ -44,7 +44,7 @@ async def decode(token, user=None):
         if token is None
         else HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
     )
-    return await current_member(credentials, session)
+    return await signed_in_member(credentials, session)
 
 
 async def test_valid_token_resolves_the_current_member():

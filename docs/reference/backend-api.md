@@ -33,6 +33,7 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | Monitors and alarms | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
 | Favourites | Send the login bearer token | Server selects the current member as owner |
 | Members and roles | Send the login bearer token | Profile and roles for every member; `manage_members` changes them |
+| Agents | Send the agent's key as the bearer token | A key reaches only operations marked `x-agent-access`; `manage_members` creates and revokes keys |
 | Health and readiness | No token | Public operational probes in local deployments |
 
 !!! important
@@ -80,6 +81,11 @@ Content-Type: application/json
 | `POST` | `/roles` | Create a role; body `name`, `permissions`; the id is derived from the name | `manage_members` |
 | `PATCH` | `/roles/{role_id}` | Rename a role or replace its permissions | `manage_members` |
 | `DELETE` | `/roles/{role_id}` | Delete a role no member holds; 204 | `manage_members` |
+| `GET` | `/agents` | Agents that hold a key, each with the end of its key and what it may start | `manage_members` |
+| `POST` | `/agents` | Create an agent and its key; body `name` and `starts` (`nothing`, `shadow` or `live`; `nothing` when left out). The answer carries `key` this once | `manage_members` |
+| `PATCH` | `/agents/{agent_id}` | Set what the key may start; body `starts` | `manage_members` |
+| `DELETE` | `/agents/{agent_id}` | Revoke the key, which stops working at once; 204. Services the agent started keep running | `manage_members` |
+| `GET` | `/agents/me` | The agent a key belongs to and what it may start | A key |
 
 Every active member can read everything outside the Dojo. A role grants the
 permissions:
@@ -93,6 +99,35 @@ deleted. A change that would leave no active member able to manage members is
 refused with 409. Account and token lifecycle details are in
 [Single-organization operation](../single-organization.md).
 
+#### Keys for agents
+
+An agent sends its key as `Authorization: Bearer <key>` in place of a member's
+token. A key starts with `offkey_`, is shown once when it is created and is
+stored only as a digest. It has no role and no permissions. What it may call is
+decided per operation, and the gateway's OpenAPI document marks each such
+operation with `x-agent-access`:
+
+- `any`: every key. These are the reads an agent designs with (devices,
+  readings and their measurements and profile, pipeline components, designs,
+  monitors and their pipelines, evidence and alarms), validating and editing a
+  design that is not saved, testing a design on history in the Dojo (copying
+  history into a dataset, starting a run and reading its results), and
+  proposing a design to a member, reading proposals and withdrawing its own.
+- `start`: only a key whose `starts` is `shadow` or `live`. These are
+  `POST /pipelines/apply`, which starts a monitoring service, and cancelling an
+  activation. A key with `shadow` starts shadow runs only: a start without
+  `shadow` set answers 403. A key cannot replace a running service:
+  `replace_monitor_id` answers 403.
+
+Every other operation answers a key with 403, among them stopping, renaming
+and deleting monitors, deciding on a proposal, changing the library, labels
+and datasets in the Dojo, sources, members, roles and the keys themselves. A new operation is closed to
+keys until it is marked.
+
+An agent that speaks the Model Context Protocol does not have to call these
+operations itself: it finds them as tools at `/v1/mcp`, see
+[MCP server for agents](#mcp-server-for-agents).
+
 ### Devices and measurements
 
 Devices and readings are named by their catalogue ids, `devices[].id` and
@@ -104,7 +139,46 @@ values are stored.
 | `GET` | `/devices` | Catalogue devices with their `reading_ids`, `online` and `last_seen` | Query: optional `active` |
 | `GET` | `/devices/{device_id}/readings` | The catalogue readings of one device | Path: `device_id` |
 | `GET` | `/readings/{reading_id}/measurements` | Recorded values of one reading | Query: `limit`, cursor fields, `paginated` |
-| `GET` | `/readings/{reading_id}/measurements/buckets` | A downsampled range: each time bucket's lowest and highest value | Query: `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
+| `GET` | `/readings/{reading_id}/measurements/buckets` | Recorded history as original samples, averages with ranges, or legacy extrema | Query: `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600), optional `view` (`auto` or `raw`), `window_ms` |
+| `GET` | `/readings/{reading_id}/profile` | What the reading looks like: interval, range, gaps, daily and weekly rhythm, flat spells | Query: `days` (1–90, default 14) |
+
+With `view=auto`, dense ranges return epoch-aligned bucket means calculated from
+the original measurements, plus `minimum`, `maximum`, `count`, `start` and `end`.
+Sparse ranges return original samples. `window_ms` optionally sets a minimum
+averaging interval (1–86,400,000 ms); wider ranges may require a larger interval.
+`view=raw` always returns original samples, capped at the newest 10,000. Both
+views use an envelope with `representation` (`raw` or `mean`), `points`,
+`interval_ms`, `sample_count`, `extent` and `truncated`. Counts and extent describe
+the whole requested range, including samples omitted by the raw cap. Empty
+buckets are omitted. Without `view`, the response remains the legacy list of
+bucket extrema.
+
+A profile says what a reading looks like, so a design can be fitted to it
+without reading its history:
+
+```http
+GET /v1/readings/stream:dc-current/profile?days=14
+```
+
+| Field | Meaning |
+| --- | --- |
+| `first`, `last` | The earliest and latest value in the window |
+| `coverage` | Share of the time between them that holds values, from 0 to 1, counted in buckets of `bucket_seconds` |
+| `longest_outage_seconds` | The longest stretch without a value |
+| `minimum`, `maximum` | How far the values reach |
+| `daily_rhythm` | Share of the variation that the hour of the day explains, from 0 to 1; near 0 for a reading without a daily pattern. Null below two days |
+| `weekly_rhythm` | Share that the day of the week and the hour together explain. Well above `daily_rhythm`, weekdays differ. Null below fourteen days |
+| `level_change` | How far the level moved from the first day to the last, in spreads of the reading |
+| `recent.interval_seconds`, `recent.interval_p90_seconds` | The usual time between two values, and the time nine in ten arrive within. Far apart, the reading reports on change |
+| `recent.gaps`, `recent.longest_gap_seconds` | Pauses longer than five usual intervals |
+| `recent.mean`, `recent.spread`, `recent.median`, `recent.p05`, `recent.p95` | Where the values lie |
+| `recent.typical_change` | The usual change from one value to the next; against `spread` it says how noisy the reading is |
+| `recent.flat_share`, `recent.longest_flat_seconds` | How often and how long the reading stays the same |
+| `recent.distinct`, `recent.levels` | How many different values there are, and the values where there are at most ten |
+
+The window fields come from the lowest and highest value of each bucket, so
+they hold for windows of any length. `recent` looks at the newest values one by
+one, up to 5000 of them. A window without values answers with nulls.
 
 Measurement cursors:
 
@@ -120,7 +194,10 @@ Authorization: Bearer <token>
 ### Catalogue, recording and live views
 
 The catalogue `document` holds `brokers`, `devices`, `readings` and `groups`;
-devices and readings name their broker as `broker_id`. Changes need
+devices and readings name their broker as `broker_id`. A broker's `protocol` is
+`mqtt` or `http`. On an HTTP broker a reading's `topic` is its request path,
+and the reading may carry a `timestamp_pointer`; the field is absent from
+readings that have none. Changes need
 `manage_sources`, which TACTIC checks.
 
 | Method | Path | Purpose | Access |
@@ -128,7 +205,7 @@ devices and readings name their broker as `broker_id`. Changes need
 | `GET` | `/catalogue` | Saved document, revision, how each reading is recorded (`runtime.bindings`) and `can_edit` | Member |
 | `PUT` | `/catalogue` | Save structural changes at `expected_revision` | `manage_sources` |
 | `GET` | `/catalogue/revisions` | Saved catalogue revisions | Member |
-| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes | `manage_sources` |
+| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes. For an HTTP broker, one `GET` for the path of its first reading | `manage_sources` |
 | `POST` | `/brokers/{broker_id}/reconnect` | Restart recording from a broker now, resetting its retry backoff | `manage_sources` |
 | `PUT` | `/recording` | Apply confirmed recording policies for `reading_ids`, or `rule_changes` for a broker, topic or reading scope | `manage_sources` |
 | `POST` | `/recording/preview` | Review a recording change and the monitors it affects | `manage_sources` |
@@ -182,8 +259,9 @@ here; changes need `manage_monitors`.
 | `PUT` | `/monitors/{monitor_id}/pipeline/layout` | Store where its nodes sit on the canvas; the graph is unchanged | Body: layout |
 | `GET` | `/pipelines` | Saved designs, paged | `limit`, `offset`, `query`, `archived` |
 | `POST` | `/pipelines` | Save a new design as a draft | Body: `name`, `definition` |
-| `POST` | `/pipelines/apply` | Save, publish and activate a design in one step (HTTP 202) | Body: `definition`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `POST` | `/pipelines/apply` | Save, publish and activate a design in one step (HTTP 202) | Body: `definition`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` and `shadow` |
 | `POST` | `/pipelines/validate` | Check an unsaved design; with `selected_node_id` also its fields | Body: `definition` |
+| `POST` | `/pipelines/edit` | Change a design in small edits without saving it; answers with the changed design and its check | Body: `edits`, optional `definition` and `layout` |
 | `GET` | `/pipelines/{pipeline_id}` | One design with its draft, `version` and revisions | Path: `pipeline_id` |
 | `PATCH` | `/pipelines/{pipeline_id}` | Rename, describe or archive a design | Body: `expected_version` and changes |
 | `PUT` | `/pipelines/{pipeline_id}/draft` | Replace a design's draft graph and layout | Body: `expected_version`, `definition` |
@@ -192,10 +270,20 @@ here; changes need `manage_monitors`.
 | `POST` | `/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run | Body: `expected_version` |
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint | Path ids |
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node | `selected_node_id` |
-| `GET` | `/pipeline-components` | Components a design may use, with parameter schemas, and the starting templates | None |
+| `GET` | `/pipeline-components` | Components a design may use, each with its group, description and settings, and the starting templates | None |
+| `GET` | `/pipeline-components/search` | Components that fit a purpose, the best fit first, a few lines each | Optional `query`, `kind`, `group`, `learning`, `limit` |
+| `GET` | `/pipeline-components/{component_id}` | One component, with the JSON schema of its settings | None |
+| `GET` | `/pipeline-blocks` | Every saved block, by name: `items`, each with `id`, `name`, `description`, `steps` and `created_at` | None |
+| `POST` | `/pipeline-blocks` | Save a chain of steps as a block (HTTP 201). HTTP 409 when the name is taken or the library holds 100 blocks; 422 for a step a block cannot hold, such as a detector | Body: `name`, optional `description`, `steps` (1 to 16, each with `component` and optional `contract_version`, `params`, `label`) |
+| `DELETE` | `/pipeline-blocks/{block_id}` | Delete a block (HTTP 204); designs keep the steps they copied from it | Path: `block_id` |
+| `GET` | `/pipeline-proposals` | Proposals, the newest first, without their designs: `items`, each with `id`, `name`, `reason`, `author`, `author_kind`, `status`, `test_run_id`, `replace_monitor_id` and the decision | Query: optional `status` (`open`, `accepted`, `declined` or `withdrawn`) |
+| `POST` | `/pipeline-proposals` | Hand a design to a member to decide on (HTTP 201). The design must check without errors. A `test_run_id` names a Dojo run that succeeded on this very design; a run that is missing, unfinished or of another design answers HTTP 422, and titles do not count as a difference. HTTP 409 while 50 proposals wait for a decision | Body: `name`, `reason`, `definition`, optional `layout`, `bindings`, `test_run_id`, `replace_monitor_id` |
+| `GET` | `/pipeline-proposals/{proposal_id}` | One proposal with its `definition`, `layout` and `bindings` | Path: `proposal_id` |
+| `POST` | `/pipeline-proposals/{proposal_id}/decision` | Accept or decline a proposal. Members only: a key cannot decide. Accepting starts nothing: the web app accepts a proposal once the start of its design has been requested. HTTP 409 once it is decided or withdrawn | Body: `status` (`accepted` or `declined`), optional `note` for the author |
+| `POST` | `/pipeline-proposals/{proposal_id}/withdraw` | Take back a proposal that still waits. HTTP 403 for anyone but its author | Path: `proposal_id` |
 | `GET` | `/forecast-models` | Models of the forecast service that pretrained forecaster steps use, each with its download `status`, `progress` and `error`; `service` is `not_deployed` or `unreachable` when there is none to list | None |
 | `POST` | `/forecast-models/downloads` | Have the forecast service download a model's weights (HTTP 202); poll the list for progress | Body: `model` |
-| `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` and `shadow` |
 | `GET` | `/pipeline-activations/{activation_id}` | Progress of an activation: `phase`, `monitor_id`, issues | Path: `activation_id` |
 | `POST` | `/pipeline-activations/{activation_id}/cancel` | Cancel an activation that has not finished | Path: `activation_id` |
 | `GET` | `/detectors` | Detector models with family, cost and parameter schema | Optional `strategy` |
@@ -213,6 +301,13 @@ reading"; a reading removed from the catalogue drops out. A monitor's
 `operational_status` names its inputs by reading id as well. How a reading is
 recorded (its topic and ingress key) stays inside the backend. `active` is true
 while the monitor should run and false once it is stopped.
+
+`shadow` is true for a monitor started with `shadow` set. A shadow run learns
+and scores as any monitor and raises no alarm: each alarm it would have raised
+is an evidence row with `alarm` false and `muted` true, and no anomaly is
+stored. The flag belongs to the start, not to the design, so the same design
+runs either way. To take a shadow run live, start its design again with
+`replace_monitor_id` and without `shadow`.
 
 A monitor start body contains:
 
@@ -264,6 +359,82 @@ errors expose `issues_truncated`. Internal MQTT overrides and runtime image pins
 are rejected by public monitor creation.
 See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 
+#### Building a design in steps
+
+A program or an agent that builds a design does not need the whole catalog or a
+whole design at a time. `/pipeline-components/search` answers a purpose with a
+few lines per component:
+
+```http
+GET /v1/pipeline-components/search?query=calm+noise&limit=3
+```
+
+```json
+{
+  "catalog_id": "68f7…",
+  "total": 1,
+  "components": [
+    {
+      "id": "prepare.smooth",
+      "kind": "transform",
+      "group": "prepare",
+      "label": "Smooth",
+      "description": "Average recent values to calm noise.",
+      "learning": "none",
+      "input_type": "features",
+      "output_type": "features",
+      "settings": ["apply_to", "result", "suffix", "method", "window_size"]
+    }
+  ]
+}
+```
+
+A component fits when its name, its place in the catalog, its description or
+one of its settings answers a word of the query. Words in a name count for more
+than words in the help of a setting, and words few components answer for more
+than common ones. `kind`, `group` and `learning` narrow the answer; without a
+`query` every component they leave is listed, 10 at a time unless `limit` (up
+to 100) says otherwise. Read `/pipeline-components/{component_id}` for what
+each setting does.
+
+`/pipelines/edit` makes small changes to a design the caller holds and stores
+nothing. The body carries the `definition` and `layout` as they are (left out,
+the design starts empty) and up to 100 `edits`, made in order:
+
+| `op` | Fields | What it does |
+| --- | --- | --- |
+| `add_step` | `component`, optional `id`, `params`, `label`, `after`, `before` | Adds a step. With `after` and `before` it goes on the connection between the two; with one of them it is connected on that side |
+| `remove_step` | `id`, optional `reconnect` | Removes a step and its connections. A transform with one input hands that input on, unless `reconnect` is false |
+| `replace_step` | `id`, `component`, optional `params` | Makes a step another component; its id and connections stay |
+| `set_params` | `id`, `params`, optional `unset` | Changes the named settings; those in `unset` return to their defaults |
+| `set_label` | `id`, `label` | Titles a step; `null` takes the title away |
+| `connect`, `disconnect` | `source`, `target` | Adds or removes a connection. A single input takes a new connection in place of the one it had |
+| `add_input`, `remove_input` | `id`, optional `label`, `unit` | Declares a reading the design takes in, or takes one out |
+| `set_settings` | `training_window_size`, `calibration_window_size`, `seed` | Changes those given |
+| `add_note`, `remove_note` | `text`, optional `beside`; `id` | Puts a note above a step, or takes one off the canvas |
+
+```json
+{
+  "definition": { "…": "the design as it was read" },
+  "layout": { "…": "its layout" },
+  "edits": [
+    { "op": "add_step", "component": "prepare.smooth", "after": "input", "before": "detector", "params": { "window_size": 12 } },
+    { "op": "add_note", "text": "The current is noisy at this rate.", "beside": "prepare_smooth_1" }
+  ]
+}
+```
+
+The answer has the changed `definition` with the defaults of every setting, the
+`layout`, the ids the edits `added`, and the `report` that `/pipelines/validate`
+would give for the result. Either every edit is made or none: an edit that
+cannot be made, such as one naming a step the design does not have, answers
+HTTP 422 with its place in the list, as in `Edit 2 (remove_step): The design
+has no step 'gone'`. A design that results but would not run is no error; its
+issues are in the report. New steps get a place on the canvas beside the step
+they follow, and a step put on a connection gets room between the two it joins,
+so the design reads well when a person opens it. Save the result with
+`POST /pipelines` or `PUT /pipelines/{pipeline_id}/draft`.
+
 ### Favourites and alarms
 
 | Method | Path | Purpose | Key inputs |
@@ -273,6 +444,9 @@ See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 | `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
 | `GET` | `/alarms/count` | Count alarms | Optional query: `since` |
 | `POST` | `/alarms/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `reading_ids`, optional `reading_id`, `monitor_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
+| `GET` | `/alarms/{alarm_id}` | One anomaly and its exact retained detector evidence; every member | Path: event ID |
+| `POST` | `/alarms/deletion-preview` | Freeze an exact deletion selection; requires `manage_alarms` | Body: either `alarm_ids` or `query`, with optional `exclude_ids`; returns token, count and expiry |
+| `POST` | `/alarms/delete` | Delete a reviewed selection atomically; requires `manage_alarms` | Body: preview `token`; retries return the recorded deletion count |
 | `GET` | `/alarms` | The newest alarms of a device, of readings, or of every reading | Query: `device_id` or `reading_id` (repeated, up to 200), optional `monitor_id`, `limit` |
 | `POST` | `/alarms` | Record an alarm by hand and email the alert recipients; 201 with the alarm | Body: `reading_ids`, `timestamp`, `alarm_type`, `value`, optional `value_type` |
 | `DELETE` | `/alarms/{alarm_id}` | Delete one alarm; 204, or 404 when there is none | Path: `alarm_id` |
@@ -329,6 +503,8 @@ change it. A run replays one design over one dataset. Every route needs
 | `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/calibration` | The calibration methods a finished run also tried on its scores, each scored against the labels; 409 for a run started without `compare_calibration` | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
+| `GET` | `/dojo/runs/{run_id}/outline` | The results summed up over equal stretches of time: per stretch the number of results and alarms and the lowest and highest score and threshold | `buckets` (300 by default, at most 2,000) |
+| `GET` | `/dojo/runs/{run_id}/steps` | What 12 to 23 observations of an ended run looked like at every step: the values that went in and came out, or why the step gave none | Path: `run_id` |
 
 A wide CSV has one timestamp column (the first unless `timestamp_column`
 names another) and one series per remaining column; a long CSV has one value
@@ -405,6 +581,54 @@ it. Calculations have a 30-second request deadline and a 25-second database
 statement deadline. These protections use built-in defaults and need no new
 environment variables.
 
+### MCP server for agents
+
+The gateway is also a [Model Context Protocol](https://modelcontextprotocol.io)
+server. An agent connects to `/v1/mcp`, behind the dashboard
+`https://<dashboard>/api/v1/mcp`, and sends its key as
+`Authorization: Bearer <key>` with every request. Only a key connects: without
+one the answer is 401, and a member's token gets 403.
+
+The transport is streamable HTTP without a session. Each `POST` gets one JSON
+answer, nothing is streamed and `GET` answers 405, so a proxy has nothing to
+hold open and any replica answers any request.
+
+| Tool | What the agent does with it | Operation behind it |
+| --- | --- | --- |
+| `list_devices`, `list_readings` | Finds what can be monitored | `GET /devices`, `GET /devices/{device_id}/readings` |
+| `profile_reading` | Learns what a reading looks like before it chooses steps | `GET /readings/{reading_id}/profile` |
+| `search_components`, `get_component` | Finds steps by purpose and reads one with its settings | `GET /pipeline-components/search`, `GET /pipeline-components/{component_id}` |
+| `list_designs`, `get_design` | Reads a design to start from: a starter, a saved template, the design of a running monitor or a proposal | `GET /pipeline-components`, `/pipelines`, `/monitors`, `/monitors/{monitor_id}/pipeline`, `/pipeline-proposals/{proposal_id}` |
+| `edit_design`, `validate_design` | Changes a design in small edits and checks it | `POST /pipelines/edit`, `POST /pipelines/validate` |
+| `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised | `POST /dojo/datasets/history`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` |
+| `propose_design`, `list_proposals`, `withdraw_proposal` | Hands a design to a member and learns what they decided | `/pipeline-proposals` |
+| `start_monitor`, `get_start` | Starts a monitor without a member's decision, in shadow with `shadow` set | `POST /pipelines/apply`, `GET /pipeline-activations/{activation_id}` |
+
+`start_monitor` and `get_start` exist only for a key whose `starts` is `shadow`
+or `live`; another key neither sees nor can call them. A key with `shadow`
+passes `shadow` to `start_monitor`, and a start without it is refused in the
+route's words. The grant is read with every request, so
+it holds from the next one.
+
+A tool is a call to the operations beside it, made with the agent's key. The
+rules on this page therefore hold for a tool as they are: what a key may call,
+the rate limits, and the texts of errors. A refusal comes back as the result of
+the tool with `isError` set and the `detail` of the operation as its text, such
+as `Edit 2 (remove_step): The design has no step 'gone'`, so the agent can
+change its call and try again. Arguments a tool does not know are refused, not
+ignored.
+
+A design passes between the tools as the agent received it: `definition` and
+`layout` from `get_design` or `edit_design` go into the next tool unchanged.
+`test_design` copies the last `days` (7 unless given, up to 30) of the bound
+readings into a Dojo dataset and queues a run on it; with the `dataset_id` of
+an earlier test the design runs on the same copy, so two results compare.
+`get_test` and `get_start` wait up to `wait_seconds` (20 unless given, at most
+45) for the run or the start to finish before they answer. `start_monitor`
+names each start with an idempotency key of its own unless the agent gives
+one, and cannot replace a running monitor: that stays a proposal with
+`replace_monitor_id`.
+
 ### Gateway health
 
 | Method | Path | Purpose |
@@ -442,6 +666,11 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/roles` | Create a role |
 | `PATCH` | `/roles/{role_id}` | Rename a role or replace its permissions |
 | `DELETE` | `/roles/{role_id}` | Delete a role no member holds; 204 |
+| `GET` | `/agents/me` | The agent a key belongs to; the gateway asks this for every request that carries a key |
+| `GET` | `/agents` | Agents that hold a key |
+| `POST` | `/agents` | Create an agent and its key, returned this once |
+| `PATCH` | `/agents/{agent_id}` | Allow or forbid the key to start monitoring services |
+| `DELETE` | `/agents/{agent_id}` | Revoke the key; 204 |
 
 ### Catalogue, recording and live views
 
@@ -450,7 +679,7 @@ a `lease` and a monitor is a `service`.
 | `GET` | `/system` | Saved catalogue document, revision and how each reading is recorded |
 | `PUT` | `/system` | Save structural catalogue changes at an expected revision |
 | `GET` | `/system/revisions` | Saved catalogue revisions |
-| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes |
+| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes. For an HTTP broker, one `GET` |
 | `POST` | `/system/connections/reconnect` | Retry a recorded broker now instead of waiting for its backoff |
 | `PUT` | `/system/collection` | Apply confirmed recording policies |
 | `POST` | `/system/collection/preview` | Review a recording change and the monitors it affects |
@@ -477,7 +706,10 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/monitors/pipelines` | Save a new design as a draft |
 | `POST` | `/monitors/pipelines/apply` | Save, publish and activate a design in one step |
 | `POST` | `/monitors/pipelines/validate` | Check an unsaved design without creating a library record |
-| `GET` | `/monitors/pipelines/catalog` | Components a design may use, with parameter schemas, and the starting templates |
+| `POST` | `/monitors/pipelines/edit` | Change a design in small edits; nothing is stored |
+| `GET` | `/monitors/pipelines/catalog` | Components a design may use, each with its group, description and settings, and the starting templates |
+| `GET` | `/monitors/pipelines/catalog/search` | Components that fit a purpose, a few lines each |
+| `GET` | `/monitors/pipelines/catalog/components/{component_id}` | One component, with the JSON schema of its settings |
 | `GET` | `/monitors/pipelines/forecast-models` | The forecast service's models and their download state, asked with TACTIC's token |
 | `POST` | `/monitors/pipelines/forecast-models/downloads` | Have the forecast service download a model's weights |
 | `GET` | `/monitors/pipelines/{pipeline_id}` | One design with its draft, version and revisions |
@@ -488,6 +720,14 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/monitors/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run |
 | `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint |
 | `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node |
+| `GET` | `/monitors/pipeline-blocks` | Every saved block, by name |
+| `POST` | `/monitors/pipeline-blocks` | Save a chain of steps as a block |
+| `DELETE` | `/monitors/pipeline-blocks/{block_id}` | Delete a block; designs keep the steps they copied from it |
+| `GET` | `/monitors/pipeline-proposals` | Proposals, the newest first, without their designs |
+| `POST` | `/monitors/pipeline-proposals` | Hand a design to a member to decide on |
+| `GET` | `/monitors/pipeline-proposals/{proposal_id}` | One proposal with its design |
+| `POST` | `/monitors/pipeline-proposals/{proposal_id}/decision` | A member accepts or declines a proposal |
+| `POST` | `/monitors/pipeline-proposals/{proposal_id}/withdraw` | The author takes back a proposal that still waits |
 | `POST` | `/monitors/pipeline-activations` | Run a published revision as a monitor |
 | `GET` | `/monitors/pipeline-activations/{activation_id}` | Progress of an activation: phase, monitor and issues |
 | `DELETE` | `/monitors/pipeline-activations/{activation_id}` | Cancel an activation that has not finished |
@@ -500,6 +740,7 @@ a `lease` and a monitor is a `service`.
 | `GET` | `/data/devices/{device_id}/readings` | Catalogue readings of one device |
 | `GET` | `/data/readings/{stream_id}/measurements` | Measurements of a catalogue reading |
 | `GET` | `/data/readings/{stream_id}/measurements/buckets` | Downsampled measurements of a catalogue reading |
+| `GET` | `/data/readings/{stream_id}/profile` | What a catalogue reading looks like over its last days |
 | `GET` | `/data/evidence` | Evidence of a catalogue reading |
 | `GET` | `/data/evidence/chart` | Chart evidence of a catalogue device or of catalogue readings |
 | `POST` | `/data/auth/login` | Internal authentication check |
@@ -508,6 +749,9 @@ a `lease` and a monitor is a `service`.
 | `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
 | `GET` | `/data/alarms` | Alarms of a catalogue device or of catalogue readings |
 | `POST` | `/data/alarms/query` | Reporting query by catalogue reading |
+| `GET` | `/data/alarms/{alarm_id}` | One anomaly with its exact retained evidence |
+| `POST` | `/data/alarms/deletion-preview` | Freeze matching event identities for ten minutes |
+| `POST` | `/data/alarms/delete` | Commit a reviewed selection with an idempotent token |
 | `GET` | `/data/alarms/count` | Count alarms |
 | `POST` | `/data/alarms` | Record an alarm about catalogue readings |
 | `DELETE` | `/data/alarms/{alarm_id}` | Delete an alarm |
@@ -539,6 +783,8 @@ a `lease` and a monitor is a `service`.
 | `GET` | `/dojo/runs/{run_id}/metrics` | Score a finished run against the labels |
 | `GET` | `/dojo/runs/{run_id}/calibration` | Score the calibration methods a run also tried |
 | `GET` | `/dojo/runs/{run_id}/results` | Page through a run's results |
+| `GET` | `/dojo/runs/{run_id}/outline` | Sum a run's results up over equal stretches of time |
+| `GET` | `/dojo/runs/{run_id}/steps` | Read the values a few observations had at every step |
 
 ### RADAR orchestration
 

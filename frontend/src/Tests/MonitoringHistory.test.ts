@@ -4,6 +4,7 @@ import { buildServiceHistoryModel } from "@/features/monitoring/historyModel";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildMonitoringChartOption } from "@/features/charts/telemetry-chart";
 import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
+import { alarmText, collectMonitoringChartDetectors } from "@/features/charts/telemetry-detectors";
 import { filterServiceAnomalies } from "@/lib/monitoring-chart";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
 import { alarm, trackerResult } from "./support/fixtures/monitoring";
@@ -40,7 +41,7 @@ describe("joint monitoring history", () => {
     expect(model.secondarySeries).toHaveLength(1);
     expect(model.secondarySeries[0]!.name).toBe("Joint anomaly score");
     expect(model.secondarySeries[0]!.data.map(point => point.value)).toEqual([[Date.parse(second), 0.61]]);
-    expect(model.readings.map(reading => reading.alarmTimes)).toEqual([[Date.parse(first)], [Date.parse(second)]]);
+    expect(model.readings.map(reading => reading.alarmSpans)).toEqual([[[Date.parse(first), Date.parse(first)]], [[Date.parse(second), Date.parse(second)]]]);
     const option = buildMonitoringChartOption({ model, colors, timeZone: "UTC", accessibleDescription: "Joint forest", layout: "monitoring", viewport: { mode: "live" } });
     expect(option.grid).toHaveLength(3);
     expect(option.axisPointer).toMatchObject({ link: [{ xAxisIndex: "all" }] });
@@ -67,6 +68,44 @@ describe("joint monitoring history", () => {
     expect(text).toContain("(-75 ms)");
     expect(text).toContain("Joint result across 2 inputs");
     expect(text).toContain("Alarm: active");
+  });
+
+  it("shows an alarm a Mute alarms step held back as an open dot and says so in hover", () => {
+    const muted = { ...row, alarm: false, muted: true };
+    const { model } = build([muted]);
+    expect(model.secondarySeries[0]!.latestObservation).toMatchObject({ alarmActive: false, alarmMuted: true });
+    // The reading tracks mark raised alarms only.
+    expect(model.readings.map(reading => reading.alarmSpans)).toEqual([[], []]);
+    const text = formatMonitoringObservationTooltip([{ seriesName: "Joint anomaly score", data: model.secondarySeries[0]!.data[0] }],
+      model.readings, String, String);
+    expect(text).toContain("Alarm: muted");
+    const marks = (evidence: MonitoringChartEvidence[]) => {
+      const option = buildMonitoringChartOption({ model: build(evidence).model, colors: { ...colors, alarmBoundary: "#c00" },
+        timeZone: "UTC", accessibleDescription: "Joint forest", layout: "monitoring", viewport: { mode: "live" } });
+      const series = (option.series as Array<{ id?: string; markPoint?: { data?: Array<{ name?: string; itemStyle?: object }> } }>)
+        .find(item => item.id === "adaptive-score:forest");
+      return (series?.markPoint?.data ?? []).map(({ name, itemStyle }) => ({ name, itemStyle }));
+    };
+    expect(marks([muted])).toEqual([{ name: "Muted alarm", itemStyle: { color: colors.popover, borderColor: "#c00", borderWidth: 1 } }]);
+    expect(marks([row])).toEqual([{ name: "Alarm decision", itemStyle: { color: "#c00" } }]);
+    // An observation without a muted alarm is built as it was before the step existed.
+    expect("alarmMuted" in build().model.secondarySeries[0]!.latestObservation).toBe(false);
+  });
+
+  it("marks the tracker whose crossing was muted, not every tracker of the observation", () => {
+    const detectors = collectMonitoringChartDetectors([{ ...row, strategy: "static_baseline", anomaly_score: undefined,
+      alarm: false, muted: true,
+      tracker_results: [
+        trackerResult({ tracker_id: "primary", statistic_value: 120, alarm_active: true, alarm_muted: true }),
+        trackerResult({ tracker_id: "slow", betting_function: "simple_mixture", statistic_value: 3, alarm_muted: false }),
+      ],
+    }]);
+    const latest = detectors.map(detector => detector.observations[detector.observations.length - 1]!);
+    expect(detectors.map((detector, index) => [detector.trackerId, latest[index]!.alarmMuted]))
+      .toEqual([["slow", undefined], ["primary", true]]);
+    // The statistic is above its threshold, and the alarm it stands for was not raised.
+    expect(latest.map(alarmText)).toEqual(["inactive", "muted"]);
+    expect(alarmText({ alarmActive: true })).toBe("active");
   });
 
   it("preserves scored observations when their input history is unavailable", () => {
@@ -111,11 +150,21 @@ describe("joint monitoring history", () => {
     expect(text).not.toContain("Joint anomaly score: 0.61");
   });
 
+  it("groups consecutive alarm results into one episode that the next quiet result ends", () => {
+    const at = (second: number) => `2026-10-21T10:00:${String(second).padStart(2, "0")}.000Z`;
+    const result = (second: number, alarmed: boolean): MonitoringChartEvidence => ({ ...row, timestamp: at(second), sequence_number: second,
+      input_timestamps: { temperature: at(second), humidity: at(second) }, alarm: alarmed });
+    // Out of order on purpose: episodes follow the reading's own input times.
+    const { model } = build([result(5, true), result(1, false), result(3, true), result(2, true), result(4, false), result(6, true), result(7, false), result(8, true)]);
+    const time = (second: number) => Date.parse(at(second));
+    expect(model.readings[0]!.alarmSpans).toEqual([[time(2), time(3)], [time(5), time(6)], [time(8), time(8)]]);
+  });
+
   it("keeps inputs usable without detector evidence and excludes another service's decisions", () => {
     const { model } = build([{ ...row, monitor_id: "retired", anomaly_score: 100 }]);
     expect(model.readings[0]!.data).toHaveLength(2);
     expect(model.secondarySeries).toEqual([]);
-    expect(model.readings.every(reading => reading.alarmTimes!.length === 0)).toBe(true);
+    expect(model.readings.every(reading => reading.alarmSpans!.length === 0)).toBe(true);
   });
 
   it("retains static logarithmic evidence and overflow alongside multiple readings", () => {

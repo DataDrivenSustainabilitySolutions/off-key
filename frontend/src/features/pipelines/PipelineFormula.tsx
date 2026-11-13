@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { inCondition, suggestions, typedWord, type Suggestion } from "./formula";
+import { calculateLine, CONSTANTS, inCondition, suggestions, typedWord, writtenNames, type Suggestion } from "./formula";
 import { addedName, addsByDefault, combinedName, EACH_VARIABLE, eachSuffix, formulaEach, formulaName, listed } from "./scope";
 
 type Fix = { start: number; end: number; text: string };
@@ -60,13 +60,37 @@ export function CombinedName({ node, component, features, issues, readOnly, onCh
     <small className="pl-help" id={`${id}-name-help`}>
       {node.component === "prepare.set"
         ? `The feature to add or replace. Other features stay unchanged. Leave empty for ${fallback}.`
-        : `The computed feature, in letters, digits and underscores. Leave empty for ${fallback}.`}
+        : `The computed feature, in letters, digits and underscores.${fallback ? ` Leave empty for ${fallback}.` : ""}`}
     </small>
     <Errors id={`${id}-name-errors`} issues={errors} />
   </div>;
 }
 
-/** A Formula's expression or a Gate's condition, written over the features that arrive. */
+type Text = {
+  /** The setting that holds the text. */
+  field: string;
+  condition?: boolean;
+  label?: string;
+  placeholder?: string;
+  /** Left out when empty, for a condition a step can do without. */
+  optional?: boolean;
+  /** One name = formula per line, each reading the lines above it. */
+  lines?: boolean;
+};
+
+/** Where a step keeps what is written in this editor; a step not listed writes a formula. */
+const TEXTS: Record<string, Text> = {
+  "prepare.gate": { field: "condition", condition: true },
+  "prepare.mute": { field: "condition", condition: true, label: "Mute while", placeholder: "speed < 100" },
+  "prepare.condition": { field: "condition", condition: true },
+  "prepare.accumulate": { field: "reset_when", condition: true, label: "Reset when", placeholder: "dc_current < 1", optional: true },
+  "prepare.hold": { field: "update_when", condition: true, label: "Update when" },
+  "prepare.calculate": { field: "formulas", label: "Formulas", placeholder: "power = dc_voltage * dc_current", lines: true },
+};
+const FORMULA: Text = { field: "expression" };
+
+/** A Formula's expression, a condition or the lines of a Calculate step, written over the
+ * features that arrive. */
 export function PipelineFormula({ node, component, features, featureLabels, readings, featureHint, issues, readOnly, range, onChange }: {
   node: PipelineNode;
   component: PipelineComponent;
@@ -86,17 +110,21 @@ export function PipelineFormula({ node, component, features, featureLabels, read
   const id = useId();
   const area = useRef<HTMLTextAreaElement>(null);
   const list = useRef<HTMLUListElement>(null);
-  const gate = node.component === "prepare.gate";
-  const condition = gate || node.component === "prepare.condition";
+  const spec = TEXTS[node.component] ?? FORMULA;
+  const condition = !!spec.condition;
   const formula = node.component === "prepare.formula";
-  const field = condition ? "condition" : "expression";
+  // Only a step that computes one named feature has a Result, a Name and a range to show.
+  const named = ["prepare.formula", "prepare.condition", "prepare.set"].includes(node.component);
+  const field = spec.field;
   const text = typeof node.params[field] === "string" ? node.params[field] : "";
   const errors = errorsOf(issues, field);
   const set = setter(node, onChange);
   const help = component.fields.find((item) => item.name === field)?.description;
   // A Formula for each feature runs once per chosen feature, with x standing for it.
   const each = formula ? formulaEach(node) : undefined;
-  const names = each ? [EACH_VARIABLE, ...features] : features;
+  // A line of a Calculate step reads the features the lines above it write as well.
+  const extra = (written: string[]) => written.filter((name) => !features.includes(name));
+  const names = each ? [EACH_VARIABLE, ...features] : spec.lines ? [...features, ...extra(writtenNames(text))] : features;
   const labels = each ? { ...featureLabels, [EACH_VARIABLE]: "each chosen feature" } : featureLabels;
   // The caret while the field has focus and nothing is selected; suggestions follow it.
   const [caret, setCaret] = useState<number>();
@@ -104,7 +132,14 @@ export function PipelineFormula({ node, component, features, featureLabels, read
   const [dismissed, setDismissed] = useState<string>();
   const word = caret === undefined || readOnly ? undefined : typedWord(text, caret);
   const key = word && `${word.start}:${word.prefix}`;
-  const options = word && key !== dismissed ? suggestions(word, names, labels, inCondition(text, word.start, condition)) : [];
+  const line = word && spec.lines ? calculateLine(text, word.start) : undefined;
+  const options = !word || key === dismissed ? []
+    : line
+      // The name before the equals sign is a feature to replace or a new one.
+      ? suggestions(word, [...features, ...extra(line.above)], labels,
+        inCondition(text.slice(line.start), word.start - line.start, false))
+        .filter((item) => !line.naming || item.kind === "feature")
+      : suggestions(word, names, labels, inCondition(text, word.start, condition));
   const open = options.length > 0;
   const current = Math.min(active, Math.max(options.length - 1, 0));
   // The chosen suggestion stays in view, in the list and in a panel that scrolls.
@@ -135,9 +170,11 @@ export function PipelineFormula({ node, component, features, featureLabels, read
     if (!word) return;
     if (item.kind === "feature") return write(word.start, word.end, formulaName(item.value));
     if (item.kind === "keyword") return write(word.start, word.end, `${item.value} `);
-    // A function opens its parentheses, and the caret goes between them.
+    // A function opens its parentheses, and the caret goes between them, or behind
+    // them where the function takes no value.
     const called = text[word.end] === "(";
-    write(word.start, word.end, called ? item.value : `${item.value}()`, item.value.length + 1);
+    write(word.start, word.end, called ? item.value : `${item.value}()`,
+      item.value.length + (CONSTANTS.has(item.value) && !called ? 2 : 1));
   };
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!open) return;
@@ -214,16 +251,17 @@ export function PipelineFormula({ node, component, features, featureLabels, read
       <Errors id={`${id}-each-errors`} issues={errorsOf(issues, "apply_to")} />
     </fieldset>}
     <div className="pl-field">
-      <label htmlFor={`${id}-text`}>{condition ? "Condition" : "Formula"}</label>
+      <label htmlFor={`${id}-text`}>{spec.label ?? (condition ? "Condition" : "Formula")}</label>
       <div className="pl-formula-input">
-        <textarea ref={area} id={`${id}-text`} className="pl-code" rows={3} maxLength={512} value={text}
-          placeholder={condition ? "dc_current > 1" : each ? "x / mean - 1" : "dc_voltage * dc_current"} disabled={readOnly}
+        <textarea ref={area} id={`${id}-text`} className="pl-code" rows={spec.lines ? 6 : 3}
+          maxLength={spec.lines ? 4096 : 512} value={text}
+          placeholder={spec.placeholder ?? (condition ? "dc_current > 1" : each ? "x / mean - 1" : "dc_voltage * dc_current")} disabled={readOnly}
           spellCheck={false} autoComplete="off" autoCapitalize="off" autoCorrect="off"
           aria-invalid={errors.length > 0} aria-describedby={`${id}-errors ${id}-help`}
           aria-autocomplete="list" aria-controls={open ? listId : undefined}
           aria-activedescendant={open ? `${listId}-${current}` : undefined}
           onChange={(event) => {
-            set(field, event.target.value);
+            set(field, spec.optional ? event.target.value || undefined : event.target.value);
             setActive(0);
             setCaret(event.target.selectionStart === event.target.selectionEnd ? event.target.selectionStart : undefined);
           }}
@@ -252,7 +290,7 @@ export function PipelineFormula({ node, component, features, featureLabels, read
       {!features.length && !each && featureHint}
       {help && <small className="pl-help" id={`${id}-help`}>{help}</small>}
     </div>
-    {!gate && <>
+    {named && <>
       {formula && <div className="pl-field">
         <span id={`${id}-result`}>Result</span>
         <div className="pl-segmented" role="group" aria-labelledby={`${id}-result`}>

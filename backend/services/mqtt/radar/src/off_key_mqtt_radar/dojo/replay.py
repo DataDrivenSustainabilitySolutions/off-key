@@ -5,6 +5,9 @@ detector as live MQTT input. Only the clocks differ: both read the time of the
 point being replayed, so freshness and skew limits measure the data's own
 time instead of the wall clock. Background fitting is awaited, so no point is
 discarded while a static baseline trains and a replay is reproducible.
+
+A replay also keeps what a few observations looked like at every step: the
+values that went in and came out, as the live diagnostics preview them.
 """
 
 import json
@@ -15,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.models.dojo_runs import DOJO_SENSOR_KEY_STRATEGY
-from off_key_core.schemas.dojo import RunAlignment
+from off_key_core.schemas.dojo import MAX_STEP_SAMPLES, RunAlignment
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 
 from ..adaptive_detector import AdaptiveStreamDetectionService
@@ -32,6 +35,9 @@ from ..state_cache import SensorStateCache
 from ..topic_parser import TopicParser
 
 SENSOR_KEY_STRATEGY = DOJO_SENSOR_KEY_STRATEGY
+# A run keeps the steps of this many observations at least, and fewer than
+# twice as many, spread evenly from its first result to its last.
+STEP_SAMPLES = MAX_STEP_SAMPLES // 2
 
 
 @dataclass(frozen=True)
@@ -139,10 +145,17 @@ class Replay:
         self.sequence = 0
         self.alarm_count = 0
         self._waiting: Counter[str] = Counter()
+        self.samples: list[dict[str, Any]] = []
+        self._diagnostics = getattr(service, "diagnostics", None)
+        self._sample_every = 1
+        self._sample_at = 1
 
     def step(self, topic: str, timestamp: float, value: float) -> ReplayResult | None:
         """Replay one point. A detector failure raises FatalExecutionError."""
         self._clock.now = timestamp
+        sampled = self._diagnostics is not None and self.sequence + 1 >= self._sample_at
+        if sampled:
+            self._diagnostics.sample_next()
         message = MQTTMessage(
             topic=topic,
             payload=json.dumps({"value": value, "timestamp": timestamp}).encode(),
@@ -157,7 +170,43 @@ class Replay:
             if status and status not in {"observation_rejected", "aligned_emit"}:
                 self._waiting[status] += 1
             return None
-        return self._row(result)
+        row = self._row(result)
+        if sampled:
+            self._sample(row)
+        return row
+
+    def _sample(self, row: ReplayResult) -> None:
+        """Keep the steps of this result. A sample never fails a replay."""
+        try:
+            observation = self._diagnostics.snapshot()["observation"]
+            if observation is None:
+                return
+            passes = observation["passes"]
+            self.samples.append(
+                {
+                    "sequence": row.sequence,
+                    "timestamp": row.timestamp.isoformat(),
+                    "phase": row.phase,
+                    # A step shows the pass it ran in: before learning where
+                    # it scored, else the learning pass.
+                    "steps": {
+                        identifier: (
+                            scored
+                            if scored["state"] != "not_executed"
+                            else passes["learn"].get(identifier, scored)
+                        )
+                        for identifier, scored in passes["score"].items()
+                    },
+                }
+            )
+        except Exception:
+            return
+        if len(self.samples) >= 2 * STEP_SAMPLES:
+            # The length of a run is not known while it runs: drop every other
+            # sample and take the next ones twice as far apart.
+            self.samples = self.samples[::2]
+            self._sample_every *= 2
+        self._sample_at = row.sequence + self._sample_every
 
     def _row(self, result: AnomalyResult) -> ReplayResult:
         self.sequence += 1

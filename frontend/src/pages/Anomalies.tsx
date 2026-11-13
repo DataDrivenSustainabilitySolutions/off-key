@@ -1,143 +1,63 @@
-import { useAuth } from "@/auth/AuthContext";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Activity, Copy, Filter, RefreshCw, Trash2 } from "lucide-react";
-import toast from "react-hot-toast";
+import { useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Activity, RefreshCw, Trash2, X } from 'lucide-react';
+import { useAuth } from '@/auth/AuthContext';
+import { PageShell } from '@/components/DashboardLayout';
+import { HelpTooltip } from '@/components/HelpTooltip';
+import { Button } from '@/components/ui/button';
+import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useNow } from '@/hooks/use-now';
+import { dayKey, formatDay, formatExactDateTime } from '@/lib/format-time';
+import { useCatalogue } from '@/features/workspace/catalogue-context';
+import { catalogueSelectionLabel, withCatalogueSource } from '@/features/workspace/catalogue-navigation';
+import { detailsHref, selectedSource } from '@/features/workspace/reporting-scope';
+import { AnomalyRow } from '@/features/reporting/AnomalyRow';
+import { ReportingFilter } from '@/features/reporting/ReportingFilter';
+import { useAlarmEvents } from '@/features/reporting/useAlarmEvents';
+import { useAlarmDeletion } from '@/features/reporting/useAlarmDeletion';
+import { compactRecency } from '@/features/reporting/model';
+import type { Alarm, AlarmQuery } from '@/types/charger';
+import '@/features/reporting/reporting.css';
 
-import { ActionMenu } from "@/components/ActionMenu";
-import { useConfirm } from "@/hooks/use-confirm";
-import { MetricCard, PageHeader, PageShell } from "@/components/DashboardLayout";
-import { HelpTooltip } from "@/components/HelpTooltip";
-import { RelativeTime } from "@/components/RelativeTime";
-import { useNow } from "@/hooks/use-now";
-import { Button } from "@/components/ui/button";
-import { useDocumentTitle } from "@/hooks/use-document-title";
-import { catalogueSelectionLabel } from "@/features/workspace/catalogue-navigation";
-import {
-  formatAnomalyValue,
-  getAnomalyValueClassName,
-  getAnomalyValueLabel,
-  isProbabilityAnomalyValue,
-} from "@/lib/anomaly-semantics";
-import { formatAlarmReadings, isAlarmContext } from "@/lib/anomaly-utils";
-import { deleteAlarm, queryAlarms } from "@/lib/charger-api";
-import { getErrorMessage } from "@/lib/errors";
-import { dayKey, formatDay, formatExactDateTime, formatTimeOfDay } from "@/lib/format-time";
-import { useNavigationDraft } from "@/lib/navigation-draft";
-import type { Alarm, AlarmPage, AlarmQuery } from "@/types/charger";
-import type { ExplorerNode } from "@/domain/system/navigationIndex";
-import { useCatalogue } from "@/features/workspace/catalogue-context";
-import { SourceScope } from "@/features/workspace/SourceScope";
-import {
-  alarmSource, detailsHref, selectedSource, sourceNode, type ReadingSource,
-} from "@/features/workspace/reporting-scope";
-import { selectedSourceHref, withCatalogueSource } from "@/features/workspace/catalogue-navigation";
-import "./reporting.css";
-
-const ranges = [{ id: "any", label: "Any time", ms: Infinity }, { id: "24h", label: "Last 24 hours", ms: 86_400_000 },
-  { id: "7d", label: "Last 7 days", ms: 7 * 86_400_000 }, { id: "30d", label: "Last 30 days", ms: 30 * 86_400_000 }];
-const signals = [{ id: "any", label: "All results", max: Infinity }, { id: "0.01", label: "p ≤ 0.01", max: 0.01 }, { id: "0.001", label: "p ≤ 0.001", max: 0.001 }];
-const PAGE_SIZE = 500;
-/** The device's name, or the broker's for readings without a device. */
-const deviceName = (alarm: Alarm) => alarm.device_label ?? "Unknown device";
-const sourceKey = (source: ReadingSource) => `${source.kind}:${source.id}`;
-const readingsLabel = (source: ReadingSource) => source.kind === "device" ? "Device readings" : "Broker readings";
-/** The time window is relative to when the request is sent. */
-const withSince = (query: AlarmQuery, range: string): AlarmQuery => {
-  const window = ranges.find(item => item.id === range)?.ms ?? Infinity;
-  return window === Infinity ? query : { ...query, since: new Date(Date.now() - window).toISOString() };
-};
+const ranges = [{ id: 'any', label: 'Any time', ms: undefined }, { id: '24h', label: 'Last 24 hours', ms: 86_400_000 },
+  { id: '7d', label: 'Last 7 days', ms: 7 * 86_400_000 }, { id: '30d', label: 'Last 30 days', ms: 30 * 86_400_000 }];
+const probabilities = [{ id: 'any', label: 'All detector results' }, { id: '0.01', label: 'p ≤ 0.01' }, { id: '0.001', label: 'p ≤ 0.001' }];
+const EMPTY_SELECTION = { key: '', all: false, ids: new Set<string>() };
 
 export default function AnomalyTable() {
-  const { can, userId } = useAuth();
+  const { can } = useAuth();
+  const { streamIds, system, selected, selectionMissing, selectSource } = useCatalogue();
   const navigate = useNavigate();
-  const { streamIds, system, selected, index } = useCatalogue();
-  const [result, setResult] = useState<{ query: AlarmQuery; page: AlarmPage } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [reading, setReading] = useNavigationDraft(`reporting:${userId}:reading`, "any");
-  const [range, setRange] = useNavigationDraft(`reporting:${userId}:range`, "any");
-  const [signal, setSignal] = useNavigationDraft(`reporting:${userId}:signal`, "any");
-  const [confirm, confirmation] = useConfirm();
-  const now = useNow();
-
+  const [params, setParams] = useSearchParams();
+  const reading = params.get('filterReading') ?? 'any';
+  const range = ranges.find(item => item.id === params.get('range')) ?? ranges[0]!;
+  const probability = probabilities.find(item => item.id === params.get('p')) ?? probabilities[0]!;
+  const query = useMemo((): AlarmQuery => ({
+    ...(streamIds !== undefined && { reading_ids: [...streamIds] }),
+    ...(reading !== 'any' && { reading_id: reading }),
+    ...(probability.id !== 'any' && { max_p_value: Number(probability.id) }), limit: 500,
+  }), [streamIds, reading, probability.id]);
+  const events = useAlarmEvents(query, range.ms);
+  const { result, error, busy, loadingOlder } = events;
   const page = result?.page;
-  const readingOptions = useMemo(() => {
-    const readings = page?.readings ?? [];
-    const multipleDevices = new Set(readings.map(item => item.device_label)).size > 1;
-    return readings.map(item => [item.reading_id,
-      multipleDevices && item.device_label ? `${item.label} · ${item.device_label}` : item.label] as const)
-      .sort((left, right) => left[1].localeCompare(right[1]));
-  }, [page]);
-  // A remembered reading outside the current scope reads as "All readings".
-  const activeReading = readingOptions.some(([id]) => id === reading) ? reading : "any";
-  const query = useMemo((): AlarmQuery => {
-    const maximum = signals.find(item => item.id === signal)?.max ?? Infinity;
-    return {
-      ...(streamIds ? { reading_ids: [...streamIds] } : {}),
-      ...(activeReading !== "any" ? { reading_id: activeReading } : {}),
-      ...(maximum !== Infinity ? { max_p_value: maximum } : {}),
-      limit: PAGE_SIZE,
-    };
-  }, [streamIds, activeReading, signal]);
-
-  const load = useCallback(async (abort?: AbortSignal) => {
-    const sent = withSince(query, range);
-    try {
-      setIsLoading(true);
-      setError(null);
-      const answer = await queryAlarms(sent, abort);
-      if (!abort?.aborted) setResult({ query: sent, page: answer });
-    } catch (err) {
-      if (!abort?.aborted) setError(getErrorMessage(err));
-    } finally {
-      if (!abort?.aborted) setIsLoading(false);
-    }
-  }, [query, range]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      void load(controller.signal);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [load]);
-
-  const loadOlder = async () => {
-    if (!result?.page.next) return;
-    setLoadingOlder(true);
-    try {
-      const older = await queryAlarms({ ...result.query, before: result.page.next });
-      setResult(current => current && current.query === result.query
-        ? { query: current.query, page: { ...older, items: [...current.page.items, ...older.items] } }
-        : current);
-    } catch (err) {
-      toast.error(`Older events could not be loaded: ${getErrorMessage(err)}`);
-    } finally {
-      setLoadingOlder(false);
-    }
-  };
-
-  const document = system.snapshot?.document;
+  const [selection, setSelection] = useState(EMPTY_SELECTION);
+  const chosen = selection.key === events.key ? selection : EMPTY_SELECTION;
+  const deletion = useAlarmDeletion(async () => { setSelection(EMPTY_SELECTION); await events.load(true); });
+  const locked = deletion.busy || deletion.pending;
+  const count = page?.summary.count ?? 0;
+  const selectionCount = chosen.all ? Math.max(0, count - chosen.ids.size) : chosen.ids.size;
+  const isSelected = (id: string) => chosen.all ? !chosen.ids.has(id) : chosen.ids.has(id);
   const items = useMemo(() => page?.items ?? [], [page]);
-  // One catalogue node lookup per device or broker, not one per table row and render.
-  const sources = useMemo(() => {
-    const nodes = new Map<string, ExplorerNode | undefined>();
-    return new Map(items.map(alarm => {
-      const source = alarmSource(alarm, document);
-      if (!source) return [alarm.alarm_id, undefined] as const;
-      const key = sourceKey(source);
-      if (!nodes.has(key)) nodes.set(key, sourceNode(index, source));
-      return [alarm.alarm_id, { source, key, node: nodes.get(key) }] as const;
-    }));
-  }, [items, index, document]);
+  const allVisible = items.length > 0 && items.every(alarm => isSelected(alarm.alarm_id));
+  const someVisible = items.some(alarm => isSelected(alarm.alarm_id));
+  const toggle = (ids: string[], select: boolean) => {
+    const next = new Set(chosen.ids);
+    for (const id of ids) { if (select !== chosen.all) next.add(id); else next.delete(id); }
+    setSelection({ key: events.key, all: chosen.all, ids: next });
+  };
+  const now = useNow();
   const days = useMemo(() => {
-    const groups: Array<{ key: string; label: string; rows: Alarm[] }> = [];
+    const groups: { key: string; label: string; rows: Alarm[] }[] = [];
     for (const alarm of items) {
       const key = dayKey(alarm.timestamp);
       if (groups[groups.length - 1]?.key !== key) groups.push({ key, label: formatDay(alarm.timestamp, now), rows: [] });
@@ -145,146 +65,102 @@ export default function AnomalyTable() {
     }
     return groups;
   }, [items, now]);
-  const filtering = activeReading !== "any" || range !== "any" || signal !== "any";
-  const clearFilters = () => { setReading("any"); setRange("any"); setSignal("any"); };
-  const unknown = isLoading || (!!error && !page);
-  const count = page?.summary.count ?? 0;
-  const metric = (value: number) => unknown ? "—" : value;
+  const document = system.snapshot?.document;
+  const scopeLabel = (document && catalogueSelectionLabel(document, selected)) ?? (selectionMissing ? 'Unavailable selection' : 'All sources');
   const scopedSource = selectedSource(streamIds, document);
-  useDocumentTitle(document && catalogueSelectionLabel(document, selected), "Reporting");
+  const filtering = reading !== 'any' || range.id !== 'any' || probability.id !== 'any';
+  const setFilter = (key: string, value: string) => setParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (value === 'any') next.delete(key); else next.set(key, value);
+    return next;
+  });
+  const clearFilters = () => setParams(previous => {
+    const next = new URLSearchParams(previous);
+    for (const key of ['filterReading', 'range', 'p']) next.delete(key);
+    return next;
+  });
+  const readingOptions = useMemo(() => (page?.readings ?? []).map(item => ({ id: item.reading_id,
+    label: `${item.label}${!scopedSource && item.device_label ? ` · ${item.device_label}` : ''}` }))
+    .sort((a, b) => a.label.localeCompare(b.label)), [page, scopedSource]);
+  const description = `${scopeLabel} · ${range.label}${reading !== 'any' ? ` · ${readingOptions.find(item => item.id === reading)?.label ?? reading}` : ''}${probability.id !== 'any' ? ` · ${probability.label}` : ''}.`;
+  const canDelete = can('manage_alarms');
+  const columns = canDelete ? 6 : 5;
+  useDocumentTitle(scopeLabel === 'All sources' ? undefined : scopeLabel, 'Reporting');
 
-  const handleDelete = async (alarm: Alarm) => {
-    if (!await confirm({ title: "Delete this anomaly?", confirmLabel: "Delete anomaly", destructive: true,
-      description: `${deviceName(alarm)} at ${formatExactDateTime(alarm.timestamp)}. This cannot be undone.` })) return;
-    try {
-      await deleteAlarm(alarm.alarm_id);
-
-      toast.success("Anomaly deleted");
-      await load();
-    } catch (err) {
-      toast.error(`The anomaly could not be deleted: ${getErrorMessage(err)}`);
-    }
-  };
-  const copyId = async (id: string) => {
-    try { await navigator.clipboard.writeText(id); toast.success("Event ID copied"); }
-    catch { toast.error("The event ID could not be copied."); }
-  };
-
-  return (
-    <>
-      <PageShell>
-        <PageHeader
-          title="Reporting"
-          actions={<>
-            {scopedSource && <Button variant="ghost" asChild>
-              <Link to={withCatalogueSource(detailsHref(scopedSource), selected)}><Activity className="h-4 w-4" />{readingsLabel(scopedSource)}</Link>
-            </Button>}
-            {!error && <Button
-              variant="outline"
-              onClick={() => void load()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-              Refresh
-            </Button>}
-          </>}
-        />
-
-        <SourceScope />
-        {system.error && <p role="alert" className="flex flex-wrap items-center gap-x-3 text-sm text-destructive">Catalogue status unavailable: {system.error}
-          <Button variant="link" className="h-auto px-0 sm:h-auto" onClick={() => void system.refresh()}>Retry catalogue</Button>
-        </p>}
-        <div className="rp-metrics">
-          {!scopedSource && streamIds?.length !== 0 && <MetricCard
-            label="Affected devices"
-            value={metric(page?.summary.devices ?? 0)}
-            tone="info"
-          />}
-          <MetricCard
-            label="Last anomaly"
-            value={unknown ? "—" : page?.summary.latest ? <RelativeTime value={page.summary.latest} /> : "None"}
-          />
+  return <PageShell className="rp-page">
+    <header className="rp-heading">
+      <div className="rp-heading-main">
+        <h1 className="app-page-title">Reporting</h1>
+        {(selected || selectionMissing) && <div className="rp-source-scope" aria-label="Selected source">
+          <span title={scopeLabel}>{scopeLabel}</span>
+          <Button variant="ghost" size="icon" aria-label="Show all sources" title="Show all sources" disabled={locked} onClick={() => selectSource(null)}><X size={13} /></Button>
+        </div>}
+        <div className="rp-summary">
+          <span>{page ? page.summary.devices : '—'} {page?.summary.devices === 1 ? 'device' : 'devices'}</span>
+          <span>Latest · {page?.summary.latest ? <time dateTime={page.summary.latest} title={formatExactDateTime(page.summary.latest)}>
+            {compactRecency(page.summary.latest, now)}</time> : page ? 'none' : '—'}</span>
         </div>
-
-        {error ? (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
-            <span>Anomalies could not be loaded: {error}</span>
-            <Button variant="outline" size="sm" onClick={() => void load()}>Retry</Button>
-          </div>
-        ) : null}
-
-        <section className="rp-events" aria-label="Anomaly events">
-          <div className="rp-filters" role="group" aria-label="Filter events">
-            <Filter className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            <select aria-label="Reading" value={activeReading} onChange={event => setReading(event.target.value)} disabled={!readingOptions.length}>
-              <option value="any">All readings</option>
-              {readingOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
-            <select aria-label="Time range" value={range} onChange={event => setRange(event.target.value)}>
-              {ranges.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-            <select aria-label="p-value" value={signal} onChange={event => setSignal(event.target.value)}>
-              {signals.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-            {filtering && <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>}
-            <span className="rp-count" role="status">{unknown ? "" : `${count.toLocaleString()} ${count === 1 ? "event" : "events"}`}</span>
-          </div>
-          <table className="rp-table">
-            <thead>
-              <tr>
-                <th scope="col">Device</th>
-                <th scope="col">Time</th>
-                <th scope="col">Readings</th>
-                <th scope="col">Type</th>
-                <th scope="col"><span className="rp-signal-heading">Detector result<HelpTooltip label="Detector result">
-                  Lower p-values indicate more unusual readings. Red means p ≤ 0.001, orange means p ≤ 0.005, and yellow means a higher p-value. Other detector scores are grey.
-                </HelpTooltip></span></th>
-                <th scope="col"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            {isLoading ? <tbody><tr className="rp-message"><td colSpan={6}>Loading anomalies…</td></tr></tbody>
-              : !days.length ? !error && <tbody><tr className="rp-message"><td colSpan={6}>
-                {filtering && readingOptions.length ? "No events match these filters." : "No anomalies recorded."}
-              </td></tr></tbody>
-              : days.map(day => <tbody key={day.key}>
-                <tr className="rp-day"><th colSpan={6} scope="rowgroup">{day.label}</th></tr>
-                {day.rows.map(alarm => {
-                  const device = deviceName(alarm);
-                  const found = sources.get(alarm.alarm_id);
-                  const node = found?.node;
-                  const scopedHere = !!node && node.key === selected?.key;
-                  const readings = formatAlarmReadings(alarm);
-                  return <tr key={alarm.alarm_id} className="rp-row">
-                    <td className="rp-entity">{node && !scopedHere
-                      ? <Link to={selectedSourceHref("/anomalies", node)} title={`Show only ${device}`}>{device}</Link> : device}</td>
-                    <td className="rp-time"><time dateTime={alarm.timestamp} title={formatExactDateTime(alarm.timestamp)}>{formatTimeOfDay(alarm.timestamp)}</time></td>
-                    <td className="rp-readings"><div>
-                      <span className="rp-reading">{alarm.multivariate ? "multivariate" : alarm.reading_ids.length ? readings : "removed reading"}</span>
-                      {/* A single reading is already named by its badge. */}
-                      {isAlarmContext(alarm) && <span className="rp-sensors" title={readings}>{readings}</span>}
-                    </div></td>
-                    <td className="rp-type">{alarm.alarm_type}</td>
-                    <td className="rp-signal"><span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${getAnomalyValueClassName(alarm.value, alarm.value_type)}`}
-                      title={getAnomalyValueLabel(alarm.value_type)}>{isProbabilityAnomalyValue(alarm.value_type) ? "p" : "Score"}{" "}{formatAnomalyValue(alarm.value, alarm.value_type)}</span></td>
-                    <td className="rp-actions">
-                      <ActionMenu label={`Actions for ${device} at ${formatExactDateTime(alarm.timestamp)}`} actions={[
-                        ...(found && found.key !== (scopedSource && sourceKey(scopedSource)) ? [{ label: readingsLabel(found.source), icon: Activity, onSelect: () => navigate(withCatalogueSource(detailsHref(found.source), selected)) }] : []),
-                        { label: "Copy event ID", icon: Copy, onSelect: () => void copyId(alarm.alarm_id) },
-                        ...(can("manage_alarms") ? [{ label: "Delete anomaly", icon: Trash2, destructive: true, separated: true, onSelect: () => void handleDelete(alarm) }] : []),
-                      ]} />
-                    </td>
-                  </tr>;
-                })}
-              </tbody>)}
-          </table>
-          {page?.next && !isLoading && <div className="rp-more">
-            <Button variant="outline" size="sm" onClick={() => void loadOlder()} disabled={loadingOlder}>
-              {loadingOlder ? "Loading older events…" : `Load older events (${(count - items.length).toLocaleString()} more)`}
-            </Button>
-          </div>}
-        </section>
-      </PageShell>
-      {confirmation}
-    </>
-  );
+      </div>
+      <div className="rp-heading-actions">
+        {scopedSource && <Button variant="ghost" size="sm" asChild><Link to={withCatalogueSource(detailsHref(scopedSource), selected)}>
+          <Activity size={14} />{scopedSource.kind === 'device' ? 'Device readings' : 'Broker readings'}</Link></Button>}
+        <Button variant="ghost" size="icon" aria-label="Refresh" title={result ? `Refresh · Last updated ${formatExactDateTime(result.updatedAt)}` : 'Refresh'}
+          onClick={() => void events.load()} disabled={busy || loadingOlder || locked}>
+          <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /></Button>
+      </div>
+    </header>
+    {system.error && <p role="alert" className="rp-error">Catalogue status unavailable: {system.error}
+      <Button variant="link" onClick={() => void system.refresh()}>Retry catalogue</Button></p>}
+    {selectionMissing && <p role="alert" className="rp-error">This source is no longer available. Clear the signal scope to view other events.</p>}
+    {error && <p role="alert" className="rp-error">Anomalies could not be updated: {error}. {page && 'Showing the last loaded results.'}
+      <Button variant="outline" size="sm" disabled={busy || locked} onClick={() => void events.load()}>Retry</Button></p>}
+    <section className="rp-events" aria-label="Anomaly events" aria-busy={busy}>
+      <div className="rp-filters" role="group" aria-label="Filter events">
+        <ReportingFilter label="Reading" value={reading} active={reading !== 'any'} disabled={locked} onChange={value => setFilter('filterReading', value)}
+          options={[{ id: 'any', label: 'All readings' }, ...(reading !== 'any' && !readingOptions.some(item => item.id === reading)
+            ? [{ id: reading, label: 'Selected reading (no results)' }] : []), ...readingOptions]} />
+        <ReportingFilter label="Time range" value={range.id} options={ranges} active={range.id !== 'any'} disabled={locked} onChange={value => setFilter('range', value)} />
+        <ReportingFilter label="p-value" value={probability.id} options={probabilities} active={probability.id !== 'any'} disabled={locked} onChange={value => setFilter('p', value)} />
+        {filtering && <Button variant="ghost" size="sm" className="rp-clear-filters" disabled={locked} onClick={clearFilters}><X size={12} />Clear filters</Button>}
+        <span className="rp-count" role="status">{page && `${count.toLocaleString()} ${count === 1 ? 'event' : 'events'}`}</span>
+        {canDelete && count > 0 && selectionCount === 0 && <Button variant="ghost" size="sm" className="rp-delete-all" aria-label="Delete all matching" title="Delete all events matching this scope and these filters"
+          disabled={busy || locked || !!error} onClick={() => result && void deletion.prepare({ query: result.query }, description)}><Trash2 size={13} />Delete all</Button>}
+      </div>
+      {probability.id !== 'any' && <p className="rp-note">This filter includes probability results only; adaptive scores are excluded.</p>}
+      {selectionCount > 0 && <div className="rp-selection" role="region" aria-label="Selected anomalies">
+        <strong>{selectionCount.toLocaleString()} selected{chosen.all ? ' across all pages' : ''}</strong>
+        {!chosen.all && count > chosen.ids.size && <Button variant="link" size="sm" disabled={busy || locked}
+          onClick={() => setSelection({ key: events.key, all: true, ids: new Set() })}>Select all {count.toLocaleString()} matching events</Button>}
+        <Button variant="ghost" size="sm" className="rp-clear-selection" aria-label="Clear selection" title="Clear selection" disabled={locked} onClick={() => setSelection(EMPTY_SELECTION)}><X size={14} /></Button>
+        <Button variant="default" size="sm" className="rp-delete-selected" disabled={busy || locked || !!error} onClick={() => result && void deletion.prepare(
+          chosen.all ? { query: result.query, exclude_ids: [...chosen.ids] } : { alarm_ids: [...chosen.ids] }, description)}>
+          <Trash2 size={14} />Delete selected</Button>
+      </div>}
+      {deletion.busy && !deletion.pending && <p role="status" className="rp-note">Preparing the exact selection…</p>}
+      <table className={`rp-table${canDelete ? ' rp-selectable' : ''}`}>
+        <thead><tr>
+          {canDelete && <th scope="col" className="rp-select"><label className="rp-check"><input type="checkbox" aria-label="Select all loaded anomalies"
+            ref={element => { if (element) element.indeterminate = someVisible && !allVisible; }}
+            checked={allVisible} disabled={!items.length || busy || locked || !!error}
+            onChange={event => toggle(items.map(alarm => alarm.alarm_id), event.target.checked)} /></label></th>}
+          <th scope="col" className="rp-source-heading">Source</th><th scope="col" className="rp-detection-heading">Detection</th><th scope="col" className="rp-readings-heading">Involved signals</th>
+          <th scope="col" className="rp-result-heading"><span className="rp-signal-heading">Result<HelpTooltip label="Detector result">
+            A p-value describes how unusual an observation is. Scores depend on the detector. Investigate the event to see its alert threshold; these values do not measure operational severity.
+          </HelpTooltip></span></th><th scope="col"><span className="sr-only">Actions</span></th>
+        </tr></thead>
+        {!page && busy ? <tbody><tr className="rp-message"><td colSpan={columns}>Loading anomalies…</td></tr></tbody>
+          : !days.length ? <tbody><tr className="rp-message"><td colSpan={columns}>{error ? 'Events are unavailable.' : filtering || selected || selectionMissing
+            ? 'No events match this scope and these filters.' : 'No anomalies recorded.'}</td></tr></tbody>
+          : days.map(day => <tbody key={day.key}><tr className="rp-day"><th colSpan={columns} scope="rowgroup"><span>{day.label}</span></th></tr>
+            {day.rows.map(alarm => <AnomalyRow key={alarm.alarm_id} alarm={alarm} selected={isSelected(alarm.alarm_id)} canDelete={canDelete}
+              disabled={busy || locked || !!error} onSelect={() => toggle([alarm.alarm_id], !isSelected(alarm.alarm_id))}
+              onNavigate={href => navigate(href, { state: { reportingReturn: `/anomalies${params.size ? `?${params}` : ''}` } })} onDelete={() => void deletion.prepare({ alarm_ids: [alarm.alarm_id] },
+                `${alarm.device_label ?? 'Removed source'} at ${formatExactDateTime(alarm.timestamp)}.`)} />)}
+          </tbody>)}
+      </table>
+      {page?.next && <div className="rp-more"><Button variant="outline" size="sm" disabled={busy || loadingOlder || locked}
+        onClick={() => void events.loadOlder()}>{loadingOlder ? 'Loading older events…' : `Load older events (${Math.max(0, count - items.length).toLocaleString()} more)`}</Button></div>}
+    </section>
+    {deletion.confirmation}
+  </PageShell>;
 }

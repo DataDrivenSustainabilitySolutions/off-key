@@ -24,7 +24,7 @@ from off_key_core.db.system import (
     SystemRevision,
 )
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.services.catalogue import system as system_service
@@ -107,6 +107,8 @@ CONFORMANCE = json.loads(
 def conformance_document(case: dict) -> dict:
     data = deepcopy(CONFORMANCE["base"])
     data["brokers"][0].update(case.get("connection", {}))
+    if "reading" in case:
+        data["readings"].append(case["reading"])
     if "group" in case:
         data["groups"].append(case["group"])
     return data
@@ -139,6 +141,42 @@ def test_generic_connections_accept_hostname_and_ip_addresses(host):
     data = document().model_dump(mode="json")
     data["connections"][0]["host"] = host
     assert SystemDocument.model_validate(data).connections[0].host == host
+
+
+def http_document(**connection) -> dict:
+    data = document().model_dump(mode="json")
+    del data["connections"][0]["port"]
+    data["connections"][0].update(protocol="http", **connection)
+    data["streams"][0]["topic"] = "/v1/status?unit=c"
+    return data
+
+
+@pytest.mark.parametrize(
+    ("connection", "port"),
+    [({}, 80), ({"tls": True}, 443), ({"tls": True, "port": 8443}, 8443)],
+)
+def test_an_http_source_without_a_port_uses_the_one_of_its_scheme(connection, port):
+    saved = SystemDocument.model_validate(http_document(**connection))
+    assert saved.connections[0].port == port
+    # The stored document names the port, so a later TLS change cannot move it.
+    stored = saved.model_dump(mode="json")
+    assert stored["connections"][0]["port"] == port
+    assert SystemDocument.model_validate(stored) == saved
+
+
+def test_a_source_timestamp_is_stored_only_where_one_is_set():
+    """The previous release rejects keys it does not know, and a rollback must
+    still read every catalogue that holds no HTTP source."""
+    stored = document().model_dump(mode="json")
+    assert "timestamp_pointer" not in stored["streams"][0]
+    assert stored["connections"][0]["protocol"] == "mqtt"
+
+    data = http_document()
+    data["streams"][0]["timestamp_pointer"] = "/observed_at"
+    saved = SystemDocument.model_validate(data)
+    stored = saved.model_dump(mode="json")
+    assert stored["streams"][0]["timestamp_pointer"] == "/observed_at"
+    assert SystemDocument.model_validate(stored) == saved
 
 
 @pytest.mark.parametrize(
@@ -302,6 +340,20 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
         changed.streams[0].topic = "sensors/office/temperature"
         changed.streams[0].device_id = None
         changed.groups[0].color = "#abcdef"
+        from off_key_core.schemas.system import SourceAppearance, TopicAppearance
+
+        for item in [
+            *changed.connections,
+            *changed.devices,
+            *changed.streams,
+            *changed.groups,
+        ]:
+            item.appearance = SourceAppearance(icon="pump", color="sage")
+        changed.topic_appearances = [
+            TopicAppearance(
+                broker_id="broker-1", topic="sensors", appearance={"icon": "factory"}
+            )
+        ]
         saved = await service.save(
             SystemChange(expected_revision=1, document=changed),
             actor="other-admin@example.com",
@@ -315,6 +367,11 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
         assert restored.document.connections[0].host == "new.example.com"
         assert restored.document.streams[0].topic == "sensors/office/temperature"
         assert restored.document.groups[0].color == "#abcdef"
+        assert restored.document.connections[0].appearance.icon == "pump"
+        assert restored.document.devices[0].appearance.color == "sage"
+        assert restored.document.streams[0].appearance.icon == "pump"
+        assert restored.document.groups[0].appearance.color == "sage"
+        assert restored.document.topic_appearances[0].appearance.icon == "factory"
         unchanged = session.get(CollectionConfiguration, 1)
         assert unchanged.revision == 7 and unchanged.document == legacy
         assert unchanged.collection_status == {"status": "paused"}
@@ -349,7 +406,7 @@ def test_routes_enforce_current_database_admin_role_and_member_reads(monkeypatch
     app = FastAPI()
     app.include_router(system_api.router)
     member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_member] = lambda: member
+    app.dependency_overrides[current_caller] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     read = AsyncMock(return_value={})
     monkeypatch.setattr(system_service.SystemService, "save", read)
@@ -369,7 +426,7 @@ def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypat
     app = FastAPI()
     app.include_router(system_api.router)
     member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_member] = lambda: member
+    app.dependency_overrides[current_caller] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     snapshot = SystemSnapshot(revision=1, document=document(), storage_origin="saved")
     read = AsyncMock(return_value=snapshot)

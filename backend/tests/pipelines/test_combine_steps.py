@@ -330,7 +330,7 @@ def test_problems_point_at_their_setting(steps, expected):
                     "constant_feature",
                     "model",
                     None,
-                    "formula is always 6, so Aberrant MovingMahalanobisDistance "
+                    "formula is always 6, so Moving Mahalanobis distance "
                     "learns nothing from it. Use it in a formula or condition, "
                     "then leave it out with Select features.",
                 ),

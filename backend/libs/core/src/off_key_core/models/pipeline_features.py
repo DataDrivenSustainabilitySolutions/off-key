@@ -4,9 +4,16 @@ from collections.abc import Callable, Sequence
 
 from ..schemas.pipelines import FeatureDescription, PipelineDefinition, PipelineNode
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
-from .pipeline_combine import combined_columns, combined_name, each_scope, for_each
+from .pipeline_combine import (
+    calculated_names,
+    combined_columns,
+    combined_name,
+    each_scope,
+    for_each,
+    lane_condition,
+)
 from .pipeline_prepare import LANE_COMPONENTS, ROW_COMPONENTS, prepared_bounds
-from .pipeline_scope import PROJECTIONS, step_scope
+from .pipeline_scope import EXPECTATIONS, PROJECTIONS, step_scope
 
 Columns = list[FeatureDescription]
 __all__ = ["PROJECTIONS", "Columns", "adaptive_input_errors", "node_features"]
@@ -69,22 +76,32 @@ def _prepared(node: PipelineNode, columns: Columns) -> Columns:
 
 
 def _elementwise(node: PipelineNode, columns: Columns) -> Columns:
-    scope = step_scope(node.component, node.params, [item.name for item in columns])
+    names = [item.name for item in columns]
+    scope = step_scope(node.component, node.params, names)
+    # A condition the step reads from the row names features that arrive.
+    lane_condition(node.component, node.params, names)
     position = {item.name: item for item in columns}
     used = [position[name] for name in scope.selected]
     change = (
         _prepared if node.component in LANE_COMPONENTS else ELEMENTWISE[node.component]
     )
-    if not scope.add:
-        # The used columns are the incoming ones, so they change in place.
-        for item in change(node, used):
-            item.steps.append(node.id)
-        return columns
-    added = change(node, [item.model_copy(deep=True) for item in used])
-    for item, name in zip(added, scope.added, strict=True):
-        item.name = name
+    # Without added features the used columns are the incoming ones, so they
+    # change in place.
+    changed = change(
+        node, [item.model_copy(deep=True) for item in used] if scope.add else used
+    )
+    for item in changed:
         item.steps.append(node.id)
-    return columns + added
+    if node.component == "prepare.relation":
+        # Each result also comes from the feature it is compared with.
+        other = position[node.params["against"]].slots
+        for item in changed:
+            item.slots = sorted({*item.slots, *other})
+    if not scope.add:
+        return columns
+    for item, name in zip(changed, scope.added, strict=True):
+        item.name = name
+    return columns + changed
 
 
 def _projection(
@@ -113,6 +130,27 @@ def _projection(
     ]
 
 
+def _expectation(
+    definition: PipelineDefinition, node: PipelineNode, columns: Columns
+) -> Columns:
+    """The features an Expected value step keeps, then the target's residual."""
+    scope = step_scope(node.component, node.params, [item.name for item in columns])
+    used = [columns[index] for index in scope.indices]
+    # One coefficient per feature the target is expected from, and a constant.
+    if (
+        node.component == "static.expected_value"
+        and len(used) >= definition.settings.training_window_size
+    ):
+        raise ValueError(
+            f"Expecting {used[0].name} from {len(used) - 1} features fits "
+            f"{len(used)} coefficients and needs more training observations than that"
+        )
+    lineage = sorted({slot for item in used for slot in item.slots})
+    return [columns[index] for index in scope.kept] + [
+        FeatureDescription(name=scope.added[0], slots=lineage, raw=False)
+    ]
+
+
 def _continued(branches: Sequence[tuple[str, Columns]]) -> Columns:
     """Copies of the arriving features that name the feature each continues.
     Node ids hold no dots, so the first dot of node.name ends the node."""
@@ -133,6 +171,8 @@ def _combined(node: PipelineNode, columns: Columns) -> Columns:
     elif node.component == "prepare.set":
         # A feature Set replaced from its own value continues its trail.
         changed.add(combined_name(node.component, node.params))
+    elif node.component == "prepare.calculate":
+        changed.update(calculated_names(node.params))
     for item in result:
         if item.name in changed and item.previous is not None:
             item.steps.append(node.id)
@@ -156,6 +196,8 @@ def _changed(
         return _combined(node, columns)
     if node.component in PROJECTIONS:
         return _projection(definition, node, columns)
+    if node.component in EXPECTATIONS:
+        return _expectation(definition, node, columns)
     return columns
 
 

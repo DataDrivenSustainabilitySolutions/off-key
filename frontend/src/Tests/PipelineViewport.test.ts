@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactFlowInstance } from "@xyflow/react";
 
 import type { CanvasNode } from "@/features/pipelines/types";
-import { fitReadableView, revealNode, VIEW_MARGIN } from "@/features/pipelines/viewport";
+import { fitReadableView, READABLE_ZOOM, revealNode, smallestZoom, VIEW_MARGIN } from "@/features/pipelines/viewport";
 
 type Box = { x: number; y: number; width: number; height: number };
 type Placed = Box & { id: string; kind?: string };
@@ -93,6 +93,35 @@ describe("fitReadableView", () => {
   });
 });
 
+describe("fitReadableView of a graph that nearly fits", () => {
+  /** 560 wide on a 500 wide surface: it fits at 81 %, which stays readable. */
+  const nearly: Placed[] = [
+    { id: "input", kind: "source", x: 0, y: 0, width: 200, height: 80 },
+    { id: "model", x: 360, y: 0, width: 200, height: 80 },
+  ];
+
+  it("shows the whole graph a little smaller", async () => {
+    const { flow, instance } = canvas(nearly);
+
+    await fitReadableView(instance, surface(500, 300));
+
+    const [view] = flow.setViewport.mock.calls[0]!;
+    expect(view.zoom).toBeCloseTo(452 / 560);
+    expect(view.zoom).toBeGreaterThanOrEqual(READABLE_ZOOM);
+    // Centred: 24 px stay free on either side.
+    expect(view.x).toBeCloseTo(24);
+    expect(view.y).toBeCloseTo(150 - 40 * (452 / 560));
+  });
+
+  it("keeps a graph that would shrink further at full size, from its input", async () => {
+    const { flow, instance } = canvas([nearly[0]!, { ...nearly[1]!, x: 400 }]);
+
+    await fitReadableView(instance, surface(500, 300));
+
+    expect(flow.setViewport).toHaveBeenCalledExactlyOnceWith({ x: 32, y: 110, zoom: 1 });
+  });
+});
+
 describe("revealNode", () => {
   const viewport = { x: 10, y: 20, zoom: 2 };
 
@@ -157,5 +186,32 @@ describe("revealNode", () => {
     await revealNode(instance, element, id);
 
     expect(flow.setViewport).not.toHaveBeenCalled();
+  });
+});
+
+describe("smallestZoom", () => {
+  const card = (x: number, y = 0) => ({ x, y, width: 224, height: 144 });
+  const room = { width: 1296, height: 696 };
+
+  it("stops at a quarter of full size where the graph is in view long before", () => {
+    expect(smallestZoom([card(0), card(288), card(576)], room)).toBe(0.25);
+    // Nothing to measure against yet.
+    expect(smallestZoom([], room)).toBe(0.25);
+    expect(smallestZoom([card(0)])).toBe(0.25);
+  });
+
+  it("goes further out for a graph that a quarter of full size does not show whole", () => {
+    // Sixty-five cards in a row are 18,656 px wide; 1,200 px of room show them at 6.4%.
+    const row = Array.from({ length: 65 }, (_, index) => card(index * 288));
+    const zoom = smallestZoom(row, room);
+    expect(zoom).toBe(0.05);
+    expect(zoom * 18_656).toBeLessThan(1_200);
+    // Settings over the right edge leave less room, and a tall graph is bounded by its height.
+    expect(smallestZoom(row, room, { right: 400 })).toBe(0.03);
+    expect(smallestZoom(Array.from({ length: 30 }, (_, index) => card(0, index * 176)), room)).toBe(0.1);
+  });
+
+  it("never reaches zero, however little room is left", () => {
+    expect(smallestZoom([card(0), card(288)], { width: 96, height: 96 })).toBe(0.01);
   });
 });

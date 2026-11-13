@@ -19,6 +19,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | --- | --- | --- |
 | `users` | `id` | Identity, credentials, role, and verification state |
 | `member_roles` | `id` | Named roles and the permissions each one grants |
+| `agents` | `id` | Agents that sign in with a key: the name, a digest of the key and its last characters, what the key may start (`nothing`, `shadow` or `live`), and the member who created it. `name` is unique without regard to case. Deleting the row revokes the key |
 | `chargers` | `charger_id` | Charger inventory and MQTT/connection metadata |
 | `telemetry` | `(charger_id, timestamp, type)` | Observed time-series values by charger and sensor type |
 | `services` | `id` | Monitoring workload, topics, saved launch configuration, lifecycle, and operational stage |
@@ -30,6 +31,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `monitoring_evidence` | `(service_id, timestamp, sequence_number)` | Per-inference strategy evidence used by charts and alarms |
 | `monitoring_evidence_clock` | `id = 1` | Durable watermark serializing evidence creation times through commit, so forward cursors cannot skip late commits |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
+| `alarm_deletions` | `id` | Short-lived exact event selections and committed counts for confirmed, retryable bulk deletion |
 | `remembered_sessions` | `token_hash` | Rotating remember-me refresh tokens grouped by session family |
 | `revoked_access_tokens` | `token_hash` | Hashed access tokens revoked at logout, retained until their expiry |
 
@@ -37,7 +39,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 | Entity | Primary key | Purpose |
 | --- | --- | --- |
-| `system_configuration` | `id` (singleton) | Current saved catalogue document and its revision |
+| `system_configuration` | `id` (singleton) | Current saved catalogue document and its revision. A connection's `protocol` is `mqtt` or `http`; a reading stores `timestamp_pointer` only when it has one |
 | `system_revisions` | `revision` | Every saved catalogue document, for conflict checks and history |
 | `system_collection_configuration` | `id` (singleton) | Collection policy per reading plus ingress and collector status |
 | `collection_state` | `(charger_id, sensor_key)` | Latest boolean, text and identifier values per reading |
@@ -51,6 +53,8 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | --- | --- | --- |
 | `monitoring_pipelines` | `id` | Pipeline designs and templates with their editable draft |
 | `monitoring_pipeline_revisions` | `id` | Immutable compiled revisions of a pipeline |
+| `monitoring_pipeline_blocks` | `id` | Named chains of steps the composer copies into a design. `name` is unique, and no design, revision or run refers to a block |
+| `monitoring_pipeline_proposals` | `id` | Designs an agent or a member handed to a member to decide on: the name and the reason, the design with its layout and bindings, the author, and the decision with who made it and what they answered. It holds the design itself and no foreign key, so it reads the same after a run, a service or the agent's key is gone |
 | `monitoring_pipeline_runs` | `id` | A revision bound to inputs and running as one monitoring service |
 | `monitoring_pipeline_activations` | `id` | Idempotent activation requests and their phase through preflight, start and heartbeat |
 | `monitoring_pipeline_run_events` | `id` | A run's lifecycle events (setup phases, stage changes, data gaps, worker crashes, end), kept after its service is purged |
@@ -91,6 +95,10 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 - Stores detector type, value, value semantics, and the exact contributing `sensor_set` when available.
 - `anomaly_identity` gives the UI a stable deletion identifier without changing the time-series primary key.
+- Migration `032_alarm_deletions.sql` adds deletion previews. Each preview freezes
+  the matching event IDs for ten minutes, so new arrivals cannot widen a reviewed
+  selection. A successful deletion clears the IDs and retains its result for
+  retries; subsequent previews remove expired records.
 - Monitor alarms carry their originating `service_id`, so independent monitors can
   report multivariate alarms for the same entity and timestamp. Retrying one
   monitor's result remains idempotent. The API returns this ID for exact chart
@@ -134,6 +142,11 @@ Use this page when mapping API behaviour to persisted entities and relationships
   observation timing. Only the detector's calibrated lead has bounds, using
   the boundary at issuance. `issued: null` means no new forecast was available.
   This additive JSON contract uses the existing column and requires no migration.
+- `muted` is true when the detection rule fired and a Mute alarms step kept the
+  alarm from being raised; `alarm` is then false and no alarm is stored. A
+  martingale tracker says the same of its own crossing as `alarm_muted` in
+  `tracker_results`. Migration `030_evidence_muted.sql` adds the column with a
+  default of false, so earlier rows are not muted.
 
 ### Monitoring workload intent
 

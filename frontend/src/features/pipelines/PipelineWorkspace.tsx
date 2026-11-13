@@ -8,11 +8,12 @@ import { useCatalogue } from "../workspace/catalogue-context";
 import { collectionApplied } from "@/domain/system/collectionRules";
 import { predecessorSource } from "./bindings";
 import { pipelinesApi } from "./api";
-import type { PipelineCatalog, PipelineServiceView } from "./contracts";
+import type { PipelineCatalog, PipelineProposal, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
 import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
-import { createPipeline, dropReplacement, openPipeline, setRevision, showLibrary, suggestedBindings } from "@/domain/monitoring/monitoringView";
+import { PipelineProposalList, PipelineProposalNotice } from "./PipelineProposals";
+import { createPipeline, dropReplacement, openPipeline, reviewProposal, setRevision, showLibrary, showProposals, suggestedBindings } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
 type Props = {
@@ -38,6 +39,7 @@ export default function PipelineWorkspace({
   const [params, setParams] = useSearchParams();
   const [catalog, setCatalog] = useState<PipelineCatalog>();
   const [source, setSource] = useState<{ id: string; view?: PipelineServiceView; error?: string }>();
+  const [opened, setOpened] = useState<{ id: string; proposal?: PipelineProposal; error?: string }>();
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const id = params.get("pipeline");
@@ -50,6 +52,12 @@ export default function PipelineWorkspace({
   const predecessor = source?.id === sourceId ? source.view : undefined;
   const sourceError = source?.id === sourceId ? source.error : undefined;
   const replacement = services.find((service) => service.id === replacementId);
+  const proposalId = params.get("proposal");
+  const proposal = opened?.id === proposalId ? opened.proposal : undefined;
+  const proposalError = opened?.id === proposalId ? opened.error : undefined;
+  // The test a design was proposed with is shown beside it, as the reason to believe the proposal.
+  const tested = useMemo(() => proposal?.test_run_id
+    ? { run: proposal.test_run_id, by: proposal.author, definition: proposal.definition } : undefined, [proposal]);
   const collectionReady = collectionApplied(system.snapshot?.runtime);
   useEffect(() => {
     const controller = new AbortController();
@@ -74,13 +82,28 @@ export default function PipelineWorkspace({
       });
     return () => controller.abort();
   }, [sourceId, retry]);
+  useEffect(() => {
+    if (!proposalId) return;
+    const controller = new AbortController();
+    void pipelinesApi.proposal(proposalId, controller.signal).then(
+      (proposal) => { if (!controller.signal.aborted) setOpened({ id: proposalId, proposal }); },
+      (reason) => { if (!controller.signal.aborted) setOpened({ id: proposalId, error: getErrorMessage(reason) }); },
+    );
+    return () => controller.abort();
+  }, [proposalId, retry]);
+  const proposals = () => setParams(showProposals(params));
+  /** The member started the proposed design. Someone who decided it meanwhile has the last word. */
+  const accept = (id: string) => void pipelinesApi.decideProposal(id, { status: "accepted" })
+    .then(({ status, decided_by, decided_at, decision_note }) => setOpened((current) => current?.proposal?.id === id
+      ? { id, proposal: { ...current.proposal, status, decided_by, decided_at, decision_note } } : current), () => undefined);
   const open = (pipelineId: string, targetId?: string) => setParams(openPipeline(params, pipelineId, targetId));
   const create = () => setParams(createPipeline(params));
   const library = () => setParams(showLibrary(params));
   if (!catalog)
     return (
       <section aria-label="Pipelines">
-        <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current={creating ? "New service" : "Templates"} />
+        <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]}
+          current={params.get("view") === "proposals" ? "Proposals" : creating ? "New service" : "Templates"} />
         {error ? (
           <p role="alert" className="pl-error">
             {error}
@@ -104,16 +127,26 @@ export default function PipelineWorkspace({
         backLabel={creating ? "New service" : "Monitoring"}
       />
     );
+  if (!id && params.get("view") === "proposals")
+    return <PipelineProposalList onBack={onBack}
+      onReview={(item) => setParams(reviewProposal(params, item.id, item.replace_monitor_id))} />;
   if (!id && sourceId && !predecessor && !sourceError) return <p role="status">Loading service configuration…</p>;
+  if (!id && proposalId && !proposal && !proposalError) return <p role="status">Opening proposal…</p>;
   if (!id) return <>
-    {(error || sourceError) && <p role="alert" className="pl-error">{error || sourceError}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
-    <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}:${sourceId ?? ""}:${replacementId ? "replace" : "new"}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
+    {(error || sourceError || proposalError) && <p role="alert" className="pl-error">{error || sourceError || proposalError}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
+    <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}:${sourceId ?? ""}:${replacementId ? "replace" : "new"}:${proposal?.id ?? ""}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
     services={services} byStream={index.byStream} collectionReady={collectionReady}
-    initialDocument={sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
+    initialDocument={proposal ? { definition: proposal.definition, layout: proposal.layout }
+      : sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
+    initialBindings={proposal?.bindings} initialName={proposal?.name} origin={proposal && `proposal:${proposal.id}`}
+    notice={proposal && <PipelineProposalNotice proposal={proposal} canDecide={canEdit} onDeclined={proposals} />}
+    tested={tested}
+    onRequested={proposal?.status === "open" ? () => accept(proposal.id) : undefined}
     replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
     sourceService={sourceId ? { id: sourceId, replace: !!replacementId } : undefined}
     activationBlocked={sourceId && (!predecessor || replacementId && !replacement) ? "This service configuration is unavailable. Return to Monitoring and choose an available service." : undefined}
-    initialTarget={initialTarget} initialReading={contextReading} onStarted={onStarted} onManage={library} onBack={onBack} />
+    initialTarget={initialTarget} initialReading={contextReading} onStarted={onStarted} onManage={library}
+    onBack={proposal ? proposals : onBack} backLabel={proposal ? "Proposals" : undefined} />
   </>;
   return (
     <>

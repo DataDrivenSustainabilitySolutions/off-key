@@ -1,9 +1,11 @@
 """Dojo replays: historical points through the live processing path."""
 
 import asyncio
+import json
 import math
 import threading
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from types import SimpleNamespace
 
 import pytest
@@ -22,9 +24,15 @@ from off_key_core.models.dojo_runs import (
     series_topic,
 )
 from off_key_core.models.pipelines import compile_pipeline
-from off_key_core.schemas.dojo import RunAlignment
+from off_key_core.schemas.dojo import RunAlignment, RunSteps
 from off_key_mqtt_radar import calibration_comparison as comparison_module
-from off_key_mqtt_radar.dojo.replay import Replay, ReplayResult, detection_config
+from off_key_mqtt_radar.dojo import worker as worker_module
+from off_key_mqtt_radar.dojo.replay import (
+    STEP_SAMPLES,
+    Replay,
+    ReplayResult,
+    detection_config,
+)
 from off_key_mqtt_radar.dojo.settings import DojoWorkerSettings
 from off_key_mqtt_radar.dojo.worker import (
     STALE_ERROR,
@@ -112,6 +120,62 @@ def test_years_old_minute_data_is_scored_like_live_input(strategy):
     assert scored and all(math.isfinite(row.score) for row in scored)
     # The two readings that arrive first each minute wait for the third.
     assert set(run.stats()) <= {"stale_sensor_block", "waiting_for_all"}
+
+
+@pytest.mark.parametrize("strategy", ["adaptive_stream", "static_baseline"])
+def test_a_replay_keeps_what_a_few_observations_looked_like_at_every_step(strategy):
+    run = replay(strategy)
+    rows = {}
+    for index in range(400):
+        for slot in range(3):
+            row = run.step(
+                series_topic(slot), START.timestamp() + index * 60, wave(index, slot)
+            )
+            if row is not None:
+                rows[row.sequence] = (index, row)
+    run.close()
+    # Spread from the first result on, twice as far apart whenever they
+    # would become twice as many as a run keeps.
+    kept = [sample["sequence"] for sample in run.samples]
+    assert STEP_SAMPLES <= len(kept) < 2 * STEP_SAMPLES
+    assert kept[0] == 1 and kept == sorted(set(kept))
+    assert max(b - a for a, b in pairwise(kept)) <= 2 * min(
+        b - a for a, b in pairwise(kept)
+    )
+    assert kept[-1] > 400 - 2 * max(b - a for a, b in pairwise(kept))
+    for sample in run.samples:
+        index, row = rows[sample["sequence"]]
+        assert sample["timestamp"] == row.timestamp.isoformat()
+        assert sample["phase"] == row.phase
+        # The readings as they went in, whatever the design did with them later.
+        assert sample["steps"]["input"]["output"] == pytest.approx(
+            {
+                name: wave(index, slot)
+                for slot, name in enumerate(("voltage", "current", "temperature"))
+            }
+        )
+    learning, scored = run.samples[0]["steps"], run.samples[-1]["steps"]
+    # Nothing is scored on the first observation, and the step says so.
+    assert learning["detector"]["state"] == "not_executed"
+    assert learning["detector"]["output"] is None and learning["detector"]["reason"]
+    assert all(step["state"] == "ready" for step in scored.values())
+    assert set(scored["scaler"]["input"]) == set(scored["scaler"]["output"])
+    assert scored["scaler"]["input"] != scored["scaler"]["output"]
+    assert isinstance(scored["detector"]["output"], float)
+    # Small enough to keep beside the run's settings, and plain JSON.
+    assert len(json.dumps(run.samples)) < 64 * 1024
+
+
+def test_step_samples_are_thinned_until_they_fit_beside_the_settings(monkeypatch):
+    samples = [{"sequence": index, "steps": {"x": "v" * 1000}} for index in range(20)]
+    run = _Run("r", replay=SimpleNamespace(samples=samples))
+    assert json.loads(run.observed()) == {"step_samples": samples}
+    monkeypatch.setattr(worker_module, "MAX_SAMPLE_BYTES", 6000)
+    kept = json.loads(run.observed())["step_samples"]
+    assert [item["sequence"] for item in kept] == [0, 4, 8, 12, 16]
+    monkeypatch.setattr(worker_module, "MAX_SAMPLE_BYTES", 500)
+    assert run.observed() == "{}"
+    assert _Run("r").observed() == "{}"
 
 
 def test_static_baseline_discards_nothing_while_it_fits():
@@ -246,6 +310,10 @@ async def test_worker_replays_a_queued_run_and_stores_its_results(dojo_engine):
     assert run.status == "succeeded", run.error
     assert (run.points_read, run.result_count, results) == (360, 120, 120)
     assert run.worker == "w1" and run.finished_at is not None
+    # Stored with the run when it ends, in the shape the API reads back.
+    steps = RunSteps(run_id=run.id, samples=run.config["step_samples"])
+    assert STEP_SAMPLES <= len(steps.samples) < 2 * STEP_SAMPLES
+    assert steps.samples[-1].steps["detector"].state == "ready"
     assert set(run.stats) <= {"stale_sensor_block", "waiting_for_all"}
 
 

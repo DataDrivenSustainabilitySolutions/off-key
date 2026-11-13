@@ -8,6 +8,8 @@ type Connection = { source: string; target: string };
 
 const CLEARANCE = 8;
 const CORNER_RADIUS = 5;
+/** From the middle of an input dot to just outside its rim, where a wire's arrowhead ends. */
+const PORT_RADIUS = 9;
 const MAX_GRID_CELLS = 131_072;
 const drawPath = svgDrawSmoothStepLinePath({ borderRadius: CORNER_RADIUS });
 const EPSILON = 0.001;
@@ -167,15 +169,28 @@ export function routeConnections(
           options: { nodePadding: CLEARANCE, gridRatio: ratio, generatePath: pathfindingJumpPointNoDiagonal },
         });
         if (result instanceof Error) continue;
-        const candidate = compact([source, ...result.points.map(([x, y]) => ({ x: x!, y: y! })), target]);
+        const cells = result.points.map(([x, y]) => ({ x: x!, y: y! }));
+        // Ports within one routing cell of each other in height come back as a single
+        // row at the source's height, which would slant into the target. Step at the
+        // first cell instead, as a route across two rows does.
+        const level = cells.every((cell) => cell.y === source.y) && source.y !== target.y;
+        const candidate = compact(level
+          ? [source, cells[0]!, ...cells.map((cell) => ({ x: cell.x, y: target.y })), target]
+          : [source, ...cells, target]);
         if (clearPath(candidate, boxes, edge)) { points = candidate; break; }
       }
     }
+    // The wire is drawn up to the rim of the dot it enters, so its arrowhead points at the dot
+    // instead of lying under it. A last stretch too short for that is drawn to the middle as before.
+    const before = points?.[points.length - 2];
+    const reaches = before && before.y === target.y && target.x - before.x >= 2 * PORT_RADIUS + CORNER_RADIUS;
+    const tip = reaches ? { x: target.x - PORT_RADIUS, y: target.y } : target;
     routes.set(edgeId(edge), points ? {
-      path: drawPath(source, target, points.slice(1, -1).map(({ x, y }) => [x, y])), points, blocked: false,
+      path: drawPath(source, tip, points.slice(1, -1).map(({ x, y }) => [x, y])), points, blocked: false,
     } : {
       // A physically blocked port has no safe full route. Keep its ends identifiable.
-      path: `M ${source.x},${source.y} L ${source.x + 14},${source.y} M ${target.x - 14},${target.y} L ${target.x},${target.y}`,
+      path: `M ${source.x},${source.y} L ${source.x + 14},${source.y} `
+        + `M ${target.x - 14 - PORT_RADIUS},${target.y} L ${target.x - PORT_RADIUS},${target.y}`,
       points: [], blocked: true,
     });
   }

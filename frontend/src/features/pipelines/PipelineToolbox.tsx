@@ -3,8 +3,9 @@ import type { PipelineComponent } from "./contracts";
 import {
   addBlocker, insertBlocker, isMultiInstanceKind, nodeLabel, PIPELINE_LIMITS, type GraphDocument, type Link,
 } from "./model";
+import { blockedBy, type BlockChoice } from "./blocks";
 import { learningLabel } from "./learning";
-import { familyLabel, STEP_FAMILIES, stepDescription, stepFamily } from "./steps";
+import { familyLabel, STEP_FAMILIES } from "./steps";
 
 const singleNames: Record<string, string> = {
   detector: "detector", calibration: "calibration step", policy: "detection rule", output: "output",
@@ -17,7 +18,9 @@ export function PipelineToolbox({
   document,
   link,
   choices,
+  blocks = [],
   onAdd,
+  onPlace,
   onSelect,
   onDragStart,
   onDragEnd,
@@ -28,7 +31,11 @@ export function PipelineToolbox({
   link?: Link;
   /** The steps to offer instead, such as the ones a feature's row can add. */
   choices?: PipelineComponent[];
+  /** Saved blocks, listed below the steps with what adding each one here gives. */
+  blocks?: BlockChoice[];
   onAdd: (componentId: string) => void;
+  /** Takes the design a chosen block gives and the first of its steps. */
+  onPlace?: (placed: { document: GraphDocument; id: string }) => void;
   /** Opens a one-per-pipeline step that is already present; it is not offered again. */
   onSelect?: (nodeId: string) => void;
   onDragStart?: () => void;
@@ -43,12 +50,13 @@ export function PipelineToolbox({
     (isMultiInstanceKind(component.kind) || !definition.nodes.some((node) => node.kind === component.kind))
     && (!link || !insertBlocker(definition, link, component, components)));
   const matches = offered.filter((component) =>
-    `${component.label} ${stepDescription(component)} ${component.description} ${familyLabel(stepFamily(component.kind, component.id))}`
+    `${component.label} ${component.description} ${familyLabel(component.group)}`
       .toLocaleLowerCase()
       .includes(search));
   const sections = STEP_FAMILIES
-    .map((family) => ({ ...family, items: matches.filter((component) => stepFamily(component.kind, component.id) === family.id) }))
+    .map((family) => ({ ...family, items: matches.filter((component) => component.group === family.id) }))
     .filter((section) => section.items.length);
+  const offeredBlocks = blocks.filter(({ block, detail }) => `${block.name} ${detail} block`.toLocaleLowerCase().includes(search));
   // The detector, calibration step, detection rule and output are changed in their own settings, not added again.
   const present = link || choices ? [] : definition.nodes.filter((node) => node.kind in singleNames
     && (!search || `${nodeLabel(node, components, document.layout)} ${singleNames[node.kind]}`.toLocaleLowerCase().includes(search)));
@@ -96,9 +104,11 @@ export function PipelineToolbox({
             focusItem(0);
           } else if (event.key === "Enter") {
             const first = sections.flatMap((section) => section.items).find((component) => !blocker(component));
-            if (!first) return;
+            const block = first ? undefined : offeredBlocks.find((choice) => !blockedBy(choice.outcome))?.outcome;
+            if (!first && !block) return;
             event.preventDefault();
-            onAdd(first.id);
+            if (first) onAdd(first.id);
+            else if (block && !("blocked" in block)) onPlace?.(block);
           }
         }}
       />
@@ -133,13 +143,27 @@ export function PipelineToolbox({
                 >
                   <strong>{component.label}</strong>
                   {/* A step the deployment cannot run says why instead of what it does. */}
-                  <small id={`${id}-${component.id}`}>{component.unavailable ?? stepDescription(component)}</small>
+                  <small id={`${id}-${component.id}`}>{component.unavailable ?? component.description}</small>
                   {learningLabel(component) && <small className="pl-learning-tag">{learningLabel(component)}</small>}
                 </button>;
               })}
             </div>
           </section>
         ))}
+        {offeredBlocks.length > 0 && <section aria-labelledby={`${id}-blocks`}>
+          <h4 id={`${id}-blocks`}>Blocks</h4>
+          <div className="pl-toolbox-grid">
+            {offeredBlocks.map(({ block, detail, outcome }) => {
+              const reason = blockedBy(outcome);
+              return <button type="button" key={block.id} className="pl-toolbox-item" title={reason}
+                aria-label={`${link ? "Insert" : "Add"} block ${block.name}`} aria-describedby={`${id}-block-${block.id}`}
+                disabled={!!reason} onClick={() => { if (!("blocked" in outcome)) onPlace?.(outcome); }}>
+                <strong>{block.name}</strong>
+                <small id={`${id}-block-${block.id}`}>{reason ?? detail}</small>
+              </button>;
+            })}
+          </div>
+        </section>}
         {present.length > 0 && <div className="pl-toolbox-present">
           <p className="pl-help">
             The {presentText} {present.length === 1 ? "is" : "are"} already in this pipeline.
@@ -154,7 +178,7 @@ export function PipelineToolbox({
           </div>}
         </div>}
       </div>
-      {!sections.length && !present.length && <p className="pl-help">
+      {!sections.length && !present.length && !offeredBlocks.length && <p className="pl-help">
         {link && !search ? "No step fits this connection." : "No matching steps."}
       </p>}
     </aside>

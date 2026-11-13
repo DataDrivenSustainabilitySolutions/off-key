@@ -46,6 +46,19 @@ export function componentFor(
   );
 }
 
+/** The step that stands in for one that is switched off: features leave it as they came. */
+export const PASS_THROUGH = "features.passthrough";
+
+/** What a step was before it was switched off; undefined for a step that is on. */
+export const switchedOff = (layout: PipelineLayout | undefined, node: PipelineNode | undefined) =>
+  node?.component === PASS_THROUGH ? layout?.switched_off?.[node.id] : undefined;
+
+/** The component a card stands for: its step's own, or the one the step had before it was switched off. */
+export function shownComponent(node: PipelineNode | undefined, components: PipelineComponent[], layout?: PipelineLayout) {
+  const was = switchedOff(layout, node);
+  return componentFor(was && node ? { ...node, component: was.component, contract_version: was.contract_version } : node, components);
+}
+
 export function inputKind(component: PipelineComponent | undefined) {
   return component
     ? component.input_type === null

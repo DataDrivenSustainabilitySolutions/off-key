@@ -107,7 +107,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     }).toEqual(26);
     await page.keyboard.press("ControlOrMeta+k");
     const receivingReading = page.getByRole("button", { name: "temperature, preview", exact: true });
-    await expect(receivingReading.locator(".ex-reading-activity svg")).toHaveAttribute("fill", "currentColor", { timeout: 15_000 });
+    await expect(receivingReading.locator(".source-activity-dot")).toHaveClass(/is-receiving/, { timeout: 15_000 });
     await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 2 minutes)");
     await page.getByRole("button", { name: "Close navigation", exact: true }).click();
     await page.getByRole("button", { name: "Show sidebar", exact: true }).click();

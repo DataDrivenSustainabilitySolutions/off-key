@@ -25,7 +25,7 @@ from ...domain import (
     ValidationError,
 )
 from ...repositories import AnomalyRepository
-from ...repositories.anomaly_filters import AnomalyFilters, ReadingScope
+from ...repositories.anomaly_filters import AnomalyFilters
 from .alarm_catalogue import AlarmCatalogue
 
 
@@ -72,14 +72,8 @@ class AlarmService:
     async def query(self, query: AlarmQuery, catalogue: SystemSnapshot) -> AlarmPage:
         """One page of alarms for catalogue readings, with catalogue names."""
         names = AlarmCatalogue(catalogue)
-        scope, unknown = (
-            (None, []) if query.reading_ids is None else names.scope(query.reading_ids)
-        )
-        narrowing = None
-        if query.reading_id is not None:
-            narrowing = names.narrowing(query.reading_id)
-            if not narrowing.pairs:
-                unknown = sorted({*unknown, query.reading_id})
+        filters, unknown = names.filters(query)
+        scope = filters.scope
         if scope is not None and not scope.pairs:
             return AlarmPage(
                 items=[],
@@ -88,7 +82,6 @@ class AlarmService:
                 readings=[],
                 unknown_reading_ids=unknown,
             )
-        filters = self._filters(query, scope, narrowing)
         rows = await self._repository.page(
             filters, before=query.before, limit=query.limit + 1
         )
@@ -110,19 +103,6 @@ class AlarmService:
             summary=AlarmSummary(count=count, devices=entities, latest=latest),
             readings=readings,
             unknown_reading_ids=unknown,
-        )
-
-    @staticmethod
-    def _filters(
-        query: AlarmQuery, scope: ReadingScope | None, narrowing: ReadingScope | None
-    ) -> AnomalyFilters:
-        return AnomalyFilters(
-            scope=scope,
-            reading=narrowing,
-            service_id=query.monitor_id,
-            since=query.since,
-            until=query.until,
-            max_p_value=query.max_p_value,
         )
 
     async def count_alarms(self, *, since: datetime | None = None) -> int:

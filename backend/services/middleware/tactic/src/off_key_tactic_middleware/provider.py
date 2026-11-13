@@ -18,6 +18,7 @@ from .repositories import (
     FavoriteRepository,
     UserRepository,
 )
+from .services.accounts.agents import AgentService
 from .services.accounts.members import MemberService
 from .services.accounts.remembered_sessions import RememberedSessionService
 from .services.accounts.users import UserService
@@ -30,14 +31,17 @@ from .services.data import (
     CatalogueDataService,
     FavoriteService,
 )
+from .services.data.alarm_actions import AlarmActions
 from .services.dojo.datasets import DojoDatasets
 from .services.dojo.labels import DojoLabels
 from .services.dojo.metrics import DojoMetrics
 from .services.dojo.runs import DojoRuns
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.pipelines.activation import PipelineActivations
+from .services.pipelines.blocks import PipelineBlocks
 from .services.pipelines.forms import start_form_monitor
 from .services.pipelines.library import PipelineLibrary
+from .services.pipelines.proposals import PipelineProposals
 
 # One session per request, committed when the route returns and before the
 # response is sent. FastAPI ends a dependency with the default scope only after
@@ -90,6 +94,10 @@ async def get_catalogue_data_service(
     return CatalogueDataService(session, await SystemService(session).read())
 
 
+def get_alarm_actions(session: AsyncSession = RequestSession) -> AlarmActions:
+    return AlarmActions(session)
+
+
 def get_system_service(session: AsyncSession = RequestSession) -> SystemService:
     """Saved catalogue, collection status and policy changes."""
     return SystemService(session)
@@ -125,6 +133,16 @@ def get_pipeline_library(
     return PipelineLibrary(session)
 
 
+def get_pipeline_blocks(session: AsyncSession = RequestSession) -> PipelineBlocks:
+    return PipelineBlocks(session)
+
+
+def get_pipeline_proposals(
+    session: AsyncSession = RequestSession,
+) -> PipelineProposals:
+    return PipelineProposals(session)
+
+
 def get_dojo_datasets(session: AsyncSession = RequestSession) -> DojoDatasets:
     return DojoDatasets(session)
 
@@ -154,6 +172,10 @@ def get_form_monitor_starter(session: AsyncSession = RequestSession):
 
 def get_member_service(session: AsyncSession = RequestSession) -> MemberService:
     return MemberService(session)
+
+
+def get_agent_service(session: AsyncSession = RequestSession) -> AgentService:
+    return AgentService(session)
 
 
 def get_remembered_session_service(

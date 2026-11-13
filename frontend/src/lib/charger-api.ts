@@ -7,11 +7,15 @@ import type {
   Alarm,
   AlarmPage,
   AlarmQuery,
+  AlarmDetail,
+  AlarmSelection,
+  AlarmDeletionPreview,
   TelemetryDataPoint,
   TelemetryCursor,
   TelemetryTypeData,
 } from "@/types/charger";
 import type { SystemStream } from "@/types/system";
+import type { HistoryRequest, TelemetryHistory } from "@/types/telemetry-history";
 
 type TelemetryApiPoint = TelemetryDataPoint & { created?: string };
 
@@ -44,6 +48,21 @@ export const getTelemetryRange = (
 ): Promise<TelemetryDataPoint[]> =>
   get<TelemetryDataPoint[]>(API_CONFIG.ENDPOINTS.READINGS.BUCKETS(readingId, range), signal);
 
+/** Original samples or labelled means, calculated from the stored measurements. */
+export const getTelemetryHistory = async (
+  readingId: string,
+  range: HistoryRequest & { view: "auto" | "raw" },
+  signal?: AbortSignal,
+): Promise<TelemetryHistory> => {
+  const history = await get<TelemetryHistory>(API_CONFIG.ENDPOINTS.READINGS.BUCKETS(readingId, range), signal);
+  // During rolling upgrades the old endpoint may still return extrema alone.
+  // Those are neither raw samples nor a valid basis for calculating averages.
+  if (!history || !Array.isArray(history.points) || !["raw", "mean"].includes(history.representation)) {
+    throw new Error("This server does not yet provide automatic history views.");
+  }
+  return history;
+};
+
 /** Recorded values of one catalogue reading; a cursor returns those that arrived since. */
 export const getTelemetryData = (
   readingId: string,
@@ -57,7 +76,7 @@ export const getTelemetryData = (
 
 /** The recorded values of each catalogue reading, one series per reading id. */
 export const getAllTelemetryData = async (
-  readings: readonly Pick<SystemStream, "id" | "label" | "category">[],
+  readings: readonly (Pick<SystemStream, "id" | "label" | "category"> & Partial<Pick<SystemStream, "value_type">>)[],
   signal?: AbortSignal,
   cursorByReading?: ReadonlyMap<string, TelemetryCursor>,
 ): Promise<TelemetryTypeData[]> => {
@@ -74,6 +93,7 @@ export const getAllTelemetryData = async (
         type: reading.id,
         category: reading.category || "Other",
         ...(reading.label && { label: reading.label }),
+        ...(reading.value_type === "boolean" && { valueType: "boolean" as const }),
         data: data.map(({ timestamp, value }) => ({ timestamp, value })),
         ...(nextCursor && { cursor: nextCursor }),
       };
@@ -140,3 +160,10 @@ export const deleteAlarm = async (alarmId: string): Promise<void> => {
   }
   await apiUtils.delete(API_CONFIG.ENDPOINTS.ALARMS.DELETE(alarmId));
 };
+
+export const getAlarm = (id: string, signal?: AbortSignal) =>
+  get<AlarmDetail>(API_CONFIG.ENDPOINTS.ALARMS.ITEM(id), signal);
+export const previewAlarmDeletion = (selection: AlarmSelection) =>
+  apiUtils.post<AlarmDeletionPreview>('/v1/alarms/deletion-preview', selection);
+export const deleteAlarmSelection = (token: string) =>
+  apiUtils.post<{ count: number }>('/v1/alarms/delete', { token });

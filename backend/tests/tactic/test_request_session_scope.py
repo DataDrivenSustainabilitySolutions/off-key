@@ -6,7 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_core.db.base import get_db_async
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.provider import RequestSession, get_system_service
 
 TACTIC = (
@@ -91,7 +91,7 @@ def test_a_failed_commit_is_answered_as_a_failure():
 
 def test_members_and_services_share_the_request_session():
     """Both would otherwise open their own session and transaction."""
-    for provider in (current_member, get_system_service):
+    for provider in (current_caller, get_system_service):
         defaults = provider.__defaults__ or ()
         assert any(default is RequestSession for default in defaults), provider
 

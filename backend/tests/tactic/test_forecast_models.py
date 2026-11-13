@@ -14,7 +14,7 @@ from off_key_core.utils import forecast_client
 from off_key_core.utils.forecast_client import ForecastServiceError
 from off_key_forecast.api import create_app
 from off_key_forecast.registry import ModelRegistry
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.api.v1.pipelines import router
 from off_key_tactic_middleware.domain import ConflictError, NotFoundError
 from off_key_tactic_middleware.services.pipelines import forecast_models
@@ -78,7 +78,7 @@ def service(monkeypatch, tmp_path):
 def api(role=ADMIN_ROLE) -> TestClient:
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[current_member] = lambda: User(
+    app.dependency_overrides[current_caller] = lambda: User(
         id=1, email="member@example.com", role=role
     )
     return TestClient(app)

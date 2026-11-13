@@ -89,6 +89,14 @@ class PipelineDiagnostics:
                 "passes": {"score": {}, "learn": {}},
             }
 
+    def sample_next(self) -> None:
+        """Sample the next observation, however recent the last sample is.
+
+        A replay reads a week in seconds, so it picks its samples by their
+        place in the run instead of by the wall clock.
+        """
+        self._last_sample = float("-inf")
+
     def select_pass(self, phase: str) -> None:
         if phase not in {"score", "learn"}:
             raise ValueError("Diagnostics pass must be score or learn")
@@ -178,11 +186,13 @@ class PipelineDiagnostics:
         required: int | None,
         blocked_by: tuple[str, ...] = (),
         held_back: bool = False,
+        muting: bool = False,
     ) -> None:
         """One Prepare step's part in an accepted observation, in the learn pass.
 
         A Gate that holds the observation back is ready and says so. The steps
-        after it did not run, so they keep their state.
+        after it did not run, so they keep their state. A Mute alarms step
+        whose condition holds says so too.
         """
         metrics = self.nodes[node_id]
         if held_back and inputs is None:
@@ -223,6 +233,8 @@ class PipelineDiagnostics:
                 **(
                     {"reason": "The condition does not hold for this observation"}
                     if held_back
+                    else {"reason": "The condition holds, so no alarm is raised"}
+                    if muting
                     else {}
                 ),
             }

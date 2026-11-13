@@ -46,8 +46,11 @@ PROJECTIONS = frozenset(
         "adaptive.random_projection",
     }
 )
+# Steps that expect one feature, the target, from the other features they use
+# and give its residual.
+EXPECTATIONS = frozenset({"static.expected_value", "adaptive.expected_value"})
 # Steps that learn from data; nothing in the Prepare stage may follow one.
-LEARNED_COMPONENTS = frozenset(ELEMENTWISE_SUFFIXES) | PROJECTIONS
+LEARNED_COMPONENTS = frozenset(ELEMENTWISE_SUFFIXES) | PROJECTIONS | EXPECTATIONS
 SCOPED_COMPONENTS = LEARNED_COMPONENTS | PREPARE_COMPONENTS
 SCOPE_DEFAULTS: dict[str, Any] = {"apply_to": None, "result": "replace", "suffix": None}
 # Steps whose output is usually wanted next to their input add it by default.
@@ -97,10 +100,20 @@ def split_scope(params: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]
 
 
 def is_scoped(component: str, params: dict[str, Any]) -> bool:
-    """Whether a step changes only some features or adds its output."""
-    return component in SCOPED_COMPONENTS and (
-        params.get("apply_to") is not None or adds(component, params)
+    """Whether a step changes only some features or adds its output.
+
+    An Expected value step always does: it reads its target apart from the
+    features the target is expected from.
+    """
+    return component in EXPECTATIONS or (
+        component in SCOPED_COMPONENTS
+        and (params.get("apply_to") is not None or adds(component, params))
     )
+
+
+def expected_name(params: dict[str, Any]) -> str:
+    """The name of the residual an Expected value step gives."""
+    return params.get("name") or f"{params['target']}_residual"
 
 
 @dataclass(frozen=True)
@@ -114,7 +127,8 @@ class StepScope:
     add: bool
     elementwise: bool
     added: tuple[str, ...] = ()
-    """Names of the features an elementwise step adds, one per selected feature."""
+    """Names of the features an elementwise step adds, one per selected feature,
+    or the residual an Expected value step gives."""
 
     @property
     def indices(self) -> list[int]:
@@ -133,7 +147,57 @@ class StepScope:
         """The step's features: elementwise steps keep positions, outputs append."""
         if self.elementwise:
             return list(self.inputs) + list(self.added if self.add else ())
-        return [self.inputs[index] for index in self.kept] + list(components)
+        return [self.inputs[index] for index in self.kept] + list(
+            components or self.added
+        )
+
+
+def _selected(
+    component: str, params: dict[str, Any], names: tuple[str, ...]
+) -> tuple[str, ...]:
+    """The features a step uses: Applies to, or every feature that arrives.
+
+    A Rolling relation compares the others with one feature, which is never
+    among them. An Expected value step uses its target first, then the
+    features the target is expected from.
+    """
+    available = set(names)
+    apply_to = params.get("apply_to")
+    expects = component in EXPECTATIONS
+    setting = "target" if expects else "against"
+    # The one feature the step sets apart from the others.
+    apart = params.get(setting) if expects or component == "prepare.relation" else None
+    if expects and apart is None:
+        raise ScopeError("Choose the feature that is expected.", setting)
+    if apart is not None and apart not in available:
+        raise ScopeError(f"{apart} is not available at this step.", setting)
+    if apply_to is None:
+        selected = tuple(name for name in names if name != apart)
+        if apart is not None and not selected:
+            raise ScopeError(
+                f"Only {apart} arrives here. "
+                + (
+                    "An Expected value needs another feature to expect it from."
+                    if expects
+                    else "A Rolling relation needs another feature to compare with it."
+                ),
+                "apply_to",
+            )
+    else:
+        missing = [name for name in apply_to if name not in available]
+        if missing:
+            raise ScopeError(f"{missing[0]} is not available at this step.", "apply_to")
+        if apart in apply_to:
+            raise ScopeError(
+                f"{apart} is the feature that is expected. Leave it out of "
+                "Expected from."
+                if expects
+                else f"{apart} is the feature the others are compared with. "
+                "Leave it out of Applies to.",
+                "apply_to",
+            )
+        selected = tuple(apply_to)
+    return (apart, *selected) if expects and apart is not None else selected
 
 
 def step_scope(
@@ -142,14 +206,7 @@ def step_scope(
     """Resolve a step's scope against the features that reach it."""
     names = tuple(inputs)
     available = set(names)
-    apply_to = params.get("apply_to")
-    if apply_to is None:
-        selected = names
-    else:
-        missing = [name for name in apply_to if name not in available]
-        if missing:
-            raise ScopeError(f"{missing[0]} is not available at this step.", "apply_to")
-        selected = tuple(apply_to)
+    selected = _selected(component, params, names)
     add = adds(component, params)
     elementwise = component in ELEMENTWISE_SUFFIXES or component in LANE_COMPONENTS
     added: tuple[str, ...] = ()
@@ -173,5 +230,16 @@ def step_scope(
                 f"{long[:40]}… is longer than {MAX_FEATURE_NAME_LENGTH} characters. "
                 "Choose a shorter suffix.",
                 "suffix",
+            )
+    if component in EXPECTATIONS:
+        added = (expected_name(params),)
+        used = set(selected)
+        if any(name == added[0] and (add or name not in used) for name in names):
+            raise ScopeError(f"{added[0]} already exists. Choose another name.", "name")
+        if len(added[0]) > MAX_FEATURE_NAME_LENGTH:
+            raise ScopeError(
+                f"{added[0][:40]}… is longer than {MAX_FEATURE_NAME_LENGTH} "
+                "characters. Choose a shorter name.",
+                "name",
             )
     return StepScope(names, selected, add, elementwise, added)

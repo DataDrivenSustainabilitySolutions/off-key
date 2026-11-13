@@ -25,6 +25,11 @@ async def find_service(session, service_id: str):
     return result.scalars().first()
 
 
+def _shadow(launch: dict) -> bool:
+    """Whether the service records its alarms without raising them."""
+    return bool(launch.get("shadow"))
+
+
 def _public_status(status: dict[str, Any], launch: dict) -> dict[str, Any]:
     pipeline = launch.get("pipeline") or {}
     return name_inputs_by_reading(status, pipeline.get("bindings")) or {}
@@ -58,6 +63,7 @@ def service_summary(
         "stream_ids": catalogue.watched_by(service.mqtt_topic),
         "status": service.status,
         "operational_status": operational_status,
+        "shadow": _shadow(configuration),
         "created_at": _created_at(service),
     }
     if probe is not None:
@@ -133,5 +139,6 @@ class RadarServiceQueries:
             or labels.get("monitoring_strategy"),
             "model_type": monitoring.get("model_type")
             or labels.get("radar_model_type"),
+            "shadow": _shadow(configuration),
             "created_at": _created_at(service),
         }

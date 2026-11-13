@@ -2,10 +2,11 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from pydantic import ValidationError
 
-from ..schemas.pipeline_versions import component_learning
+from ..schemas.pipeline_versions import RULE_DETECTOR, component_learning, streams
 from ..schemas.pipelines import (
     MAX_DETECTORS,
     MAX_PIPELINE_EXECUTION_BYTES,
@@ -153,6 +154,10 @@ def _detector_count(definition: PipelineDefinition) -> int:
 _EMPTY_TEXT = {
     "expression": "Write a formula, such as dc_voltage * dc_current.",
     "condition": "Write a condition, such as dc_current > 1.",
+    "update_when": "Write a condition, such as dc_current > 1.",
+    "reset_when": "Write a condition, or leave it empty to never start over.",
+    "formulas": "Write a line such as power = dc_voltage * dc_current.",
+    "against": "Choose the feature to compare with.",
 }
 # The characters a name may hold, in words rather than as a pattern.
 _NAME_CHARACTERS = {
@@ -368,8 +373,11 @@ def _validate_windows(compilation: _Compilation) -> None:
             or len(edges) != 1
         ):
             continue
-        used = node.params.get("apply_to") or compilation.features[edges[0].source]
-        total += kernel(node.component, node.params).window * len(used)
+        names = [item.name for item in compilation.features[edges[0].source]]
+        # The features the step uses: a Rolling relation leaves out the one it
+        # compares the others with.
+        used = step_scope(node.component, node.params, names).selected
+        total += kernel(node.component, node.params).held * len(used)
     if total > MAX_WINDOW_VALUES:
         compilation.error(
             "prepare_budget",
@@ -439,10 +447,14 @@ def _validate_constants(compilation: _Compilation) -> None:
                 and item.minimum is not None
                 and item.minimum == item.maximum
             ):
+                label = _label(compilation, identifier)
                 compilation.warning(
                     "constant_feature",
-                    f"{item.name} is always {item.minimum:g}, so "
-                    f"{_label(compilation, identifier)} learns nothing from it. "
+                    f"{item.name} is always {item.minimum:g}, so {label} gives "
+                    "every observation the same score."
+                    if node.component == RULE_DETECTOR
+                    else f"{item.name} is always {item.minimum:g}, so "
+                    f"{label} learns nothing from it. "
                     "Use it in a formula or condition, then leave it out with "
                     "Select features.",
                     identifier,
@@ -450,8 +462,9 @@ def _validate_constants(compilation: _Compilation) -> None:
 
 
 def _online(compilation: _Compilation, node: PipelineNode) -> bool:
-    """Whether a detector runs on the stream: it learns there or is pretrained."""
-    return component_learning(node.component) in ("online", "pretrained")
+    """Whether a detector runs on the stream: it learns there, is pretrained
+    or follows a rule."""
+    return streams(node.component)
 
 
 def _validate_model(compilation: _Compilation) -> None:
@@ -487,10 +500,18 @@ def _ancestors(compilation: _Compilation, identifier: str) -> list[str]:
 
 
 def _learned(compilation: _Compilation) -> dict[str, str]:
-    """How each learned step learns, by node."""
+    """How each learned step learns, by node.
+
+    A rule detector is listed as "rule": it learns nothing, and what may feed
+    it and which policy fits it follow from that.
+    """
     modes = {}
     for identifier, node in compilation.nodes.items():
-        mode = component_learning(node.component)
+        mode = (
+            "rule"
+            if node.component == RULE_DETECTOR
+            else component_learning(node.component)
+        )
         if mode != "none":
             modes[identifier] = mode
     return modes
@@ -499,7 +520,8 @@ def _learned(compilation: _Compilation) -> dict[str, str]:
 def _validate_branches(compilation: _Compilation, modes: dict[str, str]) -> None:
     """A detector reads only steps that learn as it does.
 
-    A pretrained detector has learned already, so it reads no step that learns.
+    A pretrained detector has learned already, and a rule detector learns
+    nothing, so neither reads a step that learns.
     """
     for identifier, node in compilation.nodes.items():
         if node.kind != "detector" or identifier not in modes:
@@ -511,6 +533,9 @@ def _validate_branches(compilation: _Compilation, modes: dict[str, str]) -> None
             reason = (
                 "the detector is pretrained and reads only steps that do not learn."
                 if modes[identifier] == "pretrained"
+                else "the detector follows a rule and reads only steps that do not "
+                "learn."
+                if modes[identifier] == "rule"
                 else "it learns continuously, and the detector is fitted once."
                 if other == "online"
                 else "it is fitted once, and the detector learns continuously."
@@ -589,9 +614,10 @@ def _validate_calibration_window(
     if window < needed:
         compilation.warning(
             "calibration_window",
-            f"An alarm rate of {alpha:g} needs at least {needed:,} calibration "
-            f"observations; the calibration window has {window:,}. With fewer, "
-            "the boundary sits at the largest score seen.",
+            # Written out, as the setting shows it: a small rate has no exponent.
+            f"An alarm rate of {Decimal(repr(alpha)):f} needs at least {needed:,} "
+            f"calibration observations; the calibration window has {window:,}. "
+            "With fewer, the boundary sits at the largest score seen.",
             calibration.id,
             parameter_path=["alpha"],
         )
@@ -608,7 +634,7 @@ def _validate_learning(compilation: _Compilation) -> None:
             continue
         upstream = {modes.get(item) for item in _ancestors(compilation, identifier)}
         if node.component == "policy.quantile":
-            if not upstream & {"online", "pretrained"} and "batch" in upstream:
+            if not upstream & {"online", "pretrained", "rule"} and "batch" in upstream:
                 compilation.error(
                     "calibration",
                     "The calibrated score threshold needs a detector that takes in "
@@ -631,6 +657,13 @@ def _validate_learning(compilation: _Compilation) -> None:
                 "calibration",
                 "The conformal alarm policy does not run on a pretrained "
                 "forecaster. Use the calibrated score threshold.",
+                identifier,
+            )
+        elif "rule" in upstream:
+            compilation.error(
+                "calibration",
+                "The conformal alarm policy does not run on a rule detector. Use "
+                "the calibrated score threshold.",
                 identifier,
             )
 

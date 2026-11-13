@@ -252,7 +252,7 @@ describe("catalogue entity edits", () => {
   });
 });
 
-type ConformanceCase = { name: string; valid: boolean; connection?: object; group?: object };
+type ConformanceCase = { name: string; valid: boolean; connection?: object; reading?: object; group?: object };
 const conformance = JSON.parse(fs.readFileSync(
   new URL("../../../backend/tests/fixtures/system_document_conformance.json", import.meta.url), "utf8",
 )) as { base: SystemDocument; default_group_color: string; cases: ConformanceCase[] };
@@ -261,6 +261,7 @@ describe("validator conformance with the backend model", () => {
   it.each(conformance.cases.map((item) => [item.name, item] as const))("%s", (_, item) => {
     const document = structuredClone(conformance.base);
     Object.assign(document.brokers[0]!, item.connection);
+    if (item.reading) document.readings.push(item.reading as SystemDocument["readings"][number]);
     if (item.group) document.groups.push(item.group as SystemDocument["groups"][number]);
     if (item.valid) expect(() => validateSystemDocument(document)).not.toThrow();
     else expect(() => validateSystemDocument(document)).toThrow();

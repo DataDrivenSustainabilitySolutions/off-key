@@ -101,14 +101,15 @@ class BoundaryDetectionService(MixedDetectionService):
         self.threshold = judgement.threshold
         self.operational_count += 1
         self.processed_count += 1
-        if judgement.alarm:
+        alarm = self._raised(judgement.alarm)
+        if alarm:
             self.anomaly_count += 1
             self.severity_scale = max(abs(self.threshold), self.boundary.spread())
         self._report_detectors(judgement)
         return self._result(
             data,
             judgement.value,
-            judgement.alarm,
+            alarm,
             "operational",
             topic,
             charger_id,

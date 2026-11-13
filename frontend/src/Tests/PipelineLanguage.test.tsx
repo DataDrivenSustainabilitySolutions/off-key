@@ -14,6 +14,7 @@ const components: PipelineComponent[] = [
   {
     id: "source.aligned",
     kind: "source",
+    group: "input",
     label: "Aligned inputs",
     description: "Aligned readings",
     fields: [],
@@ -23,6 +24,7 @@ const components: PipelineComponent[] = [
   {
     id: "features.passthrough",
     kind: "transform",
+    group: "route",
     label: "Pass through",
     description: "Preserve incoming values",
     fields: [],
@@ -32,6 +34,7 @@ const components: PipelineComponent[] = [
   {
     id: "features.merge",
     kind: "merge",
+    group: "route",
     label: "Merge features",
     description: "Ordered columns",
     fields: [],
@@ -41,6 +44,7 @@ const components: PipelineComponent[] = [
   {
     id: "detector:test",
     kind: "detector",
+    group: "detector",
     label: "Detector",
     description: "Online model",
     fields: [],
@@ -50,6 +54,7 @@ const components: PipelineComponent[] = [
   {
     id: "policy.test",
     kind: "policy",
+    group: "policy",
     label: "Threshold",
     description: "Alarm threshold",
     fields: [],
@@ -59,6 +64,7 @@ const components: PipelineComponent[] = [
   {
     id: "output.evidence",
     kind: "output",
+    group: "output",
     label: "Evidence",
     description: "Persist evidence",
     fields: [],
@@ -71,7 +77,7 @@ const fixture = () => ({
     input_slots: [{ id: "x", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
-      { id: "left", kind: "transform", component: "features.passthrough" },
+      { id: "left", kind: "transform", component: "features.passthrough", label: "Unmodified temperature" },
       { id: "right", kind: "transform", component: "features.passthrough" },
       { id: "merge", kind: "merge", component: "features.merge" },
       { id: "model", kind: "detector", component: "detector:test" },
@@ -89,7 +95,7 @@ const fixture = () => ({
     ],
   }),
   layout: normalizeLayout({
-    nodes: { left: { x: 10, y: 20, label: "Unmodified temperature" } },
+    nodes: { left: { x: 10, y: 20 } },
   }),
 });
 

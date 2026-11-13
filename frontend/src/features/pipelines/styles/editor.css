@@ -31,6 +31,56 @@
   margin-top: 16px;
 }
 
+/* How often the service may alarm and whether it raises its alarms, set apart from how the design learns. */
+.pl-alarms {
+  margin-bottom: 16px;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 4px;
+}
+
+.pl-alarms:empty {
+  display: none;
+}
+
+.pl-alarms > .pl-budget {
+  margin-top: 0;
+}
+
+.pl-alarms > .pl-check {
+  margin: 0 0 12px;
+  font-size: var(--text-body);
+}
+
+.pl-alarms > .pl-check small {
+  display: block;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+/* The alarm budget: a count and its period on one line. */
+.pl-budget-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-budget .pl-budget-value input {
+  flex: 1;
+}
+
+.pl-budget .pl-budget-value select {
+  flex: none;
+  width: auto;
+}
+
+.pl-budget-value span {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-body);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 /* Service settings: how the detectors learn and the start-up timeline. */
 .pl-learning-note {
   margin: 0 0 16px;
@@ -55,7 +105,7 @@
 }
 
 .pl-inspector .pl-segmented button[aria-pressed="true"] {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
   font-weight: 500;
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
@@ -203,7 +253,7 @@
 
 .pl-error {
   color: #dc2626;
-  background: color-mix(in srgb, #ef4444 5%, hsl(var(--background)));
+  background: color-mix(in srgb, #ef4444 5%, hsl(var(--card)));
   border-color: color-mix(in srgb, #ef4444 25%, hsl(var(--border)));
 }
 
@@ -213,7 +263,7 @@
 
 .pl-warning {
   color: #a16207;
-  background: color-mix(in srgb, #f59e0b 7%, hsl(var(--background)));
+  background: color-mix(in srgb, #f59e0b 7%, hsl(var(--card)));
   border-color: color-mix(in srgb, #f59e0b 30%, hsl(var(--border)));
 }
 
@@ -223,7 +273,7 @@
 
 .pl-notice {
   color: #15803d;
-  background: color-mix(in srgb, #22c55e 5%, hsl(var(--background)));
+  background: color-mix(in srgb, #22c55e 5%, hsl(var(--card)));
 }
 
 .dark .pl-notice {

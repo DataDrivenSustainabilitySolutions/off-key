@@ -11,6 +11,7 @@ from off_key_tactic_middleware.config.system_live import (
 )
 from off_key_tactic_middleware.services.catalogue.broker_access import (
     BrokerAccess,
+    BrokerRouteAccess,
     resolve_broker,
 )
 
@@ -65,6 +66,62 @@ def test_operator_settings_win_over_the_adapter_and_tls_can_be_forced():
     assert resolved.credential == OPERATOR
     assert resolved.proxy.host == "operator-proxy"
     assert resolved.connection.tls and not connection.tls
+
+
+def _http(host="api.example.com", port=443, tls=True, credential_ref=None):
+    return SystemConnection(
+        id="api",
+        label="API",
+        protocol="http",
+        host=host,
+        port=port,
+        tls=tls,
+        credential_ref=credential_ref,
+    )
+
+
+def test_an_http_source_needs_its_own_origin_and_credentials():
+    settings = SystemLiveSettings(
+        SYSTEM_LIVE_ALLOWED_HOSTS=["api.example.com"],
+        SYSTEM_LIVE_CREDENTIALS={"named": OPERATOR},
+        SYSTEM_LIVE_SOCKS_PROXIES={"api.example.com": LiveSocksProxy(host="route")},
+        SYSTEM_HTTP_ALLOWED_ORIGINS=["https://api.example.com"],
+        SYSTEM_HTTP_CREDENTIALS={"token": {"token": "abc"}},
+    )
+    adapter = BrokerAccess(credential=ADAPTER, require_tls=True)
+
+    # A listed broker host opens no HTTP port, and nothing lets TLS be dropped.
+    assert resolve_broker(settings, _http(port=8443), adapter) == "host_not_allowed"
+    assert resolve_broker(settings, _http(tls=False), adapter) == "host_not_allowed"
+    # An MQTT login is never sent as a request header.
+    assert (
+        resolve_broker(settings, _http(credential_ref="named"), adapter)
+        == "credential_missing"
+    )
+
+    anonymous = resolve_broker(settings, _http(), adapter)
+    named = resolve_broker(settings, _http(credential_ref="token"), adapter)
+    assert not isinstance(anonymous, str) and not isinstance(named, str)
+    assert anonymous.credential is None
+    assert named.credential.request_header() == ("Authorization", "Bearer abc")
+    assert named.proxy.host == "route"
+
+
+def test_a_broker_route_never_covers_an_http_source():
+    access = BrokerRouteAccess(
+        SystemLiveSettings(
+            SYSTEM_BROKER_ROUTES=[
+                {
+                    "name": "site",
+                    "host_suffixes": [".mesh.example"],
+                    "credential": {"username": "operator", "password": "secret"},
+                }
+            ]
+        )
+    )
+
+    assert access(_connection(host="meter.mesh.example")) is not None
+    assert access(_http(host="meter.mesh.example")) is None
 
 
 @pytest.mark.asyncio

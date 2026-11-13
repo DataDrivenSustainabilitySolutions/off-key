@@ -9,6 +9,7 @@ from off_key_core.models.pipeline_prepare import (
     PREPARE_COMPONENTS,
     kernel,
 )
+from off_key_core.models.pipeline_scope import EXPECTATIONS
 from off_key_mqtt_radar.pipelines.components import (
     BATCH_BUILDERS,
     BATCH_PASSTHROUGH,
@@ -26,9 +27,17 @@ ROW_SETTINGS = {
     "prepare.aggregate": {},
     "prepare.formula": {"expression": "a * b"},
     "prepare.gate": {"condition": "a > 1"},
+    "prepare.mute": {"condition": "a > 1"},
     "prepare.constant": {},
     "prepare.condition": {"condition": "a > 1"},
     "prepare.set": {"name": "a", "expression": "a + b"},
+    "prepare.calculate": {"formulas": "c = a + b"},
+    "prepare.time": {},
+}
+# Likewise for the steps that read the row for each feature.
+LANE_SETTINGS = {
+    "prepare.hold": {"update_when": "a > 1"},
+    "prepare.relation": {"against": "b"},
 }
 
 
@@ -38,7 +47,8 @@ def test_the_runtime_can_build_every_feature_component_the_catalog_offers(compon
         # Prepare steps learn nothing and run in the same stage for every detector.
         assert component.learning == "none"
         if component.id in LANE_COMPONENTS:
-            assert kernel(component.id, {}).initial() is not None
+            settings = LANE_SETTINGS.get(component.id, {})
+            assert kernel(component.id, settings).initial() is not None
         else:
             settings = ROW_SETTINGS[component.id]
             assert row_step(component.id, settings, ["a", "b"]) is not None
@@ -56,8 +66,10 @@ def test_runtime_registries_hold_no_component_the_catalog_lacks():
     assert ONLINE_BUILDERS.keys() <= offered
 
 
-def test_every_projection_and_rolling_window_has_a_state_estimate():
-    assert set(STATE_ESTIMATORS) == PROJECTIONS | {"adaptive.robust_scaler"}
+def test_every_step_that_keeps_a_matrix_or_a_window_has_a_state_estimate():
+    assert set(STATE_ESTIMATORS) == (
+        PROJECTIONS | EXPECTATIONS | {"adaptive.robust_scaler"}
+    )
 
 
 def test_unknown_components_keep_their_strategy_specific_errors():

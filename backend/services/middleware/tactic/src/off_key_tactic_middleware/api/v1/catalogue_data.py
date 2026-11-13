@@ -5,6 +5,7 @@ saved catalogue, so callers name only catalogue ids.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from off_key_core.schemas.devices import (
@@ -13,7 +14,9 @@ from off_key_core.schemas.devices import (
     Evidence,
     Measurement,
     MeasurementBucket,
+    MeasurementHistory,
     MeasurementPage,
+    ReadingProfile,
 )
 from off_key_core.schemas.system import SystemStream
 
@@ -72,18 +75,29 @@ async def list_measurements(
 
 @router.get(
     "/readings/{stream_id}/measurements/buckets",
-    response_model=list[MeasurementBucket],
+    response_model=list[MeasurementBucket] | MeasurementHistory,
 )
 async def list_measurement_buckets(
     stream_id: str,
     start: datetime | None = Query(None),
     end: datetime | None = Query(None),
     buckets: int = Query(600, ge=10, le=2000),
+    view: Literal["auto", "raw"] | None = Query(None),
+    window_ms: int | None = Query(None, ge=1, le=86_400_000),
     service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
     return await service.measurement_buckets(
-        stream_id, start=start, end=end, buckets=buckets
+        stream_id, start=start, end=end, buckets=buckets, view=view, window_ms=window_ms
     )
+
+
+@router.get("/readings/{stream_id}/profile", response_model=ReadingProfile)
+async def profile_reading(
+    stream_id: str,
+    days: int = Query(14, ge=1, le=90),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
+):
+    return await service.profile(stream_id, days=days)
 
 
 @router.get("/evidence", response_model=list[Evidence])

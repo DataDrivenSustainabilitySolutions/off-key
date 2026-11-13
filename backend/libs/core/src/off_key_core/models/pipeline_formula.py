@@ -33,26 +33,41 @@ FUNCTIONS: dict[str, tuple[int, int | None]] = {
     "log": (1, 1),
     "log1p": (1, 1),
     "exp": (1, 1),
+    "sign": (1, 1),
+    "floor": (1, 1),
+    "ceil": (1, 1),
+    "round": (1, 1),
+    "sin": (1, 1),
+    "cos": (1, 1),
+    "mod": (2, 2),
+    "atan2": (2, 2),
+    "hypot": (2, None),
     "min": (2, None),
     "max": (2, None),
+    "mean": (2, None),
+    "sum": (2, None),
     "clip": (3, 3),
     "if": (3, 3),
+    "pi": (0, 0),
 }
 COMPARISONS = ("<=", ">=", "==", "!=", "<", ">")
 KEYWORDS = frozenset({"and", "or", "not"})
 _NUMBER = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?", re.ASCII)
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*", re.ASCII)
 _ARITY = {
-    "abs": "1 value",
-    "sqrt": "1 value",
-    "log": "1 value",
-    "log1p": "1 value",
-    "exp": "1 value",
-    "min": "at least 2 values",
-    "max": "at least 2 values",
+    "mod": "2 values: the value and what it is divided by",
+    "atan2": "2 values: y and x",
     "clip": "3 values: the value, its low and its high end",
     "if": "3 arguments: a condition, its true value and its false value",
+    "pi": "no value: write pi()",
 }
+
+
+def _arity(function: str) -> str:
+    """How many values a function takes, in words."""
+    if function in _ARITY:
+        return _ARITY[function]
+    return "1 value" if FUNCTIONS[function] == (1, 1) else "at least 2 values"
 
 
 class FormulaError(ValueError):
@@ -66,6 +81,8 @@ class FormulaError(ValueError):
         *,
         fix: tuple[int, int, str] | None = None,
     ):
+        self.message = message
+        self.hint = hint
         self.position = position
         """Index of the first character concerned, from 0."""
         self.parameter: str | None = None
@@ -306,7 +323,7 @@ class _Parser:
                 raise FormulaError(f"Close the parenthesis of {function}", name.start)
         low, high = FUNCTIONS[function]
         if len(args) < low or (high is not None and len(args) > high):
-            raise FormulaError(f"{function} takes {_ARITY[function]}", name.start)
+            raise FormulaError(f"{function} takes {_arity(function)}", name.start)
         end = self.tokens[self.index - 1].start + 1
         return Term("call", name.start, end, function, tuple(args))
 
@@ -366,6 +383,15 @@ class Expression:
         """Refuse a name that does not arrive at the step, with a suggestion."""
         known = set(available)
         for name, term in self.references.items():
+            if name not in known and FUNCTIONS.get(name) == (0, 0):
+                # A constant is a function without values: pi().
+                raise _suggested(
+                    f"Unknown feature {name}",
+                    term.start,
+                    term.end,
+                    f"{name}()",
+                    f"{name}()",
+                )
             if name not in known:
                 hint = next(iter(difflib.get_close_matches(name, available, n=1)), None)
                 raise _suggested(
@@ -406,8 +432,8 @@ def parse(text: str, *, condition: bool = False) -> Expression:
     kind = _check_kind(root)
     if kind == "condition" and not condition:
         raise FormulaError(
-            "A formula computes a number; to hold observations back by a "
-            "condition, use a Gate step"
+            "A formula computes a number. For 1 or 0, write if(condition, 1, 0); "
+            "to hold observations back by a condition, use a Gate step"
         )
     if kind == "number" and condition:
         raise FormulaError("Write a condition, such as dc_current > 1")
@@ -484,6 +510,42 @@ def _exp(value: float) -> float:
         ) from None
 
 
+def _sign(value: float) -> float:
+    return float((value > 0) - (value < 0))
+
+
+def _round(value: float) -> float:
+    """The nearest whole number; a half rounds away from 0, so 2.5 gives 3."""
+    whole = math.floor(abs(value))
+    if abs(value) - whole >= 0.5:
+        whole += 1
+    return math.copysign(whole, value)
+
+
+def _mod(value: float, divisor: float) -> float:
+    """The remainder with the divisor's sign, so mod(-1, 24) is 23."""
+    if divisor == 0:
+        raise PrepareFailure("out_of_domain", "mod by 0")
+    return value % divisor
+
+
+def _sum(values: list[float]) -> float:
+    try:
+        return _finite(math.fsum(values))
+    except OverflowError:
+        raise PrepareFailure(
+            "non_finite", "The result is not a finite number"
+        ) from None
+
+
+def _mean(values: list[float]) -> float:
+    return _sum(values) / len(values)
+
+
+def _hypot(values: list[float]) -> float:
+    return _finite(math.hypot(*values))
+
+
 _ARITHMETIC: dict[str, Callable[[float, float], float]] = {
     "+": lambda left, right: _finite(left + right),
     "-": lambda left, right: _finite(left - right),
@@ -505,6 +567,24 @@ _UNARY: dict[str, Callable[[float], float]] = {
     "log": _log,
     "log1p": _log1p,
     "exp": _exp,
+    "sign": _sign,
+    "floor": lambda value: float(math.floor(value)),
+    "ceil": lambda value: float(math.ceil(value)),
+    "round": _round,
+    "sin": math.sin,
+    "cos": math.cos,
+}
+_BINARY: dict[str, Callable[[float, float], float]] = {
+    "mod": _mod,
+    "atan2": math.atan2,
+}
+# Functions of all their values at once.
+_OVER: dict[str, Callable[[list[float]], float]] = {
+    "min": min,
+    "max": max,
+    "mean": _mean,
+    "sum": _sum,
+    "hypot": _hypot,
 }
 
 
@@ -545,11 +625,17 @@ def _compile_call(term: Term, args: list[Evaluate]) -> Evaluate:
         (inner,) = args
         unary = _UNARY[function]
         return lambda row: unary(inner(row))
+    if function in _BINARY:
+        left, right = args
+        binary = _BINARY[function]
+        return lambda row: binary(left(row), right(row))
     if function == "clip":
         value, low, high = args
         return lambda row: min(max(value(row), low(row)), high(row))
-    pick = min if function == "min" else max
-    return lambda row: pick(arg(row) for arg in args)
+    if function == "pi":
+        return lambda _row: math.pi
+    over = _OVER[function]
+    return lambda row: over([arg(row) for arg in args])
 
 
 def evaluator(expression: Expression) -> Callable[[Row], Any]:
@@ -812,8 +898,10 @@ class _Ranges:
                 )
             floor = max(value[0], low[0]), max(value[1], low[1])
             return min(floor[0], high[0]), min(floor[1], high[1])
-        pick = min if function == "min" else max
-        return pick(low for low, _ in values), pick(high for _, high in values)
+        if function == "mod":
+            divisor = term.args[1]
+            self.nonzero(divisor, values[1], f"mod by {self.describe(divisor)}")
+        return _call_range(function, values)
 
     def branch(self, condition: Term, truth: bool) -> _Ranges | None:
         refined = assume(condition, truth, self.bounds, self.nonzero_names)
@@ -889,6 +977,99 @@ def _function_range(function: str, value: Interval) -> Interval:
         return math.sqrt(max(low, 0.0)), math.sqrt(high)
     floor, apply = (0.0, math.log) if function == "log" else (-1.0, math.log1p)
     return (apply(low) if low > floor else -INF), apply(high)
+
+
+def _whole(value: float, apply: Callable[[float], float]) -> float:
+    """floor, ceil or round of an end of a range; an open end stays open."""
+    return value if math.isinf(value) else float(apply(value))
+
+
+def _mod_range(divisor: Interval) -> Interval:
+    """A remainder lies between 0 and its divisor, on the divisor's side."""
+    low, high = divisor
+    return min(low, 0.0), max(high, 0.0)
+
+
+def _angle_range(y: Interval, x: Interval) -> Interval:
+    """atan2 by the half-planes its point can lie in.
+
+    Left of the origin a y of 0 gives pi or -pi by its sign, and -0.0 counts
+    as 0 in a range, so only a y that stays off 0 picks a side there.
+    """
+    if x[0] > 0:
+        return (
+            0.0 if y[0] >= 0 else -math.pi / 2,
+            0.0 if y[1] <= 0 else math.pi / 2,
+        )
+    if y[0] > 0:
+        return 0.0, math.pi
+    if y[1] < 0:
+        return -math.pi, 0.0
+    return -math.pi, math.pi
+
+
+def _wave_range(function: str, value: Interval) -> Interval:
+    """sin or cos: exact for one value, otherwise the whole wave."""
+    if value[0] == value[1] and math.isfinite(value[0]):
+        result = (math.sin if function == "sin" else math.cos)(value[0])
+        return result, result
+    return -1.0, 1.0
+
+
+def _sign_range(value: Interval) -> Interval:
+    low, high = value
+    return _sign(low), _sign(high)
+
+
+def _total(ends: Sequence[float], open_end: float) -> float:
+    """A sum of the low or the high ends of ranges; open_end is the end that
+    stays open, which an open range or an overflow gives."""
+    if any(math.isinf(end) for end in ends):
+        return open_end
+    try:
+        return math.fsum(ends)
+    except OverflowError:
+        return open_end
+
+
+def _call_range(function: str, values: list[Interval]) -> Interval:
+    """The range of a function without a domain of its own to check."""
+    # A power that is not a real number leaves an end unknown; read it as open.
+    values = [
+        (-INF, INF) if math.isnan(low) or math.isnan(high) else (low, high)
+        for low, high in values
+    ]
+    lows = [low for low, _ in values]
+    highs = [high for _, high in values]
+    match function:
+        case "sign":
+            return _sign_range(values[0])
+        case "floor" | "ceil" | "round":
+            apply = {"floor": math.floor, "ceil": math.ceil, "round": _round}[function]
+            return _whole(lows[0], apply), _whole(highs[0], apply)
+        case "sin" | "cos":
+            return _wave_range(function, values[0])
+        case "mod":
+            return _mod_range(values[1])
+        case "atan2":
+            return _angle_range(*values)
+        case "pi":
+            return math.pi, math.pi
+        case "sum":
+            return _total(lows, -INF), _total(highs, INF)
+        case "mean":
+            return (
+                _total(lows, -INF) / len(values),
+                _total(highs, INF) / len(values),
+            )
+        case "hypot":
+            sizes = [_magnitude(value) for value in values]
+            return (
+                math.hypot(*(low for low, _ in sizes)),
+                math.hypot(*(high for _, high in sizes)),
+            )
+    pick = min if function == "min" else max
+    return pick(lows), pick(highs)
 
 
 def _exp_bound(value: float) -> float:

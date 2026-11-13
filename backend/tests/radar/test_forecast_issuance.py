@@ -16,7 +16,7 @@ from off_key_mqtt_radar.forecast_records import (
 )
 from off_key_mqtt_radar.result_records import ResultProjector
 
-from tests.radar.test_forecast_band import LEARNED, cycle, design
+from tests.support.forecast_band import LEARNED, cycle, design
 from tests.support.fused_pipeline import KEYS, bound, reading
 
 START = datetime(2026, 11, 11, 12, tzinfo=UTC)

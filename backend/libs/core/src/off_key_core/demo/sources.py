@@ -24,7 +24,7 @@ SOURCES = (
         "Fintraffic / Digitraffic",
         "CC BY 4.0",
         CC_BY,
-        "One roadside weather station, reporting about once a minute.",
+        "One roadside weather station. Updates can be several minutes apart.",
     ),
     Source(
         "traffic",
@@ -43,18 +43,18 @@ SOURCES = (
         "Freie und Hansestadt Hamburg",
         "DL-DE BY 2.0",
         "https://www.govdata.de/dl-de/by-2-0",
-        "Event-driven observations; quiet periods are expected.",
+        "Vehicle detector occupancy in percent. Brief spikes and zeros are "
+        "normal; observations arrive when the detector changes.",
     ),
     Source(
-        "solar",
-        "TDengine solar simulation",
-        "https://tdengine.com/free-public-mqtt-data-feed-real-time-solar-fleet-simulation-now-available/",
-        "TDengine",
-        "Provider's public feed terms",
-        "https://tdengine.com/free-public-mqtt-data-feed-real-time-solar-fleet-simulation-now-available/",
-        "Simulated industrial telemetry. "
-        "Availability and cadence depend on the provider.",
-        True,
+        "mosquitto",
+        "Mosquitto public broker metrics",
+        "https://test.mosquitto.org/",
+        "Eclipse Mosquitto public test broker",
+        "Public test service terms",
+        "https://test.mosquitto.org/",
+        "Real client counts and message traffic from a public test broker. "
+        "Fresh updates are timestamped on arrival; service interruptions are possible.",
     ),
 )
 

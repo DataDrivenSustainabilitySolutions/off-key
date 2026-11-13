@@ -2,11 +2,14 @@
 
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
-from off_key_core.demo.catalogue import FeedSelection, catalogue
+from off_key_core.demo.catalogue import MOSQUITTO_SENSORS, FeedSelection, catalogue
 from off_key_core.demo.sources import public_sources
 from off_key_core.schemas.system import SystemDocument
+from off_key_mqtt_proxy.demo import probe as live_probe
 from off_key_mqtt_proxy.demo.normalize import DEFAULT_MAX_AGE, MAX_AGE, Normalizer
 from off_key_mqtt_proxy.demo.relay import feeds
 
@@ -16,7 +19,7 @@ SELECTION = FeedSelection()
 MESSAGES = [
     (
         "weather",
-        "weather-v2/4057/3",
+        "weather-v2/1003/3",
         {"value": -1.4, "time": int(NOW)},
         1,
     ),
@@ -31,19 +34,6 @@ MESSAGES = [
         "v1.1/Datastreams(13)/Observations",
         {"phenomenonTime": ISO, "result": 35},
         1,
-    ),
-    (
-        "solar",
-        "inverters",
-        {
-            "ts": ISO,
-            "Inverter_ID": "INV_001_001",
-            "Output_AC_Power_kW": 2000,
-            "Input_DC_Voltage": 850,
-            "Temperature_Module": 45,
-            "Efficiency_%": 97.5,
-        },
-        4,
     ),
 ]
 
@@ -64,7 +54,7 @@ def test_sources_preserve_event_and_arrival_time_and_reject_duplicates(
         message = json.loads(encoded)
         assert message["observed_at"] == NOW
         assert message["received_at"] == NOW + 1
-        assert message["simulated"] == (source == "solar")
+        assert message["simulated"] is False
     assert normalizer.messages(source, topic, wire, received_at=NOW + 2) == []
 
 
@@ -87,7 +77,7 @@ def test_road_feeds_take_only_the_selected_station_and_known_sensors():
     reading = json.dumps({"value": 3.0, "time": int(NOW)}).encode()
     for topic in (
         "weather-v2/9999/3",
-        "weather-v2/4057/999",
+        "weather-v2/1003/999",
         "weather-v2/status",
         "tms-v2/23438",
     ):
@@ -105,15 +95,95 @@ def test_road_feeds_take_only_the_selected_station_and_known_sensors():
     assert destination == "demo/traffic/23438/volume_1"
 
 
-def test_multiplexed_assets_are_not_scored():
+def test_unselected_hamburg_detector_is_not_recorded():
     normalizer = Normalizer(SELECTION)
-    payload = MESSAGES[3][2] | {"Inverter_ID": "another-inverter"}
     assert (
         normalizer.messages(
-            "solar", "inverters", json.dumps(payload).encode(), received_at=NOW
+            "hamburg",
+            "v1.1/Datastreams(99)/Observations",
+            json.dumps(MESSAGES[2][2]).encode(),
+            received_at=NOW,
         )
         == []
     )
+
+
+@pytest.mark.parametrize("field,mqtt_topic", MOSQUITTO_SENSORS.items())
+def test_broker_metrics_record_only_fresh_numeric_updates(field, mqtt_topic):
+    normalizer = Normalizer(SELECTION)
+    assert (
+        normalizer.messages(
+            "mosquitto", mqtt_topic, b"12606", received_at=NOW, retained=True
+        )
+        == []
+    )
+    [(destination, encoded)] = normalizer.messages(
+        "mosquitto", mqtt_topic, b"12606", received_at=NOW
+    )
+    assert destination == f"demo/mosquitto/test-mosquitto-org/{field}"
+    message = json.loads(encoded)
+    assert message["value"] == 12606
+    assert message["observed_at"] is None
+    assert message["received_at"] == NOW
+    assert message["simulated"] is False
+    assert normalizer.messages("mosquitto", mqtt_topic, b"12606", received_at=NOW) == []
+    assert normalizer.messages("mosquitto", mqtt_topic, b"12607", received_at=NOW + 10)
+
+
+@pytest.mark.parametrize(
+    "wire", [b"true", b"null", b"{}", b"[]", b'"12"', b"-1", b"NaN", b"Infinity"]
+)
+def test_broker_metrics_reject_invalid_values_and_unknown_topics(wire):
+    normalizer = Normalizer(SELECTION)
+    assert (
+        normalizer.messages(
+            "mosquitto", "$SYS/broker/clients/connected", wire, received_at=NOW
+        )
+        == []
+    )
+    assert (
+        normalizer.messages("mosquitto", "someone/clients", b"12", received_at=NOW)
+        == []
+    )
+    assert normalizer.latest == {}
+
+
+def test_discovery_uses_supported_network_topics_then_pins_the_fresh_station(
+    monkeypatch,
+):
+    clients = {}
+    monkeypatch.setattr(live_probe.time, "time", lambda: NOW)
+
+    def subscribe(feed, receive):
+        client = clients[feed.id] = Mock()
+        # Digitraffic's network-wide subscription delivers measurements; the
+        # unsupported '+' variant used to leave discovery at an invalid default.
+        observations = {
+            "weather": ("weather-v2/#", "weather-v2/1001/1"),
+            "traffic": ("tms-v2/#", "tms-v2/23439/5122"),
+        }
+        if feed.id in observations:
+            subscription, mqtt_topic = observations[feed.id]
+            if subscription in feed.topics:
+                receive(
+                    client,
+                    None,
+                    SimpleNamespace(
+                        retain=False,
+                        topic=mqtt_topic,
+                        payload=json.dumps({"time": NOW, "value": 1.3}).encode(),
+                    ),
+                )
+        return client
+
+    monkeypatch.setattr(live_probe, "subscriber", subscribe)
+    selected = live_probe.probe(SELECTION, seconds=0, discover=True)
+    assert selected.weather_station == 1001
+    assert selected.traffic_station == 23439
+    clients["weather"].unsubscribe.assert_called_once_with(["weather-v2/#"])
+    subscriptions = clients["weather"].subscribe.call_args.args[0]
+    assert ("weather-v2/1001/1", 0) in subscriptions
+    assert ("weather-v2/status", 0) in subscriptions
 
 
 @pytest.mark.parametrize(
@@ -139,7 +209,7 @@ def test_catalogue_roundtrips_and_changed_entities_get_new_reading_ids():
         "weather",
         "traffic",
         "hamburg",
-        "solar",
+        "mosquitto",
     }
     before = {
         reading.id

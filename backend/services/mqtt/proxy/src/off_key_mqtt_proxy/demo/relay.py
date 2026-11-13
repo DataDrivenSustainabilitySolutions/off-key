@@ -16,6 +16,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from off_key_core.demo.catalogue import (
+    MOSQUITTO_SENSORS,
     TRAFFIC_SENSORS,
     WEATHER_SENSORS,
     FeedSelection,
@@ -72,7 +73,14 @@ def feeds(selected: FeedSelection) -> tuple[Feed, ...]:
                 for value in selected.hamburg_detectors
             ),
         ),
-        Feed("solar", "mqtt.tdengine.com", ("inverters",), 1883, None, False),
+        Feed(
+            "mosquitto",
+            "test.mosquitto.org",
+            tuple(MOSQUITTO_SENSORS.values()),
+            8886,
+            None,
+            True,
+        ),
     )
 
 

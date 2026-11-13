@@ -5,6 +5,8 @@ import math
 from datetime import datetime
 
 from off_key_core.demo.catalogue import (
+    MOSQUITTO_ENTITY,
+    MOSQUITTO_SENSORS,
     TRAFFIC_SENSORS,
     WEATHER_SENSORS,
     FeedSelection,
@@ -56,34 +58,23 @@ def _hamburg(mqtt_topic: str, data: dict, selection: FeedSelection):
     return entity, data["phenomenonTime"], {"occupancy": data.get("result")}
 
 
-def _solar(mqtt_topic: str, data: dict, selection: FeedSelection):
-    entity = data["Inverter_ID"]
-    if entity != selection.solar_inverter:
+def _mosquitto(mqtt_topic: str, data, _selection: FeedSelection):
+    field = {value: key for key, value in MOSQUITTO_SENSORS.items()}.get(mqtt_topic)
+    if field is None or type(data) not in (int, float) or data < 0:
         return None
-    return (
-        entity,
-        data["ts"],
-        {
-            name: data.get(key)
-            for name, key in {
-                "power": "Output_AC_Power_kW",
-                "voltage": "Input_DC_Voltage",
-                "temperature": "Temperature_Module",
-                "efficiency": "Efficiency_%",
-            }.items()
-        },
-    )
+    # $SYS values have no observation timestamp. Never invent one for the source.
+    return MOSQUITTO_ENTITY, None, {field: data}
 
 
 _DECODERS = {
     "weather": _weather,
     "traffic": _traffic,
     "hamburg": _hamburg,
-    "solar": _solar,
+    "mosquitto": _mosquitto,
 }
 
 
-def decode(source: str, mqtt_topic: str, data: dict, selection: FeedSelection):
+def decode(source: str, mqtt_topic: str, data, selection: FeedSelection):
     return _DECODERS[source](mqtt_topic, data, selection)
 
 
@@ -110,15 +101,16 @@ class Normalizer:
             return []
         try:
             data = json.loads(payload)
-            if not isinstance(data, dict):
+            if source != "mosquitto" and not isinstance(data, dict):
                 return []
             decoded = decode(source, mqtt_topic, data, self.selection)
             if decoded is None:
                 return []
             entity, source_time, fields = decoded
-            observed_at = timestamp(source_time)
+            observed_at = None if source == "mosquitto" else timestamp(source_time)
+            event_time = received_at if observed_at is None else observed_at
             max_age = MAX_AGE.get(source, DEFAULT_MAX_AGE)
-            if not received_at - max_age <= observed_at <= received_at + 10:
+            if not received_at - max_age <= event_time <= received_at + 10:
                 return []
         except (
             ValueError,
@@ -132,7 +124,7 @@ class Normalizer:
         result = []
         for field, raw in fields.items():
             destination = topic(source, entity, field)
-            if destination not in self.allowed or observed_at <= self.latest.get(
+            if destination not in self.allowed or event_time <= self.latest.get(
                 destination, 0
             ):
                 continue
@@ -142,7 +134,7 @@ class Normalizer:
                 continue
             if not math.isfinite(value):
                 continue
-            self.latest[destination] = observed_at
+            self.latest[destination] = event_time
             result.append(
                 (
                     destination,
@@ -153,7 +145,7 @@ class Normalizer:
                             "entity": entity,
                             "observed_at": observed_at,
                             "received_at": received_at,
-                            "simulated": source == "solar",
+                            "simulated": False,
                         },
                         allow_nan=False,
                     ),

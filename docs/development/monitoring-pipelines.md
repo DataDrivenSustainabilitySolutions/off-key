@@ -1527,7 +1527,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The reference is immutable commit
-`056593514244afdf904c4d311e717503cf476005`, the release that added shadow runs.
+`730e91b9b30a6122ef073a4dae55fec0293df437`, the release that added per-reading
+hold timing and migration 033.
 Its layout holds switched-off steps and notes, and a step's title lives in the
 design, as in the current release. The rehearsal still switches between
 different application binaries.
@@ -1539,7 +1540,8 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `14f26c36`, refuses a layout with switched-off steps
+The previous reference, `05659351`, has no migration 033;
+`14f26c36` refuses a layout with switched-off steps
 or notes, and returns a title on each card's place; `197cc239` has no migration 032;
 `efe30f4a` has no migration 031;
 `f02a9201` has no migration 030;
@@ -1551,7 +1553,7 @@ reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
 has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
 1.4.0, so the rehearsal accepts none of them.
 Releases before
-migration 032 refuse a database that has applied it. Rolling back past
+migration 033 refuse a database that has applied it. Rolling back past
 this schema boundary means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.

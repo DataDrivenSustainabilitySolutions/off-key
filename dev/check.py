@@ -5,8 +5,12 @@ spends CI minutes, so a push should already pass them. This picks the suites
 from the paths changed since the branch left origin/main (committed, staged and
 unstaged) and runs them in CI's order. `--all` runs every fast suite.
 
-    make check            # what this branch touched
-    make check ARGS=--all # every fast suite
+    make check                # what this branch touched
+    make check ARGS=--all     # every fast suite
+    make check ARGS=--browser # also the route-mocked browser journeys (Docker)
+
+The route-mocked browser journeys run only with --browser, because they need
+Docker and the Playwright image; CI runs them on every pull request.
 """
 
 import argparse
@@ -70,6 +74,26 @@ CI = [
 ]
 
 
+# CI's frontend-browser job: the checked build behind `vite preview`, journeys
+# in the Playwright image the chart pixel comparisons were recorded with.
+BROWSER = r"""
+set -euo pipefail
+if ! docker info > /dev/null 2>&1; then
+  echo "--browser needs a running Docker daemon for the Playwright image." >&2
+  exit 1
+fi
+cd frontend
+npx vite preview --port 5173 --strictPort > /tmp/off-key-vite-preview.log 2>&1 &
+preview=$!
+trap 'kill $preview' EXIT
+curl --fail --silent --retry 30 --retry-all-errors --retry-delay 1 \
+  http://localhost:5173 > /dev/null
+version="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
+docker run --rm --network host --ipc host --volume "${PWD}:/work" --workdir /work \
+  --env CI=true "mcr.microsoft.com/playwright:v${version}-noble" npm run test:e2e:mocked
+"""
+
+
 def git(*args):
     return subprocess.run(
         ["git", *args], capture_output=True, text=True, check=True
@@ -84,7 +108,7 @@ def changed():
     return paths
 
 
-def suites(paths, everything):
+def suites(paths, everything, browser=False):
     frontend = everything or any(p.startswith("frontend/") for p in paths)
     ci = everything or any(p.startswith((".github/", "infra/", "docs/")) for p in paths)
     backend = everything or any(
@@ -96,7 +120,8 @@ def suites(paths, everything):
         ["uv", "run", "--project", "backend", "pre-commit", "run", "--all-files"],
     ]
     steps += BACKEND if backend else []
-    steps += FRONTEND if frontend else []
+    steps += FRONTEND if frontend or browser else []
+    steps += [["bash", "-c", BROWSER]] if browser else []
     steps += CI if ci else []
     return steps
 
@@ -104,12 +129,17 @@ def suites(paths, everything):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--all", action="store_true", help="run every fast suite")
+    parser.add_argument(
+        "--browser",
+        action="store_true",
+        help="also run the route-mocked browser journeys (needs Docker)",
+    )
     args = parser.parse_args()
     paths = changed()
-    if not paths and not args.all:
+    if not paths and not (args.all or args.browser):
         print("Nothing changed since origin/main.")
         return 0
-    for step in suites(paths, args.all):
+    for step in suites(paths, args.all, args.browser):
         print("+", " ".join(step), flush=True)
         env_dir = {"cwd": "infra/tests"} if "unittest" in step else {}
         if subprocess.run(step, check=False, **env_dir).returncode:

@@ -160,7 +160,9 @@ same size.
 ## Local quality gate
 
 Run `make check` before every push. It runs the fast CI suites for the paths the
-branch changed since `origin/main` (`make check ARGS=--all` runs all of them), so
+branch changed since `origin/main` (`make check ARGS=--all` runs all of them;
+`ARGS=--browser` adds the route-mocked browser journeys, which need Docker and
+otherwise run only in CI), so
 a push does not spend CI minutes on a failure a local run would have caught.
 Push once per finished step rather than for work in progress: each push of a pull
 request starts a CI run.

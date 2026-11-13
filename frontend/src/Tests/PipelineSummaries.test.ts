@@ -45,6 +45,20 @@ describe("card summaries", () => {
     expect(summary("policy.quantile", { quantile: 0.995 })).toEqual({ text: "Above calibration quantile 0.995" });
   });
 
+  it("keeps a small rate and a quantile close to 1 apart from 0 and 1", () => {
+    const calibration: PipelineComponent = {
+      id: "calibrate.aci", kind: "calibration", group: "calibration", label: "ACI", description: "", fields: [
+        { name: "alpha", label: "Target alarm rate", type: "number", default: 0.01 },
+      ],
+    };
+    expect(summary("calibrate.aci", { alpha: 0.0005 }, calibration)).toEqual({ text: "Target alarm rate 0.0005" });
+    expect(summary("calibrate.aci", { alpha: 8.26720e-6 }, calibration)).toEqual({ text: "Target alarm rate 0.000008267" });
+    expect(summary("calibrate.aci", { alpha: 0.123456 }, calibration)).toEqual({ text: "Target alarm rate 0.1235" });
+    expect(summary("policy.quantile", { quantile: 0.983333333333 })).toEqual({ text: "Above calibration quantile 0.983" });
+    expect(summary("policy.quantile", { quantile: 0.999992 })).toEqual({ text: "Above calibration quantile 0.999992" });
+    expect(summary("policy.quantile", { quantile: 0.5 })).toEqual({ text: "Above calibration quantile 0.5" });
+  });
+
   it("lists changed detector settings against the catalogue defaults", () => {
     const detector: PipelineComponent = {
       id: "detector:forest", kind: "detector", group: "detector", label: "Forest", description: "",      fields: [

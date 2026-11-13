@@ -289,6 +289,16 @@
 .pl-node-status svg {
   flex-shrink: 0;
 }
+/* Differs from the design that runs now: said in the foreground colour, which no state uses. */
+.pl-node-status > .pl-node-change {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  line-height: 1.5;
+}
 .pl-node-issue,
 .pl-node-sample--waiting {
   color: #92400e;

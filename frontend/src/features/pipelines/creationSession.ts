@@ -10,6 +10,8 @@ export type CreationDraft = EditorDraft & {
   targetId?: string;
   startingId?: string;
   bindings?: Record<string, string>;
+  /** Start the service in shadow: it records the alarms it would raise and raises none. */
+  shadow?: boolean;
 };
 type TemplateDetails = { name: string; description: string; copy?: boolean };
 type CreationSave = { status: "idle" | "saving" | "saved"; message?: never; conflict?: never }
@@ -22,7 +24,8 @@ type CreationSnapshot = {
 };
 
 const isSetupDirty = (draft: CreationDraft, baseline: CreationDraft) => isDraftDirty(draft, baseline)
-  || draft.targetId !== baseline.targetId || JSON.stringify(draft.bindings ?? {}) !== JSON.stringify(baseline.bindings ?? {});
+  || draft.targetId !== baseline.targetId || !!draft.shadow !== !!baseline.shadow
+  || JSON.stringify(draft.bindings ?? {}) !== JSON.stringify(baseline.bindings ?? {});
 
 function storedDraft(value: unknown): CreationDraft | undefined {
   if (!value || typeof value !== "object") return;

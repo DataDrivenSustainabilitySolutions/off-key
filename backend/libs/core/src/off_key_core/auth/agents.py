@@ -21,10 +21,19 @@ class AgentAccess(StrEnum):
     start = "start"
 
 
+class AgentStarts(StrEnum):
+    """What a key may start without a member's decision."""
+
+    nothing = "nothing"
+    shadow = "shadow"
+    live = "live"
+
+
 OPEN_TO_AGENTS = {AGENT_ACCESS: AgentAccess.any_key.value}
 """`openapi_extra` of a route every key may call."""
 STARTS_SERVICES = {AGENT_ACCESS: AgentAccess.start.value}
-"""`openapi_extra` of a route only a key that may start services may call."""
+"""`openapi_extra` of a route only a key that may start services may call,
+in shadow or live."""
 
 
 def new_agent_key() -> str:
@@ -46,14 +55,24 @@ def agent_key_hint(key: str) -> str:
     return key[-4:]
 
 
-def agent_refusal(route: object, *, may_start: bool) -> str | None:
+def agent_refusal(route: object, *, starts: str) -> str | None:
     """Why a key may not call ``route``, or None where it may."""
     access = (getattr(route, "openapi_extra", None) or {}).get(AGENT_ACCESS)
     if access is None:
         return "A key for an agent cannot do this. It needs a member."
-    if access == AgentAccess.start and not may_start:
+    if access == AgentAccess.start and starts == AgentStarts.nothing:
         return (
             "This key may not start monitoring services. "
             "A member who manages members can allow it."
+        )
+    return None
+
+
+def shadow_refusal(*, starts: str, shadow: bool) -> str | None:
+    """Why a key may not start a service that raises alarms, or None where it may."""
+    if starts == AgentStarts.shadow and not shadow:
+        return (
+            "This key may start monitoring services in shadow only. Start with "
+            "`shadow` set, or propose the design for a member to start it live."
         )
     return None

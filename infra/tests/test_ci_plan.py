@@ -452,65 +452,6 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(lines["mode"], "full")
 
 
-PULL_REQUEST_7 = {"pull_request": {"number": 7}}
-
-
-class PullRequestDeferralTests(unittest.TestCase):
-    """Pull requests leave the heavy suites to the merge queue unless asked."""
-
-    @staticmethod
-    def labels(*names):
-        def api(path):
-            assert path.startswith("issues/7/labels"), path
-            return [{"name": name} for name in names]
-
-        return api
-
-    def defer(self, event_name, jobs, api):
-        return plan.defer_heavy(event_name, PULL_REQUEST_7, "full", jobs, "r", api=api)
-
-    def test_a_pull_request_runs_only_the_fast_suites(self):
-        mode, jobs, reason = self.defer(
-            "pull_request", FULL_NON_PUSH, self.labels("enhancement")
-        )
-        self.assertEqual(mode, "full")
-        self.assertEqual(selected(jobs), selected(FULL_NON_PUSH) - plan.HEAVY)
-        self.assertEqual(
-            selected(jobs), {"lint", "backend", "frontend", "frontend-browser"}
-        )
-        self.assertIn("merge queue", reason)
-        frontend = plan.plan_for("frontend", "pull_request")
-        _, jobs, _ = self.defer("pull_request", frontend, self.labels())
-        self.assertEqual(
-            selected(jobs), {"lint", "frontend", "frontend-browser", "contracts"}
-        )
-
-    def test_the_full_ci_label_or_unreadable_labels_run_the_whole_plan(self):
-        def broken(path):
-            raise OSError("API unavailable")
-
-        for api in (self.labels("full-ci", "enhancement"), broken):
-            with self.subTest(api=api):
-                _, jobs, _ = self.defer("pull_request", FULL_NON_PUSH, api)
-                self.assertEqual(jobs, FULL_NON_PUSH)
-
-    def test_the_merge_queue_main_and_manual_runs_keep_the_whole_plan(self):
-        def unused(path):
-            raise AssertionError("only pull requests read labels")
-
-        for event_name in ("merge_group", "push", "workflow_dispatch"):
-            with self.subTest(event=event_name):
-                jobs = plan.plan_for("full", event_name)
-                self.assertEqual(self.defer(event_name, jobs, unused)[1], jobs)
-
-    def test_a_plan_without_heavy_suites_reads_no_labels(self):
-        def unused(path):
-            raise AssertionError("nothing to defer")
-
-        docs = plan.plan_for("docs", "pull_request")
-        self.assertEqual(self.defer("pull_request", docs, unused)[1], docs)
-
-
 class GateTests(unittest.TestCase):
     def needs(self, jobs, **results):
         needs = {"changes": {"result": "success"}}

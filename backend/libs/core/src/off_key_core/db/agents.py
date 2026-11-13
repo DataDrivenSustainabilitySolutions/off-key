@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, Text, func, text
+from sqlalchemy import DateTime, Index, Integer, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -18,9 +18,10 @@ class Agent(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     key_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     key_hint: Mapped[str] = mapped_column(Text, nullable=False)
-    # Every key designs, tests and proposes; starting services is allowed per key.
-    may_start: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
+    # Every key designs, tests and proposes. What it may start is allowed per
+    # key: nothing, services in shadow, or live ones as well (AgentStarts).
+    starts: Mapped[str] = mapped_column(
+        Text, nullable=False, default="nothing", server_default=text("'nothing'")
     )
     # The member's email, kept as text so it outlives the member.
     created_by: Mapped[str | None] = mapped_column(Text, nullable=True)

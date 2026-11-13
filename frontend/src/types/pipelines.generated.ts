@@ -225,6 +225,7 @@ export type MonitorDetail = {
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
+  shadow?: boolean;
   created_at?: string | null;
   configuration?: Record<string, unknown>;
 };
@@ -237,6 +238,7 @@ export type MonitorSummary = {
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
+  shadow?: boolean;
   created_at?: string | null;
 };
 
@@ -273,6 +275,7 @@ export type PipelineActivationRequest = {
   display_name: string;
   idempotency_key: string;
   replace_monitor_id?: string | null;
+  shadow?: boolean;
 };
 
 export type PipelineActivationView = {
@@ -295,6 +298,7 @@ export type PipelineApplyRequest = {
   display_name: string;
   idempotency_key: string;
   replace_monitor_id?: string | null;
+  shadow?: boolean;
 };
 
 export type PipelineBindingMetadata = {

@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from pydantic import ValidationError
 
@@ -613,9 +614,10 @@ def _validate_calibration_window(
     if window < needed:
         compilation.warning(
             "calibration_window",
-            f"An alarm rate of {alpha:g} needs at least {needed:,} calibration "
-            f"observations; the calibration window has {window:,}. With fewer, "
-            "the boundary sits at the largest score seen.",
+            # Written out, as the setting shows it: a small rate has no exponent.
+            f"An alarm rate of {Decimal(repr(alpha)):f} needs at least {needed:,} "
+            f"calibration observations; the calibration window has {window:,}. "
+            "With fewer, the boundary sits at the largest score seen.",
             calibration.id,
             parameter_path=["alpha"],
         )

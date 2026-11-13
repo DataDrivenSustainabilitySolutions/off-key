@@ -11,12 +11,19 @@ from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     Agent,
     DeploymentMaintenance,
+    DojoDataset,
+    DojoRun,
     PipelineProposal,
     User,
 )
-from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
+from off_key_core.models.pipelines import (
+    compile_pipeline,
+    pipeline_catalog,
+    validate_pipeline,
+)
 from off_key_core.schemas.agents import AgentCreate
 from off_key_core.schemas.pipelines import (
+    PipelineDefinition,
     PipelineProposalCreate,
     PipelineProposalDecision,
 )
@@ -78,7 +85,13 @@ async def library(member_database, monkeypatch):
     get_tactic_settings.cache_clear()
     engine, sessions = member_database
     async with engine.begin() as connection:
-        for table in (Agent, PipelineProposal, DeploymentMaintenance):
+        for table in (
+            Agent,
+            PipelineProposal,
+            DeploymentMaintenance,
+            DojoDataset,
+            DojoRun,
+        ):
             await connection.run_sync(table.__table__.create)
     await bootstrap(sessions)
     yield sessions
@@ -96,6 +109,26 @@ async def again_after_refusal(session, *callers) -> None:
         await session.refresh(caller)
 
 
+async def ran_on_history(session, run_id: str, *, status="succeeded", definition=None):
+    """A test of a design on history, as the Dojo keeps it."""
+    ran = compile_pipeline(PipelineDefinition.model_validate(definition or design()))
+    if await session.get(DojoDataset, "old-trips") is None:
+        session.add(DojoDataset(id="old-trips", name="Old trips", origin="csv"))
+        await session.flush()
+    session.add(
+        DojoRun(
+            id=run_id,
+            dataset_id="old-trips",
+            status=status,
+            config={
+                "execution": {"definition": ran.definition.model_dump(mode="json")}
+            },
+        )
+    )
+    await session.commit()
+    return run_id
+
+
 async def agent_named(session, name: str):
     agent, key = await AgentService(session).create(
         AgentCreate(name=name), await admin_of(session)
@@ -108,6 +141,8 @@ async def test_an_agent_proposes_and_a_member_decides(library):
     async with library() as session:
         service = PipelineProposals(session)
         agent, _ = await agent_named(session, "Night shift agent")
+        await ran_on_history(session, "run-7")
+        await session.refresh(agent)
         made = await service.create(
             proposal(test_run_id="run-7", replace_monitor_id="service-1"), agent
         )
@@ -211,6 +246,53 @@ async def test_a_proposal_is_refused_with_the_reason(library, monkeypatch):
         get_tactic_settings.cache_clear()
         with pytest.raises(ConflictError, match="authoring is disabled"):
             await service.create(proposal(), agent)
+
+
+@pytest.mark.asyncio
+async def test_a_test_is_evidence_only_for_the_design_it_ran(library):
+    async with library() as session:
+        service = PipelineProposals(session)
+        agent, _ = await agent_named(session, "Night shift agent")
+
+        async def refused(match: str, **fields) -> None:
+            with pytest.raises(ValidationError, match=match):
+                await service.create(proposal(**fields), agent)
+            await again_after_refusal(session, agent)
+
+        await refused("There is no test run run-0", test_run_id="run-0")
+        for run_id, status, said in (
+            ("run-1", "queued", "still running"),
+            ("run-2", "running", "still running"),
+            ("run-3", "failed", "did not run to its end"),
+            ("run-4", "cancelled", "did not run to its end"),
+        ):
+            await ran_on_history(session, run_id, status=status)
+            await session.refresh(agent)
+            await refused(said, test_run_id=run_id)
+        # Another setting is another design, and its test says nothing of this one.
+        other = design()
+        other["settings"]["training_window_size"] += 100
+        await ran_on_history(session, "run-5", definition=other)
+        await session.refresh(agent)
+        await refused("The test ran another design", test_run_id="run-5")
+        assert (
+            await service.create(proposal(definition=other, test_run_id="run-5"), agent)
+        ).test_run_id == "run-5"
+        # A title changes nothing a test could tell, so the test still stands.
+        titled = design()
+        titled["nodes"][0]["label"] = "What the pump reports"
+        await ran_on_history(session, "run-6")
+        await session.refresh(agent)
+        made = await service.create(
+            proposal(definition=titled, test_run_id="run-6"), agent
+        )
+        assert made.definition.nodes[0].label == "What the pump reports"
+        # A run this release cannot read is no evidence either.
+        run = await session.get(DojoRun, "run-6")
+        run.config = {}
+        await session.commit()
+        await session.refresh(agent)
+        await refused("The test ran another design", test_run_id="run-6")
 
 
 def tactic(sessions) -> FastAPI:

@@ -37,7 +37,8 @@ what its report lists before you go on.
 get_test says how many alarms it would have raised.
 5. propose_design hands the design to a member with your reason and the test. \
 A member decides, and list_proposals shows the decision with their note. A key \
-that may start monitors also has start_monitor.
+that may start monitors also has start_monitor. In shadow, a monitor records \
+the alarms it would raise and alerts nobody.
 
 Pass a design between tools as you received it: keep `definition` and `layout` \
 together, and let edit_design make a change instead of rewriting them by hand.\
@@ -462,7 +463,11 @@ class Proposal(Args):
     layout: Design | None = Field(default=None, description=LAYOUT)
     bindings: dict[str, str] = Field(min_length=1, description=BINDINGS)
     test_run_id: str | None = Field(
-        default=None, description="The `run_id` of the test that supports it."
+        default=None,
+        description=(
+            "The `run_id` of the test that supports it: one that succeeded, on "
+            "this very design. Test again after any change but a title."
+        ),
     )
     replace_monitor_id: str | None = Field(
         default=None,
@@ -524,15 +529,25 @@ class Start(Args):
             "you repeat a call whose answer you did not get."
         ),
     )
+    shadow: bool = Field(
+        default=False,
+        description=(
+            "Start in shadow: the monitor learns and scores as any other, "
+            "records each alarm it would raise as muted evidence and raises "
+            "none. A key that may start in shadow only must set it."
+        ),
+    )
 
 
 @tool(Start, changes=True, starts=True)
 async def start_monitor(api: Api, args: Start):
     """Start a monitor that runs a design on its readings, without a member's
-    decision. It raises alarms people act on, so start only a design you have
-    tested, and propose instead where you are unsure. The answer is a start in
-    progress; follow it with get_start. Replacing a running monitor stays with
-    a member: propose that."""
+    decision. A live monitor raises alarms people act on, so start only a
+    design you have tested, and propose instead where you are unsure. With
+    `shadow` it alerts nobody: use that to see on live readings what a design
+    would raise, then propose it with what you saw. A member takes a shadow
+    monitor live. The answer is a start in progress; follow it with get_start.
+    Replacing a running monitor stays with a member: propose that."""
     return await api.post(
         "/v1/pipelines/apply",
         {
@@ -540,6 +555,7 @@ async def start_monitor(api: Api, args: Start):
             "definition": args.definition,
             "bindings": args.bindings,
             "idempotency_key": args.idempotency_key or uuid4().hex,
+            "shadow": args.shadow,
         }
         | ({"layout": args.layout} if args.layout else {}),
     )

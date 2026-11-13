@@ -54,7 +54,7 @@ def agent_profile(**fields) -> dict:
         "id": 4,
         "name": "Designer",
         "key_hint": AGENT_KEY[-4:],
-        "may_start": False,
+        "starts": "nothing",
         "created_by": "admin@example.com",
         "created_at": datetime.now(UTC).isoformat(),
     } | fields

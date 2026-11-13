@@ -779,7 +779,8 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                     "anomaly_score": score,
                     "threshold": threshold,
                     "alarm_fired": is_anomaly,
-                    # The policy fired and a Mute alarms step kept the alarm back.
+                    # The policy fired and the alarm was kept back, by a Mute
+                    # alarms step or because the run is a shadow run.
                     **({"alarm_muted": True} if self._alarm_muted else {}),
                     "feature_keys": list(self.feature_keys),
                     # Each detector's score and surprise, so an alarm names

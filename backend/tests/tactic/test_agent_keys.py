@@ -13,6 +13,7 @@ from off_key_core.auth.agents import (
     agent_refusal,
     is_agent_key,
     new_agent_key,
+    shadow_refusal,
 )
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Agent, User
@@ -41,16 +42,24 @@ def test_a_key_is_told_from_a_token_and_kept_as_a_digest():
 
 
 def test_a_route_is_closed_to_keys_until_it_opens_itself():
-    def refusal(extra, may_start=False):
-        return agent_refusal(SimpleNamespace(openapi_extra=extra), may_start=may_start)
+    def refusal(extra, starts="nothing"):
+        return agent_refusal(SimpleNamespace(openapi_extra=extra), starts=starts)
 
     for closed in (None, {}, {"x-other": "any"}):
         assert "needs a member" in refusal(closed)
-        assert "needs a member" in refusal(closed, may_start=True)
-    assert agent_refusal(None, may_start=True) is not None
+        assert "needs a member" in refusal(closed, starts="live")
+    assert agent_refusal(None, starts="live") is not None
     assert refusal(OPEN_TO_AGENTS) is None
     assert "may not start" in refusal(STARTS_SERVICES)
-    assert refusal(STARTS_SERVICES, may_start=True) is None
+    assert refusal(STARTS_SERVICES, starts="shadow") is None
+    assert refusal(STARTS_SERVICES, starts="live") is None
+
+
+def test_a_key_that_starts_in_shadow_only_cannot_start_a_live_service():
+    assert "in shadow only" in shadow_refusal(starts="shadow", shadow=False)
+    assert shadow_refusal(starts="shadow", shadow=True) is None
+    assert shadow_refusal(starts="live", shadow=False) is None
+    assert shadow_refusal(starts="live", shadow=True) is None
 
 
 @pytest_asyncio.fixture
@@ -74,7 +83,7 @@ async def test_a_member_hands_out_a_key_once_and_revokes_it(keys):
         service = AgentService(session)
         admin = await admin_of(session)
         agent, key = await service.create(AgentCreate(name=" Night shift "), admin)
-        assert (agent.name, agent.may_start) == ("Night shift", False)
+        assert (agent.name, agent.starts) == ("Night shift", "nothing")
         assert agent.created_by == "admin@example.com"
         # The table holds the digest and the end of the key, never the key.
         stored = await session.get(Agent, agent.id)
@@ -87,14 +96,14 @@ async def test_a_member_hands_out_a_key_once_and_revokes_it(keys):
         await session.rollback()
         admin = await admin_of(session)
         other, _ = await service.create(
-            AgentCreate(name="Auditor", may_start=True), admin
+            AgentCreate(name="Auditor", starts="live"), admin
         )
         assert [item.name for item in await service.list()] == [
             "Auditor",
             "Night shift",
         ]
-        changed = await service.update(agent.id, AgentUpdate(may_start=True), admin)
-        assert changed.may_start
+        changed = await service.update(agent.id, AgentUpdate(starts="shadow"), admin)
+        assert changed.starts == "shadow"
         await service.revoke(other.id, admin)
         assert [item.name for item in await service.list()] == ["Night shift"]
         with pytest.raises(NotFoundError):
@@ -142,7 +151,7 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
 
     class Activations:
         async def apply(self, change):
-            reached.append(change.display_name)
+            reached.append((change.display_name, change.shadow))
             raise ValueError("Reached the activation service")
 
     async with asgi_client(tactic(keys, Activations())) as client:
@@ -157,7 +166,7 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
 
         status, profile = await call("GET", "/agents/me")
         assert status == 200 and profile["name"] == "Designer"
-        assert not profile["may_start"] and "key" not in profile
+        assert profile["starts"] == "nothing" and "key" not in profile
         # It reads the catalog and checks a design it holds.
         assert (await call("GET", "/monitors/pipelines/catalog/search?query=smooth"))[
             0
@@ -187,14 +196,34 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
             "POST", "/monitors/pipelines/apply", json=start_request()
         )
         assert status == 403 and "may not start" in body["detail"]
+        # A key that starts in shadow only starts no service that raises alarms.
         status, _ = await call(
-            "PATCH", f"/agents/{agent.id}", by_member, json={"may_start": True}
+            "PATCH", f"/agents/{agent.id}", by_member, json={"starts": "shadow"}
+        )
+        assert status == 200
+        status, body = await call(
+            "POST", "/monitors/pipelines/apply", json=start_request()
+        )
+        assert status == 403 and "in shadow only" in body["detail"]
+        assert reached == []
+        status, body = await call(
+            "POST", "/monitors/pipelines/apply", json=start_request(shadow=True)
+        )
+        assert (status, body["detail"]) == (422, "Reached the activation service")
+        assert reached == [("Pump vibration", True)]
+        status, _ = await call(
+            "PATCH", f"/agents/{agent.id}", by_member, json={"starts": "live"}
         )
         assert status == 200
         status, body = await call(
             "POST", "/monitors/pipelines/apply", json=start_request()
         )
         assert (status, body["detail"]) == (422, "Reached the activation service")
+        assert (
+            await call(
+                "PATCH", f"/agents/{agent.id}", by_member, json={"starts": "all"}
+            )
+        )[0] == 422
         # Taking a running service away stays with a member.
         status, body = await call(
             "POST",
@@ -202,7 +231,7 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
             json=start_request(replace_service_id="service-1"),
         )
         assert status == 403 and "needs a member" in body["detail"]
-        assert reached == ["Pump vibration"]
+        assert reached == [("Pump vibration", True), ("Pump vibration", False)]
         # A member has no agent's profile, and a revoked or made-up key is nobody.
         assert (await call("GET", "/agents/me", by_member))[0] == 403
         status, listed = await call("GET", "/agents", by_member)
@@ -230,7 +259,7 @@ async def test_a_member_creates_a_key_over_the_api_and_sees_it_once(keys):
         assert created.status_code == 201
         body = created.json()
         assert is_agent_key(body["key"]) and body["key"].endswith(body["key_hint"])
-        assert (body["may_start"], body["created_by"]) == (False, "admin@example.com")
+        assert (body["starts"], body["created_by"]) == ("nothing", "admin@example.com")
         again = await client.post(
             "/api/v1/agents", headers=headers, json={"name": "night shift"}
         )

@@ -17,10 +17,22 @@ export type DesignTestProps = {
   onChooseReadings: () => void;
 };
 
+/** A test a design came with, such as the one it was proposed with. */
+export type DesignEvidence = {
+  /** Names the test where the tests are kept. */
+  run: string;
+  /** Who ran it. */
+  by: string;
+  /** The design as it came, to tell when it has been changed since. */
+  definition: PipelineDefinition;
+};
+
 export type DesignTestStatusProps = {
   session: string;
   /** Whether the panel is on screen. */
   open: boolean;
+  /** Shown as the design's test until the member runs one. */
+  evidence?: DesignEvidence;
 };
 
 export type DesignTestValuesProps = {

@@ -1,94 +1,199 @@
-"""Swarm service lifecycle operations for TACTIC-managed RADAR instances.
+"""Record, inspect and stop RADAR workloads that the RADAR pool runs.
 
-Every deployment, local development included, runs RADAR as Swarm services.
+A workload is a row of ``radar_workloads``. Creating one asks the pool to run
+it; a pool replica claims it with a lease and runs it as a child process. No
+TACTIC or API process reaches Docker. Each call here runs in a short
+transaction of its own, so it never holds a caller's transaction open while it
+waits for the pool.
 """
 
 import asyncio
-from contextlib import suppress
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
-import docker.errors
-from docker.types import Resources, RestartPolicy, SecretReference, ServiceMode
+from off_key_core.db.base import get_async_session_local
+from off_key_core.db.workloads import WORKLOAD_DONE, RadarWorkload
+from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 
 from ...config.config import get_tactic_settings
-from ...facades.docker import (
-    SWARM_TASK_SHUTDOWN_DONE,
-    SWARM_TASK_STARTUP_FAILED,
-    AsyncDocker,
-    get_workload_status_and_labels,
-    latest_task_status,
+from .radar_environment import build_radar_workload_labels
+from .workload_identity import (
+    has_labels,
+    radar_identity_labels,
+    radar_workload_name,
     workload_labels,
 )
-from .radar_environment import build_radar_workload_labels
-from .workload_identity import has_labels, radar_identity_labels, radar_workload_name
 
-MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
-RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
-# Secrets a production worker gets when the secret template service carries them.
-OPTIONAL_RADAR_SECRETS = frozenset({"FORECAST_API_TOKEN"})
-
-
-_shared_async_docker: AsyncDocker | None = None
+# The observable states of a workload, as status projection reads them. Besides
+# the row states: "no_container_id" (nothing recorded), "not_found" (row gone).
+RUNNING = "running"
+MONITOR_MODULE = "off_key_mqtt_radar"
+PREFLIGHT_MODULE = "off_key_mqtt_radar.preflight"
 
 
-def set_shared_async_docker(async_docker: AsyncDocker | None) -> None:
-    """Make the server's verified client the facade for every request path."""
-    global _shared_async_docker
-    _shared_async_docker = async_docker
+@dataclass(frozen=True)
+class Workload:
+    """What callers need of a workload row."""
+
+    id: str
+    name: str
+    kind: str
+    runtime: str
+    labels: dict[str, str] = field(default_factory=dict)
+    environment: dict[str, str] = field(default_factory=dict)
+    state: str = "pending"
+    exit_code: int | None = None
+    detail: str | None = None
+    output: str | None = None
+    crashes: list[dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def of(cls, row: RadarWorkload) -> "Workload":
+        return cls(
+            id=row.id,
+            name=row.name,
+            kind=row.kind,
+            runtime=row.runtime,
+            labels=dict(row.labels or {}),
+            environment=dict(row.environment or {}),
+            state=observed_state(row),
+            exit_code=row.exit_code,
+            detail=row.detail,
+            output=row.output,
+            crashes=list(row.crashes or []),
+        )
 
 
-def get_async_docker() -> AsyncDocker:
-    """Return the process-wide Docker facade, creating it outside the server."""
-    global _shared_async_docker
-    if _shared_async_docker is None:
-        _shared_async_docker = AsyncDocker()
-    return _shared_async_docker
-
-
-def close_shared_async_docker() -> None:
-    """Close the process-wide Docker facade, if one was made."""
-    global _shared_async_docker
-    client, _shared_async_docker = _shared_async_docker, None
-    if client is not None:
-        client.close()
+def observed_state(row: RadarWorkload) -> str:
+    """A running row whose lease lapsed waits for another worker: pending."""
+    if row.state == RUNNING and (
+        row.lease_expires_at is None or row.lease_expires_at < datetime.now(UTC)
+    ):
+        return "pending"
+    return row.state
 
 
 class RadarWorkloadManager:
-    """Create, inspect, and remove RADAR Swarm services."""
+    """Create, inspect, and remove RADAR workloads in the pool's table."""
 
-    def __init__(self, async_docker: AsyncDocker):
-        self.async_docker = async_docker
+    def __init__(self, sessions=None):
+        self._sessions = sessions
 
-    async def find(self, service_id: str) -> Any | None:
-        """Resolve the durable Docker name, including unknown create outcomes."""
-        try:
-            return await self.async_docker.run(
-                self.async_docker.client.services.get, radar_workload_name(service_id)
-            )
-        except docker.errors.NotFound:
+    @property
+    def sessions(self):
+        return self._sessions or get_async_session_local()
+
+    async def _row(self, session, *, name=None, workload_id=None):
+        query = select(RadarWorkload)
+        if name is not None:
+            query = query.where(RadarWorkload.name == name)
+        else:
+            query = query.where(RadarWorkload.id == workload_id)
+        return await session.scalar(query.execution_options(populate_existing=True))
+
+    async def find_named(self, name: str) -> Workload | None:
+        async with self.sessions() as session:
+            row = await self._row(session, name=name)
+            return None if row is None else Workload.of(row)
+
+    async def get(self, workload_id: str | None) -> Workload | None:
+        if not workload_id:
             return None
+        async with self.sessions() as session:
+            row = await self._row(session, workload_id=workload_id)
+            return None if row is None else Workload.of(row)
 
-    async def ensure(self, service_id: str, environment: dict[str, str]) -> Any:
+    async def find(self, service_id: str) -> Workload | None:
+        """The monitor's workload, including one an interrupted request made."""
+        return await self.find_named(radar_workload_name(service_id))
+
+    async def ensure(self, service_id: str, environment: dict[str, str]) -> Workload:
         """Idempotently create or adopt one workload for a persisted generation."""
         workload = await self.find(service_id)
         if workload is None:
-            try:
-                workload = await self.create(service_id, environment)
-            except docker.errors.APIError as exc:
-                if exc.status_code != 409:
-                    raise
-                # Another controller or a previously timed-out request won.
-                workload = await self.find(service_id)
-                if workload is None:
-                    raise
+            workload = await self.create(service_id, environment)
         if not has_labels(workload, radar_identity_labels(service_id, environment)):
             raise RuntimeError(
                 "Existing RADAR workload does not match its persisted intent"
             )
         return workload
 
+    async def create(self, service_id: str, environment: dict[str, str]) -> Workload:
+        config = get_tactic_settings().config
+        runtime = environment.get("RADAR_RUNTIME_IMAGE", config.radar_image)
+        return await self.submit(
+            name=radar_workload_name(service_id),
+            kind="monitor",
+            module=MONITOR_MODULE,
+            runtime=runtime,
+            environment=environment,
+            labels=build_radar_workload_labels(environment, runtime),
+            restart=config.pool.restart_monitors,
+        )
+
+    async def submit(
+        self,
+        *,
+        name: str,
+        kind: str,
+        module: str,
+        runtime: str,
+        environment: dict[str, str],
+        labels: dict[str, str],
+        restart: bool,
+    ) -> Workload:
+        """Record one workload for the pool, or return the one already named."""
+        budget = get_tactic_settings().config.pool
+        async with self.sessions() as session:
+            session.add(
+                RadarWorkload(
+                    id=uuid.uuid4().hex,
+                    name=name,
+                    kind=kind,
+                    module=module,
+                    runtime=runtime,
+                    environment=environment,
+                    labels=labels,
+                    memory_limit_bytes=budget.memory_limit_bytes,
+                    restart=restart,
+                )
+            )
+            try:
+                await session.commit()
+            except IntegrityError:
+                # Another controller or a previously timed-out request won.
+                await session.rollback()
+            row = await self._row(session, name=name)
+            if row is None:
+                raise RuntimeError(f"RADAR workload {name} vanished after creation")
+            return Workload.of(row)
+
+    async def validate_started(self, workload: Workload) -> None:
+        """Fail when a new workload ends before it could run.
+
+        A workload no replica has claimed yet is not a failure: it starts as
+        soon as the pool has room.
+        """
+        grace_seconds = get_tactic_settings().config.radar_startup_grace_seconds
+        if grace_seconds > 0:
+            await asyncio.sleep(grace_seconds)
+        current = await self.get(workload.id)
+        if current is None:
+            raise RuntimeError(
+                f"RADAR workload {workload.id} disappeared during startup"
+            )
+        if current.state in WORKLOAD_DONE:
+            detail = current.detail or f"exit code {current.exit_code}"
+            raise RuntimeError(
+                f"RADAR workload {workload.id} failed during startup "
+                f"(state={current.state}): {detail}"
+            )
+
     async def remove_intent(self, service_id: str, workload_id: str | None) -> bool:
-        """Remove an attached worker and any unknown outcome at its durable name."""
+        """Remove an attached workload and any unknown outcome at its name."""
         removed = await self.remove(workload_id)
         workload = await self.find(service_id)
         if workload is not None:
@@ -99,205 +204,94 @@ class RadarWorkloadManager:
             removed = await self.remove(workload.id) or removed
         return removed
 
-    async def create(self, service_id: str, environment: dict[str, str]) -> Any:
-        tactic_config = get_tactic_settings().config
-        docker_config = tactic_config.docker
-        budget = docker_config.resource_budget
-        image = environment.get("RADAR_RUNTIME_IMAGE", tactic_config.radar_image)
-        service_kwargs: dict[str, Any] = {
-            "name": radar_workload_name(service_id),
-            "labels": build_radar_workload_labels(
-                environment=environment, radar_image=image
-            ),
-            "image": image,
-            "env": environment,
-            "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
-            "mode": ServiceMode("replicated", replicas=1),
-            "restart_policy": RestartPolicy(
-                condition=docker_config.default_restart_policy,
-                max_attempts=docker_config.default_restart_max_attempts,
-            ),
-            "networks": [
-                docker_config.default_network,
-                *docker_config.additional_networks,
-            ],
-            "resources": Resources(
-                cpu_limit=budget.cpu_limit_nanos,
-                mem_limit=budget.memory_limit_bytes,
-                cpu_reservation=budget.cpu_reservation_nanos,
-                mem_reservation=budget.memory_reservation_bytes,
-            ),
-        }
-        if docker_config.default_constraints:
-            service_kwargs["constraints"] = docker_config.default_constraints
-
-        if environment.get("ENVIRONMENT") == "production":
-            template_name = get_tactic_settings().TACTIC_RADAR_SECRET_SERVICE
-            if not template_name:
-                raise RuntimeError(
-                    "TACTIC_RADAR_SECRET_SERVICE is required in production"
-                )
-            template = await self.async_docker.run(
-                self.async_docker.client.services.get, template_name
+    async def request_stop(self, workload_id: str) -> None:
+        async with self.sessions() as session:
+            await session.execute(
+                update(RadarWorkload)
+                .where(RadarWorkload.id == workload_id)
+                .values(desired="stop")
             )
-            container_spec = template.attrs["Spec"]["TaskTemplate"]["ContainerSpec"]
-            references = container_spec.get("Secrets", [])
-            required = {"EMQX_CA_CERT", "RADAR_MQTT_API_KEY", "RADAR_CHECKPOINT_SECRET"}
-            by_target = {
-                reference["File"]["Name"]: reference for reference in references
-            }
-            if not required <= by_target.keys():
-                raise RuntimeError("Production RADAR secret template is incomplete")
-            # A deployment with a forecast service also hands its token over.
-            copied = required | (OPTIONAL_RADAR_SECRETS & by_target.keys())
-            service_kwargs["secrets"] = [
-                SecretReference(
-                    secret_id=by_target[target]["SecretID"],
-                    secret_name=by_target[target]["SecretName"],
-                    filename=target,
-                    uid=by_target[target]["File"].get("UID", "0"),
-                    gid=by_target[target]["File"].get("GID", "0"),
-                    mode=by_target[target]["File"].get("Mode", 0o444),
-                )
-                for target in sorted(copied)
-            ]
-
-        return await self.async_docker.run(
-            self.async_docker.client.services.create,
-            **service_kwargs,
-        )
-
-    async def validate_started(self, docker_workload: Any) -> None:
-        """Fail when a newly created RADAR workload exits or is rejected."""
-        workload_id = getattr(docker_workload, "id", None)
-        if not workload_id:
-            return
-
-        grace_seconds = get_tactic_settings().config.radar_startup_grace_seconds
-        if grace_seconds > 0:
-            await asyncio.sleep(grace_seconds)
-
-        try:
-            docker_service = await self.async_docker.run(
-                self.async_docker.client.services.get,
-                workload_id,
-            )
-        except docker.errors.NotFound as exc:
-            raise RuntimeError(
-                f"RADAR workload {workload_id} disappeared during startup"
-            ) from exc
-        tasks = await self.async_docker.run(docker_service.tasks)
-        self._raise_for_failed_swarm_task(workload_id, tasks)
-
-    @staticmethod
-    def _raise_for_failed_swarm_task(
-        workload_id: str,
-        tasks: list[dict[str, Any]],
-    ) -> None:
-        status = latest_task_status(tasks)
-        if status is None:
-            return
-        state = str(status.get("State", "") or "unknown").lower()
-        if state not in SWARM_TASK_STARTUP_FAILED:
-            return
-
-        detail = status.get("Err") or status.get("Message") or "no task error"
-        raise RuntimeError(
-            f"RADAR workload {workload_id} failed during startup "
-            f"(task_state={state}): {detail}"
-        )
+            await session.commit()
 
     async def remove(self, workload_id: str | None) -> bool:
-        """Confirm task termination before releasing a workload's sensor claim."""
+        """Stop a workload and delete its row once no child runs it.
+
+        The monitor's sensor claim is released only after this returns, so it
+        waits for the pool to confirm the child ended, or for its lease to lapse.
+        """
         if not workload_id:
             return False
-        try:
-            service = await self.async_docker.run(
-                self.async_docker.client.services.get, workload_id
-            )
-        except docker.errors.NotFound:
-            await self._wait_for_task_shutdown(
-                lambda: self._remaining_service_tasks(workload_id)
-            )
+        if await self.get(workload_id) is None:
             return False
-        await self._stop_swarm_tasks(service)
-        with suppress(docker.errors.NotFound):
-            await self.async_docker.run(service.remove)
+        await self.request_stop(workload_id)
+        await self.wait_stopped(workload_id)
+        async with self.sessions() as session:
+            await session.execute(
+                delete(RadarWorkload).where(RadarWorkload.id == workload_id)
+            )
+            await session.commit()
         return True
 
-    async def _stop_swarm_tasks(self, service: Any) -> None:
-        """Keep the service inspectable until every task acknowledges shutdown."""
-        try:
-            await self.async_docker.run(service.scale, 0)
-            await self._wait_for_task_shutdown(
-                lambda: self.async_docker.run(service.tasks)
-            )
-        except docker.errors.NotFound:
-            await self._wait_for_task_shutdown(
-                lambda: self._remaining_service_tasks(service.id)
-            )
-
-    async def _remaining_service_tasks(self, service_id):
-        try:
-            return await self.async_docker.run(
-                self.async_docker.client.api.tasks, filters={"service": service_id}
-            )
-        except docker.errors.NotFound:
-            # Docker resolves service filters against existing services and can
-            # return404 while retiring task records still exist in the task list.
-            tasks = await self.async_docker.run(self.async_docker.client.api.tasks)
-            return [task for task in tasks if task.get("ServiceID") == service_id]
-
-    async def _wait_for_task_shutdown(self, query):
+    async def wait_stopped(self, workload_id: str) -> None:
         try:
             async with asyncio.timeout(
                 get_tactic_settings().config.radar_stop_timeout_seconds
             ):
                 while True:
-                    tasks = await query()
-                    if all(
-                        isinstance(task, dict)
-                        and isinstance(task.get("Status"), dict)
-                        and str(task["Status"].get("State", "")).lower()
-                        in SWARM_TASK_SHUTDOWN_DONE
-                        for task in tasks
-                    ):
+                    current = await self.get(workload_id)
+                    if current is None or current.state != RUNNING:
                         return
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.2)
         except TimeoutError:
             raise RuntimeError(
-                "RADAR tasks have not stopped; the sensor claim is retained"
+                "RADAR workload has not stopped; the sensor claim is retained"
             ) from None
 
-    @staticmethod
-    def _managed_label_filters() -> dict[str, list[str]]:
-        return {"label": [MANAGED_BY_TACTIC_LABEL, RADAR_SERVICE_TYPE_LABEL]}
+    async def list_managed(self) -> list[Workload]:
+        """Every monitor workload of this deployment."""
+        async with self.sessions() as session:
+            rows = (
+                await session.scalars(
+                    select(RadarWorkload).where(RadarWorkload.kind == "monitor")
+                )
+            ).all()
+            return [Workload.of(row) for row in rows]
 
-    async def list_managed_ids(self, *, controller_id: str | None = None) -> set[str]:
-        """List every managed RADAR service ID."""
-        services = await self.list_managed(controller_id=controller_id)
-        return {service.id for service in services if service.id}
-
-    async def list_managed(self, *, controller_id: str | None = None) -> list[Any]:
-        """List managed Swarm services with their labels."""
-        filters = self._managed_label_filters()
-        if controller_id is not None:
-            filters["label"].append(f"radar_controller_id={controller_id}")
-        return await self.async_docker.run(
-            self.async_docker.client.services.list,
-            filters=filters,
-        )
+    async def list_managed_ids(self) -> set[str]:
+        return {workload.id for workload in await self.list_managed()}
 
     async def get_status_and_labels(
-        self,
-        workload_id: str | None,
-        *,
-        probe: bool = False,
+        self, workload_id: str | None
     ) -> tuple[str, dict[str, str]]:
-        """Return normalized status and labels for a service.
+        """The workload's observed state and labels.
 
-        `probe` marks a bulk listing, which shares a smaller pool of Docker slots.
+        States: a row state, "no_container_id" or "not_found".
         """
-        return await get_workload_status_and_labels(
-            self.async_docker, workload_id, probe=probe
-        )
+        return (await self.statuses_and_labels([workload_id]))[0]
+
+    async def statuses_and_labels(
+        self, workload_ids: list[str | None]
+    ) -> list[tuple[str, dict[str, str]]]:
+        """The observed state and labels of each workload, in one read."""
+        wanted = {workload_id for workload_id in workload_ids if workload_id}
+        found: dict[str, Workload] = {}
+        if wanted:
+            async with self.sessions() as session:
+                rows = await session.scalars(
+                    select(RadarWorkload).where(RadarWorkload.id.in_(wanted))
+                )
+                found = {row.id: Workload.of(row) for row in rows}
+        result: list[tuple[str, dict[str, str]]] = []
+        for workload_id in workload_ids:
+            if not workload_id:
+                result.append(("no_container_id", {}))
+            elif (workload := found.get(workload_id)) is None:
+                result.append(("not_found", {}))
+            else:
+                result.append((workload.state, workload.labels))
+        return result
+
+    async def crashes(self, workload_id: str | None) -> list[dict[str, Any]]:
+        """Why the workload's children crashed, newest first."""
+        workload = await self.get(workload_id)
+        return [] if workload is None else workload.crashes

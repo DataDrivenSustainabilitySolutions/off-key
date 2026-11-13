@@ -38,8 +38,7 @@ from .radar_queries import RadarServiceQueries, find_service
 from .radar_status import (
     TERMINAL_WORKLOAD_STATES,
 )
-from .radar_workloads import RadarWorkloadManager, get_async_docker
-from .workload_identity import controller_id
+from .radar_workloads import RadarWorkloadManager
 
 
 class RadarOrchestrationService:
@@ -66,7 +65,7 @@ class RadarOrchestrationService:
     @property
     def workloads(self):
         if self._workloads is None:
-            self._workloads = RadarWorkloadManager(get_async_docker())
+            self._workloads = RadarWorkloadManager()
         return self._workloads
 
     @workloads.setter
@@ -161,7 +160,7 @@ class RadarOrchestrationService:
             )
 
         # Commit desired state and its sensor claim before any external mutation.
-        # Even cancellation or a lost Docker reply now leaves a recoverable owner.
+        # Even cancellation or a lost pool reply now leaves a recoverable owner.
         env_vars["RADAR_LIFECYCLE_VERSION"] = "1"
         service_record = MonitoringService(
             id=db_service_id,
@@ -318,7 +317,7 @@ class RadarOrchestrationService:
         service_id, workload_id = existing_service.id, existing_service.container_id
         version = getattr(existing_service, "lifecycle_version", 1)
         await self.session.commit()
-        docker_status, labels = await self.workloads.get_status_and_labels(
+        workload_status, labels = await self.workloads.get_status_and_labels(
             workload_id or ""
         )
         await lock_collection_configuration(self.session)
@@ -338,25 +337,28 @@ class RadarOrchestrationService:
                 "RADAR workload changed during inspection; retry the request"
             )
         existing_service = current
-        if docker_status != "running" and docker_status not in TERMINAL_WORKLOAD_STATES:
+        if (
+            workload_status != "running"
+            and workload_status not in TERMINAL_WORKLOAD_STATES
+        ):
             raise ValueError(
                 f"RADAR service name '{container_name}' already exists, but "
                 "its workload is not confirmed stopped "
-                f"(Docker status: {docker_status}). "
+                f"(workload status: {workload_status}). "
                 "Wait for the existing workload or stop it before retrying."
             )
 
-        if docker_status != "running":
+        if workload_status != "running":
             if not await self.retire_service(existing_service):
                 raise ValueError(
                     "RADAR workload removal is pending; retry after it stops"
                 )
             logger.info(
                 "Deleted stale RADAR service row %s before recreating %s "
-                "(docker_status=%s)",
+                "(workload_status=%s)",
                 existing_service.id,
                 container_name,
-                docker_status,
+                workload_status,
             )
             return None
 
@@ -426,9 +428,7 @@ class RadarOrchestrationService:
         Returns:
             Dict[str, int]: Cleanup summary counters.
         """
-        managed_workload_ids = await self.workloads.list_managed_ids(
-            controller_id=controller_id()
-        )
+        managed_workload_ids = await self.workloads.list_managed_ids()
         target_ids = set(managed_workload_ids)
 
         removed_workloads = 0
@@ -464,7 +464,7 @@ class RadarOrchestrationService:
 
         return {
             "db_rows_deleted": db_rows_deleted,
-            "docker_workloads_removed": removed_workloads,
+            "workloads_removed": removed_workloads,
             "workloads_targeted": len(target_ids),
         }
 
@@ -558,10 +558,10 @@ class RadarOrchestrationService:
         return await self.retire_service(service)
 
     async def list_radar_services(
-        self, active_only: bool = False, include_docker_status: bool = False
+        self, active_only: bool = False, include_workload_status: bool = False
     ) -> list[dict[str, Any]]:
         return await RadarServiceQueries(self.session, self.workloads).list(
-            active_only=active_only, include_docker_status=include_docker_status
+            active_only=active_only, include_workload_status=include_workload_status
         )
 
     async def rename_radar_service(self, service_id: str, display_name: str) -> bool:

@@ -108,7 +108,7 @@ New passwords require at least 12 characters and at most 72 UTF-8 bytes.
 
 The API checks current membership on every protected request. The TACTIC worker
 serves only health and readiness; its port is bound to localhost in development
-and is not published by the Swarm stack. Keep databases, the Docker socket proxy, SMTP, and brokers on
+and is not published by the Swarm stack. Keep databases, SMTP, and brokers on
 private networks. Remote users enter through the HTTPS dashboard/API ingress.
 
 The infrastructure renders a host-only `.env` and scoped `.env.<service>` files

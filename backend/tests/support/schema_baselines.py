@@ -38,6 +38,7 @@ EXPECTED_MIGRATIONS = (
     "031_pipeline_blocks.sql",
     "032_alarm_deletions.sql",
     "033_reading_hold_timing.sql",
+    "034_radar_workload_pool.sql",
 )
 
 

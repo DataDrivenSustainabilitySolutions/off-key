@@ -9,9 +9,6 @@ from fastapi import FastAPI
 from off_key_tactic_middleware.config import RadarWorkloadLifecycle
 
 tactic_main = import_module("off_key_tactic_middleware.main")
-radar_workloads = import_module(
-    "off_key_tactic_middleware.services.orchestration.radar_workloads"
-)
 
 
 def _config() -> SimpleNamespace:
@@ -23,10 +20,8 @@ def _config() -> SimpleNamespace:
     )
 
 
-def _install_lifecycle_fakes(monkeypatch, *, docker_error: Exception | None = None):
+def _install_lifecycle_fakes(monkeypatch):
     config = _config()
-    docker_client = MagicMock()
-    docker_client.run = AsyncMock(side_effect=docker_error)
     reconciliation = MagicMock()
     reconciliation.start = AsyncMock()
     reconciliation.stop = AsyncMock()
@@ -37,7 +32,6 @@ def _install_lifecycle_fakes(monkeypatch, *, docker_error: Exception | None = No
         "get_tactic_settings",
         lambda: SimpleNamespace(config=config),
     )
-    monkeypatch.setattr(tactic_main, "AsyncDocker", lambda: docker_client)
     monkeypatch.setattr(
         tactic_main,
         "RadarStatusReconciliationService",
@@ -48,59 +42,53 @@ def _install_lifecycle_fakes(monkeypatch, *, docker_error: Exception | None = No
         "_teardown_ephemeral_radar_workloads",
         teardown,
     )
-    return docker_client, reconciliation, teardown
+    return reconciliation, teardown
 
 
 @pytest.mark.asyncio
 async def test_lifespan_releases_resources_when_serving_raises(monkeypatch):
-    docker_client, reconciliation, teardown = _install_lifecycle_fakes(monkeypatch)
+    reconciliation, teardown = _install_lifecycle_fakes(monkeypatch)
     app = FastAPI()
 
     with pytest.raises(RuntimeError, match="request handling failed"):
         async with tactic_main.lifespan(app):
-            assert app.state.docker_client is docker_client
-            # Request paths reuse the verified client instead of opening their own.
-            assert radar_workloads.get_async_docker() is docker_client
+            assert app.state.ready is True
             raise RuntimeError("request handling failed")
 
     reconciliation.start.assert_awaited_once()
     reconciliation.stop.assert_awaited_once()
     assert teardown.await_args_list[0].kwargs["phase"] == "startup"
     assert teardown.await_args_list[1].kwargs["phase"] == "shutdown"
-    docker_client.close.assert_called_once()
-    assert app.state.docker_client is None
-    assert radar_workloads._shared_async_docker is None
+    assert app.state.ready is False
 
 
 @pytest.mark.asyncio
-async def test_lifespan_closes_unverified_docker_client(monkeypatch):
-    docker_client, reconciliation, teardown = _install_lifecycle_fakes(
-        monkeypatch,
-        docker_error=ConnectionError("Docker unavailable"),
-    )
+async def test_a_failed_startup_is_never_ready_and_tears_nothing_down_twice(
+    monkeypatch,
+):
+    reconciliation, teardown = _install_lifecycle_fakes(monkeypatch)
+    teardown.side_effect = ConnectionError("database unavailable")
     app = FastAPI()
 
-    with pytest.raises(ConnectionError, match="Docker unavailable"):
+    with pytest.raises(ConnectionError, match="database unavailable"):
         async with tactic_main.lifespan(app):
             pytest.fail("startup should not complete")
 
-    docker_client.close.assert_called_once()
     reconciliation.start.assert_not_awaited()
-    teardown.assert_not_awaited()
-    assert app.state.docker_client is None
+    teardown.assert_awaited_once()
+    assert app.state.ready is False
 
 
 def _record_lifecycle(monkeypatch):
     """Fake every long-lived service and record start and stop calls in order."""
     calls: list[str] = []
-    docker_client, reconciliation, teardown = _install_lifecycle_fakes(monkeypatch)
+    reconciliation, teardown = _install_lifecycle_fakes(monkeypatch)
 
     def recorder(name):
         return AsyncMock(side_effect=lambda *args, **kwargs: calls.append(name))
 
     reconciliation.stop = recorder("reconciliation.stop")
     teardown.side_effect = lambda app, phase: calls.append(f"teardown.{phase}")
-    docker_client.close.side_effect = lambda: calls.append("docker.close")
 
     supervisor = SimpleNamespace(
         start=recorder("supervisor.start"), stop=recorder("supervisor.stop")
@@ -134,10 +122,9 @@ async def test_lifespan_stops_services_in_a_fixed_order(monkeypatch):
         "ingress.stop",
         "reconciliation.stop",
         "teardown.shutdown",
-        "docker.close",
     ]
+    assert app.state.ready is False
     for attribute in (
-        "docker_client",
         "reconciliation_service",
         "pipeline_activation_supervisor",
         "system_ingress",
@@ -150,7 +137,6 @@ def test_main_keeps_the_service_logging_config(monkeypatch):
     config = SimpleNamespace(
         service_name="tactic",
         service_version="test",
-        docker=SimpleNamespace(base_url="unix:///docker.sock"),
         host="127.0.0.1",
         port=8001,
         log_level="WARNING",

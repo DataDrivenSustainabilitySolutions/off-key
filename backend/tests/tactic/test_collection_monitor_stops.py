@@ -61,8 +61,7 @@ def stops(monkeypatch, tmp_path):
 
     monkeypatch.setattr(collection, "get_async_session_local", AsyncTransaction)
     workloads = MagicMock(remove=AsyncMock(return_value=True))
-    monkeypatch.setattr(collection, "get_async_docker", MagicMock())
-    monkeypatch.setattr(collection, "RadarWorkloadManager", lambda _: workloads)
+    monkeypatch.setattr(collection, "RadarWorkloadManager", lambda: workloads)
     try:
         yield sessions, workloads
     finally:
@@ -72,7 +71,7 @@ def stops(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops):
     sessions, workloads = stops
-    workloads.remove.side_effect = [True, RuntimeError("Docker unavailable")]
+    workloads.remove.side_effect = [True, RuntimeError("workload has not stopped")]
     service = collection.CollectionMonitorService(
         AsyncMock(expire_all=MagicMock(), scalar=AsyncMock(return_value=None))
     )
@@ -95,12 +94,13 @@ async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops
         assert pending.status and pending.stop_requested_at is not None
 
     reconciler = object.__new__(RadarStatusReconciliationService)
-    reconciler._get_docker_status = AsyncMock(return_value="running")
     reconciler._remove_workload_if_present = AsyncMock(return_value=False)
     with sessions.begin() as session:
         pending = session.get(MonitoringService, "1")
         snapshot = _ServiceSnapshot.capture(pending)
-        observation = await reconciler._inspect(snapshot)
+        observation = await reconciler._inspect(
+            snapshot, {snapshot.container_id: "running"}
+        )
         await reconciler._apply_observation(
             AsyncMock(
                 get=AsyncMock(return_value=pending),
@@ -113,7 +113,6 @@ async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops
             snapshot,
             observation,
         )
-    reconciler._get_docker_status.assert_not_awaited()
     reconciler._remove_workload_if_present.assert_awaited_once_with("ctr-1")
     with sessions() as session:
         pending = session.get(MonitoringService, "1")

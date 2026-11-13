@@ -31,7 +31,7 @@ services:
   api-gateway:
     # Live views and broker checks run in the API; it reads the worker's settings.
     environment: &local-domain-env
-      # Ephemeral cleanup is host-wide; this deployment owns only its DB records.
+      # Monitors keep running across a restart of the local stack.
       TACTIC_RADAR_WORKLOAD_LIFECYCLE: persistent
       SYSTEM_LIVE_ENABLED: "${SYSTEM_LIVE_ENABLED:-true}"
       SYSTEM_LIVE_ALLOWED_HOSTS: '${SYSTEM_LIVE_ALLOWED_HOSTS:-["source-broker","fixture-broker-campus","fixture-broker-production","fixture-broker-greenhouse","fixture-broker-meter","fixture-broker-weather","fixture-broker-pump"]}'
@@ -47,10 +47,6 @@ services:
   timescaledb:
     ports:
       - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5433}:5432"
-
-  socket-proxy:
-    # Official released proxy; avoid the moving Docker Hub latest image.
-    image: "${LOCAL_SOCKET_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:v0.4.2}"
 
   mailpit:
     environment:

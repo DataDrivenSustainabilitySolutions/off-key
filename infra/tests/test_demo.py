@@ -68,13 +68,13 @@ class PublicDemoTests(unittest.TestCase):
             compiled = load_script("compile_stack").compile_stack(model)
             run("docker", "stack", "config", "-c", "-", input=json.dumps(compiled))
             services = model["services"]
-            # One labelled worker runs the demo; only the socket proxy needs a manager.
+            # One labelled worker runs the whole demo.
             placed = {
                 name: service["deploy"]["placement"]["constraints"]
                 for name, service in services.items()
                 if service.get("deploy", {}).get("placement")
             }
-            self.assertEqual(placed.pop("socket-proxy"), ["node.role == manager"])
+            self.assertNotIn("socket-proxy", services)
             self.assertTrue(placed)
             for name, constraints in placed.items():
                 self.assertEqual(constraints, ["node.labels.offkey-demo == true"], name)
@@ -93,12 +93,9 @@ class PublicDemoTests(unittest.TestCase):
             self.assertEqual(services["api"]["environment"]["DEMO_MODE"], "true")
             self.assertNotIn("DEMO_VIEWER_PASSWORD", services["api"]["environment"])
             tactic = services["tactic"]["environment"]
-            self.assertEqual(
-                tactic["TACTIC_DOCKER_DEFAULT_NETWORK"], "off-key-demo_emqx-network"
-            )
-            self.assertEqual(
-                tactic["TACTIC_DOCKER_ADDITIONAL_NETWORKS"], "off-key-demo_app-network"
-            )
+            pool = services["mqtt-radar"]["environment"]
+            self.assertEqual(pool["RADAR_POOL_RUNTIME"], tactic["TACTIC_RADAR_IMAGE"])
+            self.assertEqual(pool["RADAR_POOL_CAPACITY"], "6")
             self.assertNotIn("PONTOS_TOKEN", tactic)
             self.assertEqual(
                 json.loads(tactic["DEMO_FEEDS_JSON"]), demo["demo_feed_selection"]

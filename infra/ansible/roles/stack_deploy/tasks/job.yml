@@ -15,7 +15,6 @@
   command:
     argv: >-
       {{ ['docker', 'run', '--rm', '--network', stack_name ~ '_app-network']
-         + (['--user', '0:0', '--mount', 'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock'] if release_job_service == 'tactic' else [])
          + release_job_environment_args + [release_job_image, '/app/bin/python', '-m', release_job_module]
          + release_job_arguments }}
   register: release_job_result

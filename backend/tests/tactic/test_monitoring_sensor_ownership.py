@@ -127,8 +127,8 @@ async def test_sensor_claim_stays_reserved_until_reconciliation_confirms_stop():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("docker_status", ["error", "unknown", "no_tasks", "pending"])
-async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status):
+@pytest.mark.parametrize("workload_status", ["error", "unknown", "no_tasks", "pending"])
+async def test_unverified_or_starting_workload_keeps_sensor_claim(workload_status):
     session = AsyncMock()
     session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     monitor = SimpleNamespace(
@@ -141,7 +141,7 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
     )
     session.execute.return_value = _query_result([monitor])
     service = _service_with_session(session)
-    service.workloads.get_status_and_labels.return_value = (docker_status, {})
+    service.workloads.get_status_and_labels.return_value = (workload_status, {})
     session.get.return_value = monitor
 
     with pytest.raises(ValueError, match="one monitoring service"):

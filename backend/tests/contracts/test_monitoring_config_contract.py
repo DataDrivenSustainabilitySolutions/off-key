@@ -8,7 +8,7 @@ from off_key_api_gateway.providers import get_form_monitor_starter
 from off_key_core.schemas.radar import MonitorSetup
 from off_key_mqtt_radar.config.config import RadarSettings
 from off_key_tactic_middleware.config.config import (
-    RadarContainerRuntimeSettings,
+    RadarRuntimeSettings,
     TacticSettings,
 )
 from off_key_tactic_middleware.services.orchestration import radar_environment
@@ -112,8 +112,8 @@ async def test_api_to_runtime_preserves_one_monitoring_config(monitoring, monkey
     )
     monkeypatch.setattr(
         radar_environment,
-        "get_radar_container_runtime_settings",
-        lambda: RadarContainerRuntimeSettings(
+        "get_radar_runtime_settings",
+        lambda: RadarRuntimeSettings(
             _env_file=None,
             ENVIRONMENT="development",
             POSTGRES_USER="test",

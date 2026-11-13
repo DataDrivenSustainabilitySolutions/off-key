@@ -18,7 +18,6 @@ from off_key_core.db.run_events import (
 )
 from off_key_core.schemas.pipelines import MAX_TIMELINE_EVENTS
 from off_key_tactic_middleware.domain import NotFoundError
-from off_key_tactic_middleware.facades.docker import crashed_tasks
 from off_key_tactic_middleware.services.orchestration.reconciliation import (
     RadarStatusReconciliationService,
 )
@@ -250,33 +249,37 @@ async def test_worker_events_reach_only_their_own_run_and_stop_at_the_cap(
     assert stored == 3
 
 
-def swarm_task(task_id, state, timestamp, **status):
+def crash(task_id, timestamp, exit_code, error, **extra):
+    """A crash as the RADAR pool records it on its workload row."""
     return {
-        "ID": task_id,
-        "NodeID": "node-1",
-        "Status": {"State": state, "Timestamp": timestamp, **status},
+        "task_id": task_id,
+        "state": "failed",
+        "error": error,
+        "exit_code": exit_code,
+        "ended_at": timestamp,
+        "node_id": "pool-1",
+        **extra,
     }
 
 
 @pytest.mark.asyncio
 async def test_each_crashed_task_is_recorded_once_oldest_first(pipeline_database):
-    killed = swarm_task(
+    killed = crash(
         "task-1",
-        "failed",
         "2026-11-03T10:00:00Z",
-        Err="task: non-zero exit (137)",
-        ContainerStatus={"ExitCode": 137},
+        137,
+        "Killed by SIGKILL",
+        hint="Killed by SIGKILL, usually for exceeding its memory limit",
     )
     async with pipeline_database() as session:
         run = await bare_run(session, "crashing")
         record = RadarStatusReconciliationService._record_service_crashes
-        await record(session, "crashing", crashed_tasks([killed]))
+        await record(session, "crashing", [killed])
         await session.commit()
-        later = swarm_task(
-            "task-2", "rejected", "2026-11-03T10:05:00Z", Err="no suitable node"
-        )
-        await record(session, "crashing", crashed_tasks([killed, later]))
-        await record(session, "unknown-service", crashed_tasks([later]))
+        later = crash("task-2", "2026-11-03T10:05:00Z", 1, "exit code 1")
+        # The pool keeps crashes newest first.
+        await record(session, "crashing", [later, killed])
+        await record(session, "unknown-service", [later])
         await session.commit()
         details = list(
             await session.scalars(
@@ -289,4 +292,4 @@ async def test_each_crashed_task_is_recorded_once_oldest_first(pipeline_database
     assert [detail["task_id"] for detail in details] == ["task-1", "task-2"]
     assert details[0]["exit_code"] == 137
     assert "memory limit" in details[0]["hint"]
-    assert details[1]["error"] == "no suitable node"
+    assert details[1]["error"] == "exit code 1"

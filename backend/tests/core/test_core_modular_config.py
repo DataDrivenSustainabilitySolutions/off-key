@@ -12,9 +12,6 @@ from off_key_core.db import base as db_base
 from off_key_mqtt_radar.config.runtime import (
     get_radar_database_settings,
 )
-from off_key_tactic_middleware.config import (
-    get_radar_container_runtime_settings,
-)
 
 from tests.support.env import AUTH_ENVIRONMENT, set_environment
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
@@ -154,12 +151,10 @@ def test_database_url_encoding_is_consistent_across_runtime_builders(monkeypatch
     monkeypatch.delenv("RADAR_DATABASE_URL", raising=False)
 
     core_async_url = get_database_settings().async_database_url
-    tactic_runtime_url = get_radar_container_runtime_settings().radar_database_url
     radar_runtime_url = get_radar_database_settings().async_database_url
 
     expected = "postgresql+asyncpg://user%20name:p%40ss%20word@localhost:5432/db%2Fname"
     assert core_async_url == expected
-    assert tactic_runtime_url == expected
     assert radar_runtime_url == expected
 
 

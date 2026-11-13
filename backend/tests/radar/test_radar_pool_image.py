@@ -1,24 +1,28 @@
-"""Opt-in deployment regressions using the current RADAR image and real Swarm.
+"""Opt-in deployment regression: the current RADAR image's pool restores a monitor.
 
-Build backend/Dockerfile for off-key-mqtt-radar, then set TEST_RADAR_SWARM_IMAGE.
-Only uniquely named resources carrying this test's ownership label are removed.
+Build backend/Dockerfile for off-key-mqtt-radar, then set TEST_RADAR_IMAGE. The
+test runs that image as a pool replica next to a disposable database and broker,
+kills the monitor's child the way an out-of-memory kill would, and checks the
+replica restarts it from its signed checkpoint. Only containers and networks
+carrying this test's ownership label are removed.
 """
 
 import json
 import math
 import os
+import subprocess
 import time
-from contextlib import suppress
+import uuid
 from datetime import UTC, datetime
 from uuid import uuid4
 
-import docker
 import paho.mqtt.client as mqtt
 import pytest
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
+from off_key_core.db.workloads import RadarWorkload
 from off_key_core.schemas.radar import StaticBaselineConfig
-from sqlalchemy import create_engine, insert, text
+from sqlalchemy import create_engine, insert, select, text
 from sqlalchemy.exc import OperationalError
 
 from tests.support.form_pipeline import form_pipeline
@@ -26,10 +30,25 @@ from tests.support.form_pipeline import form_pipeline
 pytestmark = [
     pytest.mark.radar_integration,
     pytest.mark.skipif(
-        not os.getenv("TEST_RADAR_SWARM_IMAGE"),
-        reason="Requires an explicitly built current RADAR image and local Swarm",
+        not os.getenv("TEST_RADAR_IMAGE"),
+        reason="Requires an explicitly built current RADAR image and Docker",
     ),
 ]
+
+PASSWORD = "disposable-integration-password"
+# Ends the replica's monitor child with SIGKILL, as the kernel's OOM killer does.
+_KILL_MONITOR = """
+import os, signal
+for pid in filter(str.isdigit, os.listdir("/proc")):
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as source:
+            arguments = source.read().split(b"\\0")
+    except OSError:
+        continue
+    if arguments[-2:] == [b"off_key_mqtt_radar", b""]:
+        os.kill(int(pid), signal.SIGKILL)
+        print(pid)
+"""
 
 _CHECKPOINT_PROBE = """
 import asyncio
@@ -53,7 +72,7 @@ async def main():
     )
     expected = json.loads(os.environ["EXPECTED_CHECKPOINT_WATERMARKS"])
     receipts = int(os.environ["EXPECTED_CHECKPOINT_RECEIPTS"])
-    engine = create_async_engine(os.environ["RADAR_DATABASE_URL"], pool_size=1)
+    engine = create_async_engine(os.environ["PROBE_DATABASE_URL"], pool_size=1)
     try:
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
@@ -69,7 +88,7 @@ async def main():
                 ).mappings().one_or_none()
             if record is not None:
                 snapshot = codec.decode(dict(record))
-                watermarks = snapshot.observation_watermarks.get("swarm-test", {})
+                watermarks = snapshot.observation_watermarks.get("pool-test", {})
                 if (
                     snapshot.processor.received_message_count >= receipts
                     and all(
@@ -97,6 +116,12 @@ asyncio.run(main())
 """
 
 
+def docker(*arguments: str, check: bool = True) -> str:
+    return subprocess.run(
+        ["docker", *arguments], check=check, capture_output=True, text=True, timeout=120
+    ).stdout.strip()
+
+
 def wait_for(probe, *, timeout=90):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -107,51 +132,51 @@ def wait_for(probe, *, timeout=90):
     raise AssertionError(f"Timed out waiting for {probe.__name__}")
 
 
+def published_port(container: str, port: str) -> int:
+    return int(docker("port", container, port).splitlines()[0].rsplit(":", 1)[1])
+
+
 @pytest.fixture
-def swarm_runtime():
-    client = docker.from_env(timeout=15)
-    assert client.info()["Swarm"]["LocalNodeState"] == "active"
+def pool_runtime():
     owner = "radar-test-" + uuid4().hex[:12]
-    labels = {"off-key.integration-owner": owner}
-    resources = []
+    label = f"off-key.integration-owner={owner}"
+    image = os.environ["TEST_RADAR_IMAGE"]
     engine = None
-    network = client.networks.create(
-        owner, driver="overlay", attachable=True, labels=labels
-    )
+    docker("network", "create", "--label", label, owner)
     try:
-        database = client.containers.run(
+        database = owner + "-db"
+        docker(
+            "run",
+            "--detach",
+            "--name",
+            database,
+            "--network",
+            owner,
+            "--label",
+            label,
+            "--publish",
+            "127.0.0.1::5432",
+            "--tmpfs",
+            "/var/lib/postgresql/data:rw,size=512m",
+            "--memory",
+            "768m",
+            "--env",
+            "POSTGRES_USER=radar_test",
+            "--env",
+            f"POSTGRES_PASSWORD={PASSWORD}",
+            "--env",
+            "POSTGRES_DB=radar_test",
             os.getenv("TEST_RADAR_DATABASE_IMAGE", "timescale/timescaledb:latest-pg15"),
-            name=owner + "-db",
-            network=network.name,
-            environment={
-                "POSTGRES_USER": "radar_test",
-                "POSTGRES_PASSWORD": "disposable-integration-password",
-                "POSTGRES_DB": "radar_test",
-            },
-            ports={"5432/tcp": ("127.0.0.1", None)},
-            tmpfs={"/var/lib/postgresql/data": "rw,size=512m"},
-            mem_limit="768m",
-            labels=labels,
-            detach=True,
-        )
-        resources.append(database)
-        database.reload()
-        database_port = database.attrs["NetworkSettings"]["Ports"]["5432/tcp"][0][
-            "HostPort"
-        ]
-        wait_for(
-            lambda: database.exec_run(["pg_isready", "-U", "radar_test"]).exit_code == 0
         )
         engine = create_engine(
-            "postgresql+psycopg2://radar_test:disposable-integration-password"
-            f"@127.0.0.1:{database_port}/radar_test",
+            f"postgresql+psycopg2://radar_test:{PASSWORD}"
+            f"@127.0.0.1:{published_port(database, '5432/tcp')}/radar_test",
             pool_pre_ping=True,
             connect_args={"connect_timeout": 5},
         )
 
         def database_ready():
-            # pg_isready can observe the entrypoint's temporary Unix-socket
-            # server before the final server accepts published TCP connections.
+            # The entrypoint's temporary server can answer before the final one.
             try:
                 with engine.connect() as connection:
                     return connection.scalar(text("SELECT 1")) == 1
@@ -161,86 +186,79 @@ def swarm_runtime():
         wait_for(database_ready)
         with engine.begin() as connection:
             apply_migrations(connection)
-        broker = client.containers.run(
-            "eclipse-mosquitto:2.0",
-            name=owner + "-mqtt",
-            network=network.name,
-            command=[
-                "sh",
-                "-c",
-                "printf 'listener 1883\nallow_anonymous true\n' > /tmp/test.conf; "
-                "exec mosquitto -c /tmp/test.conf",
-            ],
-            ports={"1883/tcp": ("127.0.0.1", None)},
-            mem_limit="64m",
-            labels=labels,
-            detach=True,
-        )
-        resources.append(broker)
-        broker.reload()
-        broker_port = int(
-            broker.attrs["NetworkSettings"]["Ports"]["1883/tcp"][0]["HostPort"]
-        )
-        wait_for(lambda: b"running" in broker.logs())
-        yield (
-            client,
-            owner,
-            labels,
-            network,
-            engine,
-            database,
+        broker = owner + "-mqtt"
+        docker(
+            "run",
+            "--detach",
+            "--name",
             broker,
-            broker_port,
-            resources,
+            "--network",
+            owner,
+            "--label",
+            label,
+            "--publish",
+            "127.0.0.1::1883",
+            "--memory",
+            "64m",
+            "eclipse-mosquitto:2.0",
+            "sh",
+            "-c",
+            "printf 'listener 1883\\nallow_anonymous true\\n' > /tmp/test.conf; "
+            "exec mosquitto -c /tmp/test.conf",
         )
+        wait_for(lambda: "running" in docker("logs", broker, check=False))
+        pool = owner + "-pool"
+        docker(
+            "run",
+            "--detach",
+            "--name",
+            pool,
+            "--network",
+            owner,
+            "--label",
+            label,
+            "--memory",
+            "1g",
+            "--env",
+            "ENVIRONMENT=development",
+            "--env",
+            f"RADAR_POOL_RUNTIME={image}",
+            "--env",
+            "RADAR_POOL_POLL_SECONDS=0.5",
+            "--env",
+            "RADAR_POOL_RESTART_BACKOFF_SECONDS=0.5",
+            "--env",
+            "RADAR_CHECKPOINT_SECRET=disposable-pool-checkpoint-secret",
+            "--env",
+            "POSTGRES_USER=radar_test",
+            "--env",
+            f"POSTGRES_PASSWORD={PASSWORD}",
+            "--env",
+            f"POSTGRES_HOST={database}",
+            "--env",
+            "POSTGRES_PORT=5432",
+            "--env",
+            "POSTGRES_DB=radar_test",
+            image,
+            "/app/bin/python",
+            "-m",
+            "off_key_mqtt_radar.pool",
+        )
+        yield owner, label, image, engine, database, broker, pool
     finally:
         if engine:
             engine.dispose()
-        for resource in reversed(resources):
-            # Tests never remove unlabelled or unrelated application workloads.
-            with suppress(docker.errors.NotFound):
-                resource.reload()
-                actual = resource.attrs.get("Spec", {}).get(
-                    "Labels", resource.attrs.get("Config", {}).get("Labels", {})
-                )
-                assert actual.get("off-key.integration-owner") == owner
-                if isinstance(resource, docker.models.services.Service):
-                    resource.remove()
-                else:
-                    resource.remove(force=True)
-
-        # Task containers are created by Swarm after the service itself, so they
-        # are not in resources. Remove only this fixture's labelled remnants.
-        def remove_owned_tasks():
-            owned = client.containers.list(
-                all=True, filters={"label": f"off-key.integration-owner={owner}"}
-            )
-            for container in owned:
-                # Swarm may already be removing a task container. Its next
-                # inspection must disappear before cleanup can succeed.
-                with suppress(docker.errors.APIError):
-                    container.remove(force=True)
-            return not owned
-
-        wait_for(remove_owned_tasks)
-
-        def remove_network():
-            try:
-                network.remove()
-                return True
-            except docker.errors.APIError:
-                return False
-
-        wait_for(remove_network)
-        client.close()
+        owned = docker("ps", "--all", "--quiet", "--filter", f"label={label}")
+        for container in owned.split():
+            docker("rm", "--force", container, check=False)
+        docker("network", "rm", owner, check=False)
 
 
-def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
-    client, owner, labels, network, engine, database, broker, broker_port, resources = (
-        swarm_runtime
-    )
+def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
+    owner, label, image, engine, database, broker, pool = pool_runtime
+    broker_port = published_port(broker, "1883/tcp")
     service_id = owner + "-monitor"
-    topics = ["telemetry/swarm-test/a", "telemetry/swarm-test/b"]
+    topics = ["telemetry/pool-test/a", "telemetry/pool-test/b"]
     with engine.begin() as connection:
         connection.execute(
             insert(MonitoringService).values(
@@ -261,10 +279,7 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         "ENVIRONMENT": "development",
         "SERVICE_ID": service_id,
         "RADAR_LIFECYCLE_VERSION": "1",
-        "RADAR_CHECKPOINT_SECRET": "disposable-swarm-checkpoint-secret",
-        "RADAR_DATABASE_URL": "postgresql+asyncpg://radar_test:disposable-integration-password"
-        f"@{database.name}:5432/radar_test",
-        "RADAR_MQTT_BROKER_HOST": broker.name,
+        "RADAR_MQTT_BROKER_HOST": broker,
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(topics),
         "RADAR_SUBSCRIPTION_QOS": "1",
         "RADAR_PIPELINE_CONFIG": form_pipeline(monitoring, topics).model_dump_json(),
@@ -278,26 +293,27 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         "RADAR_RATE_LIMIT_PER_MINUTE": "0",
         "RADAR_MEMORY_LIMIT_MB": "384",
     }
-    expected_image_id = client.images.get(os.environ["TEST_RADAR_SWARM_IMAGE"]).id
-    worker = client.services.create(
-        os.environ["TEST_RADAR_SWARM_IMAGE"],
-        name=owner + "-worker",
-        command=["/app/bin/python", "-m", "off_key_mqtt_radar"],
-        env=environment,
-        networks=[network.id],
-        labels=labels,
-        container_labels=labels,
-        resources=docker.types.Resources(
-            mem_limit=512 * 1024 * 1024, cpu_limit=500_000_000
-        ),
-        restart_policy=docker.types.RestartPolicy(
-            condition="on-failure", delay=100_000_000
-        ),
-    )
-    resources.append(worker)
-    worker.reload()
-    limits = worker.attrs["Spec"]["TaskTemplate"]["Resources"]["Limits"]
-    assert limits == {"NanoCPUs": 500_000_000, "MemoryBytes": 512 * 1024 * 1024}
+    workload_id = uuid.uuid4().hex
+    with engine.begin() as connection:
+        connection.execute(
+            insert(RadarWorkload).values(
+                id=workload_id,
+                name="radar-" + service_id,
+                kind="monitor",
+                labels={"radar_service_id": service_id},
+                runtime=image,
+                module="off_key_mqtt_radar",
+                environment=environment,
+                memory_limit_bytes=512 * 1024 * 1024,
+                restart=True,
+            )
+        )
+
+    def workload():
+        with engine.connect() as connection:
+            return connection.execute(
+                select(RadarWorkload.__table__).where(RadarWorkload.id == workload_id)
+            ).one()
 
     def status():
         with engine.connect() as connection:
@@ -360,61 +376,55 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         drained = wait_for(
             lambda: status() if status().get("message_count", 0) >= index * 2 else None
         )
-        probe = client.containers.run(
-            expected_image_id,
-            name=owner + "-checkpoint-probe",
-            command=["/app/bin/python", "-c", _CHECKPOINT_PROBE],
-            environment=environment
-            | {
-                "EXPECTED_CHECKPOINT_RECEIPTS": str(drained["message_count"]),
-                "EXPECTED_CHECKPOINT_WATERMARKS": json.dumps(latest_watermarks),
-            },
-            network=network.id,
-            labels=labels,
-            mem_limit="512m",
-            detach=True,
+        probe_environment = environment | {
+            "RADAR_CHECKPOINT_SECRET": "disposable-pool-checkpoint-secret",
+            "PROBE_DATABASE_URL": "postgresql+asyncpg://radar_test:"
+            f"{PASSWORD}@{database}:5432/radar_test",
+            "EXPECTED_CHECKPOINT_RECEIPTS": str(drained["message_count"]),
+            "EXPECTED_CHECKPOINT_WATERMARKS": json.dumps(latest_watermarks),
+        }
+        result = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                owner,
+                "--label",
+                label,
+                "--memory",
+                "512m",
+                *(f"--env={key}={value}" for key, value in probe_environment.items()),
+                image,
+                "/app/bin/python",
+                "-c",
+                _CHECKPOINT_PROBE,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
-        resources.append(probe)
-        probe_result = probe.wait(timeout=120)
-        probe_logs = probe.logs().decode(errors="replace")
-        assert probe_result["StatusCode"] == 0, probe_logs
+        probe_logs = result.stdout + result.stderr
+        assert result.returncode == 0, probe_logs
         verified_checkpoint = json.loads(probe_logs.splitlines()[-1])
         before = verified_checkpoint["processed_count"]
         wait_for(lambda: status().get("processed_message_count") == before)
         assert checkpoint_count() == before
         before_evidence = evidence_count()
         assert before_evidence > 0
-        running = wait_for(
-            lambda: next(
-                (
-                    task
-                    for task in worker.tasks()
-                    if task["Status"]["State"] == "running"
-                ),
-                None,
-            )
-        )
-        old_container = running["Status"]["ContainerStatus"]["ContainerID"]
-        old_task_container = client.containers.get(old_container)
-        worker_image_id = old_task_container.image.id
-        assert worker_image_id == expected_image_id
-        old_task_container.kill()
-        replacement = wait_for(
-            lambda: next(
-                (
-                    task
-                    for task in worker.tasks()
-                    if task["Status"]["State"] == "running"
-                    and task["ID"] != running["ID"]
-                ),
-                None,
+        # The replica, running this image, claimed the row.
+        assert workload().state == "running"
+        killed = docker("exec", pool, "/app/bin/python", "-c", _KILL_MONITOR)
+        assert killed, "The monitor's child was not found in the replica"
+        restarted = wait_for(
+            lambda: (
+                (row := workload()).state == "running" and row.attempts == 2 and row
             ),
             timeout=120,
         )
-        replacement_image_id = client.containers.get(
-            replacement["Status"]["ContainerStatus"]["ContainerID"]
-        ).image.id
-        assert replacement_image_id == expected_image_id
+        (crash,) = restarted.crashes
+        assert crash["exit_code"] == 137
+        assert "memory limit" in crash["hint"]
         wait_for(lambda: status().get("recovery", {}).get("restored"), timeout=120)
         assert status()["processed_message_count"] >= before
         assert status()["recovery"]["restored_processed_count"] >= before
@@ -463,10 +473,8 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         print(
             json.dumps(
                 {
-                    "image_id": expected_image_id,
-                    "worker_image_id": worker_image_id,
-                    "replacement_image_id": replacement_image_id,
-                    "old_task_id": running["ID"],
+                    "image": image,
+                    "attempts": workload().attempts,
                     "saved_count_before_failure": before,
                     "checkpoint_receipts_before_failure": verified_checkpoint[
                         "received_message_count"
@@ -487,24 +495,19 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         )
     except BaseException:
         # Current source logs are essential evidence if the deployment fails.
-        database.reload()
-        print(json.dumps({"database_state": database.attrs["State"]}))
-        print(database.logs(tail=30).decode(errors="replace"))
+        print(docker("logs", "--tail", "30", database, check=False))
         print(
             json.dumps(
                 {
-                    "tasks": [task["Status"] for task in worker.tasks()],
+                    "workload": str(workload()._asdict()),
                     "runtime_status": status(),
                     "checkpoint_count": checkpoint_count(),
                     "evidence_count": evidence_count(),
-                }
+                },
+                default=str,
             )
         )
-        with suppress(docker.errors.APIError):
-            logs = worker.logs(stdout=True, stderr=True, tail=100, follow=False)
-            if not isinstance(logs, bytes):
-                logs = b"".join(logs)
-            print(logs.decode(errors="replace"))
+        print(docker("logs", "--tail", "200", pool, check=False))
         raise
     finally:
         publisher.disconnect()

@@ -1,16 +1,18 @@
-"""Real Swarm preflight, handoff and cancellation using isolated PostgreSQL/MQTT."""
+"""Real pool preflight, handoff and cancellation using isolated PostgreSQL/MQTT.
+
+The pool replica runs in this process and its children run the real RADAR
+modules, so a preflight builds the pipeline and a monitor admits, subscribes
+and heartbeats exactly as it does deployed.
+"""
 
 import asyncio
-import io
-import tarfile
 import time
-from contextlib import suppress
 from uuid import uuid4
 
-import docker
 import pytest
 import pytest_asyncio
 from off_key_core.db.models import MonitoringService, PipelineActivation
+from off_key_core.db.workloads import RadarWorkload
 from off_key_core.models.pipelines import pipeline_catalog
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
@@ -19,11 +21,8 @@ from off_key_core.schemas.pipelines import (
     PipelinePublish,
 )
 from off_key_core.schemas.radar import RadarStartConfig
-from off_key_tactic_middleware.config.config import (
-    DockerConfig,
-    clear_tactic_settings_caches,
-)
-from off_key_tactic_middleware.facades.docker import AsyncDocker
+from off_key_tactic_middleware.config.config import clear_tactic_settings_caches
+from off_key_tactic_middleware.services.orchestration import radar_workloads
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
@@ -36,82 +35,31 @@ from off_key_tactic_middleware.services.pipelines.preflight import PipelinePrefl
 from off_key_tactic_middleware.services.pipelines.preflight_cleanup import (
     PreflightOrphans,
 )
-from pydantic import AliasChoices, Field
-from pydantic_settings import BaseSettings
+
+from tests.support.mqtt import mqtt_broker
+from tests.support.radar_pool import RUNTIME, running_pool
 
 pytestmark = pytest.mark.radar_integration
 
-
-class SwarmFixtureSettings(BaseSettings):
-    TEST_RADAR_DOCKER: bool = False
-    TEST_PIPELINE_DATABASE_CONTAINER: str | None = None
-    TEST_PIPELINE_RUNTIME_IMAGE: str = Field(
-        default="offkey-pipelines-control:dev",
-        validation_alias=AliasChoices(
-            "TEST_PIPELINE_RUNTIME_IMAGE", "TEST_RADAR_SWARM_IMAGE"
-        ),
-    )
-    TEST_PIPELINE_MQTT_IMAGE: str = "eclipse-mosquitto:2.0"
-
-
-def broker_configuration() -> bytes:
-    output = io.BytesIO()
-    contents = b"listener 1883 0.0.0.0\nallow_anonymous true\npersistence false\n"
-    with tarfile.open(fileobj=output, mode="w") as archive:
-        member = tarfile.TarInfo("offkey-pipeline-test.conf")
-        member.size = len(contents)
-        member.mode = 0o444
-        archive.addfile(member, io.BytesIO(contents))
-    return output.getvalue()
+# A runtime no replica runs: its jobs wait for room that never comes.
+NOWHERE = "registry/radar:nowhere"
 
 
 @pytest_asyncio.fixture
 async def activation_runtime(pipeline_database, monkeypatch):
-    options = SwarmFixtureSettings()
-    if not options.TEST_RADAR_DOCKER:
-        pytest.skip("Set TEST_RADAR_DOCKER=1 for the isolated Swarm activation journey")
-    assert options.TEST_PIPELINE_DATABASE_CONTAINER, (
-        "Set TEST_PIPELINE_DATABASE_CONTAINER to the owned disposable schema fixture"
-    )
-    client = docker.from_env()
-    assert client.info().get("Swarm", {}).get("ControlAvailable")
-    identifier = uuid4().hex[:12]
-    network = client.networks.create(
-        f"offkey-pipeline-control-{identifier}",
-        driver="overlay",
-        scope="swarm",
-        attachable=True,
-    )
-    database = client.containers.get(options.TEST_PIPELINE_DATABASE_CONTAINER)
-    workloads = RadarWorkloadManager(AsyncDocker(DockerConfig(), client=client))
-    activations = []
-    broker = None
-    connected = False
-    try:
-        network.connect(database, aliases=["pipeline-fixture-postgres"])
-        connected = True
-        broker = client.containers.create(
-            options.TEST_PIPELINE_MQTT_IMAGE,
-            name=f"offkey-pipeline-mqtt-{identifier}",
-            command=["mosquitto", "-c", "/tmp/offkey-pipeline-test.conf"],
-            network=network.name,
-        )
-        broker.put_archive("/tmp", broker_configuration())
-        broker.start()
-        url = pipeline_database.kw["bind"].url
+    url = pipeline_database.kw["bind"].url
+    async with mqtt_broker() as (_, port):
         environment = {
             "ENVIRONMENT": "development",
+            # The pool's children inherit these, as from a deployed replica.
             "POSTGRES_USER": url.username,
-            "POSTGRES_PASSWORD": url.password,
-            "POSTGRES_HOST": "pipeline-fixture-postgres",
-            "POSTGRES_PORT": "5432",
+            "POSTGRES_PASSWORD": url.password or "",
+            "POSTGRES_HOST": url.host,
+            "POSTGRES_PORT": str(url.port or 5432),
             "POSTGRES_DB": url.database,
-            "TACTIC_RADAR_IMAGE": options.TEST_PIPELINE_RUNTIME_IMAGE,
-            "TACTIC_DOCKER_DEFAULT_NETWORK": network.name,
-            "TACTIC_DOCKER_ADDITIONAL_NETWORKS": "",
-            "TACTIC_DOCKER_DEFAULT_CONSTRAINTS": "",
-            "TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST": broker.name,
-            "TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT": "1883",
+            "TACTIC_RADAR_IMAGE": RUNTIME,
+            "TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST": "127.0.0.1",
+            "TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT": str(port),
             "TACTIC_RADAR_DEFAULT_MQTT_USE_TLS": "false",
             "TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH": "false",
             "TACTIC_RADAR_DEFAULT_HEALTH_CHECK_INTERVAL": "1",
@@ -119,28 +67,23 @@ async def activation_runtime(pipeline_database, monkeypatch):
         }
         for name, value in environment.items():
             monkeypatch.setenv(name, value)
+        monkeypatch.setattr(
+            radar_workloads, "get_async_session_local", lambda: pipeline_database
+        )
         clear_tactic_settings_caches()
-        yield pipeline_database, workloads, activations
-    finally:
-        for activation in activations:
-            await workloads.remove_intent(activation.service_id, None)
-            with suppress(docker.errors.NotFound):
-                job = client.services.get(f"radar-preflight-{activation.id}")
-                await workloads.remove(job.id)
-        if broker is not None:
-            broker.remove(force=True)
-        if connected:
-            network.disconnect(database, force=True)
-        for attempt in range(30):
-            try:
-                network.remove()
-                break
-            except docker.errors.APIError:
-                if attempt == 29:
-                    raise
-                await asyncio.sleep(0.5)
-        client.close()
-        clear_tactic_settings_caches()
+        workloads = RadarWorkloadManager()
+        activations = []
+        engine = pipeline_database.kw["bind"]
+        try:
+            async with running_pool(
+                engine, code=None, poll_seconds=0.2, lease_seconds=10.0
+            ):
+                yield pipeline_database, workloads, activations
+                for activation in activations:
+                    await workloads.remove_intent(activation.service_id, None)
+                    await PipelinePreflight(workloads).remove_for(activation.id)
+        finally:
+            clear_tactic_settings_caches()
 
 
 async def drive_activation(sessions, workloads, identifier, *, until="succeeded"):
@@ -168,7 +111,7 @@ async def submit_activation(
             PipelineActivationRequest(
                 revision_id=revision_id,
                 bindings={"value": "current"},
-                display_name="Isolated Swarm monitor",
+                display_name="Isolated pool monitor",
                 idempotency_key=key or str(uuid4()),
                 replace_service_id=predecessor,
             )
@@ -193,45 +136,18 @@ async def test_preflight_cancellation_preserves_a_foreign_name_collision(
         )
         revision = await library.publish(design.id, PipelinePublish(expected_version=1))
     activation = await submit_activation(sessions, workloads, owned, revision.id)
-    image = await PipelinePreflight(workloads).resolve_image()
-    # This fixture owns the synthetic foreign job and removes it explicitly.
+    # This test owns the synthetic foreign job and removes it explicitly.
     # Application cancellation must not remove it just because the name matches.
-    labels = {
-        "managed_by": "foreign-fixture",
-        "off-key.integration-owner": f"foreign-preflight-{activation.id}",
-    }
-    foreign = await workloads.async_docker.run(
-        workloads.async_docker.client.services.create,
-        image=image,
+    foreign = await workloads.submit(
         name=f"radar-preflight-{activation.id}",
-        # Python is PID 1 here, so explicitly handle SIGTERM rather than making
-        # cleanup depend on Swarm's forced-kill deadline and task-start timing.
-        command=[
-            "/app/bin/python",
-            "-c",
-            "import signal, sys, time; "
-            "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0)); "
-            "print('foreign-preflight-ready', flush=True); time.sleep(120)",
-        ],
-        restart_policy=docker.types.RestartPolicy(condition="none"),
-        labels=labels,
-        container_labels=labels,
+        kind="preflight",
+        module="foreign.job",
+        runtime=NOWHERE,
+        environment={},
+        labels={"managed_by": "foreign-fixture"},
+        restart=False,
     )
     try:
-        async with asyncio.timeout(30):
-            while True:
-                tasks = await workloads.async_docker.run(foreign.tasks)
-                running = [
-                    task for task in tasks if task["Status"]["State"] == "running"
-                ]
-                if running and b"foreign-preflight-ready" in (
-                    await workloads.async_docker.run(
-                        lambda: b"".join(foreign.logs(stdout=True, stderr=True))
-                    )
-                ):
-                    foreign_task_id = running[0]["ID"]
-                    break
-                await asyncio.sleep(0.05)
         async with sessions() as session:
             controller = PipelineActivations(session, workloads=workloads)
             await controller.cancel(activation.id)
@@ -239,14 +155,10 @@ async def test_preflight_cancellation_preserves_a_foreign_name_collision(
             progress = await controller.get(activation.id)
             assert progress.phase == "cancelling"
             assert "different owner" in progress.error
-        retained = await workloads.async_docker.run(
-            workloads.async_docker.client.services.get, foreign.id
-        )
-        assert retained.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] == 1
-        assert any(
-            task["ID"] == foreign_task_id and task["Status"]["State"] == "running"
-            for task in await workloads.async_docker.run(foreign.tasks)
-        )
+        retained = await workloads.get(foreign.id)
+        assert retained is not None and retained.labels == foreign.labels
+        async with sessions() as session:
+            assert (await session.get(RadarWorkload, foreign.id)).desired == "run"
     finally:
         await workloads.remove(foreign.id)
     await drive_activation(sessions, workloads, activation.id, until="failed")
@@ -262,7 +174,7 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
         library = PipelineLibrary(session)
         design = await library.create(
             PipelineCreate(
-                name="Swarm integration",
+                name="Pool integration",
                 definition=pipeline_catalog().templates[1].definition,
             )
         )
@@ -271,13 +183,12 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
         )
     first = await submit_activation(sessions, workloads, owned, first_revision.id)
     await drive_activation(sessions, workloads, first.id)
-    predecessor_workload_id = workloads.async_docker.client.services.get(
-        f"radar-{first.service_id}"
-    ).id
+    predecessor = await workloads.find(first.service_id)
+    assert predecessor is not None and predecessor.state == "running"
     async with sessions() as session:
         row = await session.get(PipelineActivation, first.id)
         assert row.preflight["ok"]
-        assert row.image_digest.startswith("sha256:") or "@sha256:" in row.image_digest
+        assert row.image_digest == RUNTIME
         assert (
             await session.get(MonitoringService, first.service_id)
         ).operational_updated_at is not None
@@ -296,15 +207,10 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
         sessions, workloads, owned, second_revision.id, predecessor=first.service_id
     )
     await drive_activation(sessions, workloads, second.id, until="starting")
-    # No successor has started while the predecessor's tasks can still execute.
-    tasks = await workloads._remaining_service_tasks(predecessor_workload_id)
-    assert all(
-        task.get("Status", {}).get("State")
-        in {"shutdown", "complete", "failed", "rejected", "remove"}
-        for task in tasks
-    )
-    with pytest.raises(docker.errors.NotFound):
-        workloads.async_docker.client.services.get(f"radar-{first.service_id}")
+    # No successor has started while the predecessor's child could still run:
+    # its row goes only once the pool confirmed the child ended.
+    assert await workloads.get(predecessor.id) is None
+    assert await workloads.find(first.service_id) is None
     async with sessions() as session:
         row = await session.get(PipelineActivation, second.id)
         with pytest.raises(ValueError, match="pending pipeline activation"):
@@ -332,35 +238,30 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
     async with sessions() as session:
         await PipelineActivations(session, workloads=workloads).cancel(third.id)
     await drive_activation(sessions, workloads, third.id, until="cancelled")
-    assert workloads.async_docker.client.services.get(f"radar-{second.service_id}")
-    # A lost create may arrive after cancellation's NotFound response. The
-    # controller-scoped sweep must reap that real delayed job without touching B.
+    assert await workloads.find(second.service_id) is not None
+    # A lost create may arrive after cancellation found nothing. The sweep must
+    # reap that delayed job without touching B.
     async with sessions() as session:
         cancelled = await session.get(PipelineActivation, third.id)
         configuration = RadarStartConfig.model_validate(cancelled.launch_config)
         preflight = PipelinePreflight(workloads)
         image = await preflight.resolve_image()
-        await preflight._create(third.id, configuration.pipeline, image)
+        await preflight._ensure(third.id, configuration.pipeline, image)
         await PreflightOrphans(session, workloads).sweep()
-    with pytest.raises(docker.errors.NotFound):
-        workloads.async_docker.client.services.get(f"radar-preflight-{third.id}")
-    assert workloads.async_docker.client.services.get(f"radar-{second.service_id}")
-    # An unschedulable real job must fail boundedly after confirmed cleanup.
-    monkeypatch.setenv(
-        "TACTIC_DOCKER_DEFAULT_CONSTRAINTS",
-        f"node.labels.offkey_fixture_{uuid4().hex} == true",
-    )
+    assert await workloads.find_named(f"radar-preflight-{third.id}") is None
+    assert await workloads.find(second.service_id) is not None
+    # A job no replica can run must fail boundedly after confirmed cleanup.
+    monkeypatch.setenv("TACTIC_RADAR_IMAGE", NOWHERE)
     monkeypatch.setenv("TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS", "5")
     clear_tactic_settings_caches()
     rejected = await submit_activation(
         sessions, workloads, owned, first_revision.id, predecessor=second.service_id
     )
     failure = await drive_activation(sessions, workloads, rejected.id, until="failed")
-    assert "timed out" in failure.error
-    assert workloads.async_docker.client.services.get(f"radar-{second.service_id}")
-    with pytest.raises(docker.errors.NotFound):
-        workloads.async_docker.client.services.get(f"radar-preflight-{rejected.id}")
-    monkeypatch.setenv("TACTIC_DOCKER_DEFAULT_CONSTRAINTS", "")
+    assert "timed out: no RADAR pool replica has room" in failure.error
+    assert await workloads.find(second.service_id) is not None
+    assert await workloads.find_named(f"radar-preflight-{rejected.id}") is None
+    monkeypatch.setenv("TACTIC_RADAR_IMAGE", RUNTIME)
     monkeypatch.setenv("TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS", "90")
     clear_tactic_settings_caches()
     # A newer stop during preflight supersedes replacement and cannot be undone.
@@ -373,5 +274,4 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
             session, workloads=workloads
         ).delete_radar_service(second.service_id)
     await drive_activation(sessions, workloads, fourth.id, until="cancelled")
-    with pytest.raises(docker.errors.NotFound):
-        workloads.async_docker.client.services.get(f"radar-{fourth.service_id}")
+    assert await workloads.find(fourth.service_id) is None

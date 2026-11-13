@@ -92,9 +92,8 @@ deployment selection alone deliberately does not overwrite saved configuration.
    It shares production's non-secret defaults and image manifest, never its vault.
    The whole demo runs on one worker. Choose the one with the most free CPU and
    memory, list it as both backend and frontend node, and label it once from the
-   manager with `docker node update --label-add offkey-demo=true <worker>`. Only
-   the demo's socket proxy runs on a manager. Production's labels and nodes are
-   left alone.
+   manager with `docker node update --label-add offkey-demo=true <worker>`.
+   Production's labels and nodes are left alone.
 2. Copy `group_vars/all/vault.yml.example` to the ignored `vault.yml`, fill it
    with dedicated credentials and encrypt it with `ansible-vault`. Generate a
    separate 32–72 byte viewer password, for example `openssl rand -hex 32`.

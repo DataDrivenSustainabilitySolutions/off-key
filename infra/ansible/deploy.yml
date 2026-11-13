@@ -18,15 +18,6 @@
             name: nfs_server
           when: broker_route_enabled | default(false) | bool
 
-        - name: Seed the exact RADAR image on backend nodes
-          include_role:
-            name: radar_image_seed
-            apply:
-              delegate_to: "{{ backend_node }}"
-          loop: "{{ groups['swarm_backend'] }}"
-          loop_control:
-            loop_var: backend_node
-
         - name: Submit the production release
           include_role:
             name: stack_deploy

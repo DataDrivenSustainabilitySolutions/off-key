@@ -12,7 +12,7 @@ from .monitor_intent import (
     request_stop_values,
     retire_workload,
 )
-from .radar_workloads import RadarWorkloadManager, get_async_docker
+from .radar_workloads import RadarWorkloadManager
 
 
 class CollectionMonitorService:
@@ -23,7 +23,7 @@ class CollectionMonitorService:
         if not affected:
             return
         # The caller holds the catalog lock. Commit stop intent independently:
-        # Docker removal cannot be rolled back with a failed catalog transaction.
+        # Workload removal cannot be rolled back with a failed catalog transaction.
         sessions = get_async_session_local()
         ids = [item["id"] for item in affected]
         async with sessions.begin() as session:
@@ -39,10 +39,10 @@ class CollectionMonitorService:
 
         # At this point the catalogue caller has only prepared/validated a change.
         # Persisted stop intent survives cancellation; release its catalogue and
-        # row locks before waiting for Docker and revalidate revisions afterward.
+        # row locks before waiting for the pool and revalidate revisions afterward.
         await self.session.commit()
 
-        workloads = RadarWorkloadManager(get_async_docker())
+        workloads = RadarWorkloadManager()
         for monitor_id in ids:
             try:
                 async with sessions.begin() as session:

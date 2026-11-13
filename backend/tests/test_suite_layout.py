@@ -10,9 +10,7 @@ TESTS = Path(__file__).parent
 # Gate variable -> marker of the lane that provides it. Database tests are marked
 # automatically from their fixtures (conftest.DATABASE_FIXTURES).
 LANES = {
-    "TEST_RADAR_DOCKER": "radar_integration",
-    "TEST_RADAR_SWARM_IMAGE": "radar_integration",
-    "TEST_PIPELINE_DATABASE_CONTAINER": "radar_integration",
+    "TEST_RADAR_IMAGE": "radar_integration",
     "OFFKEY_COLLECTION_INTEGRATION": "collection_stack",
     "OFFKEY_DEPLOYMENT_REHEARSAL": "deployment",
     "RUN_ADAPTIVE_E2E": "deployment",

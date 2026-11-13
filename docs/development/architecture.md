@@ -30,15 +30,14 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 - `emqx-main`, plus optional `emqx-worker`: internal broker.
 - `source-broker`: deterministic local source telemetry broker.
 - `mailpit`: local mail capture for authentication flows.
-- `socket-proxy`: restricted Docker API access for TACTIC and the API.
 
 ## Service responsibilities and interplay
 
 | Service | Owns | Reads from | Writes to | Critical dependencies |
 | --- | --- | --- | --- | --- |
 | Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway, reached through `/api` on the frontend's own origin |
-| API Gateway | The route contract, membership, catalogue, monitors, live views and broker checks | Database, Docker API proxy, brokers, model catalogue | Database, monitor stops and removals | Database, Docker API |
-| TACTIC worker | Source recording, pipeline activations and RADAR reconciliation | Database, Docker API proxy, brokers | Database and container lifecycle | Docker API, database |
+| API Gateway | The route contract, membership, catalogue, monitors, live views and broker checks | Database, brokers, model catalogue | Database, monitor stops and removals | Database |
+| TACTIC worker | Source recording, pipeline activations and RADAR reconciliation | Database, brokers | Database, including RADAR workload rows | Database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |
 | MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
 | EMQX | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |
@@ -82,14 +81,18 @@ See [Collection](../operations/system-collection.md) for revision transitions an
    the static-baseline or adaptive-stream lane.
 6. Runtime state and processing stages are surfaced through the Gateway.
 
-Reconciliation ends its database snapshot transaction before inspecting Docker
-with bounded concurrency. It applies observations in short row transactions after
-checking the workload generation again, preserving newer runtime heartbeats.
-Stopping scales a Swarm service to zero and waits for acknowledged task shutdown
-before releasing its input claim. Retiring task records are checked even if the
-service was externally removed. Unknown or orphaned tasks and Docker failures
-retain the claim for retry; lifecycle cleanup relies on an available Swarm
-manager with authoritative task records during node recovery.
+Monitors and preflight jobs are rows of `radar_workloads`. TACTIC writes the
+row; replicas of the RADAR pool (`mqtt-radar`) lease rows pinned to their own
+image with `FOR UPDATE SKIP LOCKED` and run each as a child process. A replica
+renews its leases every poll and kills its children if it cannot renew for half
+the lease, so no row runs twice. TACTIC has no Docker access.
+
+Reconciliation reads the workload rows and applies observations in short row
+transactions after checking the workload generation again, preserving newer
+runtime heartbeats. A running row whose lease lapsed reads as pending until
+another replica claims it. Stopping sets the row's intent to stop and waits
+until the pool reports the child ended before releasing the input claim; only
+then is the row removed. See [RADAR deployment capacity](../operations/radar-capacity.md).
 
 Collection changes persist stop intent and release catalogue locks while affected
 workloads stop. They recheck both catalogue and collection revisions before
@@ -135,7 +138,7 @@ API liveness says nothing about the database; TACTIC readiness says the worker r
 | Symptom | Likely breakpoint | First checks |
 | --- | --- | --- |
 | Frontend loads but has no data | API database path | API health and logs, database health |
-| Monitoring start fails | Model validation, sensor ownership, or Docker API | TACTIC readiness and logs, `/v1/detectors`, active monitors |
+| Monitoring start fails | Model validation, sensor ownership, or no pool replica for the pinned image | TACTIC readiness and logs, `mqtt-radar` logs, `/v1/detectors`, active monitors |
 | Telemetry is missing | Source, proxy parsing, or database write | Source publish, proxy logs/readiness, database health |
 | Evidence is absent | RADAR workload or broker topic path | Service list, RADAR logs, EMQX stream |
 | Authentication email is missing | SMTP configuration | Mail service logs and `EMAIL_*` transport settings |

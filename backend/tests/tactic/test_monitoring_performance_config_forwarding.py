@@ -280,7 +280,7 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
     module = "off_key_tactic_middleware.services.orchestration.radar_environment"
     with (
         patch(f"{module}.get_tactic_settings", return_value=settings),
-        patch(f"{module}.get_radar_container_runtime_settings", return_value=runtime),
+        patch(f"{module}.get_radar_runtime_settings", return_value=runtime),
     ):
         env = build_radar_environment(
             service_id="svc", config=config, validate_params=True
@@ -389,7 +389,7 @@ def test_tactic_operational_status_marks_failed_from_docker_exit():
     )
     status = derive_operational_status(service, "exited")
     assert status["stage"] == "failed"
-    assert status["error"] == "Docker workload is exited"
+    assert status["error"] == "RADAR workload is exited"
     assert status["is_stale"] is False
 
 

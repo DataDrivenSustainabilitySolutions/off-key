@@ -69,6 +69,7 @@ from .table_contracts import (
     monitoring_evidence_table,
     radar_runtime_checkpoints_table,
 )
+from .workloads import RadarWorkload as RadarWorkload
 
 # Migration 023 adds this check; databases adopted before it lack it.
 DESIRED_STATE_CHECK = "ck_services_desired_state"

@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-import docker
 import pytest
 from off_key_tactic_middleware.services.orchestration import (
     reconciliation as reconciliation_module,
@@ -15,8 +14,7 @@ from off_key_tactic_middleware.services.orchestration.reconciliation import (
 )
 from off_key_tactic_middleware.services.orchestration.time_utils import coerce_utc
 
-from tests.support.docker import FakeAsyncDocker
-from tests.support.orchestration import purge_results, scalars_result
+from tests.support.orchestration import FakeWorkloads, purge_results, scalars_result
 
 
 def _service(
@@ -42,19 +40,18 @@ def _service(
     )
 
 
-def _reconciler(*, retention_hours: int, docker_statuses: list[str]):
+def _reconciler(*, retention_hours: int, workload_statuses: list[str]):
     service = RadarStatusReconciliationService(
         terminal_service_retention_hours=retention_hours,
-        async_docker=FakeAsyncDocker(),
+        workloads=FakeWorkloads(workload_statuses),
     )
-    service._get_docker_status = AsyncMock(side_effect=docker_statuses)
     service._remove_workload_if_present = AsyncMock(return_value=False)
     return service
 
 
 @pytest.fixture(autouse=True)
 def execution_locks(monkeypatch):
-    # These tests isolate Docker reconciliation with explicit mock DB boundaries.
+    # These tests isolate reconciliation with explicit mock DB boundaries.
     monkeypatch.setattr(reconciliation_module, "lock_execution_records", AsyncMock())
 
 
@@ -73,7 +70,7 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
     )
     reconciliation = _reconciler(
         retention_hours=24,
-        docker_statuses=[],
+        workload_statuses=[],
     )
 
     session = AsyncMock()
@@ -92,11 +89,11 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
 
 
 @pytest.mark.asyncio
-async def test_reconciliation_revives_inactive_rows_when_docker_is_running():
+async def test_reconciliation_revives_inactive_rows_when_the_pool_runs_them():
     service = _service(service_id="live", status=False, desired_state="running")
     reconciliation = _reconciler(
         retention_hours=24,
-        docker_statuses=["running"],
+        workload_statuses=["running"],
     )
 
     session = AsyncMock()
@@ -124,7 +121,7 @@ async def test_reconciliation_retains_desired_running_legacy_claims(previous_sta
     )
     reconciliation = _reconciler(
         retention_hours=0,
-        docker_statuses=["not_found"],
+        workload_statuses=["not_found"],
     )
 
     session = AsyncMock()
@@ -145,7 +142,7 @@ async def test_reconciliation_skips_retry_later_statuses_without_mutation():
     service = _service(service_id="retry", status=True)
     reconciliation = _reconciler(
         retention_hours=24,
-        docker_statuses=["error"],
+        workload_statuses=["error"],
     )
     session = AsyncMock()
     session.execute = AsyncMock(return_value=scalars_result(all=[service]))
@@ -160,15 +157,12 @@ async def test_reconciliation_skips_retry_later_statuses_without_mutation():
 
 @pytest.mark.asyncio
 async def test_reconcile_workload_removal_returns_false_when_missing():
-    fake_docker = FakeAsyncDocker()
-    fake_docker.client.services.get = MagicMock(
-        side_effect=docker.errors.NotFound("missing")
-    )
-
-    reconciler = RadarStatusReconciliationService(async_docker=fake_docker)
+    workloads = FakeWorkloads([])
+    workloads.remove = AsyncMock(return_value=False)
+    reconciler = RadarStatusReconciliationService(workloads=workloads)
 
     assert await reconciler._remove_workload_if_present("ctr-1") is False
-    fake_docker.client.services.get.assert_called_once_with("ctr-1")
+    workloads.remove.assert_awaited_once_with("ctr-1")
 
 
 @pytest.mark.asyncio
@@ -181,7 +175,7 @@ async def test_reconciliation_keeps_running_rows_even_with_stale_heartbeat():
     )
     reconciliation = _reconciler(
         retention_hours=0,
-        docker_statuses=["running"],
+        workload_statuses=["running"],
     )
 
     session = AsyncMock()
@@ -230,7 +224,7 @@ def test_is_purge_due_without_reference_time_depends_only_on_zero_retention(
     )
     reconciler = RadarStatusReconciliationService(
         terminal_service_retention_hours=retention_hours,
-        async_docker=FakeAsyncDocker(),
+        workloads=FakeWorkloads([]),
     )
     assert reconciler._is_purge_due(service) is due
 
@@ -267,7 +261,7 @@ def test_apply_terminal_operational_status_marks_error_only_for_failed_state():
     apply_terminal_operational_status(stopped_service, "stopped")
 
     assert failed_service.operational_stage == "failed"
-    assert failed_service.operational_status["error"] == "Docker workload is failed"
+    assert failed_service.operational_status["error"] == "RADAR workload is failed"
     assert stopped_service.operational_stage == "stopped"
     assert "error" not in stopped_service.operational_status
 
@@ -277,7 +271,7 @@ async def test_one_failing_row_does_not_block_the_rest_of_the_pass():
     broken = _service(service_id="broken", status=False, desired_state="running")
     healthy = _service(service_id="healthy", status=False, desired_state="running")
     reconciliation = _reconciler(
-        retention_hours=24, docker_statuses=["running", "running"]
+        retention_hours=24, workload_statuses=["running", "running"]
     )
     session = AsyncMock()
     session.execute = AsyncMock(return_value=scalars_result(all=[broken, healthy]))
@@ -296,7 +290,7 @@ async def test_lost_database_connection_still_aborts_the_pass():
     first = _service(service_id="first", status=False, desired_state="running")
     second = _service(service_id="second", status=False, desired_state="running")
     reconciliation = _reconciler(
-        retention_hours=24, docker_statuses=["running", "running"]
+        retention_hours=24, workload_statuses=["running", "running"]
     )
     session = AsyncMock()
     session.execute = AsyncMock(return_value=scalars_result(all=[first, second]))
@@ -323,7 +317,7 @@ def _managed(stage: str):
 @pytest.mark.asyncio
 async def test_first_terminal_observation_of_a_managed_worker_only_records_it():
     service = _managed("operational")
-    reconciliation = _reconciler(retention_hours=24, docker_statuses=["failed"])
+    reconciliation = _reconciler(retention_hours=24, workload_statuses=["failed"])
     session = AsyncMock()
     session.execute = AsyncMock(return_value=scalars_result(all=[service]))
     session.get.return_value = service
@@ -337,16 +331,18 @@ async def test_first_terminal_observation_of_a_managed_worker_only_records_it():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("docker_status", ["failed", "complete", "not_found"])
+@pytest.mark.parametrize("workload_status", ["failed", "complete", "not_found"])
 async def test_a_worker_swarm_stopped_restarting_fails_its_run_and_stops(
-    docker_status,
+    workload_status,
 ):
     """The stage a previous pass persisted shows no restart happened since."""
     service = _managed("failed")
     run = SimpleNamespace(
         id="run", status="running", ended_at=None, error=None, final_status=None
     )
-    reconciliation = _reconciler(retention_hours=24, docker_statuses=[docker_status])
+    reconciliation = _reconciler(
+        retention_hours=24, workload_statuses=[workload_status]
+    )
     session = AsyncMock()
     session.add = MagicMock()
     session.execute = AsyncMock(return_value=scalars_result(all=[service]))
@@ -356,7 +352,7 @@ async def test_a_worker_swarm_stopped_restarting_fails_its_run_and_stops(
     await reconciliation._reconcile_with_session(session)
 
     assert run.status == "failed" and run.ended_at is not None
-    assert docker_status in run.error
+    assert workload_status in run.error
     assert service.desired_state == "stopped"
     assert service.stop_requested_at is not None
     assert service.lifecycle_version == 4
@@ -369,7 +365,7 @@ async def test_a_worker_swarm_stopped_restarting_fails_its_run_and_stops(
 async def test_a_heartbeat_between_passes_defers_the_verdict():
     service = _managed("failed")
     later = datetime.now(UTC)
-    reconciliation = _reconciler(retention_hours=24, docker_statuses=["failed"])
+    reconciliation = _reconciler(retention_hours=24, workload_statuses=["failed"])
     session = AsyncMock()
     session.execute = AsyncMock(return_value=scalars_result(all=[service]))
 

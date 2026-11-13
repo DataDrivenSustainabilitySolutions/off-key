@@ -20,15 +20,12 @@ services:
 
   api:
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
-    # Monitor stops reach Docker; live views and broker checks reach brokers.
+    # Live views and broker checks reach brokers.
     networks:
       app-network:
         aliases:
           - api-gateway
-      socket-network:
       emqx-network:
-    environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
     # Clients reach the API under /api, which the proxy strips; the root path
     # puts that prefix in the OpenAPI `servers` entry and keeps /api/docs working.
     command: ["uvicorn", "off_key_api_gateway.main:app",
@@ -51,12 +48,10 @@ services:
 
   tactic:
     image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    # Writes RADAR workload rows; the pool runs them. No Docker access.
     networks:
       - app-network
-      - socket-network
       - emqx-network
-    environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
     # Liveness only: Swarm replaces a task that stops answering. The long start
     # period covers slow starts such as a migration holding the database lock.
@@ -70,52 +65,6 @@ services:
       replicas: 1
       placement:
         constraints: ["${FRONTEND_CONSTRAINT:-node.labels.frontend == true}"]
-      restart_policy:
-        condition: any
-
-  socket-proxy:
-    image: "${SOCKET_PROXY_IMAGE:-tecnativa/docker-socket-proxy:latest}"
-    networks:
-      - socket-network
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-    environment:
-      - LOG_LEVEL=info # debug,info,notice,warning,err,crit,alert,emerg
-      ## Variables match the URL prefix (i.e. AUTH blocks access to /auth/* parts of the API, etc.).
-      # 0 to revoke access.
-      # 1 to grant access.
-      ## Granted by Default
-      - EVENTS=1
-      - PING=1
-      - VERSION=1
-      ## Revoked by Default
-      # Security critical
-      - AUTH=0
-      - SECRETS=0
-      - POST=1 # Container(s) Lifecycle Management
-      # Not always needed
-      - BUILD=0
-      - COMMIT=0
-      - CONFIGS=0
-      - CONTAINERS=1 # Traefik, portainer, etc.
-      - DISTRIBUTION=0
-      - EXEC=0
-      - IMAGES=1 # Portainer
-      - INFO=1 # Portainer
-      - NETWORKS=1 # Portainer
-      - NODES=0
-      - PLUGINS=0
-      - SERVICES=1 # Portainer
-      - SESSION=0
-      - SWARM=0
-      - SYSTEM=0
-      - TASKS=1 # Portainer
-      - VOLUMES=1 # Portainer
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
       restart_policy:
         condition: any
 
@@ -223,21 +172,38 @@ services:
       restart_policy:
         condition: any
 
-  # Secret template for TACTIC-managed RADAR workers; never scaled. TACTIC finds it
-  # through TACTIC_RADAR_SECRET_SERVICE and copies only its secret references.
+  # The RADAR worker pool. Each replica leases rows of radar_workloads that are
+  # pinned to its own image and runs each monitor or preflight job as a child.
+  # Monitors inherit this service's database login and secrets; preflight jobs
+  # get a scrubbed environment (the secret files stay readable in the task).
+  # Scale replicas for more monitors.
   mqtt-radar:
     image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.pool" ]
     networks:
       - app-network
       - emqx-network
+    # Liveness: the replica answers 503 once it can no longer renew its leases.
+    healthcheck:
+      test: ["CMD", "/app/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8030/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 1m
+    # A replica stops its children before it exits so another replica can take
+    # their rows at once instead of after the lease expires.
+    stop_grace_period: 60s
     deploy:
-      replicas: 0
+      replicas: ${RADAR_POOL_REPLICAS:-1}
       placement:
         constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
+      resources:
+        limits:
+          memory: ${RADAR_POOL_MEMORY_LIMIT:-4G}
       restart_policy:
         condition: any
-
+      update_config:
+        order: start-first
 
   emqx-main:
     image: "${EMQX_IMAGE:-emqx/emqx:5.8.7}"
@@ -287,11 +253,6 @@ networks:
       com.docker.network.driver.mtu: 1280
       # encrypted: "true"
     attachable: true
-  socket-network:
-    driver: overlay
-    driver_opts:
-      com.docker.network.driver.mtu: 1280
-      # encrypted: "true"
   emqx-network:
     driver: overlay
     attachable: true

@@ -14,8 +14,7 @@ admin_ingress_enabled: false
 observability_enabled: false
 broker_route_enabled: false
 tactic_radar_max_active_monitors: "6"
-tactic_docker_default_network: "{{ stack_name }}_emqx-network"
-tactic_docker_additional_networks: "{{ stack_name }}_app-network"
+radar_pool_capacity: "6"
 stack_replaced_services: []
 stack_retired_secret_keys: []
 stack_retired_files: []
@@ -34,8 +33,6 @@ demo_feed_selection:
 # Run the whole demo on one worker, away from the manager and production's
 # nodes. Label it once from the manager:
 #   docker node update --label-add offkey-demo=true <worker>
-# Only the socket proxy stays on a manager, because it talks to the Swarm API.
 stack_backend_constraint: node.labels.offkey-demo == true
 stack_frontend_constraint: node.labels.offkey-demo == true
 stack_ingress_constraint: node.labels.offkey-demo == true
-tactic_docker_default_constraints: node.labels.offkey-demo == true

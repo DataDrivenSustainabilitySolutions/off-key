@@ -59,6 +59,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `monitoring_pipeline_activations` | `id` | Idempotent activation requests and their phase through preflight, start and heartbeat |
 | `monitoring_pipeline_run_events` | `id` | A run's lifecycle events (setup phases, stage changes, data gaps, worker crashes, end), kept after its service is purged |
 | `radar_runtime_checkpoints` | `service_id` | Signed detector checkpoint for each running RADAR service |
+| `radar_workloads` | `id` | What the RADAR pool runs: one row per monitor or preflight job, with its runtime, environment and memory limit, the control plane's `desired` intent, and the pool's report (`state`, the replica holding its lease and until when, attempts, exit code and the last ten crashes). A replica claims a row with a lease and runs it as a child process |
 
 ### Dojo
 

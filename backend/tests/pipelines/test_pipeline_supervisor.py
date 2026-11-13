@@ -1,11 +1,10 @@
-"""Real durable activation scheduling with controlled remote Docker I/O."""
+"""Real durable activation scheduling with controlled RADAR pool I/O."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import docker
 import pytest
 from off_key_core.db.models import MonitoringService, PipelineActivation
 from off_key_core.models.pipelines import pipeline_catalog_id
@@ -46,10 +45,7 @@ async def test_slow_preflight_and_cleanup_do_not_delay_heartbeat_or_queued_cance
     monkeypatch.setattr(PipelinePreflight, "run", remote_preflight)
     monkeypatch.setattr(PreflightOrphans, "sweep", remote_cleanup)
     workloads = SimpleNamespace(
-        async_docker=SimpleNamespace(
-            client=SimpleNamespace(services=SimpleNamespace(get=None)),
-            run=AsyncMock(side_effect=docker.errors.NotFound("no preflight")),
-        ),
+        find_named=AsyncMock(return_value=None),
         remove_intent=AsyncMock(),
     )
     async with pipeline_database() as session:

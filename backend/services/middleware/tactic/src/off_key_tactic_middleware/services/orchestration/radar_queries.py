@@ -1,6 +1,5 @@
 """Read projections of monitoring services for the TACTIC API."""
 
-import asyncio
 from typing import Any
 
 from off_key_core.db.collection_runtime import read_collection_runtime
@@ -42,9 +41,9 @@ def service_summary(
 ) -> dict[str, Any]:
     configuration = service.launch_config or {}
     monitoring = configuration.get("monitoring") or {}
-    docker_status, labels = probe if probe is not None else (None, {})
+    workload_status, labels = probe if probe is not None else (None, {})
     operational_status = _public_status(
-        derive_operational_status(service, docker_status), configuration
+        derive_operational_status(service, workload_status), configuration
     )
     # Large graph snapshots are returned only for the selected service.
     operational_status.pop("pipeline_state", None)
@@ -67,7 +66,7 @@ def service_summary(
         "created_at": _created_at(service),
     }
     if probe is not None:
-        summary["docker_status"] = docker_status
+        summary["workload_status"] = workload_status
     return summary
 
 
@@ -77,9 +76,9 @@ class RadarServiceQueries:
         self.workloads = workloads
 
     async def list(
-        self, *, active_only: bool = False, include_docker_status: bool = False
+        self, *, active_only: bool = False, include_workload_status: bool = False
     ) -> list[dict[str, Any]]:
-        """List services; Docker labels override saved strategy when probed."""
+        """List services; workload labels override saved strategy when probed."""
         query = select(MonitoringService)
         if active_only:
             query = query.where(MonitoringService.status.is_(True))
@@ -88,16 +87,12 @@ class RadarServiceQueries:
         services = result.scalars().all()
         catalogue = (await read_collection_runtime(self.session)).catalog
 
-        if not include_docker_status:
+        if not include_workload_status:
             return [service_summary(service, catalogue) for service in services]
 
-        # Probes share at most half of AsyncDocker's slots, so a large listing
-        # cannot hold up creating, scaling or removing workloads.
-        probes = await asyncio.gather(
-            *(
-                self.workloads.get_status_and_labels(item.container_id, probe=True)
-                for item in services
-            )
+        # One read answers the whole listing.
+        probes = await self.workloads.statuses_and_labels(
+            [item.container_id for item in services]
         )
         return [
             service_summary(service, catalogue, probe)
@@ -105,14 +100,14 @@ class RadarServiceQueries:
         ]
 
     async def get(self, service_id: str) -> dict[str, Any] | None:
-        """One service; saved configuration wins over Docker labels."""
+        """One service; saved configuration wins over workload labels."""
         service = await find_service(self.session, service_id)
         if not service:
             return None
         catalogue = (await read_collection_runtime(self.session)).catalog
 
-        # Check actual workload status in Docker
-        docker_service_status, labels = await self.workloads.get_status_and_labels(
+        # The pool's report of the workload
+        workload_status, labels = await self.workloads.get_status_and_labels(
             service.container_id
         )
 
@@ -130,9 +125,9 @@ class RadarServiceQueries:
             },
             "stream_ids": catalogue.watched_by(service.mqtt_topic),
             "status": service.status,
-            "docker_status": docker_service_status,
+            "workload_status": workload_status,
             "operational_status": _public_status(
-                derive_operational_status(service, docker_service_status),
+                derive_operational_status(service, workload_status),
                 configuration,
             ),
             "monitoring_strategy": monitoring.get("strategy")

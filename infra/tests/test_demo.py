@@ -35,7 +35,9 @@ class PublicDemoTests(unittest.TestCase):
                 template = templates.get_template(name)
                 self.assertIn(
                     "[Public demo](https://demo.example.org/sources)",
-                    template.render(context | {"demo_base_url": "https://demo.example.org"}),
+                    template.render(
+                        context | {"demo_base_url": "https://demo.example.org"}
+                    ),
                 )
                 self.assertNotIn("[Public demo](", template.render(context))
 

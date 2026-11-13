@@ -54,7 +54,7 @@ frontend_hostname:                    "dashboard.aberration.app"
 ingress_base_domain:                  "aberration.app"
 frontend_base_url:                    "https://dashboard.aberration.app"
 # Set after the isolated demo passes its public readiness check.
-demo_base_url:                        ""
+demo_base_url:                        "https://demo.aberration.app"
 cors_allowed_origins:                 '["https://dashboard.aberration.app"]'
 # Public documentation, linked from the landing page's llms.txt and Markdown view.
 docs_hostname:                        "docs.aberration.app"

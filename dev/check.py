@@ -83,9 +83,14 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 cd frontend
-npx vite preview --port 5173 --strictPort > /tmp/off-key-vite-preview.log 2>&1 &
+if curl --silent --output /dev/null http://localhost:5173; then
+  echo "Port 5173 is already serving; stop that server first." >&2
+  exit 1
+fi
+# Start Vite itself, not an npx wrapper, so the trap stops the server.
+./node_modules/.bin/vite preview --port 5173 --strictPort > /tmp/off-key-vite-preview.log 2>&1 &
 preview=$!
-trap 'kill $preview' EXIT
+trap 'kill $preview 2>/dev/null; wait $preview 2>/dev/null || true' EXIT
 curl --fail --silent --retry 30 --retry-all-errors --retry-delay 1 \
   http://localhost:5173 > /dev/null
 version="$(node -p "require('./node_modules/@playwright/test/package.json').version")"

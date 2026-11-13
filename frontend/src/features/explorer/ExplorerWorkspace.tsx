@@ -13,6 +13,8 @@ import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SourceScope } from "../workspace/SourceScope";
 import { CopyToDojo } from "../dojo/CopyToDojo";
+import { useDesignTest } from "../dojo/designTest";
+import { DesignTestContext } from "../pipelines/designTest";
 import { catalogueSelectionLabel, withCatalogueSource } from "../workspace/catalogue-navigation";
 import "../monitoring/monitoring.css";
 import { setSourceAppearance } from "@/domain/system/sourceAppearance";
@@ -26,6 +28,7 @@ const RetainedPipeline = lazy(() => import("../pipelines/PipelineRunView"));
 export function ExplorerWorkspace() {
   const { userId, isAuthenticated, can } = useAuth();
   const manageMonitors = can("manage_monitors");
+  const designTest = useDesignTest();
   const [params, setParams] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
     favourites: starred, toggleFavourite, openEditor, sectionHref } = useCatalogue();
@@ -90,9 +93,10 @@ export function ExplorerWorkspace() {
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p>;
     if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Device not found." : "Source not found."}</p>;
-    if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
-      initialTarget={initialTarget} initialReading={requestedReading}
-      onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>;
+    if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}>
+      <DesignTestContext.Provider value={designTest}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
+        initialTarget={initialTarget} initialReading={requestedReading}
+        onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></DesignTestContext.Provider></Suspense>;
     if (creating) return <Suspense fallback={<p className="ex-muted" role="status">Opening setup…</p>}>
       {manageMonitors ? <ServiceCreate key={`${initialTarget ?? ""}:${requestedReading ?? ""}`}
         targets={monitoringIndex.targets} services={monitoring.services}

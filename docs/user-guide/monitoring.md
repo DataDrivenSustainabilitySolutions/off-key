@@ -216,6 +216,55 @@ can come, or the number of issues. Open it to list the issues; selecting one
 opens that step. When a check cannot reach the server, the chip shows **Not
 checked** and offers **Check again**.
 
+**Test** opens **Test on history** beside the canvas, for members who may use
+the Dojo. It runs the design as it stands over recorded values in time order,
+with the same alignment, learning and scoring as a live service; nothing
+reaches Monitoring or Reporting. **Values** offers the last 24 hours, 7 days or
+30 days recorded by the readings chosen in the Input step, and every Dojo
+dataset. A window is copied into a new Dojo dataset first, named after the
+entity; later tests run on that copy, so their results compare. On a dataset
+that was not copied from these readings, **Inputs** asks which series feeds
+which input. **Run test** needs a design the check accepts and a reading or a
+series for every input. A test keeps running while you edit a step or close the
+panel: the **Test** button fills a line along its lower edge, and a notice says
+when the test has finished.
+
+The result starts with a strip over the time span of the values: the time the
+design spent learning is hatched, every alarm is a line and every label a band,
+outlined where the design missed it. Under the strip, over the same span, is
+what the design scored: each stretch of time is a bar from its lowest to its
+highest score, the boundary is a line, and a stretch that alarmed is drawn in
+the foreground colour, so it shows how far above the boundary an alarm went and
+how close the rest came. A design that alarms on conformal p-values has no
+boundary; its p-values are drawn rarer upward, and an alarm follows a run of
+rare values, not a single one. The numbers at the left edge are the values at
+the top and the bottom of the chart; a score far above the boundary is cut off
+at the top so the rest stays readable. Below are the alarms and alarms per day,
+how long the design learned and how long it was scored. Alarms that follow one
+another count once. Where the dataset has labels, the result shows how many of
+them the design detected, the median delay and the false alarms outside the
+labels instead. **Test again** after a change puts the figure of the test
+before under each figure that differs, and the result says when the design has
+changed since. A design that was still learning when the values ended has
+nothing scored; test on a longer window or shorten the learning. **Open in the
+Dojo** leads to the dataset, to mark known faults there, and **Compare runs in
+the Dojo** to its comparison once it has labels.
+
+A test also keeps what 12 to 23 of its observations looked like at every step,
+spread from the first result to the last. **Values in the last test**, folded
+under what a step does in **Step settings**, shows one of them: the features
+that went into the step under **In** and the features that came out under
+**Out**, at most the first eight of each. A detector gives one value, and the
+detection rule says whether it alarmed; the calibration step shows the rule's
+values, because the rule runs it. The latest observation comes first, since the
+design has learned the most by then, and the arrows step to earlier and later
+ones. Where a step gave nothing, it says why: it was still collecting values, it
+waited for a step before it, a Gate held the observation back, or the design
+was still learning. The fold and the observation stay as you select another
+step, so one set of readings can be followed from the Input to the detection
+rule. The values are those of the design as it was tested; after a change the
+panel says so, and a step added since has none until the next test.
+
 A design has no strategy to choose. Three settings decide how it detects:
 
 - **Detector model**, in a detector's settings, lists the models by how they

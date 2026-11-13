@@ -99,6 +99,20 @@ test("keeps an unnamed graph dirty and undoable across template browsing", async
   await expect.poll(position).toEqual(moved);
   await workbench.getByRole("button", { name: "Undo graph change", exact: true }).click();
   await expect.poll(position).toEqual(original);
+  // The design can be tried on recorded values before it monitors anything. Its panel docks where the
+  // settings do, and without a detector there is nothing to run yet.
+  await workbench.getByRole("button", { name: "Test on history", exact: true }).click();
+  await expect(workbench.getByRole("heading", { name: "Test on history", exact: true })).toBeVisible();
+  await expect(workbench.getByRole("combobox", { name: "Values", exact: true })).toHaveValue("window:week");
+  await expect(workbench.getByRole("button", { name: "Run test", exact: true })).toBeDisabled();
+  await expect(workbench.getByText("The design is not ready to run.", { exact: false })).toBeVisible();
+  await workbench.getByRole("button", { name: "Close test", exact: true }).click();
+  await expect(workbench.getByRole("heading", { name: "Test on history", exact: true })).toBeHidden();
+  // A step's settings keep the values it had in the last test folded away, and lead to the test until there is one.
+  await workbench.getByRole("button", { name: "Step settings", exact: true }).click();
+  await workbench.getByText("Values in the last test", { exact: true }).click();
+  await workbench.getByRole("button", { name: "Open the test", exact: true }).click();
+  await expect(workbench.getByRole("heading", { name: "Test on history", exact: true })).toBeVisible();
 });
 
 for (const acknowledgement of ["after returning", "while in Sources"] as const) {

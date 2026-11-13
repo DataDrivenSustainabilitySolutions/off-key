@@ -308,3 +308,9 @@
     box-shadow: 0 -8px 24px #0002;
   }
 }
+
+/* The button for the test holds a line along its lower edge while a test runs. */
+.pl-stage .pl-test-button {
+  position: relative;
+  overflow: hidden;
+}

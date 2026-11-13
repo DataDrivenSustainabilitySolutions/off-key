@@ -56,6 +56,8 @@ type Props = {
   input?: ReactNode;
   /** What the forecast service holds, for the steps whose model lives there. */
   forecast?: ForecastModels;
+  /** Shown under what a step does and above its settings, for example the values it had in a test. */
+  values?: (node: string) => ReactNode;
   onSelect: (id?: string) => void;
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
 };
@@ -71,6 +73,7 @@ export function PipelineInspector({
   content,
   input: inputContent,
   forecast,
+  values,
   onSelect,
   onChange,
 }: Props) {
@@ -257,6 +260,7 @@ export function PipelineInspector({
       {node && node.kind === "source" && inputContent ? (
         <>
           <h3>Input</h3>
+          {values?.(node.id)}
           {inputContent}
           {titleField}
           {lineage}
@@ -281,6 +285,7 @@ export function PipelineInspector({
             </p>
           )}
           {ready ? <p className="pl-help pl-ready">{readyText(ready, afterGate(document.definition, node.id))}</p> : null}
+          {values?.(node.id)}
           {node.kind === "detector" && (() => {
             const query = modelQuery.trim().toLocaleLowerCase();
             const models = catalog.components

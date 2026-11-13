@@ -21,10 +21,16 @@ import {
   normalizeView,
 } from "@/features/pipelines/contracts";
 import { pipelinesApi } from "@/features/pipelines/api";
+import { dojoApi } from "@/features/dojo/api";
+import { useDesignTest } from "@/features/dojo/designTest";
+import { DesignTestContext } from "@/features/pipelines/designTest";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { ApiRequestError } from "@/lib/api-client";
 
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
+const access = vi.hoisted(() => ({ dojo: false }));
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1,
+  can: (permission: string) => access.dojo && permission === "use_dojo" }) }));
+vi.mock("@/features/dojo/api", () => ({ dojoApi: { datasets: vi.fn(), importHistory: vi.fn(), createRun: vi.fn(), run: vi.fn() } }));
 vi.mock("@/components/theme-provider", () => ({
   useTheme: () => ({ resolvedTheme: "light" }),
 }));
@@ -158,7 +164,8 @@ const target: MonitoringTarget = { id: "room", label: "Room", inputs: [
 const telemetry = new SystemLiveTelemetry();
 vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => ({ system: { snapshot: null }, document: undefined, telemetry, liveStreamIds: [], previewStreamIds: [] }) }));
 beforeEach(() => {
-  vi.resetAllMocks(); clearNavigationDrafts();
+  vi.resetAllMocks(); clearNavigationDrafts(); access.dojo = false;
+  vi.mocked(dojoApi.datasets).mockResolvedValue({ items: [], next_offset: null });
   vi.mocked(pipelinesApi.get).mockResolvedValue(pipeline());
   vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: true, definition: normalizeDefinition(definition), issues: [], features: {}, provenance_complete: true }));
   vi.mocked(pipelinesApi.list).mockResolvedValue({ items: [], next_offset: null });
@@ -226,6 +233,66 @@ describe("simple monitoring setup", () => {
     expect(screen.getByRole("heading", { name: "Before the first alarm" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Input: Room, 3 readings" }));
     expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("tests the design on the history of its readings, for members who may use the Dojo", async () => {
+    vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ definition: normalizeDefinition(definition),
+      valid: !!definition.nodes?.some((node) => node.kind === "detector"), issues: [], features: {}, provenance_complete: true }));
+    // The screen that mounts the composer hands it the test, where the member may use the Dojo.
+    function Screen() {
+      return <MemoryRouter><DesignTestContext.Provider value={useDesignTest()}>
+        <PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></DesignTestContext.Provider></MemoryRouter>;
+    }
+    const ui = <Screen />;
+    const view = render(ui);
+    expect(screen.queryByRole("button", { name: "Test on history" })).toBeNull();
+    expect(screen.queryByText("Values in the last test")).toBeNull();
+    view.unmount();
+    access.dojo = true;
+    render(ui);
+    const open = screen.getByRole("button", { name: "Test on history" });
+    fireEvent.click(open);
+    expect(screen.getByRole("heading", { name: "Test on history" })).toBeTruthy();
+    // The detector is still to choose, so there is nothing to run yet.
+    expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Checking the design…")).toBeTruthy();
+    expect(await screen.findByText(/The design is not ready to run/, undefined, { timeout: 3000 })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close test" }));
+    expect(screen.queryByRole("heading", { name: "Test on history" })).toBeNull();
+    expect(document.activeElement).toBe(open);
+    fireEvent.click(screen.getByRole("button", { name: "Choose a detector" }));
+    fireEvent.click(within(screen.getByRole("menu", { name: "Choose a detector" })).getByRole("menuitem", { name: /Suggested$/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Three phases" } });
+    fireEvent.click(open);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(false),
+      { timeout: 3000 });
+    // The run stays queued: the button that opens the panel says so while the panel is closed.
+    vi.mocked(dojoApi.importHistory).mockResolvedValue({ id: "copy", name: "Room · last 7 days", description: "", origin: "history",
+      point_count: 3, series_count: 3, start_at: null, end_at: null, created_by: 1, created_at: "2026-10-20T10:00:00Z", source: {},
+      series: ["AC1", "AC2", "AC3"].map((id, position) => ({ id: `s-${id}`, position, name: id, unit: "A", reading_id: id,
+        point_count: 1, start_at: null, end_at: null })) });
+    const queued = { id: "run", dataset_id: "copy", name: "", status: "queued" as const, strategy: "adaptive_stream", points_total: 3,
+      points_read: 0, result_count: 0, alarm_count: 0, error: null, created_by: 1, created_at: "2026-10-20T10:00:00Z",
+      started_at: null, finished_at: null, definition: {}, bindings: [], alignment: {}, cancel_requested: false, stats: {} };
+    vi.mocked(dojoApi.createRun).mockResolvedValue(queued);
+    vi.mocked(dojoApi.run).mockResolvedValue(queued);
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
+    await waitFor(() => expect(dojoApi.createRun).toHaveBeenCalled());
+    expect(vi.mocked(dojoApi.importHistory).mock.calls[0]![0]).toMatchObject({ name: "Room · last 7 days", reading_ids: ["AC1", "AC2", "AC3"] });
+    const started = vi.mocked(dojoApi.createRun).mock.calls[0]![0];
+    expect(started.name).toMatch(/^Three phases · /);
+    expect(new Set(Object.values(started.bindings))).toEqual(new Set(["s-AC1", "s-AC2", "s-AC3"]));
+    expect(started.definition.nodes?.some((node) => node.kind === "detector")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close test" }));
+    expect(await screen.findByRole("button", { name: "Test on history, waiting…" })).toBeTruthy();
+    // A step's settings hold the values it had in the last test, folded until asked for.
+    fireEvent.click(screen.getByRole("button", { name: "Step settings" }));
+    const values = screen.getByText("Values in the last test").closest("details")!;
+    expect(values.open).toBe(false);
+    values.open = true;
+    fireEvent(values, new Event("toggle"));
+    expect(await within(values).findByText(/^The test is running\. The values that go into this step/)).toBeTruthy();
   });
 
   it("blocks an empty selection and excludes collection-off readings from Select all available", () => {

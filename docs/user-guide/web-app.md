@@ -290,6 +290,11 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    reading its series was copied from, where that reading is still collected
    and fits. Inputs fed by an uploaded series are chosen there.
 
+A design that is still being built is tested without leaving it: **Test** in
+the monitoring setup copies the recorded values of its readings into a dataset
+and runs the design on them. The dataset and the runs appear here like any
+other. See [Visual monitoring pipelines](monitoring.md#visual-monitoring-pipelines).
+
 ## Expected errors and operator actions
 
 | UI message pattern | Typical cause | Action |

@@ -5,7 +5,7 @@ accepted can only fail on what the data does to the model. The Dojo worker
 on the RADAR image claims queued runs and executes them.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import uuid4
 
@@ -13,6 +13,7 @@ from off_key_core.db.locks import DOJO_QUEUE_LOCK
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import DojoDataset, DojoRun, DojoRunResult, DojoSeries
 from off_key_core.models.dojo_runs import (
+    STEP_SAMPLES_KEY,
     BoundSeries,
     bind_dataset,
     calibration_comparison,
@@ -21,24 +22,28 @@ from off_key_core.models.dojo_runs import (
 from off_key_core.models.pipelines import compile_pipeline
 from off_key_core.schemas.dojo import (
     MAX_ACTIVE_RUNS,
+    OutlineBucket,
     PromotedBinding,
     RunAlignment,
     RunBinding,
     RunCreate,
     RunListPage,
     RunListQuery,
+    RunOutline,
+    RunOutlineQuery,
     RunPromote,
     RunPromotion,
     RunResult,
     RunResultsPage,
     RunResultsQuery,
     RunStatus,
+    RunSteps,
     RunSummary,
     RunView,
 )
 from off_key_core.schemas.pipelines import PipelineCreate, PipelineDefinition
 from off_key_core.utils.json_budget import bounded_utf8_text
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import Integer, delete, func, literal, select, text
 
 from ...domain import ConflictError, NotFoundError, ValidationError
 from ..pipelines.library import PipelineLibrary
@@ -279,6 +284,97 @@ class DojoRuns:
             items=items,
             next_after=items[-1].sequence if len(rows) > query.limit else None,
         )
+
+    async def outline(self, run_id: str, query: RunOutlineQuery) -> RunOutline:
+        """The results in equal stretches of time, each with its extremes.
+
+        A chart draws a run of any length from these: the lowest and highest
+        score per stretch keep every peak that a thinned list would lose.
+        """
+        row = await self._row(run_id)
+        own = DojoRunResult.run_id == run_id
+        first, last = (
+            await self.session.execute(
+                select(
+                    func.min(DojoRunResult.timestamp),
+                    func.max(DojoRunResult.timestamp),
+                ).where(own)
+            )
+        ).one()
+        strategy = result_kind(row.config["execution"]["definition"])
+        if first is None:
+            return RunOutline(
+                run_id=run_id,
+                strategy=strategy,
+                start_at=None,
+                end_at=None,
+                bucket_seconds=0.0,
+                buckets=[],
+            )
+        width = (last - first).total_seconds() / query.buckets
+        # The last result falls on the end of the last stretch, not past it.
+        bucket = (
+            func.least(
+                func.floor(
+                    func.extract("epoch", DojoRunResult.timestamp - first) / width
+                ),
+                query.buckets - 1,
+            ).cast(Integer)
+            if width > 0
+            else literal(0)
+        ).label("bucket")
+        rows = (
+            await self.session.execute(
+                select(
+                    bucket,
+                    func.count(),
+                    func.min(DojoRunResult.score),
+                    func.max(DojoRunResult.score),
+                    func.min(DojoRunResult.threshold),
+                    func.max(DojoRunResult.threshold),
+                    func.count().filter(DojoRunResult.alarm),
+                )
+                .where(own)
+                .group_by(bucket)
+                .order_by(bucket)
+            )
+        ).all()
+        return RunOutline(
+            run_id=run_id,
+            strategy=strategy,
+            start_at=first,
+            end_at=last,
+            bucket_seconds=width,
+            buckets=[
+                OutlineBucket(
+                    start_at=first + timedelta(seconds=index * width),
+                    results=results,
+                    score_min=score_min,
+                    score_max=score_max,
+                    threshold_min=threshold_min,
+                    threshold_max=threshold_max,
+                    alarms=alarms,
+                )
+                for (
+                    index,
+                    results,
+                    score_min,
+                    score_max,
+                    threshold_min,
+                    threshold_max,
+                    alarms,
+                ) in rows
+            ],
+        )
+
+    async def steps(self, run_id: str) -> RunSteps:
+        """What a few observations looked like at every step of the design.
+
+        The worker samples them while it replays and stores them when the
+        run ends, beside the run's settings.
+        """
+        row = await self._row(run_id)
+        return RunSteps(run_id=run_id, samples=row.config.get(STEP_SAMPLES_KEY, []))
 
     async def _row(self, run_id: str, *, lock: bool = False) -> DojoRun:
         row = await self.session.get(

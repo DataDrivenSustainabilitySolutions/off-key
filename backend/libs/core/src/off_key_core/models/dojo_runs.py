@@ -25,6 +25,9 @@ DOJO_SENSOR_KEY_STRATEGY = "full_hierarchy"
 # The fixed split among the adapting methods of ``aberrant.calibration``.
 FIXED_METHOD = "fixed_split"
 MARTINGALE_RULE = "policy.martingale"
+# Where a finished run keeps what a few observations looked like at every
+# step, beside its settings.
+STEP_SAMPLES_KEY = "step_samples"
 
 
 def result_kind(definition: Mapping[str, Any]) -> Strategy:

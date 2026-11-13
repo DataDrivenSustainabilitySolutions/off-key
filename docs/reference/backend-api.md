@@ -339,6 +339,8 @@ change it. A run replays one design over one dataset. Every route needs
 | `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/calibration` | The calibration methods a finished run also tried on its scores, each scored against the labels; 409 for a run started without `compare_calibration` | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
+| `GET` | `/dojo/runs/{run_id}/outline` | The results summed up over equal stretches of time: per stretch the number of results and alarms and the lowest and highest score and threshold | `buckets` (300 by default, at most 2,000) |
+| `GET` | `/dojo/runs/{run_id}/steps` | What 12 to 23 observations of an ended run looked like at every step: the values that went in and came out, or why the step gave none | Path: `run_id` |
 
 A wide CSV has one timestamp column (the first unless `timestamp_column`
 names another) and one series per remaining column; a long CSV has one value
@@ -556,6 +558,8 @@ a `lease` and a monitor is a `service`.
 | `GET` | `/dojo/runs/{run_id}/metrics` | Score a finished run against the labels |
 | `GET` | `/dojo/runs/{run_id}/calibration` | Score the calibration methods a run also tried |
 | `GET` | `/dojo/runs/{run_id}/results` | Page through a run's results |
+| `GET` | `/dojo/runs/{run_id}/outline` | Sum a run's results up over equal stretches of time |
+| `GET` | `/dojo/runs/{run_id}/steps` | Read the values a few observations had at every step |
 
 ### RADAR orchestration
 

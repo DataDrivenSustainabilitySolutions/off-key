@@ -18,7 +18,7 @@ import type { CoveredEdges } from "./viewport";
 import { useUndoShortcuts } from "./useGraphEditor";
 import { usePlaceToasts } from "@/hooks/use-toast-position";
 
-export type InspectorPanel = "service" | "component" | null;
+export type InspectorPanel = "service" | "component" | "test" | null;
 type Props = Omit<ComponentProps<typeof PipelineCanvas>,
   "components" | "issues" | "features" | "featuresStale" | "insets" | "blocks" | "onSaveBlock"> & {
   catalog: PipelineCatalog;
@@ -26,6 +26,12 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>,
   onPlace?: (placed: { document: GraphDocument; id: string }) => void;
   validation?: ComponentProps<typeof PipelineInspector>["validation"];
   settings?: ReactNode;
+  /** A panel that tries the design before it monitors anything, where the screen provides one. */
+  test?: ReactNode;
+  /** What the button that opens that panel shows, such as how far a test has come. */
+  testLabel?: ReactNode;
+  /** Shown with a step's settings, such as the values the step had in the last test. */
+  stepValues?: (node: string) => ReactNode;
   actions?: ReactNode;
   inspectorPanel?: InspectorPanel;
   onInspectorPanelChange?: (panel: InspectorPanel) => void;
@@ -79,7 +85,7 @@ function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, 
 
 /** One canvas-first workspace for creation, saved designs and running graphs. */
 export function PipelineWorkbench({
-  catalog: offered, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
+  catalog: offered, validation, settings, test, testLabel, stepValues, actions, inspectorPanel, onInspectorPanelChange,
   onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, stage = false, header, onPlace, ...props
 }: Props) {
   // A step whose model lives in the forecast service is offered only where the deployment
@@ -135,6 +141,7 @@ export function PipelineWorkbench({
   // The status is where the detectors open from when its list asks for one.
   const [statusButton, setStatusButton] = useState<HTMLButtonElement | null>(null);
   const componentButton = useRef<HTMLButtonElement>(null);
+  const testButton = useRef<HTMLButtonElement>(null);
   const addedFromMenu = useRef(false);
   const menu = useRef<HTMLDivElement>(null);
   const top = useRef<HTMLDivElement>(null);
@@ -165,7 +172,7 @@ export function PipelineWorkbench({
   }, [panel]);
   const close = () => {
     setPanel(null);
-    (panel === "service" ? serviceButton : componentButton).current?.focus();
+    (panel === "service" ? serviceButton : panel === "test" ? testButton : componentButton).current?.focus();
   };
   const select = (id?: string) => {
     if (id) setPanel("component");
@@ -314,6 +321,9 @@ export function PipelineWorkbench({
       <button type="button" ref={componentButton} aria-label="Step settings"
         aria-expanded={panel === "component"} aria-controls={panelId}
         onClick={() => panel === "component" ? close() : setPanel("component")}>Step</button>
+      {test && <button type="button" ref={testButton} className="pl-test-button"
+        aria-expanded={panel === "test"} aria-controls={panelId}
+        onClick={() => panel === "test" ? close() : setPanel("test")}>{testLabel ?? "Test"}</button>}
     </div>
   </div>;
   const canvas = view === "features"
@@ -330,14 +340,16 @@ export function PipelineWorkbench({
   }}>
     <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
       validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
-      onChange={props.onChange} input={input} forecast={forecast}
+      onChange={props.onChange} input={input} forecast={forecast} values={stepValues}
       header={<div className="pl-inspector-heading">
-        <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h3>
-        <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">
+        <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings"
+          : panel === "test" ? "Test on history" : "Step settings"}</h3>
+        <button type="button" onClick={close} aria-label={panel === "test" ? "Close test" : "Close settings"}
+          title={panel === "test" ? "Collapse test" : "Collapse settings"}>
           <X size={16} aria-hidden="true" />
         </button>
       </div>}
-      content={panel === "service" ? settings : undefined} />
+      content={panel === "service" ? settings : panel === "test" ? test : undefined} />
   </div>;
   const detectorChoice = choice && <PipelineContextMenu x={choice.x} y={choice.y}
     menu={detectorMenu(catalog.components, suggestedDetector(catalog), placeDetector)}

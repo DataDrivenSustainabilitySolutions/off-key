@@ -66,14 +66,6 @@ def feeds(selected: FeedSelection) -> tuple[Feed, ...]:
             ),
         ),
         Feed(
-            "hamburg",
-            "tld.iot.hamburg.de",
-            tuple(
-                f"v1.1/Datastreams({value})/Observations"
-                for value in selected.hamburg_detectors
-            ),
-        ),
-        Feed(
             "mosquitto",
             "test.mosquitto.org",
             tuple(MOSQUITTO_SENSORS.values()),

@@ -37,16 +37,6 @@ SOURCES = (
         "averages, updated about once a minute.",
     ),
     Source(
-        "hamburg",
-        "Hamburg road detectors",
-        "https://suche.transparenz.hamburg.de/dataset/traffic-lights-data-hamburg",
-        "Freie und Hansestadt Hamburg",
-        "DL-DE BY 2.0",
-        "https://www.govdata.de/dl-de/by-2-0",
-        "Vehicle detector occupancy in percent. Brief spikes and zeros are "
-        "normal; observations arrive when the detector changes.",
-    ),
-    Source(
         "mosquitto",
         "Mosquitto public broker metrics",
         "https://test.mosquitto.org/",

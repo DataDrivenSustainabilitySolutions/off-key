@@ -13,6 +13,7 @@ public_site_enabled: false
 admin_ingress_enabled: false
 observability_enabled: false
 broker_route_enabled: false
+tactic_radar_max_active_monitors: "6"
 tactic_docker_default_network: "{{ stack_name }}_emqx-network"
 tactic_docker_additional_networks: "{{ stack_name }}_app-network"
 stack_replaced_services: []

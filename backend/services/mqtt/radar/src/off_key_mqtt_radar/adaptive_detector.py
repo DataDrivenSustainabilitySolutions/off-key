@@ -29,6 +29,7 @@ from .calibration_comparison import CalibrationComparison
 from .config.config import AnomalyDetectionConfig
 from .execution_errors import FatalExecutionError, ObservationRejected
 from .forecast_band import forecast_entry
+from .forecast_issuance import ForecastTimeline, issued_forecast
 from .fusion import RankFusion, threshold_count
 from .memory import process_rss_mb
 from .models import AnomalyResult, inference_key
@@ -68,6 +69,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self.comparison: CalibrationComparison | None = None
         # The bound readings of the current observation, before any Prepare step.
         self._bound: dict[str, float] = {}
+        self._forecast_timeline = ForecastTimeline()
         self.config = config
         adaptive_config = config.monitoring
         if not isinstance(adaptive_config, self._monitoring_settings):
@@ -465,6 +467,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         # Combined detectors meet as ranks, so no step's own score has a threshold.
         self._expect(None if self.plan.fused else self.threshold)
         self._learn(data)
+        self._issue(None if self.plan.fused else self.threshold)
         # Like the run's own step, they see only what every detector took in.
         self._compare(
             [item["score"] for item in self._detector_results or []]
@@ -510,6 +513,20 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             if entry is not None:
                 entries.append(entry)
         self._forecasts = entries or None
+
+    def _issue(self, threshold: float | None) -> None:
+        """Keep the newly issued trajectory after learning successfully commits."""
+        models = dict(zip(self.online_ids, self.pipelines, strict=False))
+        for entry in self._forecasts or []:
+            entry["issued"] = issued_forecast(
+                models[entry["detector_id"]].model, threshold
+            )
+
+    def attach_observation_metadata(self, timestamp, input_timestamps):
+        super().attach_observation_metadata(timestamp, input_timestamps)
+        self._forecast_timeline.stamp(
+            self._forecasts or [], self.plan, timestamp, input_timestamps
+        )
 
     def _score(self, data: dict[str, float]) -> float:
         self._diagnose(self.diagnostics.select_pass, "score")

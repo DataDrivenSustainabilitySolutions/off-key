@@ -20,6 +20,7 @@ export interface TelemetryTypeData {
   label?: string;
   category: string;
   unit?: string;
+  valueType?: "number" | "boolean";
   data: TelemetryDataPoint[];
   cursor?: TelemetryCursor;
 }

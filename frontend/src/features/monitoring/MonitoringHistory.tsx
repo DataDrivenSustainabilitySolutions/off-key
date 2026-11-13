@@ -14,6 +14,16 @@ import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache"
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildServiceHistoryModel, MAX_VISIBLE_READINGS } from "./historyModel";
 import { useServiceHistory } from "./useServiceHistory";
+import { HistoryViewControls } from "@/features/charts/HistoryViewControls";
+import { combineHistory, DEFAULT_HISTORY_PREFERENCE, historyInterval, presentHistory } from "@/features/charts/history-presentation";
+import { summarizeDetection } from "@/features/charts/detection-summary";
+import { useHistoryWidth } from "@/features/charts/use-history-width";
+import type { HistoryPreference } from "@/types/telemetry-history";
+import { useHistoryPresentation } from "./useHistoryPresentation";
+import { ForecastControls } from "./ForecastControls";
+import { forecastLeadKey } from "@/features/charts/forecast-evidence";
+import { FORECAST_VIEW_LABELS, type ForecastView } from "@/features/charts/forecast-future";
+import { ForecastViewButton } from "./ForecastViewButton";
 
 type Inspection = { startMs: number; endMs: number };
 
@@ -26,6 +36,13 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const [chosen, setChosen] = useNavigationDraft<string[]>(`${key}:readings`,
     initialReading ? [initialReading] : inputs.slice(0, MAX_VISIBLE_READINGS).map(input => input.stream.id));
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(`${key}:inspection`, undefined);
+  const [preference, setPreference] = useNavigationDraft<HistoryPreference>(`${key}:presentation`, DEFAULT_HISTORY_PREFERENCE);
+  const { ref: chartWidthRef, buckets } = useHistoryWidth();
+  const [chosenLead, setChosenLead] = useNavigationDraft<string>(`${key}:lead`, "");
+  const [showScores, setShowScores] = useNavigationDraft<boolean>(`${key}:scores`, false);
+  const [forecastView, setForecastView] = useNavigationDraft<ForecastView>(`${key}:forecast-view`, "overlay");
+  const [showResiduals, setShowResiduals] = useNavigationDraft<boolean>(`${key}:residuals`, true);
+  const presentation = useHistoryPresentation(service.id);
   const selectedInputs = useMemo(() => {
     const retained = inputs.filter(input => chosen.includes(input.stream.id)).slice(0, MAX_VISIBLE_READINGS);
     return retained.length ? retained : inputs.slice(0, MAX_VISIBLE_READINGS);
@@ -35,21 +52,44 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const histories = useMemo(() => new Map([...history.histories].map(([id, value]) => [id, value.telemetry])), [history.histories]);
   const operational = service.active && service.operational_status.stage === "operational" && !service.operational_status.is_stale;
   const base = useMemo(() => buildServiceHistoryModel({ serviceId: service.id, inputs: selectedInputs, allInputs: inputs,
-    histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", operational }),
-  [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, operational]);
+    histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", operational, presentation: presentation.presentation }),
+  [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, operational, presentation.presentation]);
   const selection = useDetectorSelection(base.detectors, service.id);
-  const { model } = useMemo(() => buildServiceHistoryModel({ serviceId: service.id, inputs: selectedInputs, allInputs: inputs,
-    histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", selectedDetectorIds: selection.selectedDetectorIds, operational }),
-  [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, selection.selectedDetectorIds, operational]);
+  const { model: completeModel } = useMemo(() => buildServiceHistoryModel({ serviceId: service.id, inputs: selectedInputs, allInputs: inputs,
+    histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", selectedDetectorIds: selection.selectedDetectorIds, operational, presentation: presentation.presentation }),
+  [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, selection.selectedDetectorIds, operational, presentation.presentation]);
+  const forecasts = completeModel.forecasts ?? [];
+  const lead = forecasts.some(forecast => forecastLeadKey(forecast.lead) === chosenLead) ? chosenLead : forecastLeadKey(forecasts[0]?.lead ?? null);
+  const intervalLabel = presentation.presentation?.intervalLabel ?? "Calibrated interval";
+  const model = useMemo(() => ({ ...completeModel, intervalLabel, forecastView, showResiduals,
+    forecasts: completeModel.forecasts?.filter(forecast => forecastLeadKey(forecast.lead) === lead),
+    secondarySeries: completeModel.forecasts?.length && !showScores ? [] : completeModel.secondarySeries,
+  }), [completeModel, intervalLabel, lead, showScores, forecastView, showResiduals]);
   const domain = getChartDomain(model.extent);
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
-    + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
-  const option = useMemo(() => buildMonitoringChartOption({ model, colors, timeZone, accessibleDescription: description,
+    + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}`
+    + `${forecasts.length ? `${FORECAST_VIEW_LABELS[forecastView]}; ${showResiduals ? "signed residuals below; " : ""}future times are estimated from recent cadence. ` : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
+  // One interval for the whole chart, so every pane's means and peaks cover the same spans of time.
+  const displayModel = useMemo(() => {
+    const shown = inspection && [inspection.startMs, inspection.endMs] as const;
+    const interval = (span?: readonly [number, number]) => span && preference.mode !== "raw"
+      ? historyInterval(span[1] - span[0], buckets, preference.windowMs) : undefined;
+    const overviewMs = interval(model.extent), detailMs = interval(shown);
+    const readings = model.readings.map(reading => {
+      const view: HistoryPreference = reading.valueType === "boolean" ? { mode: "raw" } : preference;
+      const overview = presentHistory(reading.data, view, buckets, undefined, overviewMs);
+      return { ...reading, presentation: shown ? combineHistory(overview,
+        presentHistory(reading.data, view, buckets, shown, detailMs), inspection) : overview };
+    });
+    return summarizeDetection({ ...model, readings }, detailMs ?? overviewMs ?? 0, buckets, shown);
+  }, [model, preference, buckets, inspection]);
+  const meanMs = displayModel.readings.find(reading => reading.presentation.representation === "mean")?.presentation.interval_ms;
+  const option = useMemo(() => buildMonitoringChartOption({ model: displayModel, colors, timeZone, accessibleDescription: description,
     viewport: inspection ? { mode: "absolute", ...inspection } : { mode: "live" }, layout: "monitoring" }),
-  [model, colors, timeZone, description, inspection]);
+  [displayModel, colors, timeZone, description, inspection]);
   // The key names open dots only where the chart shows one.
-  const anyMuted = useMemo(() => model.secondarySeries.some(series =>
-    series.data.some(point => point.observation?.alarmMuted)), [model.secondarySeries]);
+  const anyMuted = useMemo(() => displayModel.secondarySeries.some(series =>
+    series.data.some(point => point.observation?.alarmMuted)), [displayModel.secondarySeries]);
   const inspect = useCallback((startMs: number, endMs: number) => {
     if (!domain || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
     setInspection(current => current && Math.abs(current.startMs - startMs) < 1 && Math.abs(current.endMs - endMs) < 1
@@ -75,12 +115,15 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   // Both requests keep polling, so a failure clears itself once the service answers again.
   const problem = errors.length ? `${errors.join(" ")} Retrying automatically.` : "";
   const stage = service.operational_status.stage.replace(/_/g, " ");
-  const panes = model.readings.length + Number(Boolean(model.detectorInputs?.length)) + model.secondarySeries.length;
-  const latest = model.secondarySeries[0]?.latestObservation;
+  const panes = model.readings.length + Number(Boolean(model.detectorInputs?.length) || Boolean(model.forecasts?.some(forecast => !forecast.readingId)))
+    + (showResiduals ? model.forecasts?.length ?? 0 : 0) + new Set(model.secondarySeries.map(series => series.pane)).size;
+  const latest = completeModel.secondarySeries[0]?.latestObservation;
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
-  return <section className="ex-preview-history mn-history" aria-label="Monitoring history">
-    <div className="ex-preview-section-heading"><h3>Inputs and detection</h3>
+  return <section ref={chartWidthRef} className="ex-preview-history mn-history" aria-label="Monitoring history">
+    <div className="ex-preview-section-heading"><h3>{forecasts.length ? "Forecast and deviations" : "Inputs and detection"}</h3>
       {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
+        {forecasts.length > 0 && <ForecastViewButton view={forecastView} onChange={setForecastView} />}
+        {model.readings.some(reading => reading.valueType !== "boolean") && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={meanMs} />}
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
         <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>
@@ -100,10 +143,14 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </details>}
     {selection.controlCatalog.length > 1 && <TelemetryDetectorControls detectors={selection.controlCatalog}
       selected={selection.selectedDetectorIds} unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} />}
+    {forecasts.length > 0 && <ForecastControls forecasts={forecasts} lead={lead} onLead={setChosenLead}
+      view={forecastView} showResiduals={showResiduals} onResiduals={setShowResiduals}
+      showScores={showScores} onScores={setShowScores} intervalLabel={intervalLabel} timeZone={timeZone} />}
+    {forecasts.length > 0 && presentation.error && <p className="mn-history-problem" role="status">{presentation.error} <button onClick={presentation.retry}>Retry</button></p>}
     {model.extent ? <>
       {!latest && <p className="ex-history-monitoring" role="status">{loading ? "Loading history…" : `Monitoring: ${stage} · Awaiting evaluated observations`}</p>}
       <div className="ex-history-navigation" role="group" aria-label="Chart navigation" tabIndex={0} onKeyDown={navigate}
-        style={{ height: `${panes * 148 + 60}px` }}>
+        style={{ height: `${panes * 148 + 60 + (forecasts.length ? model.readings.length * 60 : 0)}px` }}>
         <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect}
           className="mn-history-chart" />
       </div>
@@ -113,10 +160,10 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </div>}
     {latest && <output className="mn-history-result" aria-label="Latest detector result">
       <span>Latest {inputs.length > 1 ? "joint " : ""}result · {formatChartTime(latest.timeMs, timeZone, "tooltip")}</span>
-      <strong>{model.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>
-      <span>Threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · Alarm {alarmText(latest)}</span>
+      {(!forecasts.length || showScores) && <strong>{completeModel.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>}
+      <span>{(!forecasts.length || showScores) && <>Score threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · </>}Service alarm {alarmText(latest)}</span>
     </output>}
-    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms{anyMuted ? ` · Open dots: ${service.shadow ? "alarms recorded in shadow, not raised" : "muted alarms"}` : ""}. Each reading keeps its own scale.</p>}
+    {model.extent && <p className="mn-history-key">{(!forecasts.length || showScores) && "Dashed red: score threshold · "}Red line and shading: a service alarm and how long it lasted{(!forecasts.length || showScores) && " · Red dot: where the selected detector's alarm begins"}{anyMuted ? ` · Open dots: ${service.shadow ? "alarms recorded in shadow, not raised" : "muted alarms"}` : ""}. Each reading keeps its own scale.</p>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

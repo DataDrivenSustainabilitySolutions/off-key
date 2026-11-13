@@ -7,6 +7,7 @@ import {
   deleteAlarm,
   getAllTelemetryData,
   getTelemetryCursor,
+  getTelemetryHistory,
   mergeTelemetryData,
 } from "@/lib/charger-api";
 
@@ -53,6 +54,11 @@ describe("measurement API", () => {
     expect(named.searchParams.getAll("reading_id")).toEqual(["reading:a", "reading:b"]);
     expect(named.searchParams.get("monitor_id")).toBe("m1");
     expect(named.searchParams.get("after_monitor_id")).toBe("m0");
+  });
+
+  it("does not pass legacy extrema off as original samples or averages", async () => {
+    mockGet.mockResolvedValueOnce([{ timestamp: "2026-01-01T00:00:00Z", value: 1 }]);
+    await expect(getTelemetryHistory("reading:cpu", { view: "auto" })).rejects.toThrow("automatic history views");
   });
 
   it("loads one series per catalogue reading, keyed by its id", async () => {

@@ -7,6 +7,7 @@ recorded identity behind them.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -152,6 +153,25 @@ class ReadingProfile(BaseModel):
     )
 
 
+class MeasurementSummary(MeasurementBucket):
+    minimum: float
+    maximum: float
+    count: int
+    start: str
+    end: str
+
+
+class MeasurementHistory(BaseModel):
+    """Display-only history; raw samples and bucket means are explicit."""
+
+    representation: Literal["raw", "mean"]
+    points: list[MeasurementSummary | MeasurementBucket]
+    interval_ms: int = 0
+    sample_count: int = 0
+    extent: tuple[str, str] | None = None
+    truncated: bool = False
+
+
 class ChartEvidence(BaseModel):
     """What a reading chart draws for one observation of a monitor."""
 
@@ -175,7 +195,10 @@ class ChartEvidence(BaseModel):
         default_factory=list,
         description="What each forecaster step expected of the observation: "
         "the step, the feature it scores, the expected value and, when the "
-        "boundary is in the step's own score units, the band around it.",
+        "boundary is in the step's own score units, the band around it. Optional "
+        "issued evidence contains the next real forecast trajectory, its issue "
+        "and origin times, model update indices and explicitly estimated target "
+        "times. Only the calibrated lead carries a calibrated interval.",
     )
     threshold: float
     alarm: bool
@@ -216,7 +239,10 @@ class Evidence(BaseModel):
         default_factory=list,
         description="What each forecaster step expected of the observation: "
         "the step, the feature it scores, the expected value and, when the "
-        "boundary is in the step's own score units, the band around it.",
+        "boundary is in the step's own score units, the band around it. Optional "
+        "issued evidence contains the next real forecast trajectory, its issue "
+        "and origin times, model update indices and explicitly estimated target "
+        "times. Only the calibrated lead carries a calibrated interval.",
     )
     threshold: float
     alarm: bool

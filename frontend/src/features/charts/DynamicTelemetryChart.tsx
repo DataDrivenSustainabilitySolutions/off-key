@@ -7,6 +7,12 @@ import React, {
   useState,
 } from "react";
 import { ChevronDown } from "lucide-react";
+import { HistoryViewControls } from "./HistoryViewControls";
+import { combineHistory, DEFAULT_HISTORY_PREFERENCE, presentHistory } from "./history-presentation";
+import { summarizeDetection } from "./detection-summary";
+import { useHistoryWidth } from "./use-history-width";
+import { useNavigationDraft } from "@/lib/navigation-draft";
+import type { HistoryPreference } from "@/types/telemetry-history";
 
 import DateTimePicker from "@/components/DateTimePicker";
 import { EChart } from "./EChart";
@@ -81,9 +87,13 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 }) => {
   const { resolvedTheme, colors: themeColors } = useChartColors();
   const [collapsed, setCollapsed] = useState(false);
+  const numeric = telemetryData.valueType !== "boolean";
+  const [preference, setPreference] = useNavigationDraft<HistoryPreference>(`details-history:${telemetryData.type}`, DEFAULT_HISTORY_PREFERENCE);
+  const { ref: widthRef, buckets } = useHistoryWidth();
   const [localNavigationState, setLocalNavigationState] =
     useState<ChartNavigationState>(DEFAULT_CHART_NAVIGATION);
   const [cardNode, setCardNode] = useState<HTMLDivElement | null>(null);
+  const bindCard = useCallback((node: HTMLDivElement | null) => { setCardNode(node); widthRef(node); }, [widthRef]);
   const [isChartVisible, setIsChartVisible] = useState(
     () => typeof IntersectionObserver === "undefined",
   );
@@ -263,12 +273,19 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     return singleMonitor && first !== undefined && last !== undefined
       ? buildDetectorInputSeries(serviceEvidence, row => getEvidenceTimeForSensor(row, telemetryData.type), [first, last]) : [];
   }, [monitoringService, historical, serviceEvidence, telemetryData.type, filteredData]);
+  const presentation = useMemo(() => {
+    const view: HistoryPreference = numeric ? preference : { mode: "raw" };
+    const overview = presentHistory(filteredData, view, buckets);
+    return viewport.mode === "absolute" ? combineHistory(overview,
+      presentHistory(filteredData, view, buckets, [viewport.startMs, viewport.endMs]), viewport) : overview;
+  }, [filteredData, preference, buckets, viewport, numeric]);
   const chartModel = useMemo(() => {
     return buildTelemetryChartModel({
       telemetryName: displayName,
       telemetryUnit: telemetryData.unit,
       telemetryColor: themeColors.primary,
       telemetry: filteredData,
+      presentation,
       detectors,
       selectedDetectorIds,
       range: activeNavigationState.range,
@@ -277,6 +294,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       detectorInputs,
     });
   }, [
+    presentation,
     detectorInputs,
     displayName,
     filteredData,
@@ -305,23 +323,31 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     () =>
       !collapsed && isChartVisible
         ? buildTelemetryChartOption({
-            model: chartModel,
+            // Scores and features follow the reading into its intervals.
+            model: presentation.representation === "mean"
+              ? summarizeDetection(chartModel, presentation.interval_ms, buckets,
+                viewport.mode === "absolute" ? [viewport.startMs, viewport.endMs] : undefined)
+              : chartModel,
             viewport,
             timelineExtent,
             timeZone,
             colors: themeColors,
             accessibleDescription,
+            valueType: telemetryData.valueType,
           })
         : undefined,
     [
       accessibleDescription,
       chartModel,
+      presentation,
+      buckets,
       collapsed,
       isChartVisible,
       themeColors,
       timeZone,
       timelineExtent,
       viewport,
+      telemetryData.valueType,
     ],
   );
 
@@ -390,7 +416,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   if (telemetryData.data.length === 0) {
     return (
       <Card
-        ref={setCardNode}
+        ref={bindCard}
         className="w-full overflow-hidden border-border/80 py-0 shadow-xs transition-all duration-300"
       >
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
@@ -406,7 +432,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
   return (
     <Card
-      ref={setCardNode}
+      ref={bindCard}
       className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? "" : "min-h-96"}`}
     >
       <div
@@ -502,6 +528,9 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
               </span>
             </div>
           )}
+          {!collapsed && numeric && <div className="ex-preview-section-heading">
+            <HistoryViewControls value={preference} onChange={setPreference} intervalMs={presentation.interval_ms} />
+          </div>}
           <Button
             type="button"
             variant="ghost"

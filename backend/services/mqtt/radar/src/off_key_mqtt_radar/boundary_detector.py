@@ -94,6 +94,9 @@ class BoundaryDetectionService(MixedDetectionService):
         self._learn(data)
         # Only an observation every detector took in moves the boundary.
         self.boundary.learn(judgement)
+        self._issue(
+            self.boundary.next_threshold() if judgement.surprises is None else None
+        )
         self._compare(list(judgement.scores))
         self.threshold = judgement.threshold
         self.operational_count += 1

@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import datetime, timedelta
+from typing import Literal
 
 from off_key_core.db.models import (
     Anomaly,
@@ -16,6 +17,7 @@ from off_key_core.schemas.alarms import (
     PROBABILITY_VALUE_TYPES,
     AlarmCursor,
 )
+from off_key_core.schemas.devices import MeasurementHistory
 from off_key_core.schemas.user import normalize_email
 from sqlalchemy import (
     ColumnElement,
@@ -115,6 +117,30 @@ class TelemetryRepository:
 
     def __init__(self, session: AsyncSession):
         self._session = session
+
+    async def history(
+        self,
+        *,
+        charger_id: str,
+        telemetry_type: str,
+        start: datetime,
+        end: datetime,
+        buckets: int,
+        view: Literal["auto", "raw"],
+        window_ms: int | None,
+    ) -> MeasurementHistory:
+        from .telemetry_history import read_history
+
+        return await read_history(
+            self._session,
+            charger_id=charger_id,
+            telemetry_type=telemetry_type,
+            start=start,
+            end=end,
+            buckets=buckets,
+            view=view,
+            window_ms=window_ms,
+        )
 
     async def list_data(
         self,

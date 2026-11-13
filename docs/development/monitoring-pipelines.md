@@ -481,15 +481,24 @@ calibration step that runs inside it, and a sentence where a step gave nothing.
 The service Evidence tab presents one timeline for its recorded inputs and joint
 detector result. Readings retain independent scales and units; the raw anomaly
 score (or logarithmic static evidence) appears once below them. A dashed line
-shows the threshold, red input lines mark service alarms, and score dots mark
-alarms from the selected detector. An alarm a Mute alarms step held back is an
+shows the threshold. On the inputs, a red line marks where a service alarm began
+and red shading how long it lasted: consecutive alarm results are one episode,
+which the next quiet result ends, and episodes the chart is too narrow to
+separate are drawn as one. A dot on the score marks where the selected detector's
+alarm begins. An alarm a Mute alarms step held back is an
 open dot, and the key names open dots only when the chart shows one. The view works with multivariate models such
 as online isolation forest and does not infer per-sensor attribution or a baseline.
+
+Dense history is summarised per interval, with one interval for every pane:
+inputs and detector inputs by their mean and range, the score by its highest
+recorded result (`detection-summary.ts`). The waveform button switches to the
+original samples and results. See the web app guide for the rule per series.
 
 Up to six input tracks may be displayed simultaneously. Changing that selection
 only changes the view: results still describe the service's complete input set.
 Shared hover uses each result's original input timestamps to retrieve its exact
-recorded readings. Missing input history is labelled unavailable, never replaced
+recorded readings; over summarised history it names the interval, each mean and
+range, and the highest result instead. Missing input history is labelled unavailable, never replaced
 with a nearby observation or a synthetic zero. Zoom and keyboard navigation apply
 to every track and remain fixed during inspection as new data arrives.
 
@@ -969,6 +978,35 @@ made for, which it finds by `detector_id` and `target` among the row's
 feature's colour and the interval as a band: two stacked lines, the lower bound
 and the width above it, so only the space between the bounds is filled. A Dojo
 replay does not store forecasts yet.
+
+After a successful learn pass, `_issue` captures the newly issued forecast in
+each entry's optional `issued` member. `forecast_issuance.py` reads Aberrant
+1.5's checkpointed `_issued` deque in one isolated adapter; it does not make
+another forecast-service request. An unavailable newest forecast clears the
+issuance. Only the configured detector lead gets a calibrated interval. Adaptive
+calibrators supply their next boundary after learning the current judgement;
+that interval is a snapshot at issue, not a guarantee about later boundaries.
+At most 64 actual model points are stored, retaining the endpoints and calibrated
+lead. Predictions are never interpolated to manufacture evidence.
+
+`attach_observation_metadata` adds the origin's actual reading time (aligned
+observation time for transformed targets). `ForecastTimeline` estimates step
+duration from the median of up to eight consecutive intervals, after at least
+three intervals agree within 20%. Repeated, missing, backwards or discontinuous
+times reset or withhold timing. This disposable estimator warms again after a
+restart and does not affect model checkpoints or detection. Persisted target
+times are explicitly marked `estimated_cadence`; untimed forecasts retain their
+model-update coordinates. `forecast_records.py` bounds and validates this nested
+JSON before the existing `forecasts` column and catalogue API carry it through.
+
+In the service Evidence tab, `forecastView` controls only forecast visibility:
+Overlay includes historical and future forecasts, Forecast ahead includes the
+latest future trajectory, and Data only hides both. All retain the same time
+extent, reading data and lead selection. Residuals have their own visibility
+setting. Future points are clipped after the latest observed sample and do not
+enter residual calculations. The current calibrated lead's future interval is a
+whisker; other leads are not presented as calibrated. Legacy evidence remains
+usable without an `issued` member.
 
 A pretrained forecaster is a `forecast.` component with learning `pretrained`.
 Its weights live in the forecast service (`off-key-forecast`), never in a RADAR
@@ -1488,10 +1526,11 @@ The production rehearsal restores the current release's backup, runs an older
 pipeline-compatible build, then returns to the current build. Each cutover checks
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
-The test-only reference is immutable commit
-`14f26c367fa05b3dcbb2db7e95d3184f00413a01`. It retains the previous fixture's
-reporting runtime and adds only migration 032 (`alarm_deletions`) and its ORM
-metadata, so the rehearsal still switches between different application binaries.
+The reference is immutable commit
+`056593514244afdf904c4d311e717503cf476005`, the release that added shadow runs.
+Its layout holds switched-off steps and notes, and a step's title lives in the
+design, as in the current release. The rehearsal still switches between
+different application binaries.
 It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
@@ -1500,7 +1539,8 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `197cc239`, has no migration 032;
+The previous reference, `14f26c36`, refuses a layout with switched-off steps
+or notes, and returns a title on each card's place; `197cc239` has no migration 032;
 `efe30f4a` has no migration 031;
 `f02a9201` has no migration 030;
 `535b29cd` has neither migration 028 nor 029;

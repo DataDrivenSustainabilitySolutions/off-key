@@ -286,3 +286,74 @@ test("read-only, empty and unavailable catalogues keep a coherent sidebar", asyn
   await expect(failing.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
   await failing.close();
 });
+
+test("dense source history offers automatic means and immediate raw readings", async ({ page }, testInfo) => {
+  const now = Date.parse("2026-11-11T18:30:00Z");
+  await page.clock.setFixedTime(now);
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  const broker = { id: "demo", label: "Demo source", host: "demo.example.invalid", protocol: "mqtt", port: 1883, transport: "tcp", tls: false };
+  const document = { format: "aberration-system", schema_version: 1, label: "Demo", default_policy: { mode: "off" },
+    brokers: [broker], devices: [{ id: "charger", label: "Demo charger", broker_id: "demo", kind: "charger" }],
+    readings: [{ id: "voltage", label: "Voltage DC", broker_id: "demo", device_id: "charger", topic: "demo/voltage", value_type: "number", unit: "V", category: "Voltage" }], groups: [] };
+  await installSidebarMockApi(page, { favourites: [], theme: "light" });
+  const points = Array.from({ length: 3600 }, (_, i) => ({ timestamp: new Date(now - (3599 - i) * 1000).toISOString(),
+    value: ((i * 1664525 + 1013904223) >>> 0) % 100 < 40 + 20 * Math.sin(i / 400) ? .1 : 0 }));
+  const requests: URL[] = [];
+  await page.route("**/v1/catalogue", route => route.fulfill({ json: { document, revision: 3, can_edit: true, storage_origin: "saved",
+    runtime: { mode: "collection", message: "", bindings: { voltage: { broker_id: "demo", device_id: "charger", policy: { mode: "original", interval_seconds: 1 } } } } } }));
+  await page.route(/\/v1\/readings\/voltage\/measurements(?:\/buckets)?(?:\?|$)/, route => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.endsWith("/buckets")) return route.fulfill({ json: url.searchParams.has("after_created") ? [] : points.slice(-1000).map(point => ({ ...point, created: point.timestamp })).reverse() });
+    requests.push(url);
+    const start = Date.parse(url.searchParams.get("start") ?? points[0]!.timestamp);
+    const end = Date.parse(url.searchParams.get("end") ?? new Date(now).toISOString());
+    const visible = points.filter(point => Date.parse(point.timestamp) >= start && Date.parse(point.timestamp) <= end);
+    const raw = url.searchParams.get("view") === "raw" || visible.length < 200;
+    const interval = Number(url.searchParams.get("window_ms") ?? 30000);
+    const grouped = new Map<number, typeof points>();
+    for (const point of visible) {
+      const time = Math.floor(Date.parse(point.timestamp) / interval) * interval;
+      grouped.set(time, [...(grouped.get(time) ?? []), point]);
+    }
+    return route.fulfill({ json: { representation: raw ? "raw" : "mean", points: raw ? visible : [...grouped].map(([time, values]) => ({
+      timestamp: new Date(time + interval / 2).toISOString(), value: values.reduce((sum, point) => sum + point.value, 0) / values.length,
+      minimum: Math.min(...values.map(point => point.value)), maximum: Math.max(...values.map(point => point.value)), count: values.length,
+      start: new Date(time).toISOString(), end: new Date(time + interval).toISOString(),
+    })), interval_ms: raw ? 0 : interval, sample_count: visible.length,
+    extent: visible.length ? [visible[0]!.timestamp, visible[visible.length - 1]!.timestamp] : null, truncated: false } });
+  });
+  await page.goto("/");
+  await page.getByRole("searchbox", { name: "Search catalogue" }).fill("Voltage DC");
+  await page.getByRole("button", { name: "Voltage DC, preview", exact: true }).click();
+  const preview = page.getByRole("region", { name: "Reading preview", exact: true });
+  const history = preview.getByRole("region", { name: "History", exact: true });
+  const averaging = history.getByRole("button", { name: "Automatic averaging", exact: true });
+  await expect(averaging).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("view")).toBe("auto");
+  await expect(history.locator("canvas")).toBeVisible();
+  await averaging.hover();
+  await expect(page.getByRole("tooltip")).toContainText("30s mean · min–max");
+  await page.keyboard.press("Escape");
+  await history.getByRole("heading", { name: "History", exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await capture(page, testInfo, "timeline-minimal-light");
+  await preview.screenshot({ path: testInfo.outputPath("timeline-minimal-detail.png"), animations: "disabled" });
+  if (process.env.SIDEBAR_SCREENSHOT_DIR) await preview.screenshot({ path: `${process.env.SIDEBAR_SCREENSHOT_DIR}/timeline-minimal-detail.png`, animations: "disabled" });
+  await history.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.has("end")).toBe(true);
+  const inspectedStart = requests.at(-1)!.searchParams.get("start");
+  const inspectedEnd = requests.at(-1)!.searchParams.get("end");
+  await averaging.click();
+  await expect(averaging).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("view")).toBe("raw");
+  expect(requests.at(-1)!.searchParams.get("start")).toBe(inspectedStart);
+  expect(requests.at(-1)!.searchParams.get("end")).toBe(inspectedEnd);
+  await history.getByText(/^Values ·/).click();
+  await expect(history.getByRole("table")).toBeVisible();
+  await expect(history.getByText("Measured at (UTC)", { exact: true })).toBeVisible();
+  await averaging.click();
+  await expect(averaging).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("view")).toBe("auto");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoHorizontalScroll(page);
+});

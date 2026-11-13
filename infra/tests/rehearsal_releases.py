@@ -1,8 +1,9 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference retains the older reporting runtime with the deletion table,
-carrying migrations through 032 and Aberrant 1.5.0 numerics. It is not an
-eligible production release and proves no compatibility with earlier schemas.
+The reference is the release that added shadow runs, and with them a layout
+that holds switched-off steps and notes and a step title that lives in the
+design. It carries migrations through 032 and Aberrant 1.5.0 numerics, and
+proves no compatibility with earlier schemas.
 """
 
 import argparse
@@ -21,7 +22,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "14f26c367fa05b3dcbb2db7e95d3184f00413a01"
+COMPATIBLE_REVISION = "056593514244afdf904c4d311e717503cf476005"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

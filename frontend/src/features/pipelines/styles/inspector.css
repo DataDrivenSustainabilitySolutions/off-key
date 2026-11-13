@@ -464,7 +464,7 @@
 
 /* Formula and Gate: text in a fixed-width face, with the arriving features to insert. */
 .pl-field textarea.pl-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   line-height: 1.5;
   min-height: 64px;
   overflow-wrap: anywhere;
@@ -482,7 +482,7 @@
   border-radius: 999px;
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-caption);
   font-weight: 400;
   overflow-wrap: anywhere;
@@ -529,7 +529,7 @@
   background: hsl(var(--muted));
 }
 .pl-formula-suggestions code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-caption);
   font-weight: 500;
   overflow-wrap: anywhere;

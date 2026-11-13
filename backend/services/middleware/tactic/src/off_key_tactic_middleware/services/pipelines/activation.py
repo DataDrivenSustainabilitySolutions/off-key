@@ -506,9 +506,11 @@ class PipelineActivations:
             pending,
             released=[request.replace_service_id] if request.replace_service_id else [],
         )
-        if len(owners) >= get_tactic_settings().config.radar_max_active_monitors:
+        limit = get_tactic_settings().config.radar_max_active_monitors
+        if len(owners) >= limit:
             raise ConflictError(
-                "RADAR capacity reached; stop another monitor before activation"
+                f"RADAR capacity reached: {len(owners)} of {limit} monitors run or "
+                "start. Stop another monitor before activation"
             )
         return claims
 

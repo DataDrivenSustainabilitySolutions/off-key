@@ -435,7 +435,10 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
         "created_at": THEN,
         "started_at": None,
         "finished_at": None,
-        "definition": {"compiled": "long"},
+        "definition": {
+            "compiled": "long",
+            "settings": {"training_window_size": 1200, "calibration_window_size": 360},
+        },
         "bindings": [{"slot_id": "value", "series_id": "s1", "series_name": "Power"}],
         "alignment": {},
         "cancel_requested": False,
@@ -512,6 +515,14 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
         assert result["stats"] == {"waiting_for_all": 2}
         assert "definition" not in result
         assert result["metrics"]["false_alarms_per_day"] == 2
+        assert "note" not in result
+
+        # A replay shorter than the warm-up scores nothing, and says so.
+        metrics["scored_from"] = None
+        states = iter([run | {"status": "succeeded", "result_count": 300}])
+        result = said(await client.call_tool("get_test", {"run_id": "run-1"}))
+        assert result["note"].startswith("Nothing was scored: the replay gave 300 ")
+        assert "warm-up of 1560 observations" in result["note"]
     assert all(asked.headers == BY_KEY for asked in stand_in.forwarded())
 
 

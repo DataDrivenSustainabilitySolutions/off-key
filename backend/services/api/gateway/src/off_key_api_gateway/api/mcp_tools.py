@@ -445,7 +445,25 @@ async def get_test(api: Api, args: TestRef):
     answer = {key: value for key, value in run.items() if key != "definition"}
     if run["status"] == "succeeded":
         answer["metrics"] = await api.get(f"{path}/metrics")
+        if answer["metrics"].get("scored_from") is None:
+            answer["note"] = _unscored(run)
     return answer
+
+
+def _unscored(run: dict) -> str:
+    """Zero alarms reads as a good design; say when it only means no scores."""
+    settings = (run.get("definition") or {}).get("settings") or {}
+    warm_up = sum(
+        settings.get(key) or 0
+        for key in ("training_window_size", "calibration_window_size")
+    )
+    needed = f" its warm-up of {warm_up} observations" if warm_up else " its warm-up"
+    return (
+        f"Nothing was scored: the replay gave {run.get('result_count', 0)} "
+        f"observations, which{needed} used up. The alarm count says nothing "
+        "about the design yet. Test more days once they are recorded, or "
+        "shorten training_window_size and calibration_window_size to try it."
+    )
 
 
 class Proposal(Args):

@@ -119,6 +119,8 @@ TACTIC_ACCESS = {
         "GET /api/v1/dojo/runs/{run_id}/metrics",
         "GET /api/v1/dojo/runs/{run_id}/calibration",
         "GET /api/v1/dojo/runs/{run_id}/results",
+        "GET /api/v1/dojo/runs/{run_id}/outline",
+        "GET /api/v1/dojo/runs/{run_id}/steps",
     },
     "manage_monitors": {
         # Also behind the Dojo router's use_dojo; see test_dojo_promotion.
@@ -265,6 +267,8 @@ GATEWAY_ACCESS = {
         "GET /v1/dojo/runs/{run_id}/metrics",
         "GET /v1/dojo/runs/{run_id}/calibration",
         "GET /v1/dojo/runs/{run_id}/results",
+        "GET /v1/dojo/runs/{run_id}/outline",
+        "GET /v1/dojo/runs/{run_id}/steps",
     },
     "manage_members": {
         "POST /v1/invitations",

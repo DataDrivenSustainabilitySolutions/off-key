@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -32,6 +32,7 @@ import { selectReadings, targetInputs } from "./slots";
 import { learningWindow } from "./learning";
 import { starterTemplate, withoutDetector } from "./detectorSlot";
 import { startupEstimate } from "./startup";
+import { DesignTestContext } from "./designTest";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -138,6 +139,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
     compiledValidation?.preparation_observations,
     learningWindow(draft.document.definition, catalog.components));
   const openInput = () => { const id = inputNode(draft.document); if (id) select(id); };
+  // Only a design the compiler accepts is tested, so that no values are copied for a run that cannot start.
+  const testBlocked = compiledValidation
+    ? compiledValidation.valid ? undefined : "The design is not ready to run. The status above the canvas lists what is left."
+    : metadata.error ? "The design could not be checked, so it cannot be tested yet."
+      : canAuthor ? "Checking the design…" : undefined;
+  const designTest = useContext(DesignTestContext);
   useUnsavedChanges(dirty && !locked);
 
   useEffect(() => {
@@ -288,6 +295,11 @@ export function PipelineCreate(props: PipelineSetupProps) {
           session.discard(fresh); graph.resetHistory(); select(opensAtInput ? inputNode(fresh.document) : undefined); graph.requestFit(); setAttempted(false);
         }}><RotateCcw size={15} />Reset</button>}
       </>}
+      test={designTest && <designTest.Panel session={`${creationKey}:test`} definition={draft.document.definition}
+        readings={bindings} name={draft.name} scope={target?.label} blocked={testBlocked} onChooseReadings={openInput} />}
+      testLabel={designTest && <designTest.Status session={`${creationKey}:test`} open={inspectorPanel === "test"} />}
+      stepValues={designTest && (node => <designTest.Values session={`${creationKey}:test`} node={node}
+        definition={draft.document.definition} onOpenTest={() => setInspectorPanel("test")} />)}
       settings={<PipelineDesignSettings document={draft.document} catalog={catalog} startup={startup} readOnly={!canAuthor || locked || checking}
         onChange={(document, history) => {
           commit(document, history);

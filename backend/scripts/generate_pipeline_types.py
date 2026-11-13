@@ -123,6 +123,7 @@ def dojo_contracts(shared: dict) -> str:
         f"points: {dojo.MAX_DATASET_POINTS}, "
         f"pointsPage: {dojo.MAX_POINTS_PAGE}, "
         f"resultsPage: {dojo.MAX_RESULTS_PAGE}, "
+        f"outlineBuckets: {dojo.MAX_OUTLINE_BUCKETS}, "
         f"labels: {dojo.MAX_DATASET_LABELS}, "
         f"comparedRuns: {dojo.MAX_COMPARED_RUNS} }} as const;\n"
     )

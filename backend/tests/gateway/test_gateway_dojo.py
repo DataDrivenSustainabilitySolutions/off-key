@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 from off_key_api_gateway.api.v1 import dojo
+from off_key_core.schemas import dojo as dojo_schemas
 
 from tests.support.gateway import gateway_app, member_profile
 from tests.support.http import asgi_client
@@ -155,6 +156,86 @@ async def test_label_suggestions_forward_the_gap(monkeypatch):
     assert (method, endpoint) == ("GET", "/api/v1/dojo/datasets/d1/label-suggestions")
     assert kwargs["params"] == {"gap_seconds": 60.0}
     assert refused.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_run_outline_forwards_the_number_of_stretches(monkeypatch):
+    recorded = []
+    outline = {
+        "run_id": "r1",
+        "strategy": "adaptive_stream",
+        "start_at": None,
+        "end_at": None,
+        "bucket_seconds": 0.0,
+        "buckets": [],
+    }
+
+    async def request(method, endpoint, **kwargs):
+        recorded.append((method, endpoint, kwargs))
+        return outline
+
+    monkeypatch.setattr(dojo.tactic, "request", request)
+    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+        response = await client.get(
+            "/v1/dojo/runs/r1/outline?buckets=120", headers=TOKEN
+        )
+        default = await client.get("/v1/dojo/runs/r1/outline", headers=TOKEN)
+        refused = await client.get("/v1/dojo/runs/r1/outline?buckets=0", headers=TOKEN)
+        beyond = await client.get(
+            f"/v1/dojo/runs/r1/outline?buckets={dojo_schemas.MAX_OUTLINE_BUCKETS + 1}",
+            headers=TOKEN,
+        )
+    assert response.status_code == 200, response.text
+    assert response.json() == outline
+    assert [(method, endpoint) for method, endpoint, _ in recorded] == [
+        ("GET", "/api/v1/dojo/runs/r1/outline")
+    ] * 2
+    assert [kwargs["params"] for _, _, kwargs in recorded] == [
+        {"buckets": 120},
+        {"buckets": 300},
+    ]
+    assert default.status_code == 200
+    assert (refused.status_code, beyond.status_code) == (422, 422)
+
+
+@pytest.mark.asyncio
+async def test_the_sampled_steps_of_a_run_are_read_through(monkeypatch):
+    recorded = []
+    steps = {
+        "run_id": "r1",
+        "samples": [
+            {
+                "sequence": 7,
+                "timestamp": "2026-03-01T00:07:00Z",
+                "phase": "operational",
+                "steps": {
+                    "scaler": {
+                        "input": {"voltage": 231.5},
+                        "output": {"voltage": 0.4},
+                        "state": "ready",
+                        "reason": None,
+                    },
+                    "detector": {
+                        "input": None,
+                        "output": None,
+                        "state": "initializing",
+                        "reason": "Needs 50 values before its first output",
+                    },
+                },
+            }
+        ],
+    }
+
+    async def request(method, endpoint, **kwargs):
+        recorded.append((method, endpoint))
+        return steps
+
+    monkeypatch.setattr(dojo.tactic, "request", request)
+    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+        response = await client.get("/v1/dojo/runs/r1/steps", headers=TOKEN)
+    assert response.status_code == 200, response.text
+    assert response.json() == steps
+    assert recorded == [("GET", "/api/v1/dojo/runs/r1/steps")]
 
 
 @pytest.mark.asyncio

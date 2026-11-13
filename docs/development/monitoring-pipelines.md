@@ -199,6 +199,73 @@ detectors after the connection do, the exchange `changeDetector()` makes.
 failed read leaves the menus without blocks. `PIPELINE_LIMITS.blockSteps` comes
 from `MAX_BLOCK_STEPS` through the type generator.
 
+### Test on history
+
+The composer tries a design on recorded values through the Dojo, without the
+pipelines folder importing it: `eslint-layers.js` puts `features/dojo` above
+`features/pipelines`. `designTest.ts` declares what the composer needs, a
+`DesignTest` with a `Panel` and a `Status` component, and a context for it.
+`ExplorerWorkspace` provides `useDesignTest()` from `features/dojo`, which is
+undefined without the `use_dojo` permission, and `PipelineCreate` docks the
+panel as the workbench's third panel (`InspectorPanel` `"test"`) and puts
+`Status` on the button that opens it.
+
+`createHistoryTest()` in `features/dojo/historyTest.ts` is the store of one
+composer's tests, kept by `navigationDraft` under the composer's key so a run
+survives a closed panel and a detour to the Dojo. A window of recorded values
+is copied once with `POST /v1/dojo/datasets/history`; the copy then becomes the
+choice, so later tests run on the same values and `previous` holds the last
+finished test on that dataset to compare with. `bindSeries()` gives each input
+the series copied from its reading (`reading_id`), then matches by name and
+unit like `suggestBindings()`, and a series the member chose goes before both.
+The run is an ordinary Dojo run (`POST /v1/dojo/runs` with the design as it
+stands and the default alignment). `HistoryTestStatus` stays mounted with the
+composer and owns the polling (`useFollowTest`, every 1.5 s after the last
+answer, paused while the tab is hidden); metrics are read once the run has
+succeeded and again whenever the panel opens (`rescore`), because they follow
+the dataset's labels. `PipelineCreate` blocks a test until the compiler has
+accepted the latest edit, so no values are copied for a run that cannot start.
+
+The result is drawn from `GET /v1/dojo/runs/{run_id}/outline`, which sums a
+run's results up over equal stretches of time: per stretch the number of
+results and alarms and the lowest and highest score and threshold. The panel
+asks for `TEST_STRETCHES` (200, one per half percent of the strip) through
+`useRunOutline()`, so a run of millions of results costs one small request and
+no peak is lost to thinning. `alarmMarks()` places the alarms on the strip and
+`ruleShape()` lays the scores out as SVG paths on a field of 100 by 100: a bar
+per stretch, the stretches that alarmed as a path of their own, and the
+threshold as a stepped line that starts anew after a stretch without results.
+For a `static_baseline` run the score is a p-value, drawn as `-log10(p)` and
+without a line, since its alarm follows a martingale over the p-values. The
+field is cut off at four times the boundary's height above the lowest value, so
+one outlying score does not flatten the rest.
+
+The values of a step come from the diagnostics that a live service previews.
+`Replay` (`off_key_mqtt_radar/dojo/replay.py`) asks the detector's
+`PipelineDiagnostics` to sample the next observation with `sample_next()`,
+because a replay reads a week in seconds and the diagnostics otherwise sample
+by the wall clock. It keeps the sampled observation of the first result and of
+every following one a stride apart; whenever it holds `2 * STEP_SAMPLES` it
+drops every other one and doubles the stride, so a run of unknown length ends
+with 12 to 23 samples spread evenly. Each sample holds, by step, the preview of
+the pass the step ran in: before learning where it scored, else the learning
+pass. The worker stores them when the run ends, under `step_samples` in the
+run's settings document (`dojo_runs.config`), next to the failed calibration
+methods it already records there, and halves them until they fit 256 KB.
+`GET /v1/dojo/runs/{run_id}/steps` reads them back as `RunSteps`, empty for a
+run that has not ended.
+
+In the composer, `DesignTest.Values` is the third part of the contract in
+`designTest.ts`. `PipelineCreate` hands it to the workbench as `stepValues`,
+and `PipelineInspector` renders it between what a step does and its settings.
+`HistoryTestValues` is a `details` element whose fold (`watching`) and chosen
+observation (`observation`) live in the history test store, so both hold from
+step to step. The store's `sample()` reads the samples once per test, and only
+once the values are unfolded; unfolding again retries a read that failed.
+`stepValues()` turns a sample into what is shown: an input's readings once, a
+detection rule's number as "alarm yes" or "no", the rule's values for the
+calibration step that runs inside it, and a sentence where a step gave nothing.
+
 ## Monitoring history
 
 The service Evidence tab presents one timeline for its recorded inputs and joint

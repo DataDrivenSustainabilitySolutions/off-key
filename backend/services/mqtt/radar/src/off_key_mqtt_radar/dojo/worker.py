@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from off_key_core.db.models import DojoRunResult
+from off_key_core.models.dojo_runs import STEP_SAMPLES_KEY
 from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 from pydantic import ValidationError
@@ -31,6 +32,8 @@ from .replay import Replay, ReplayResult, detection_config
 logger = logging.getLogger(__name__)
 
 STALE_ERROR = "The Dojo worker stopped during the run"
+# A wide design previews many features per step; its samples are thinned.
+MAX_SAMPLE_BYTES = 256 * 1024
 
 FAIL_STALE = text(
     "UPDATE dojo_runs SET status = 'failed', error = :error, finished_at = now() "
@@ -63,11 +66,12 @@ FINISH = text(
     "heartbeat_at = now(), points_read = :points_read, "
     "result_count = :result_count, alarm_count = :alarm_count, "
     "stats = CAST(:stats AS jsonb), "
-    # The one thing a worker adds to a run's settings: which of the compared
-    # calibration methods failed on its scores, and why.
-    "config = CASE WHEN CAST(:failed AS jsonb) IS NULL THEN config ELSE "
+    # What a worker adds to a run's settings: which of the compared calibration
+    # methods failed on its scores, and why, and what a few observations
+    # looked like at every step.
+    "config = (CASE WHEN CAST(:failed AS jsonb) IS NULL THEN config ELSE "
     "jsonb_set(config, '{calibration_comparison,failed}', CAST(:failed AS jsonb)) "
-    "END "
+    "END) || CAST(:observed AS jsonb) "
     "WHERE id = :id AND worker = :worker AND status = 'running'"
 )
 RELEASE = text(
@@ -134,6 +138,16 @@ class _Run:
     def failed_methods(self) -> str | None:
         comparison = self.replay.comparison if self.replay else None
         return _json(comparison.failed) if comparison and comparison.failed else None
+
+    def observed(self) -> str:
+        """The sampled steps, thinned until they fit beside the run's settings."""
+        samples = self.replay.samples if self.replay else []
+        while samples:
+            document = _json({STEP_SAMPLES_KEY: samples})
+            if len(document) <= MAX_SAMPLE_BYTES:
+                return document
+            samples = samples[::2] if len(samples) > 1 else []
+        return "{}"
 
 
 def _json(value) -> str:
@@ -369,6 +383,7 @@ class DojoWorker:
                     "status": status,
                     "error": error,
                     "failed": run.failed_methods(),
+                    "observed": run.observed(),
                 },
             )
             if outcome.rowcount:

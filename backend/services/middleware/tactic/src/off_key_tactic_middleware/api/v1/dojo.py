@@ -32,10 +32,13 @@ from off_key_core.schemas.dojo import (
     RunListPage,
     RunListQuery,
     RunMetrics,
+    RunOutline,
+    RunOutlineQuery,
     RunPromote,
     RunPromotion,
     RunResultsPage,
     RunResultsQuery,
+    RunSteps,
     RunView,
 )
 
@@ -261,3 +264,17 @@ async def list_run_results(
     runs: DojoRuns = Depends(get_dojo_runs),
 ):
     return await runs.results(run_id, query)
+
+
+@router.get("/runs/{run_id}/outline", response_model=RunOutline)
+async def outline_run_results(
+    run_id: str,
+    query: Annotated[RunOutlineQuery, Query()],
+    runs: DojoRuns = Depends(get_dojo_runs),
+):
+    return await runs.outline(run_id, query)
+
+
+@router.get("/runs/{run_id}/steps", response_model=RunSteps)
+async def sample_run_steps(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
+    return await runs.steps(run_id)

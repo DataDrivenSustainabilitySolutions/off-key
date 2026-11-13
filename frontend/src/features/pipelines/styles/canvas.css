@@ -292,7 +292,9 @@
   color: #fcd34d;
 }
 .pl-node-issue.is-warning,
-.dark .pl-node-issue.is-warning {
+.dark .pl-node-issue.is-warning,
+.pl-node-issue.is-open,
+.dark .pl-node-issue.is-open {
   color: hsl(var(--muted-foreground));
 }
 .dark .pl-node-sample--ready {

@@ -21,8 +21,11 @@ export async function pipelineRoutingSnapshot(page: Page) {
       const length = path.getTotalLength();
       const start = path.getPointAtLength(0);
       const end = path.getPointAtLength(length);
+      // A wire leaves the middle of its output dot and ends at the rim of the input dot,
+      // at most nine pixels before the card, so its arrowhead shows.
+      const short = target.x - end.x;
       if (Math.abs(start.x - source.x - source.width) > 0.5 || Math.abs(start.y - source.y - source.height / 2) > 0.5
-        || Math.abs(end.x - target.x) > 0.5 || Math.abs(end.y - target.y - target.height / 2) > 0.5)
+        || short < -0.5 || short > 9.5 || Math.abs(end.y - target.y - target.height / 2) > 0.5)
         violations.push(`${id}: detached endpoint`);
       if (/C|A/.test(paths[id]!)) violations.push(`${id}: non-orthogonal curve`);
       for (let distance = 0; distance <= length; distance += 2) {
@@ -31,6 +34,17 @@ export async function pipelineRoutingSnapshot(page: Page) {
           && point.y > box.y + 1 && point.y < box.y + box.height - 1);
         if (collision) { violations.push(`${id}: crosses ${collision.id}`); break; }
       }
+    }
+    // Each dot, and each count of features, is drawn around the middle of its port.
+    for (const port of graph.querySelectorAll<HTMLElement>(".react-flow__node .react-flow__handle")) {
+      const drawn = getComputedStyle(port, "::after");
+      const shift = new DOMMatrix(drawn.transform);
+      const middle = {
+        x: parseFloat(drawn.left) + parseFloat(drawn.width) / 2 + shift.e,
+        y: parseFloat(drawn.top) + parseFloat(drawn.height) / 2 + shift.f,
+      };
+      if (Math.abs(middle.x - port.offsetWidth / 2) > 0.5 || Math.abs(middle.y - port.offsetHeight / 2) > 0.5)
+        violations.push(`${port.closest<HTMLElement>(".react-flow__node")!.dataset.id}: ${port.dataset.handleid} dot off its port`);
     }
     return { violations, blocked, paths, boxes };
   });

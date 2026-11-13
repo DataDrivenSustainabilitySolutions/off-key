@@ -8,9 +8,9 @@
 .pl-name-input[aria-invalid="true"] { border-color: #dc2626; }
 .pl-name-input:disabled { opacity: 1; }
 .pl-setup-identity .pl-field-error { margin: 0; }
-.pl-setup-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.pl-setup .pl-setup-meta button { min-height: 28px; padding: 3px 10px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--card)); color: hsl(var(--muted-foreground)); font-size: var(--text-caption); cursor: pointer; overflow-wrap: anywhere; text-align: left; }
-.pl-setup .pl-setup-meta button:hover { color: hsl(var(--foreground)); border-color: hsl(var(--primary) / .5); }
+/* What the service monitors; it opens the Input step. */
+.pl-setup .pl-setup-input { flex: 0 1 auto; min-width: 0; min-height: 26px; padding: 2px 10px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: transparent; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-setup .pl-setup-input:hover { color: hsl(var(--foreground)); border-color: hsl(var(--foreground) / .4); }
 .pl-setup-actions { gap: 8px; }
 .pl-setup-actions button { min-height: 38px; padding: 9px 13px; }
 .pl-input-step > .pl-field { margin: 0; }
@@ -78,7 +78,7 @@
 @media (max-width: 900px) { .pl-issue-startup { display: none; } }
 @media (max-width: 680px) {
   .pl-setup-header { margin-top: 16px; gap: 12px; }
-  .pl-setup .pl-setup-meta button { min-height: 36px; padding: 6px 12px; }
+  .pl-setup .pl-setup-input { min-height: 36px; padding: 6px 12px; }
   .pl-toolbox-grid { grid-template-columns: minmax(0, 1fr); }
   .pl-setup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .pl-setup-actions > button.mn-primary { grid-column: 1 / -1; min-height: 44px; }

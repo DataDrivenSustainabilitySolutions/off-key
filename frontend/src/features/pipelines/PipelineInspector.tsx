@@ -19,6 +19,7 @@ import {
   type GraphDocument,
 } from "./model";
 import { afterGate, featureBlocker, rangeText, readyText } from "./features";
+import { showIssues } from "./issues";
 import {
   calibrationFamily, changeCalibration, changeDetector, changeNotice, coverage, FIXED_SPLIT, fittingPolicy,
   learningLabel, type Learning, UNTRAINED,
@@ -197,13 +198,16 @@ export function PipelineInspector({
       />
     </label>
   );
-  // Errors on a setting appear beside it; warnings never block and are listed here.
-  const nodeIssues = node && validation?.issues
+  // Errors on a setting appear beside it; warnings never block and are listed here, as is
+  // what the step still needs before the design is complete.
+  const nodeIssues = node && showIssues(document, catalog.components, validation?.issues
     .filter((issue) => issue.node_id === node.id
-      && (isWarning(issue) || !hasParameterControl(component?.fields ?? [], issue.parameter_path)))
-    .map((issue, index) => isWarning(issue)
+      && (isWarning(issue) || !hasParameterControl(component?.fields ?? [], issue.parameter_path))))
+    .filter((issue) => issue.node_id === node.id)
+    .map((issue, index) => issue.tone === "warning"
       ? <p key={index} className="pl-warning" role="status">{issue.message}</p>
-      : <p key={index} className="pl-error" role="alert">{issue.message}</p>);
+      : issue.tone === "open" ? <p key={index} className="pl-open" role="status">{issue.message}</p>
+        : <p key={index} className="pl-error" role="alert">{issue.message}</p>);
   const fieldIssues = (validation?.issues ?? [])
     .filter((issue) => node && issue.node_id === node.id && issue.parameter_path != null && !isWarning(issue))
     .map((issue) => ({ path: issue.parameter_path!, message: issue.message, fix: issue.fix }));
@@ -236,8 +240,8 @@ export function PipelineInspector({
     <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
       {header}
       {content ?? <>
-      <label className="pl-field">
-        <span>Selected step</span>
+      <label className="pl-field pl-step-picker">
+        <span className="ex-sr-only">Selected step</span>
         <select
           value={selected ?? ""}
           onChange={(event) => onSelect(event.target.value || undefined)}
@@ -260,7 +264,9 @@ export function PipelineInspector({
         </>
       ) : node ? (
         <>
-          <h3>{component?.label ?? node.component}</h3>
+          {/* The step picker above names the step; its kind is named again only under a title of its own. */}
+          {!["detector", "calibration", "policy"].includes(node.kind) && document.layout.nodes[node.id]?.label
+            && <h3>{component?.label ?? node.component}</h3>}
           {component?.description && (
             <p className="pl-help">{component.description}</p>
           )}
@@ -320,9 +326,7 @@ export function PipelineInspector({
                     ? "No other model matches this filter. "
                     : ""}
                   {learningLabel(component) ? `${learningLabel(component)}. ` : ""}
-                  Changing the model resets its parameters to catalog defaults.
-                  Connections are retained. A model that learns differently takes
-                  the learned steps before it and the detection rule along.
+                  Changing the model resets its settings and keeps its connections.
                 </small>
                 {swapNotice}
               </div>
@@ -408,7 +412,7 @@ export function PipelineInspector({
                   Add another detector
                 </button>
                 <small className="pl-help">
-                  {blocked ?? "Adds a detector like this one that reads the same features. The calibration step combines them; change its model or input afterwards."}
+                  {blocked ?? "Adds a detector like this one on the same features. The calibration step combines them."}
                 </small>
               </div>
             );

@@ -9,6 +9,7 @@ import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
 import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import {
+  choosePipelineDetector,
   fitPipelineOverview,
   locatePipelineSelection,
   savePipelineTemplate,
@@ -141,15 +142,15 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await page.screenshot({ path: testInfo.outputPath(`readable-${strategy}-laptop.png`), fullPage: true });
       await node("input").click();
       await expect(editor.getByRole("button", { name: "Step settings", exact: true })).toHaveAttribute("aria-expanded", "true");
-      // Settings float beside the step on the full-page canvas instead of narrowing it, and leave the step in view.
+      // Settings dock at the right edge of the full-page canvas instead of narrowing it, and leave the step in view.
       await expect(editor.getByRole("heading", { name: "Step settings", exact: true })).toBeVisible();
       await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
-      await expect(page.locator(".pl-settings-panel")).toHaveAttribute("data-anchored", "true");
       await expect.poll(async () => {
         const panel = (await page.locator(".pl-settings-panel").boundingBox())!;
+        const canvas = (await graph.boundingBox())!;
         const card = (await node("input").boundingBox())!;
-        return card.x + card.width <= panel.x || panel.x + panel.width <= card.x
-          || card.y + card.height <= panel.y || panel.y + panel.height <= card.y;
+        return Math.abs(panel.x + panel.width - canvas.x - canvas.width) < 1 && Math.abs(panel.y - canvas.y) < 1
+          && Math.abs(panel.height - canvas.height) < 1 && card.x + card.width <= panel.x;
       }).toBe(true);
       await editor.getByRole("button", { name: "Close settings", exact: true }).click();
       await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
@@ -510,6 +511,7 @@ test.describe("touch connection dots", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/?create=monitoring");
     const graph = page.getByLabel("Pipeline graph", { exact: true });
+    await choosePipelineDetector(page);
     await openPipelineSettings(page, "Component");
     await page.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("detector");
     await page.getByRole("button", { name: "Disconnect input from detector", exact: true }).click();

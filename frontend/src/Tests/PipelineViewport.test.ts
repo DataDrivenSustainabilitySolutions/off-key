@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactFlowInstance } from "@xyflow/react";
 
 import type { CanvasNode } from "@/features/pipelines/types";
-import { fitReadableView, revealNode, VIEW_MARGIN } from "@/features/pipelines/viewport";
+import { fitReadableView, READABLE_ZOOM, revealNode, VIEW_MARGIN } from "@/features/pipelines/viewport";
 
 type Box = { x: number; y: number; width: number; height: number };
 type Placed = Box & { id: string; kind?: string };
@@ -90,6 +90,35 @@ describe("fitReadableView", () => {
     await fitReadableView(instance, surface(500, 300), selected);
 
     expect(flow.setViewport).toHaveBeenCalledExactlyOnceWith(view);
+  });
+});
+
+describe("fitReadableView of a graph that nearly fits", () => {
+  /** 560 wide on a 500 wide surface: it fits at 81 %, which stays readable. */
+  const nearly: Placed[] = [
+    { id: "input", kind: "source", x: 0, y: 0, width: 200, height: 80 },
+    { id: "model", x: 360, y: 0, width: 200, height: 80 },
+  ];
+
+  it("shows the whole graph a little smaller", async () => {
+    const { flow, instance } = canvas(nearly);
+
+    await fitReadableView(instance, surface(500, 300));
+
+    const [view] = flow.setViewport.mock.calls[0]!;
+    expect(view.zoom).toBeCloseTo(452 / 560);
+    expect(view.zoom).toBeGreaterThanOrEqual(READABLE_ZOOM);
+    // Centred: 24 px stay free on either side.
+    expect(view.x).toBeCloseTo(24);
+    expect(view.y).toBeCloseTo(150 - 40 * (452 / 560));
+  });
+
+  it("keeps a graph that would shrink further at full size, from its input", async () => {
+    const { flow, instance } = canvas([nearly[0]!, { ...nearly[1]!, x: 400 }]);
+
+    await fitReadableView(instance, surface(500, 300));
+
+    expect(flow.setViewport).toHaveBeenCalledExactlyOnceWith({ x: 32, y: 110, zoom: 1 });
   });
 });
 

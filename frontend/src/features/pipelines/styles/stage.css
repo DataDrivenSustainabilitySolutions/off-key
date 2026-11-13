@@ -1,6 +1,6 @@
-/* The service setup and template editor fill the page beside the side panel. The canvas
-   takes the whole area; the header, toolbar and settings float over it, and only they
-   take the pointer, so the canvas pans everywhere between them. */
+/* The service setup and template editor fill the page beside the side panel. One flat
+   header bar holds the name, the actions and the toolbar; the canvas takes everything
+   below it, and settings dock at its right edge. Only the zoom controls float. */
 .app-main:has(> .ex-main-content > .pl-setup) {
   display: flex;
   flex-direction: column;
@@ -25,20 +25,16 @@
 }
 
 .pl-stage {
-  --pl-stage-gap: 12px;
-  --pl-float-bg: color-mix(in srgb, hsl(var(--card)) 94%, transparent);
-  --pl-float-shadow: 0 1px 2px #0000000d, 0 6px 20px -6px #00000024;
+  /* One gutter for the header bar, the settings and the zoom controls. */
+  --pl-stage-gap: 16px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
-.dark .pl-stage {
-  --pl-float-shadow: 0 1px 2px #0000004d, 0 8px 24px -6px #0000008c;
-}
 .pl-stage-canvas {
-  grid-row: 1 / -1;
+  grid-row: 2;
   grid-column: 1;
   display: flex;
   min-width: 0;
@@ -55,79 +51,88 @@
   min-height: 0;
   height: 100%;
 }
-/* The features view is a list, not a surface to pan: it starts below the header. */
+/* The features view is a list, not a surface to pan: it keeps clear of the settings. */
 .pl-stage--features .pl-stage-canvas {
-  grid-row: 2;
   overflow: auto;
-  padding: 0 calc(var(--pl-covered-right, 0px) + var(--pl-stage-gap)) var(--pl-stage-gap) var(--pl-stage-gap);
+  padding: var(--pl-stage-gap) calc(var(--pl-covered-right, 0px) + var(--pl-stage-gap)) var(--pl-stage-gap) var(--pl-stage-gap);
 }
 
-.pl-stage-top,
-.pl-stage-body {
+/* The header bar: the service on the first row, the toolbar on the second. */
+.pl-stage-top {
+  container: pl-stage-top / inline-size;
+  grid-row: 1;
   grid-column: 1;
   z-index: 10;
-  min-width: 0;
-  pointer-events: none;
-}
-.pl-stage-top {
-  grid-row: 1;
   display: grid;
-  gap: 8px;
-  padding: var(--pl-stage-gap) var(--pl-stage-gap) 0;
-}
-.pl-stage-body {
-  grid-row: 2;
-  display: flex;
-  justify-content: flex-end;
-  align-items: flex-start;
-  min-height: 0;
-  padding: 8px var(--pl-stage-gap) var(--pl-stage-gap);
-}
-
-/* Floating islands: each takes the pointer, the room between them stays canvas. */
-.pl-stage .pl-setup-header,
-.pl-stage .pl-canvas-toolbar,
-.pl-stage .pl-setup-notices > *,
-.pl-stage .pl-settings-panel {
-  pointer-events: auto;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px var(--pl-stage-gap) 6px;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
 }
 .pl-stage .pl-setup-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px 12px;
+  flex-wrap: wrap;
+  gap: 6px 16px;
   margin: 0;
-  pointer-events: none;
 }
-/* Keep the page-level reopen control clear of this canvas's floating heading. */
+/* Keep the page-level reopen control clear of the heading. */
 .app-sidebar-reopen + .app-main .pl-stage .pl-setup-header { padding-inline-start: 40px; }
-.pl-stage .pl-setup-identity,
-.pl-stage .pl-setup-actions,
-.pl-stage .pl-canvas-toolbar > .pl-actions {
-  pointer-events: auto;
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  background: var(--pl-float-bg);
-  box-shadow: var(--pl-float-shadow);
-  backdrop-filter: blur(8px);
-}
+
+/* Where the service sits, its name and what it monitors read as one line. */
 .pl-stage .pl-setup-identity {
-  flex: 0 1 auto;
-  gap: 2px;
-  padding: 8px 14px 10px;
-  max-width: min(640px, 100%);
+  flex: 1 1 280px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.pl-stage .pl-setup-identity .ex-breadcrumb {
+  flex: none;
 }
 .pl-stage .pl-setup-identity .ex-breadcrumb ol {
+  flex-wrap: nowrap;
   margin: 0;
 }
+/* The name field stands where the last crumb would; the crumb stays for assistive technology. */
+.pl-stage .pl-setup-identity .ex-breadcrumb li[aria-current] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.pl-stage .pl-setup-identity .ex-breadcrumb ol::after {
+  content: "/";
+  color: hsl(var(--muted-foreground));
+  opacity: 0.6;
+}
 .pl-stage .pl-name-input {
-  width: min(100%, 480px);
-  margin-left: -8px;
+  flex: 0 1 auto;
+  width: min(100%, 300px);
+  min-width: 0;
+  margin-left: -4px;
+  padding: 2px 6px;
   font-size: var(--text-title3);
   line-height: var(--leading-title3);
 }
-.pl-stage .pl-setup-meta {
-  margin-top: 2px;
+/* The field is as wide as the name, so what the service monitors follows it directly. */
+@supports (field-sizing: content) {
+  .pl-stage .pl-name-input {
+    field-sizing: content;
+    width: auto;
+    min-width: 8ch;
+    max-width: min(100%, 44ch);
+  }
+}
+.pl-stage .pl-setup-identity .pl-field-error {
+  flex-basis: 100%;
 }
 .pl-stage .pl-setup-actions {
   flex: 0 0 auto;
@@ -136,55 +141,49 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 4px;
-  padding: 6px;
+  margin-left: auto;
 }
-.pl-stage .pl-setup-actions > button:not(.mn-primary) {
-  border-color: transparent;
-  background: transparent;
+.pl-stage .pl-setup-actions > button {
+  min-height: 36px;
+  padding: 8px 12px;
 }
-.pl-stage .pl-setup-actions > button:not(.mn-primary):not(:disabled):hover,
-.pl-stage .pl-setup-actions > button[data-state="open"] {
-  background: hsl(var(--muted));
-}
-.pl-stage .pl-setup-notices {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-}
-.pl-stage .pl-setup-notices:empty {
-  display: none;
-}
-.pl-stage .pl-setup-notices > * {
-  max-width: min(720px, 100%);
-  margin: 0;
-  box-shadow: var(--pl-float-shadow);
-}
-.pl-stage .pl-setup-notices > :is(.pl-warning, .pl-notice, .pl-error) {
-  padding: 8px 14px;
+.pl-stage .pl-setup-actions > .ex-action-menu {
+  width: 36px;
+  height: 36px;
+  padding: 0;
 }
 
-.pl-stage .pl-canvas-toolbar {
-  margin: 0;
-  padding: 0;
-  min-height: 0;
-  align-items: flex-start;
-  pointer-events: none;
-}
-.pl-stage .pl-canvas-toolbar > .pl-actions {
-  padding: 4px;
-  gap: 4px;
-}
+/* Everything but the primary action is quiet until the pointer reaches it. */
+.pl-stage .pl-setup-actions > button:not(.mn-primary),
 .pl-stage .pl-canvas-toolbar > .pl-actions button {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
+.pl-stage .pl-setup-actions > button:not(.mn-primary):not(:disabled):hover,
+.pl-stage .pl-setup-actions > button[data-state="open"],
 .pl-stage .pl-canvas-toolbar > .pl-actions button:not(:disabled):hover,
 .pl-stage .pl-canvas-toolbar > .pl-actions button[aria-expanded="true"],
 .pl-stage .pl-canvas-toolbar > .pl-actions button[data-state="open"] {
   background: hsl(var(--muted));
 }
+
+/* The toolbar's first label lines up with the header's text, so that button reaches into the gutter. */
+.pl-stage .pl-canvas-toolbar {
+  gap: 4px 16px;
+  min-height: 0;
+  margin: 0 0 0 -10px;
+  padding: 0;
+}
+.pl-stage .pl-canvas-toolbar > .pl-actions {
+  gap: 2px;
+}
+/* A status group that wraps under the tools stays at the right, above the settings it opens. */
+.pl-stage .pl-canvas-toolbar > .pl-actions:last-child {
+  margin-left: auto;
+}
 .pl-stage .pl-canvas-toolbar .pl-segmented {
+  margin-left: 6px;
   border: 0;
   padding: 2px;
 }
@@ -193,34 +192,50 @@
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
 }
 
-/* Settings float at the right, as tall as their content and never past the canvas. */
+/* Beside the side panel the bar is narrower than the window: the estimate stays in the status's own list. */
+@container pl-stage-top (max-width: 900px) {
+  .pl-stage .pl-issue-startup { display: none; }
+}
+
+/* Notices close the header bar, above the canvas they concern. */
+.pl-stage .pl-setup-notices {
+  order: 1;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.pl-stage .pl-setup-notices:empty {
+  display: none;
+}
+.pl-stage .pl-setup-notices > * {
+  max-width: min(720px, 100%);
+  margin: 0;
+}
+.pl-stage .pl-setup-notices > :is(.pl-warning, .pl-notice, .pl-error) {
+  padding: 6px 12px;
+}
+
+/* Settings dock at the right edge, from the header bar to the bottom of the canvas. */
+.pl-stage-body {
+  grid-row: 2;
+  grid-column: 1;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
 .pl-stage .pl-settings-panel {
   display: flex;
   flex-direction: column;
   width: 340px;
   max-width: 100%;
-  max-height: 100%;
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
+  border-left: 1px solid hsl(var(--border));
   background: hsl(var(--card));
-  box-shadow: var(--pl-float-shadow);
   overflow: hidden;
-}
-/* Step settings beside their card: placed by the workbench, which writes left and top. */
-.pl-stage {
-  position: relative;
-}
-.pl-stage .pl-settings-panel[data-anchored] {
-  position: absolute;
-  /* The workbench measures the panel right after it writes max-height. With reduced
-     motion every property gets a near-zero transition, so the measure would read the
-     height from before the write. */
-  transition: none;
-}
-/* A step dragged in from the menu may land where the settings sit, so they step aside as the menu does. */
-.pl-stage.is-adding-step .pl-settings-panel[data-anchored] {
-  opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
 }
 .pl-stage .pl-settings-panel .pl-inspector {
   flex: 1 1 auto;
@@ -229,19 +244,21 @@
   border-left: 0;
 }
 
-/* Bottom left: zoom controls and canvas messages keep clear of the floating settings. */
+/* The canvas's own controls share the header's gutter and stay clear of the settings. */
 .pl-stage .react-flow__controls {
-  box-shadow: var(--pl-float-shadow);
+  margin: var(--pl-stage-gap);
+}
+.pl-stage .react-flow__attribution {
+  right: var(--pl-covered-right, 0px);
 }
 .pl-stage .pl-canvas-feedback {
   left: var(--pl-stage-gap);
   right: auto;
-  max-width: min(560px, calc(100% - 2 * var(--pl-stage-gap)));
-  box-shadow: var(--pl-float-shadow);
+  max-width: min(560px, calc(100% - 2 * var(--pl-stage-gap) - var(--pl-covered-right, 0px)));
 }
 
 @media (max-width: 1050px) {
-  .pl-stage { --pl-stage-gap: 10px; }
+  .pl-stage { --pl-stage-gap: 12px; }
   .pl-stage .pl-settings-panel { width: 300px; }
 }
 
@@ -249,7 +266,7 @@
   .app-sidebar-reopen + .app-main .pl-stage .pl-setup-header { padding-inline-start: 52px; }
 }
 
-/* On a phone the header stacks above the canvas and settings open as a bottom sheet. */
+/* On a phone the page scrolls, the actions stack under the name and settings open as a bottom sheet. */
 @media (max-width: 680px) {
   .app-main:has(> .ex-main-content > .pl-setup) {
     overflow: auto;
@@ -257,44 +274,27 @@
   .pl-stage {
     grid-template-rows: auto minmax(420px, 1fr);
   }
-  .pl-stage-canvas {
-    grid-row: 2;
-  }
   .pl-stage--features .pl-stage-canvas {
-    padding: 0 var(--pl-stage-gap) var(--pl-stage-gap);
-  }
-  .pl-stage-canvas {
-    border-top: 1px solid hsl(var(--border));
-  }
-  .pl-stage-top {
-    padding-bottom: 8px;
+    padding: var(--pl-stage-gap);
   }
   .pl-stage .pl-setup-header {
     flex-direction: column;
     align-items: stretch;
   }
-  /* Stacked above the canvas, the header needs no floating cards. */
-  .pl-stage .pl-setup-identity,
-  .pl-stage .pl-setup-actions,
-  .pl-stage .pl-canvas-toolbar > .pl-actions {
-    border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-    backdrop-filter: none;
-    padding: 0;
-  }
   .pl-stage .pl-setup-identity {
-    max-width: none;
+    flex: none;
   }
   .pl-stage .pl-setup-actions {
     display: grid;
+    margin-left: 0;
   }
   .pl-stage .pl-setup-actions > button:not(.mn-primary) {
     border-color: hsl(var(--border));
   }
+  .pl-stage .pl-canvas-toolbar {
+    margin: 0;
+  }
   .pl-stage-body {
-    padding: 0;
     align-items: flex-end;
   }
   .pl-stage .pl-settings-panel {
@@ -304,12 +304,7 @@
     max-height: round(down, 58%, 1px);
     border-radius: 12px 12px 0 0;
     border-width: 1px 0 0;
+    border-style: solid;
     box-shadow: 0 -8px 24px #0002;
   }
-}
-
-.pl-stage .pl-setup-actions > .ex-action-menu {
-  width: 38px;
-  height: 38px;
-  padding: 0;
 }

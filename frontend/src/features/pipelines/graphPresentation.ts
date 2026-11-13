@@ -12,7 +12,7 @@ import {
   outputKind,
 } from "./semantics";
 import { learningLabel } from "./learning";
-import { isWarning } from "./scope";
+import { showIssues } from "./issues";
 import { familyLabel, stepFamily } from "./steps";
 import { nodeSummary } from "./summaries";
 
@@ -24,6 +24,8 @@ export function presentGraph(
   issues: PipelineValidation["issues"] = [],
 ) {
   const optionLabel = nodeOptionLabeler(document, components);
+  const shown = showIssues(document, components, issues);
+  const count = (id: string, tone: string) => shown.filter((issue) => issue.node_id === id && issue.tone === tone).length;
   const nodes: CanvasNode[] = document.definition.nodes.map((node, index) => {
     const component = componentFor(node, components);
     const input = inputKind(component);
@@ -47,8 +49,9 @@ export function presentGraph(
         inputType: input,
         outputType: output,
         state: states?.[node.id],
-        issueCount: issues.filter((issue) => issue.node_id === node.id && !isWarning(issue)).length,
-        warningCount: issues.filter((issue) => issue.node_id === node.id && isWarning(issue)).length,
+        issueCount: count(node.id, "error"),
+        warningCount: count(node.id, "warning"),
+        open: shown.find((issue) => issue.node_id === node.id && issue.tone === "open")?.short,
         summary: summary.text,
         chips: summary.chips,
       },

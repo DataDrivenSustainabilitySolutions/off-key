@@ -10,6 +10,7 @@ import {
 import { ingressOptions } from "./helpers/mqtt";
 import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import {
+  choosePipelineDetector,
   expectReadablePipeline,
   expectValidPipeline,
   fitPipelineOverview,
@@ -166,6 +167,8 @@ test.describe("visual pipeline real infrastructure", () => {
         }
         // A new service opens at its readings, also after loading a starting point.
         await page.getByRole("checkbox", { name: "Monitor unused", exact: true }).uncheck();
+        // Its detector is left to choose; a loaded starting point brings its own.
+        if (strategy === "adaptive_stream") await choosePipelineDetector(page);
         await openPipelineSettings(page, "Service");
         await page.getByText("Input slots", { exact: true }).click();
         const slots = Object.fromEntries(await page.getByRole("textbox", { name: /^Label for / }).evaluateAll((inputs) =>

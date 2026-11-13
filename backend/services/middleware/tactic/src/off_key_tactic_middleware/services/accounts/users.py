@@ -1,5 +1,7 @@
 """Use cases for user/account/auth operations."""
 
+from typing import TypedDict
+
 import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,15 @@ from ...repositories import UserRepository
 _DUMMY_HASH = bcrypt.hashpw(b"off-key-timing-equalizer", bcrypt.gensalt()).decode()
 
 
+class SignedInMember(TypedDict):
+    """Who passed a password check, as an access token names them."""
+
+    id: int
+    email: str
+    role: str
+    session_version: int
+
+
 class UserService:
     """Application-level user/account use cases."""
 
@@ -17,7 +28,7 @@ class UserService:
         self._session = session
         self._repository = repository
 
-    async def authenticate(self, *, email: str, password: str) -> dict[str, object]:
+    async def authenticate(self, *, email: str, password: str) -> SignedInMember:
         user = await self._repository.get_by_email(email=email)
         hashed_password = (user.hashed_password or "") if user else ""
         # Unknown and not-yet-activated accounts still pay the full bcrypt cost,
@@ -40,10 +51,9 @@ class UserService:
         if not user.is_verified:
             raise AuthenticationError("Email not verified")
 
-        role = user.role.value if hasattr(user.role, "value") else str(user.role)
-        return {
-            "id": user.id,
-            "email": user.email,
-            "role": role,
-            "session_version": user.session_version,
-        }
+        return SignedInMember(
+            id=user.id,
+            email=user.email,
+            role=user.role,
+            session_version=user.session_version,
+        )

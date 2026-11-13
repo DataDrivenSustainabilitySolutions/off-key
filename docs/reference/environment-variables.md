@@ -42,7 +42,6 @@ Treat the values of these variables as secrets:
 | Variable | Requirement |
 | --- | --- |
 | `JWT_SECRET` | Unique signing secret, at least 32 characters; do not reuse between environments |
-| `INTERNAL_API_SECRET` | Unique gateway-to-TACTIC credential, at least 32 characters |
 | `EMAIL_PASSWORD` | SMTP credential when authenticated delivery is enabled |
 | `POSTGRES_PASSWORD` | Unique database credential outside disposable local development |
 | `EMQX_DASHBOARD_PASSWORD` | Unique EMQX administrative credential |
@@ -90,7 +89,6 @@ for deployment, administrator setup and source attribution.
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
 | `JWT_SECRET` | Not documented | Access-token signing secret |
-| `INTERNAL_API_SECRET` | Not documented | Required gateway-to-TACTIC credential |
 | `ALGORITHM` | `HS256` | Must match the backend JWT implementation |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Positive access-token lifetime |
 | `SUPERUSER_MAIL` | Local placeholder address | Mailbox for the operator-generated first administrator invitation |
@@ -174,8 +172,6 @@ unknown errors remain eligible for retry.
 | `TACTIC_RADAR_MAX_ACTIVE_MONITORS` | `20` | Monitor count limit; see [RADAR deployment capacity](../operations/radar-capacity.md) |
 | `TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT`, `TACTIC_DOCKER_DEFAULT_CPU_LIMIT` | `512m`, `0.5` | Swarm service limits for managed workers; see [RADAR deployment capacity](../operations/radar-capacity.md) |
 | `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret in production | Signs runtime checkpoints; see [RADAR recovery](../operations/radar-recovery.md) |
-| `TACTIC_SERVICE_HOST` | `middleware_tactic` (Compose sets `tactic-middleware`) | Where the API gateway reaches TACTIC; read only by the gateway |
-| `TACTIC_SERVICE_PORT` | `8000` | TACTIC port the API gateway calls; read only by the gateway |
 
 ## RADAR workloads
 
@@ -237,7 +233,7 @@ ask the service which models it holds for the composer.
 | `LOG_PII_DEBUG_UNMASK` | `false` | Never enable in shared or production environments |
 | `ENABLE_REQUEST_LOGGING` | `true` | HTTP request logging toggle (gateway only) |
 | `ENABLE_PERFORMANCE_LOGGING` | `true` | Performance logging toggle (gateway only) |
-| `LOG_CORRELATION_HEADER` | `X-Correlation-ID` | Request header that carries the correlation ID; the gateway forwards it to TACTIC and both echo it in responses. Inbound IDs other than 1 to 128 letters, digits or `._:-` are replaced |
+| `LOG_CORRELATION_HEADER` | `X-Correlation-ID` | Request header that carries the correlation ID; the API echoes it in responses. Inbound IDs other than 1 to 128 letters, digits or `._:-` are replaced |
 
 ## Production images and collection ingress
 

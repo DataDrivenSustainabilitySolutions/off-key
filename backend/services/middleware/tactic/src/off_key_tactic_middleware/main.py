@@ -1,48 +1,26 @@
 """
-TACTIC (Timely Anomaly Communication / Task Instance Control) Middleware Service
+TACTIC (Timely Anomaly Communication / Task Instance Control) worker.
 
-This service acts as an orchestrator between the API gateway and backend microservices,
-specifically handling Docker container orchestration for RADAR services.
+The background half of the platform; the API serves every request. TACTIC
+records the catalogue's sources (ingress), runs pipeline activations, and keeps
+RADAR workloads and their records in step. It answers only /health and /ready.
 """
 
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
-from fastapi.responses import JSONResponse
-from off_key_core.api_docs import router as api_docs_router
-from off_key_core.config.auth import get_auth_settings
+from fastapi import FastAPI, Request, Response, status
 from off_key_core.config.bootstrap import start_service
-from off_key_core.config.logs import (
-    CorrelationIdMiddleware,
-    logger,
-)
-from off_key_core.config.service_auth import get_service_auth_settings
+from off_key_core.config.database import get_database_settings
+from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
-from off_key_core.db.maintenance import DeploymentInProgressError
-from starlette.middleware.gzip import GZipMiddleware
 
-from .api.service_auth import require_gateway
-from .api.v1 import (
-    agents,
-    catalogue_data,
-    data_services,
-    dojo,
-    members,
-    models,
-    pipelines,
-    radar,
-    system,
-)
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
 from .services.catalogue.broker_access import BrokerRouteAccess
-from .services.catalogue.broker_check import BrokerCheck
-from .services.catalogue.system import SystemService
 from .services.catalogue.system_ingress import SystemIngress
-from .services.catalogue.system_live import SystemLiveService
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
@@ -82,7 +60,7 @@ async def _connect_docker(app: FastAPI) -> None:
         raise
 
     app.state.docker_client = docker_client
-    # Request paths, collection pauses and teardown share this client and its
+    # Activations, collection pauses and teardown share this client and its
     # concurrency cap; the reconciliation sweep keeps its own (see below).
     set_shared_async_docker(docker_client)
     logger.info("Docker connectivity verified")
@@ -94,7 +72,7 @@ async def _start_reconciliation(app: FastAPI, config: TacticConfig) -> None:
         logger.info("Status reconciliation disabled")
         return
 
-    # A separate client keeps the periodic sweep from starving request paths.
+    # A separate client keeps the periodic sweep from starving activations.
     reconciliation_service = RadarStatusReconciliationService(
         interval_seconds=config.reconciliation_interval,
         terminal_service_retention_hours=config.terminal_service_retention_hours,
@@ -107,25 +85,8 @@ async def _start_reconciliation(app: FastAPI, config: TacticConfig) -> None:
     )
 
 
-async def _read_live_configuration():
-    async with get_async_session_local()() as session:
-        return await SystemService(session).read()
-
-
-async def _shutdown_system_live(app: FastAPI) -> None:
-    live = getattr(app.state, "system_live", None)
-    if live is not None:
-        try:
-            await live.close()
-        except Exception:
-            logger.exception("Error stopping generic live observation")
-        finally:
-            app.state.system_live = None
-
-
 async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
     """Best-effort shutdown for every service initialized during startup."""
-    await _shutdown_system_live(app)
     for attribute in (
         "pipeline_activation_supervisor",
         "system_ingress",
@@ -168,8 +129,6 @@ async def lifespan(app: FastAPI):
     app.state.reconciliation_service = None
     app.state.pipeline_activation_supervisor = None
     app.state.system_ingress = None
-    app.state.system_live = None
-    app.state.broker_check = None
 
     try:
         await _connect_docker(app)
@@ -186,68 +145,27 @@ async def lifespan(app: FastAPI):
             RadarWorkloadManager(app.state.docker_client)
         )
         await app.state.pipeline_activation_supervisor.start()
-        operator_access = BrokerRouteAccess(get_system_live_settings())
-        app.state.system_live = SystemLiveService(
-            get_system_live_settings(),
-            access_resolver=operator_access,
-        )
-        app.state.broker_check = BrokerCheck(
-            get_system_live_settings(),
-            access_resolver=operator_access,
-        )
         app.state.system_ingress = SystemIngress(
-            access_resolver=operator_access,
+            access_resolver=BrokerRouteAccess(get_system_live_settings()),
         )
         await app.state.system_ingress.start()
-        app.state.system_live.start_supervisor(_read_live_configuration)
         yield
     finally:
         await _shutdown_services(app, config)
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
+    """The worker's process: background services plus its own probes."""
     config = get_tactic_settings().config
 
     app = FastAPI(
         title=config.service_name,
-        description="Timely Anomaly Communication / "
-        "Task Instance Control for aberration",
         version=config.service_version,
         docs_url=None,
         redoc_url=None,
+        openapi_url=None,
         lifespan=lifespan,
     )
-    app.state.documentation_label = "TACTIC API"
-    app.include_router(api_docs_router)
-
-    @app.exception_handler(DeploymentInProgressError)
-    async def deployment_in_progress(request: Request, exc: DeploymentInProgressError):
-        return JSONResponse(status_code=503, content={"detail": str(exc)})
-
-    # No CORS: browsers reach TACTIC only through the gateway, which owns it.
-    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
-    app.add_middleware(CorrelationIdMiddleware)
-
-    business = APIRouter(dependencies=[Depends(require_gateway)])
-    business.include_router(
-        radar.router, prefix="/api/v1/orchestration", tags=["orchestration"]
-    )
-    business.include_router(
-        data_services.router, prefix="/api/v1/data", tags=["data-services"]
-    )
-    business.include_router(
-        catalogue_data.router, prefix="/api/v1/data", tags=["data-services"]
-    )
-    business.include_router(models.router, prefix="/api/v1", tags=["models"])
-    business.include_router(pipelines.router, prefix="/api/v1", tags=["pipelines"])
-    business.include_router(system.router, prefix="/api/v1")
-
-    business.include_router(members.router, prefix="/api/v1")
-    business.include_router(members.roles_router, prefix="/api/v1")
-    business.include_router(agents.router, prefix="/api/v1")
-    business.include_router(dojo.router, prefix="/api/v1")
-    app.include_router(business)
 
     @app.get("/health")
     async def health_check():
@@ -272,22 +190,21 @@ def create_app() -> FastAPI:
 
 
 def main() -> None:
-    """Main entry point for the TACTIC middleware service."""
+    """Main entry point for the TACTIC worker."""
     start_service(
         "tactic",
         Path(__file__).parent / "config" / "logging.yaml",
         [
             ("tactic", lambda: get_tactic_settings().config),
-            ("auth", get_auth_settings),
-            ("service_auth", get_service_auth_settings),
+            ("database", get_database_settings),
+            ("system_live", get_system_live_settings),
         ],
-        context="TACTIC middleware configuration",
+        context="TACTIC worker configuration",
     )
     config = get_tactic_settings().config
 
     logger.info(f"Starting {config.service_name} v{config.service_version}...")
     logger.info(f"Docker API: {config.docker.base_url}")
-    logger.info("Service configuration loaded from environment")
 
     app = create_app()
 

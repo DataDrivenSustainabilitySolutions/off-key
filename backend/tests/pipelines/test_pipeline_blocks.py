@@ -3,10 +3,8 @@
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
-from off_key_api_gateway.api.v1 import pipelines as gateway_pipelines
+from off_key_api_gateway.providers import get_pipeline_blocks
 from off_key_core.auth.permissions import Permission
-from off_key_core.db.base import get_db_async
 from off_key_core.models.pipeline_blocks import require_block_steps
 from off_key_core.schemas.pipelines import (
     MAX_BLOCK_BYTES,
@@ -16,19 +14,15 @@ from off_key_core.schemas.pipelines import (
     PipelineBlockList,
     PipelineBlockStep,
 )
-from off_key_tactic_middleware.api import collection_auth
-from off_key_tactic_middleware.api.v1 import pipelines as tactic_pipelines
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.domain import ConflictError, NotFoundError
-from off_key_tactic_middleware.provider import get_pipeline_blocks
 from off_key_tactic_middleware.services.pipelines import blocks as block_library
 from off_key_tactic_middleware.services.pipelines.blocks import PipelineBlocks
 from pydantic import ValidationError
 
-from tests.support.gateway import gateway_app, member_profile
+from tests.support.gateway import gateway_app, member, returning
 from tests.support.http import asgi_client
 
-TOKEN = {"Authorization": "Bearer member-token"}
 SCALE = {"component": "static.standard_scaler"}
 POWER = {
     "component": "prepare.formula",
@@ -89,57 +83,50 @@ def test_a_block_is_named_and_bounded():
     assert MAX_BLOCK_BYTES == 16 * 1024
 
 
-def tactic_app(blocks) -> FastAPI:
-    async def session():
-        yield SimpleNamespace()
+DESIGNER = member("designer", permissions=[Permission.manage_monitors])
 
-    app = FastAPI()
-    app.include_router(tactic_pipelines.router, prefix="/api/v1")
-    member = SimpleNamespace(email="member@example.com", role="admin")
-    app.dependency_overrides.update(
-        {
-            get_db_async: session,
-            get_pipeline_blocks: lambda: blocks,
-            collection_auth.current_caller: lambda: member,
-            collection_auth.require_permission(Permission.manage_monitors): (
-                lambda: member
-            ),
-        }
-    )
-    return app
+
+def api(blocks, caller=DESIGNER):
+    return gateway_app(caller, overrides={get_pipeline_blocks: returning(blocks)})
+
+
+class Library:
+    """The block library, recording what it was asked."""
+
+    def __init__(self):
+        self.saved, self.removed = [], []
+
+    async def list(self):
+        return PipelineBlockList(items=[STORED])
+
+    async def create(self, change):
+        self.saved.append(change)
+        return STORED
+
+    async def remove(self, identifier):
+        self.removed.append(identifier)
 
 
 @pytest.mark.asyncio
-async def test_tactic_serves_the_block_library():
-    saved, removed = [], []
-
-    async def listed():
-        return PipelineBlockList(items=[STORED])
-
-    async def create(change):
-        saved.append(change)
-        return STORED
-
-    async def remove(identifier):
-        removed.append(identifier)
-
-    library = SimpleNamespace(list=listed, create=create, remove=remove)
-    async with asgi_client(tactic_app(library)) as client:
-        listing = await client.get("/api/v1/monitors/pipeline-blocks")
+async def test_the_api_serves_the_block_library():
+    library = Library()
+    async with asgi_client(api(library)) as client:
+        listing = await client.get("/v1/pipeline-blocks")
         created = await client.post(
-            "/api/v1/monitors/pipeline-blocks",
+            "/v1/pipeline-blocks",
             json={"name": " Power, scaled ", "steps": [POWER, SCALE]},
         )
-        deleted = await client.delete("/api/v1/monitors/pipeline-blocks/block-1")
+        deleted = await client.delete("/v1/pipeline-blocks/a%20b")
         unnamed = await client.post(
-            "/api/v1/monitors/pipeline-blocks", json={"name": " ", "steps": [SCALE]}
+            "/v1/pipeline-blocks", json={"name": " ", "steps": [SCALE]}
         )
 
     assert listing.status_code == 200 and listing.json()["items"][0]["id"] == "block-1"
     assert created.status_code == 201 and created.json()["steps"][0]["label"] == "Power"
-    assert saved == [block()]
-    assert deleted.status_code == 204 and removed == ["block-1"]
-    assert unnamed.status_code == 422 and len(saved) == 1
+    assert library.saved == [block()]
+    assert deleted.status_code == 204 and deleted.content == b""
+    assert library.removed == ["a b"]
+    assert unnamed.status_code == 422 and len(library.saved) == 1
 
 
 @pytest.mark.asyncio
@@ -152,71 +139,35 @@ async def test_tactic_serves_the_block_library():
         ("DELETE", NotFoundError("Block not found"), 404),
     ],
 )
-async def test_tactic_says_why_a_block_was_refused(method, error, status):
+async def test_the_api_says_why_a_block_was_refused(method, error, status):
     async def fail(*_args):
         raise error
 
     library = SimpleNamespace(create=fail, remove=fail)
-    async with asgi_client(tactic_app(library)) as client:
+    async with asgi_client(api(library)) as client:
         response = await (
-            client.post(
-                "/api/v1/monitors/pipeline-blocks",
-                json={"name": "Power", "steps": [SCALE]},
-            )
+            client.post("/v1/pipeline-blocks", json={"name": "Power", "steps": [SCALE]})
             if method == "POST"
-            else client.delete("/api/v1/monitors/pipeline-blocks/block-1")
+            else client.delete("/v1/pipeline-blocks/block-1")
         )
 
     assert (response.status_code, response.json()) == (status, {"detail": str(error)})
 
 
-@pytest.fixture
-def forwarded(monkeypatch):
-    recorded = []
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return {"items": [STORED]} if method == "GET" else STORED
-
-    monkeypatch.setattr(gateway_pipelines.tactic, "request", request)
-    return recorded
-
-
 @pytest.mark.asyncio
-async def test_any_member_lists_blocks_through_the_gateway(forwarded):
-    async with asgi_client(gateway_app(member_profile("user"))) as client:
-        response = await client.get("/v1/pipeline-blocks", headers=TOKEN)
-
-    assert response.status_code == 200, response.text
-    assert response.json() == {"items": [STORED]}
-    [(method, endpoint, kwargs)] = forwarded
-    assert (method, endpoint) == ("GET", "/api/v1/monitors/pipeline-blocks")
-    assert kwargs["headers"] == TOKEN
-
-
-@pytest.mark.asyncio
-async def test_saving_and_deleting_a_block_need_manage_monitors(forwarded):
+async def test_any_member_lists_blocks_but_changes_need_manage_monitors():
+    library = Library()
     body = {"name": "Power, scaled", "steps": [POWER, SCALE]}
-    async with asgi_client(gateway_app(member_profile("user"))) as client:
+    async with asgi_client(api(library, member("user"))) as client:
+        listing = await client.get("/v1/pipeline-blocks")
         refused = [
-            await client.post("/v1/pipeline-blocks", json=body, headers=TOKEN),
-            await client.delete("/v1/pipeline-blocks/block-1", headers=TOKEN),
+            await client.post("/v1/pipeline-blocks", json=body),
+            await client.delete("/v1/pipeline-blocks/block-1"),
         ]
+    assert listing.status_code == 200, listing.text
+    assert listing.json() == {"items": [STORED]}
     assert [response.status_code for response in refused] == [403, 403]
-    assert forwarded == []
-
-    member = member_profile("user", permissions=[Permission.manage_monitors])
-    async with asgi_client(gateway_app(member)) as client:
-        created = await client.post("/v1/pipeline-blocks", json=body, headers=TOKEN)
-        deleted = await client.delete("/v1/pipeline-blocks/a%20b", headers=TOKEN)
-
-    assert created.status_code == 201 and created.json() == STORED
-    assert deleted.status_code == 204 and deleted.content == b""
-    assert [(method, endpoint) for method, endpoint, _ in forwarded] == [
-        ("POST", "/api/v1/monitors/pipeline-blocks"),
-        ("DELETE", "/api/v1/monitors/pipeline-blocks/a%20b"),
-    ]
-    assert forwarded[0][2]["json_data"] == block().model_dump(mode="json")
+    assert library.saved == library.removed == []
 
 
 @pytest.mark.asyncio

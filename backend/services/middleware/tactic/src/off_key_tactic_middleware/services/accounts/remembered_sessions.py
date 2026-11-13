@@ -36,8 +36,9 @@ class RememberedSessionService:
 
     def _issue(
         self,
-        user: User,
         *,
+        user_id: int,
+        session_version: int,
         family_id: str | None,
         expires_at: datetime,
         issued_at: datetime,
@@ -48,21 +49,23 @@ class RememberedSessionService:
             RememberedSession(
                 token_hash=token_hash,
                 family_id=family_id or token_hash,
-                user_id=user.id,
-                session_version=user.session_version,
+                user_id=user_id,
+                session_version=session_version,
                 expires_at=expires_at,
                 issued_at=issued_at,
             )
         )
         return token
 
-    async def create(self, user: User) -> dict:
+    async def create(self, *, user_id: int, session_version: int) -> dict:
+        """Remember a sign-in that has just checked the member's password."""
         now = datetime.now(UTC)
         await self.session.execute(
             delete(RememberedSession).where(RememberedSession.expires_at <= now)
         )
         token = self._issue(
-            user,
+            user_id=user_id,
+            session_version=session_version,
             family_id=None,
             expires_at=now + timedelta(seconds=REMEMBERED_SESSION_SECONDS),
             issued_at=now,
@@ -142,7 +145,8 @@ class RememberedSessionService:
             return identity
         remembered.replaced_at = now
         replacement = self._issue(
-            user,
+            user_id=user.id,
+            session_version=user.session_version,
             family_id=remembered.family_id,
             expires_at=remembered.expires_at,
             issued_at=now,

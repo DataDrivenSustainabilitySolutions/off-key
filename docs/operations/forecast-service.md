@@ -21,9 +21,8 @@ installed or cannot compute. No other image carries them.
   `FORECAST_API_TOKEN`; it is never in a container's environment. TACTIC copies
   the secret reference to each RADAR worker it starts, from the same template
   service as the worker's MQTT credentials.
-- The browser never reaches the service. The composer asks the gateway, the
-  gateway asks TACTIC, and TACTIC asks the service which checkpoints it holds
-  and starts their downloads.
+- The browser never reaches the service. The composer asks the API, and the
+  API asks the service which checkpoints it holds and starts their downloads.
 - TACTIC hands the address (`TACTIC_FORECAST_API_URL`) to every RADAR worker and
   every preflight job as `FORECAST_API_URL`. A preflight job only checks that a
   service is named; it has no network and no token. The address is not part of a
@@ -32,7 +31,7 @@ installed or cannot compute. No other image carries them.
   the app network (the readiness check `forecast endpoint`). It never waits for
   weights.
 
-The token is derived from `internal_api_secret` unless the environment vault sets
+The token is derived from `jwt_secret` unless the environment vault sets
 `forecast_api_token` (at least 32 characters). The derivation is a one-way hash,
 so a worker that holds the token learns nothing about the internal credential.
 
@@ -94,7 +93,7 @@ monitors on the larger checkpoints need more CPUs or the smaller checkpoints.
 | Ansible variable | Default | Becomes |
 | --- | --- | --- |
 | `forecast_api_url` | `http://forecast:8020` | `TACTIC_FORECAST_API_URL` for TACTIC, `FORECAST_API_URL` for workers |
-| `forecast_api_token` (vault, optional) | derived from `internal_api_secret` | Swarm secret `FORECAST_API_TOKEN` |
+| `forecast_api_token` (vault, optional) | derived from `jwt_secret` | Swarm secret `FORECAST_API_TOKEN` |
 | `forecast_timestral_checkpoints` | the four checkpoints, each with its commit | `FORECAST_TIMESTRAL_MODELS` |
 | `forecast_torch_threads` | `2` | `FORECAST_TORCH_THREADS` |
 | `forecast_memory_limit`, `forecast_cpu_limit` | `4G`, `2` | the task's limits |

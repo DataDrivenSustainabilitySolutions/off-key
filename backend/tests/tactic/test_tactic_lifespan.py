@@ -1,4 +1,4 @@
-"""Tests for reliable TACTIC startup and shutdown resource handling."""
+"""The TACTIC worker starts and stops its background resources reliably."""
 
 from importlib import import_module
 from types import SimpleNamespace
@@ -108,16 +108,10 @@ def _record_lifecycle(monkeypatch):
     ingress = SimpleNamespace(
         start=recorder("ingress.start"), stop=recorder("ingress.stop")
     )
-    live = SimpleNamespace(
-        start_supervisor=lambda reader: calls.append("live.start"),
-        close=recorder("live.close"),
-    )
     monkeypatch.setattr(
         tactic_main, "PipelineActivationSupervisor", lambda workloads: supervisor
     )
     monkeypatch.setattr(tactic_main, "SystemIngress", lambda **kwargs: ingress)
-    monkeypatch.setattr(tactic_main, "SystemLiveService", lambda *a, **k: live)
-    monkeypatch.setattr(tactic_main, "BrokerCheck", lambda *a, **k: object())
     monkeypatch.setattr(tactic_main, "BrokerRouteAccess", lambda settings: object())
     monkeypatch.setattr(tactic_main, "get_system_live_settings", lambda: None)
     return calls
@@ -135,9 +129,7 @@ async def test_lifespan_stops_services_in_a_fixed_order(monkeypatch):
         "teardown.startup",
         "supervisor.start",
         "ingress.start",
-        "live.start",
         "serving",
-        "live.close",
         "supervisor.stop",
         "ingress.stop",
         "reconciliation.stop",
@@ -149,7 +141,6 @@ async def test_lifespan_stops_services_in_a_fixed_order(monkeypatch):
         "reconciliation_service",
         "pipeline_activation_supervisor",
         "system_ingress",
-        "system_live",
     ):
         assert getattr(app.state, attribute) is None
 

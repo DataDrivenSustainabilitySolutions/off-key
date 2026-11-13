@@ -66,9 +66,8 @@ route is closed to keys unless its decorator carries
 starts services may call, so the same mark decides access and shows in the OpenAPI
 document as `x-agent-access`. A key has no permissions: on a marked route it
 passes the permission checks, and `current_member` refuses it wherever a handler
-needs a person. To open a route, mark it in both services and add it to
-`GATEWAY_AGENT_ACCESS` and `TACTIC_AGENT_ACCESS` in
-`backend/tests/contracts/test_access_matrix.py`, which fail until the tables and
+needs a person. To open a route, mark it and add it to `GATEWAY_AGENT_ACCESS` in
+`backend/tests/contracts/test_access_matrix.py`, which fails until the table and
 the marks agree.
 
 A caller that may not start a service, or would rather ask, hands its design in

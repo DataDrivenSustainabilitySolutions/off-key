@@ -18,11 +18,11 @@ broker_route_state_dir: "{{ stack_dir }}/broker-route-data"
 
 # Forecast service: pretrained forecasting models (Timestral) for forecaster
 # steps; see docs/operations/forecast-service.md. Workers reach it on the app
-# network. Its token is derived from the internal API credential unless the vault
+# network. Its token is derived from the token signing secret unless the vault
 # sets forecast_api_token.
 forecast_api_url: http://forecast:8020
 forecast_service_token: >-
-  {{ forecast_api_token | default((internal_api_secret ~ ':forecast-api-token') | hash('sha256'), true) }}
+  {{ forecast_api_token | default((jwt_secret ~ ':forecast-api-token') | hash('sha256'), true) }}
 # The checkpoints the composer offers, each pinned to the Hugging Face Hub commit
 # its weights were tested at. A checkpoint downloads on first use.
 forecast_timestral_checkpoints:

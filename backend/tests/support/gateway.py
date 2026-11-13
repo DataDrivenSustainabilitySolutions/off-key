@@ -1,18 +1,18 @@
-"""The public gateway's /v1 routes mounted as production mounts them."""
+"""The API's /v1 routes mounted as production mounts them."""
 
-import inspect
 from datetime import UTC, datetime
-from typing import Any, NamedTuple
+from unittest.mock import AsyncMock
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from off_key_api_gateway.api import access
 from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
 from off_key_api_gateway.api.v1 import routes
-from off_key_api_gateway.facades.tactic import TacticError
+from off_key_api_gateway.app import deployment_in_progress
 from off_key_core.auth.agents import new_agent_key
 from off_key_core.auth.permissions import role_permissions
-from off_key_core.schemas.members import MemberProfile
-from pydantic import BaseModel
+from off_key_core.db.base import get_db_async
+from off_key_core.db.maintenance import DeploymentInProgressError
+from off_key_core.db.models import Agent, MemberRole, User
 from slowapi.errors import RateLimitExceeded
 
 AGENT_KEY = new_agent_key()
@@ -20,114 +20,115 @@ BY_KEY = {"Authorization": f"Bearer {AGENT_KEY}"}
 BY_MEMBER = {"Authorization": "Bearer member"}
 
 
-def member_profile(role: str = "user", **fields) -> MemberProfile:
-    """A signed-in member; built-in roles carry their permissions."""
-    return MemberProfile(
+def member(role: str = "user", *, permissions=None, **fields) -> User:
+    """A signed-in member; built-in roles carry their permissions.
+
+    ``permissions`` gives a custom role what it holds.
+    """
+    if permissions is None:
+        permissions = role_permissions(role, ())
+    granted = [str(permission) for permission in permissions]
+    values = {
+        "id": 17,
+        "email": f"{role}@example.com",
+        "role": role,
+        "is_active": True,
+        "is_verified": True,
+        "session_version": 0,
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    } | fields
+    return User(
+        **values,
+        member_role=MemberRole(
+            id=values["role"], name=values["role"], permissions=granted
+        ),
+    )
+
+
+def agent(**fields) -> Agent:
+    """The agent that holds ``AGENT_KEY``."""
+    return Agent(
         **{
-            "id": 17,
-            "email": f"{role}@example.com",
-            "role": role,
-            "permissions": role_permissions(role, ()),
-            "is_active": True,
-            "is_verified": True,
+            "id": 4,
+            "name": "Designer",
+            "key_hint": AGENT_KEY[-4:],
+            "starts": "nothing",
+            "created_by": "admin@example.com",
             "created_at": datetime.now(UTC),
         }
         | fields
     )
 
 
-def gateway_app(member: MemberProfile | None = None) -> FastAPI:
-    """The /v1 router with the gateway's limiter; `member` skips token checks."""
+def gateway_app(
+    caller: User | Agent | None = None,
+    *,
+    session=None,
+    sessions=None,
+    overrides: dict | None = None,
+) -> FastAPI:
+    """The /v1 router with the API's limiter.
+
+    ``caller`` skips the token check; ``session`` stands in for the database,
+    or ``sessions`` opens a real session per request and commits it as the
+    API does; ``overrides`` replaces providers with fakes.
+    """
     app = FastAPI()
     app.include_router(routes.router, prefix="/v1")
     app.state.limiter = limiter
+    app.state.system_live = None
+    app.state.broker_check = None
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-    if member is not None:
-        app.dependency_overrides[access.current_caller] = lambda: member
+    app.add_exception_handler(DeploymentInProgressError, deployment_in_progress)
+    if sessions is not None:
+
+        async def per_request():
+            async with sessions() as opened:
+                yield opened
+                await opened.commit()
+
+        app.dependency_overrides[get_db_async] = per_request
+    else:
+        database = AsyncMock() if session is None else session
+        app.dependency_overrides[get_db_async] = lambda: database
+    if caller is not None:
+        app.dependency_overrides[access.current_caller] = lambda: caller
+    for dependency, value in (overrides or {}).items():
+        app.dependency_overrides[dependency] = value
     limiter.reset()
     return app
 
 
-def agent_profile(**fields) -> dict:
-    """What TACTIC says of the agent that holds ``AGENT_KEY``."""
-    return {
-        "id": 4,
-        "name": "Designer",
-        "key_hint": AGENT_KEY[-4:],
-        "starts": "nothing",
-        "created_by": "admin@example.com",
-        "created_at": datetime.now(UTC).isoformat(),
-    } | fields
+def returning(value):
+    """A provider override that hands out ``value``.
+
+    A default argument would become a query parameter whose default FastAPI
+    copies, so the override closes over the value instead.
+    """
+    return lambda: value
 
 
-class Asked(NamedTuple):
-    """One request that reached TACTIC."""
+class Callers:
+    """Who the API finds behind a credential, for as long as the test runs.
 
-    method: str
-    endpoint: str
-    headers: dict[str, str]
-    body: Any
-    params: Any
-
-
-class StandInTactic:
-    """TACTIC as the gateway sees it, for as long as the test runs.
-
-    It knows the agent that holds ``AGENT_KEY`` and, where given, the member
-    behind ``BY_MEMBER``. Everything else it answers from ``answers``, by
-    method and endpoint, or else with ``otherwise``. An answer may be a
-    function of the request, and one that raises an ``HTTPException`` refuses
-    as TACTIC would. It keeps what it was asked.
+    The key ``AGENT_KEY`` names ``agent``, ``BY_MEMBER`` names ``member``; any
+    other credential names nobody. The checks around the lookup stay real: a
+    key is still refused where a route is not open to it.
     """
 
-    def __init__(
-        self, monkeypatch, profile: dict, member=None, answers=None, otherwise=None
-    ):
-        self.profile = profile
+    def __init__(self, monkeypatch, *, agent: Agent | None = None, member=None):
+        self.agent = agent
         self.member = member
-        self.answers = answers or {}
-        self.otherwise = {} if otherwise is None else otherwise
-        self.asked: list[Asked] = []
-        monkeypatch.setattr(access.tactic, "request", self.request)
+        monkeypatch.setattr(access, "agent_by_key", self.agent_by_key)
+        monkeypatch.setattr(access, "signed_in_member", self.signed_in_member)
 
-    async def request(
-        self, method, endpoint, json_data=None, params=None, headers=None, **_
-    ):
-        asked = Asked(method, endpoint, headers or {}, json_data, params)
-        self.asked.append(asked)
-        authorization = asked.headers.get("Authorization")
-        if endpoint == "/api/v1/agents/me":
-            if authorization != BY_KEY["Authorization"]:
-                raise TacticError("This key is not valid", status=401)
-            return self.profile
-        if endpoint == "/api/v1/members/me":
-            if self.member is None or authorization != BY_MEMBER["Authorization"]:
-                raise TacticError("Invalid access token", status=401)
-            return self.member.model_dump(mode="json")
-        answer = self.answers.get((method, endpoint), self.otherwise)
-        if callable(answer):
-            try:
-                answer = answer(asked)
-                if inspect.isawaitable(answer):
-                    answer = await answer
-            except HTTPException as refusal:
-                raise TacticError(
-                    str(refusal.detail),
-                    status=refusal.status_code,
-                    body={"detail": refusal.detail},
-                ) from refusal
-        if isinstance(answer, BaseModel):
-            return answer.model_dump(mode="json")
-        return answer
+    async def agent_by_key(self, key, session):
+        return self.agent if key == AGENT_KEY else None
 
-    def forwarded(self) -> list[Asked]:
-        """What reached TACTIC beyond asking who is calling."""
-        return [asked for asked in self.asked if not asked.endpoint.endswith("/me")]
+    async def signed_in_member(self, token, session):
+        from fastapi import HTTPException
 
-    def last(self, method: str, endpoint: str) -> Asked:
-        """The latest request of that kind."""
-        return next(
-            asked
-            for asked in reversed(self.asked)
-            if (asked.method, asked.endpoint) == (method, endpoint)
-        )
+        if self.member is None or token != BY_MEMBER["Authorization"].split()[1]:
+            raise HTTPException(401, "Invalid access token")
+        return self.member

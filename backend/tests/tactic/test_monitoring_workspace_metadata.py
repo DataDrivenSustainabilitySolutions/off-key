@@ -6,23 +6,19 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.access import current_caller, writes_require
-from off_key_api_gateway.api.v1 import monitors
+from off_key_api_gateway.providers import get_radar_orchestration_service
 from off_key_core.auth.permissions import (
     ADMIN_ROLE,
     MEMBER_ROLE,
-    Permission,
-    role_permissions,
 )
 from off_key_core.db.maintenance import DeploymentInProgressError
 from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
 from off_key_tactic_middleware import deployment
-from off_key_tactic_middleware.api.v1 import radar as radar_api
 from off_key_tactic_middleware.services.orchestration import radar, radar_queries
 from pydantic import ValidationError
 
+from tests.support.gateway import gateway_app, member, returning
 from tests.support.orchestration import scalars_result
 
 
@@ -150,20 +146,16 @@ async def test_rename_missing_record_and_deployment_lock_do_not_commit():
 
 
 @pytest.mark.parametrize("role,expected", [(MEMBER_ROLE, 403), (ADMIN_ROLE, 200)])
-def test_gateway_service_rename_obeys_operational_write_permissions(
-    role, expected, monkeypatch
-):
-    app = FastAPI()
-    app.include_router(
-        monitors.router,
-        prefix="/v1/monitors",
-        dependencies=[Depends(writes_require(Permission.manage_monitors))],
+def test_renaming_a_monitor_obeys_operational_write_permissions(role, expected):
+    rename = AsyncMock(return_value=True)
+    app = gateway_app(
+        member(role),
+        overrides={
+            get_radar_orchestration_service: returning(
+                SimpleNamespace(rename_radar_service=rename)
+            )
+        },
     )
-    app.dependency_overrides[current_caller] = lambda: SimpleNamespace(
-        role=role, permissions=role_permissions(role, ())
-    )
-    rename = AsyncMock(return_value={"id": "monitor", "display_name": "Climate"})
-    monkeypatch.setattr(monitors.tactic, "rename_radar_service", rename)
     with TestClient(app) as client:
         response = client.patch(
             "/v1/monitors/monitor", json={"display_name": "Climate"}
@@ -173,20 +165,6 @@ def test_gateway_service_rename_obeys_operational_write_permissions(
         rename.assert_not_awaited()
     else:
         rename.assert_awaited_once_with("monitor", "Climate")
-
-
-def test_missing_service_label_returns_404_without_claiming_success():
-    app = FastAPI()
-    app.include_router(radar_api.router, prefix="/api/v1/orchestration")
-    app.dependency_overrides[radar_api.get_radar_orchestration_service] = lambda: (
-        SimpleNamespace(rename_radar_service=AsyncMock(return_value=False))
-    )
-    with TestClient(app) as client:
-        response = client.patch(
-            "/api/v1/orchestration/radar/services/missing/label",
-            json={"display_name": "Name"},
-        )
-    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

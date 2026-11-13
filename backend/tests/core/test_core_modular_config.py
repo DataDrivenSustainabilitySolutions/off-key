@@ -1,19 +1,13 @@
 from pathlib import Path
 
 import off_key_core.config as core_config
-from off_key_api_gateway.settings import (
-    get_app_settings,
-    get_service_endpoints_settings,
-)
 from off_key_core.config import (
     get_auth_settings,
     get_database_settings,
-    get_email_settings,
     get_runtime_settings,
     get_telemetry_settings,
 )
 from off_key_core.config.database import DatabaseSettings
-from off_key_core.config.validation import validate_settings
 from off_key_core.db import base as db_base
 from off_key_mqtt_radar.config.runtime import (
     get_radar_database_settings,
@@ -22,7 +16,7 @@ from off_key_tactic_middleware.config import (
     get_radar_container_runtime_settings,
 )
 
-from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
+from tests.support.env import AUTH_ENVIRONMENT, set_environment
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
 
@@ -169,41 +163,20 @@ def test_database_url_encoding_is_consistent_across_runtime_builders(monkeypatch
     assert radar_runtime_url == expected
 
 
-def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
-    set_environment(
-        monkeypatch,
-        {
-            **AUTH_ENVIRONMENT,
-            **EMAIL_ENVIRONMENT,
-            "APP_NAME": "off-key",
-            "DEBUG": "false",
-            "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
-        },
-    )
-    monkeypatch.delenv("POSTGRES_USER", raising=False)
-    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
-    monkeypatch.delenv("POSTGRES_DB", raising=False)
-    monkeypatch.delenv("POSTGRES_PORT", raising=False)
-    monkeypatch.delenv("POSTGRES_HOST", raising=False)
-
-    validate_settings(
-        [
-            ("app", get_app_settings),
-            ("runtime", get_runtime_settings),
-            ("auth", get_auth_settings),
-            ("email", get_email_settings),
-            ("services", get_service_endpoints_settings),
-        ],
-        context="API gateway configuration",
-    )
-
-
-def test_gateway_validation_specs_exclude_database():
+def test_the_api_validates_what_it_reads_in_process():
     from off_key_api_gateway.app import VALIDATION_SPECS
 
-    names = [name for name, _ in VALIDATION_SPECS]
-    assert "runtime" in names
-    assert "database" not in names
+    # The API reads the database and the domain settings itself now.
+    assert [name for name, _ in VALIDATION_SPECS] == [
+        "app",
+        "runtime",
+        "database",
+        "auth",
+        "email",
+        "tactic",
+        "system_live",
+        "demo",
+    ]
 
 
 def test_no_canonical_config_imports_or_get_settings_calls():

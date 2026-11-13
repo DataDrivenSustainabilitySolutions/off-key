@@ -1,37 +1,27 @@
-"""The gateway as an MCP server: what an agent's key finds at `/v1/mcp`."""
+"""The API as an MCP server: what an agent's key finds at `/v1/mcp`."""
 
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from urllib.parse import unquote
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx2
 import pytest
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
+from off_key_api_gateway import providers
 from off_key_api_gateway.api import mcp_tools
 from off_key_api_gateway.api.rate_limiter import limiter
 from off_key_api_gateway.app import build_app
-from off_key_api_gateway.facades.tactic import TacticError
 from off_key_api_gateway.settings import AppSettings
 from off_key_core.auth.agents import new_agent_key
+from off_key_core.db.base import get_db_async
+from off_key_core.db.models import Agent
 from off_key_core.models.pipelines import pipeline_catalog
-from off_key_core.schemas.pipeline_tools import ComponentSearchQuery, DesignEditRequest
-from off_key_core.schemas.pipelines import PipelineValidateRequest
-from off_key_tactic_middleware.api.v1 import pipelines as tactic_pipelines
 
-from tests.support.gateway import (
-    BY_KEY,
-    BY_MEMBER,
-    Asked,
-    StandInTactic,
-    agent_profile,
-    member_profile,
-)
+from tests.support.gateway import BY_KEY, BY_MEMBER, Callers, agent, member, returning
 
 URL = "http://gateway/v1/mcp"
-MONITORS = "/api/v1/monitors"
-DOJO = "/api/v1/dojo"
 THEN = datetime(2026, 3, 1, tzinfo=UTC).isoformat()
 WITHOUT_THE_GRANT = [
     "list_devices",
@@ -51,10 +41,57 @@ WITHOUT_THE_GRANT = [
 ]
 
 
+class Stores:
+    """What the routes behind the tools read and change, each a mock that
+    records what it was asked."""
+
+    def __init__(self):
+        self.data = AsyncMock()
+        self.data.device_readings = MagicMock()
+        self.library = AsyncMock()
+        self.monitors = AsyncMock()
+        self.proposals = AsyncMock()
+        self.activations = AsyncMock()
+        self.datasets = AsyncMock()
+        self.runs = AsyncMock()
+        self.metrics = AsyncMock()
+
+    def overrides(self) -> dict:
+        return {
+            get_db_async: returning(AsyncMock()),
+            providers.get_catalogue_data_service: returning(self.data),
+            providers.get_pipeline_library: returning(self.library),
+            providers.get_radar_orchestration_service: returning(self.monitors),
+            providers.get_pipeline_proposals: returning(self.proposals),
+            providers.get_pipeline_activations: returning(self.activations),
+            providers.get_dojo_datasets: returning(self.datasets),
+            providers.get_dojo_runs: returning(self.runs),
+            providers.get_dojo_metrics: returning(self.metrics),
+        }
+
+    def asked(self) -> list:
+        return [call for store in vars(self).values() for call in store.mock_calls]
+
+
 @pytest.fixture
-def gateway():
+def stores():
+    return Stores()
+
+
+@pytest.fixture
+def key(monkeypatch) -> Agent:
+    """The agent behind ``BY_KEY``; a member signs in with ``BY_MEMBER``."""
+    held = agent()
+    Callers(monkeypatch, agent=held, member=member())
+    return held
+
+
+@pytest.fixture
+def gateway(stores):
     limiter.reset()
-    yield build_app(AppSettings(APP_NAME="off-key-test"))
+    app = build_app(AppSettings(APP_NAME="off-key-test"))
+    app.dependency_overrides |= stores.overrides()
+    yield app
     limiter.reset()
 
 
@@ -62,31 +99,6 @@ def gateway():
 def no_pause(monkeypatch):
     """A tool that waits for something to finish asks again at once."""
     monkeypatch.setattr(mcp_tools, "PAUSE", 0.0)
-
-
-async def designs(asked: Asked):
-    """TACTIC's own answers where they need no database."""
-    path = asked.endpoint.removeprefix(f"{MONITORS}/pipelines")
-    if path == "/catalog":
-        return pipeline_catalog(True)
-    if path == "/catalog/search":
-        query = ComponentSearchQuery.model_validate(asked.params or {})
-        return await tactic_pipelines.search_catalog(query)
-    if path.startswith("/catalog/components/"):
-        return await tactic_pipelines.catalog_component(unquote(path.rsplit("/")[-1]))
-    if path == "/edit":
-        change = DesignEditRequest.model_validate(asked.body)
-        return await tactic_pipelines.edit_unsaved_design(change)
-    if path == "/validate":
-        check = PipelineValidateRequest.model_validate(asked.body)
-        return await tactic_pipelines.validate_unsaved_design(check)
-    raise TacticError("Not found", status=404)
-
-
-def tactic(monkeypatch, answers=None, **profile) -> StandInTactic:
-    return StandInTactic(
-        monkeypatch, agent_profile(**profile), answers=answers, otherwise=designs
-    )
 
 
 @asynccontextmanager
@@ -141,16 +153,15 @@ def proposal(**fields) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_an_agent_finds_the_tools_its_key_allows(gateway, monkeypatch):
-    stand_in = tactic(monkeypatch)
+async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
     async with connected(gateway) as client:
         assert client.server_info.name == "off-key"
         assert client.instructions == mcp_tools.INSTRUCTIONS
         tools = (await client.list_tools()).tools
         # The grant is read with every request, so it holds from the next one.
-        stand_in.profile["starts"] = "shadow"
+        key.starts = "shadow"
         in_shadow = (await client.list_tools()).tools
-        stand_in.profile["starts"] = "live"
+        key.starts = "live"
         granted = (await client.list_tools()).tools
 
     assert [tool.name for tool in tools] == WITHOUT_THE_GRANT
@@ -195,8 +206,7 @@ def test_a_schema_says_nothing_twice():
 
 
 @pytest.mark.asyncio
-async def test_only_the_key_of_an_agent_opens_the_door(gateway, monkeypatch):
-    stand_in = StandInTactic(monkeypatch, agent_profile(), member=member_profile())
+async def test_only_the_key_of_an_agent_opens_the_door(gateway, key, stores):
     ask = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
     accepts = {"Accept": "application/json, text/event-stream"}
     async with running(gateway) as client:
@@ -223,11 +233,11 @@ async def test_only_the_key_of_an_agent_opens_the_door(gateway, monkeypatch):
         assert agent.status_code == 200
         assert agent.headers["content-type"].startswith("application/json")
         assert len(agent.json()["result"]["tools"]) == len(WITHOUT_THE_GRANT)
-    assert stand_in.forwarded() == []
+    assert stores.asked() == []
 
 
 @pytest.mark.asyncio
-async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, monkeypatch):
+async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
     device = {
         "id": "pump",
         "label": "Pump",
@@ -244,14 +254,9 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, monkeypatch):
         "end": THEN,
         "bucket_seconds": 60.0,
     }
-    stand_in = tactic(
-        monkeypatch,
-        answers={
-            ("GET", "/api/v1/data/devices"): [device],
-            ("GET", "/api/v1/data/devices/pump/readings"): [],
-            ("GET", "/api/v1/data/readings/r-power/profile"): profile,
-        },
-    )
+    stores.data.devices.return_value = [device]
+    stores.data.device_readings.return_value = []
+    stores.data.profile.return_value = profile
     async with connected(gateway) as client:
         devices = said(await client.call_tool("list_devices", {"active": True}))
         assert [item["id"] for item in devices] == ["pump"]
@@ -315,33 +320,22 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, monkeypatch):
         )
         assert checked["valid"]
 
-    assert [asked[:2] for asked in stand_in.forwarded()] == [
-        ("GET", "/api/v1/data/devices"),
-        ("GET", "/api/v1/data/devices/pump/readings"),
-        ("GET", "/api/v1/data/readings/r-power/profile"),
-        ("GET", f"{MONITORS}/pipelines/catalog/search"),
-        ("GET", f"{MONITORS}/pipelines/catalog/components/prepare.smooth"),
-        ("GET", f"{MONITORS}/pipelines/catalog"),
-        ("POST", f"{MONITORS}/pipelines/edit"),
-        ("POST", f"{MONITORS}/pipelines/validate"),
+    assert stores.data.devices.await_args.kwargs == {"active": True}
+    assert stores.data.device_readings.call_args.args == ("pump",)
+    assert stores.data.profile.await_args.args == ("r-power",)
+    assert stores.data.profile.await_args.kwargs == {"days": 14}
+    # Components and designs are worked out in process; nothing is stored.
+    assert [call[0] for call in stores.asked()] == [
+        "devices",
+        "device_readings",
+        "profile",
     ]
-    assert stand_in.last("GET", "/api/v1/data/devices").params == {"active": True}
-    assert stand_in.last("GET", "/api/v1/data/readings/r-power/profile").params == {
-        "days": 14
-    }
-    # TACTIC is asked with the key itself, so it checks the key again.
-    assert all(
-        asked.headers == BY_KEY
-        for asked in stand_in.forwarded()
-        if asked.endpoint.startswith(MONITORS)
-    )
 
 
 @pytest.mark.asyncio
 async def test_a_refusal_reaches_the_agent_in_the_words_of_the_api(
-    gateway, monkeypatch
+    gateway, key, stores
 ):
-    stand_in = tactic(monkeypatch)
     design = starter()["definition"]
     start = {"name": "Pump", "definition": design, "bindings": {"value": "r-power"}}
     refusals = (
@@ -386,15 +380,11 @@ async def test_a_refusal_reaches_the_agent_in_the_words_of_the_api(
             result = await client.call_tool(name, arguments)
             assert result.is_error, name
             assert words in said(result), name
-    assert [asked.endpoint for asked in stand_in.forwarded()] == [
-        f"{MONITORS}/pipelines/catalog/components/prepare.none",
-        f"{MONITORS}/pipelines/catalog",
-        f"{MONITORS}/pipelines/edit",
-    ]
+    assert stores.asked() == []
 
 
 @pytest.mark.asyncio
-async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
+async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
     dataset = {
         "id": "d1",
         "name": "Test by an agent · last 3 days",
@@ -465,16 +455,11 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
     states = iter(
         [run | {"status": "running"}, run | {"status": "succeeded", "alarm_count": 7}]
     )
-    stand_in = tactic(
-        monkeypatch,
-        answers={
-            ("POST", f"{DOJO}/datasets/history"): dataset,
-            ("GET", f"{DOJO}/datasets/d1"): dataset,
-            ("POST", f"{DOJO}/runs"): run,
-            ("GET", f"{DOJO}/runs/run-1"): lambda asked: next(states),
-            ("GET", f"{DOJO}/runs/run-1/metrics"): metrics,
-        },
-    )
+    stores.datasets.import_history.return_value = dataset
+    stores.datasets.get.return_value = dataset
+    stores.runs.create.return_value = run
+    stores.runs.get.side_effect = lambda run_id: next(states)
+    stores.metrics.run.return_value = metrics
     test = {"definition": starter()["definition"], "bindings": {"value": "r-power"}}
     async with connected(gateway) as client:
         queued = said(await client.call_tool("test_design", test | {"days": 3}))
@@ -488,15 +473,15 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
         }
         assert (queued["run_id"], queued["dataset_id"]) == ("run-1", "d1")
         # The values of the readings are copied, and each input takes its own.
-        copied = stand_in.last("POST", f"{DOJO}/datasets/history").body
-        assert copied["name"] == "Test by an agent · last 3 days"
-        assert copied["reading_ids"] == ["r-power"]
-        window = datetime.fromisoformat(copied["end"]) - datetime.fromisoformat(
-            copied["start"]
-        )
-        assert window == timedelta(days=3)
-        queue = stand_in.last("POST", f"{DOJO}/runs").body
-        assert (queue["dataset_id"], queue["bindings"]) == ("d1", {"value": "s1"})
+        copied = stores.datasets.import_history.await_args.args[0]
+        assert copied.name == "Test by an agent · last 3 days"
+        assert copied.reading_ids == ["r-power"]
+        assert copied.end - copied.start == timedelta(days=3)
+        # An agent is no member, so neither record names one as its creator.
+        assert stores.datasets.import_history.await_args.kwargs == {"created_by": None}
+        queue = stores.runs.create.await_args.args[0]
+        assert (queue.dataset_id, queue.bindings) == ("d1", {"value": "s1"})
+        assert stores.runs.create.await_args.kwargs == {"created_by": None}
 
         # A changed design runs on the same copy, so the two results compare.
         await client.call_tool("test_design", test | {"dataset_id": "d1"})
@@ -505,9 +490,8 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
             {**test, "bindings": {"value": "r-flow"}, "dataset_id": "d1"},
         )
         assert said(elsewhere) == "The dataset holds no values of r-flow"
-        asked = [asked.endpoint for asked in stand_in.forwarded()]
-        assert asked.count(f"{DOJO}/datasets/history") == 1
-        assert asked.count(f"{DOJO}/runs") == 2
+        assert stores.datasets.import_history.await_count == 1
+        assert stores.runs.create.await_count == 2
 
         # It waits for the run to finish, and spares the agent the compiled design.
         result = said(await client.call_tool("get_test", {"run_id": "run-1"}))
@@ -523,12 +507,11 @@ async def test_a_design_is_tested_on_history(gateway, monkeypatch, no_pause):
         result = said(await client.call_tool("get_test", {"run_id": "run-1"}))
         assert result["note"].startswith("Nothing was scored: the replay gave 300 ")
         assert "warm-up of 1560 observations" in result["note"]
-    assert all(asked.headers == BY_KEY for asked in stand_in.forwarded())
 
 
 @pytest.mark.asyncio
 async def test_a_design_is_proposed_and_started_only_with_the_grant(
-    gateway, monkeypatch, no_pause
+    gateway, key, stores, no_pause
 ):
     activation = {
         "id": "activation-1",
@@ -548,22 +531,11 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
         for key, value in proposal().items()
         if key not in {"definition", "layout", "bindings"}
     }
-    stand_in = tactic(
-        monkeypatch,
-        answers={
-            ("POST", f"{MONITORS}/pipeline-proposals"): proposal(
-                replace_service_id="service-9"
-            ),
-            ("GET", f"{MONITORS}/pipeline-proposals"): {"items": [summary]},
-            ("POST", f"{MONITORS}/pipeline-proposals/p1/withdraw"): proposal(
-                status="withdrawn"
-            ),
-            ("POST", f"{MONITORS}/pipelines/apply"): activation,
-            ("GET", f"{MONITORS}/pipeline-activations/activation-1"): (
-                lambda asked: next(phases)
-            ),
-        },
-    )
+    stores.proposals.create.return_value = proposal(replace_service_id="service-9")
+    stores.proposals.list.return_value = {"items": [summary]}
+    stores.proposals.withdraw.return_value = proposal(status="withdrawn")
+    stores.activations.apply.return_value = activation
+    stores.activations.get.side_effect = lambda activation_id: next(phases)
     design = starter()
     start = {
         "name": "Pump vibration",
@@ -584,20 +556,19 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
             )
         )
         assert (proposed["id"], proposed["replace_monitor_id"]) == ("p1", "service-9")
-        handed = stand_in.last("POST", f"{MONITORS}/pipeline-proposals").body
-        assert handed["name"] == "Pump vibration"
-        assert handed["bindings"] == {"value": "r-power"}
-        assert handed["layout"] == design["layout"]
-        assert (handed["test_run_id"], handed["replace_service_id"]) == (
+        handed, author = stores.proposals.create.await_args.args
+        assert author is key
+        assert handed.name == "Pump vibration"
+        assert handed.bindings == {"value": "r-power"}
+        assert handed.layout.model_dump(mode="json") == design["layout"]
+        assert (handed.test_run_id, handed.replace_service_id) == (
             "run-1",
             "service-9",
         )
 
         waiting = said(await client.call_tool("list_proposals", {"status": "open"}))
         assert [item["id"] for item in waiting["items"]] == ["p1"]
-        assert stand_in.last("GET", f"{MONITORS}/pipeline-proposals").params == {
-            "status": "open"
-        }
+        assert stores.proposals.list.await_args.args == ("open",)
         taken_back = said(
             await client.call_tool("withdraw_proposal", {"proposal_id": "p1"})
         )
@@ -605,27 +576,25 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
 
         refused = await client.call_tool("start_monitor", start)
         assert said(refused) == "There is no tool called start_monitor"
-        assert not any(
-            asked.endpoint.endswith("/apply") for asked in stand_in.forwarded()
-        )
+        assert stores.activations.apply.await_count == 0
 
-        stand_in.profile["starts"] = "live"
+        key.starts = "live"
         started = said(await client.call_tool("start_monitor", start))
         assert (started["id"], started["monitor_id"]) == ("activation-1", "service-1")
-        applied = stand_in.last("POST", f"{MONITORS}/pipelines/apply").body
-        assert applied["display_name"] == "Pump vibration"
-        assert applied["bindings"] == {"value": "r-power"}
-        assert applied["replace_service_id"] is None
-        assert applied["shadow"] is False
+        [applied] = stores.activations.apply.await_args.args
+        assert applied.display_name == "Pump vibration"
+        assert applied.bindings == {"value": "r-power"}
+        assert applied.replace_service_id is None
+        assert applied.shadow is False
         # In shadow the monitor records its alarms and raises none.
         await client.call_tool("start_monitor", start | {"shadow": True})
-        assert stand_in.last("POST", f"{MONITORS}/pipelines/apply").body["shadow"]
+        assert stores.activations.apply.await_args.args[0].shadow
         # A start is named even where the agent names none, and by the agent's
         # own word where it repeats a call.
-        assert len(applied["idempotency_key"]) == 32
+        assert len(applied.idempotency_key) == 32
         await client.call_tool("start_monitor", start | {"idempotency_key": "again"})
-        again = stand_in.last("POST", f"{MONITORS}/pipelines/apply").body
-        assert again["idempotency_key"] == "again"
+        again = stores.activations.apply.await_args.args[0]
+        assert again.idempotency_key == "again"
 
         settled = said(
             await client.call_tool("get_start", {"activation_id": "activation-1"})
@@ -634,7 +603,7 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
 
 
 @pytest.mark.asyncio
-async def test_a_design_is_read_from_where_it_is(gateway, monkeypatch):
+async def test_a_design_is_read_from_where_it_is(gateway, key, stores):
     design = starter("static_baseline")
     saved = {
         "id": "pl-1",
@@ -688,16 +657,11 @@ async def test_a_design_is_read_from_where_it_is(gateway, monkeypatch):
         "definition": design["definition"],
         "layout": design["layout"],
     }
-    stand_in = tactic(
-        monkeypatch,
-        answers={
-            ("GET", f"{MONITORS}/pipelines"): {"items": [listed]},
-            ("GET", "/api/v1/orchestration/radar/services/"): [service],
-            ("GET", f"{MONITORS}/pipelines/pl-1"): saved,
-            ("GET", f"{MONITORS}/pipeline-proposals/p1"): proposal(),
-            ("GET", f"{MONITORS}/service-1/pipeline"): runs,
-        },
-    )
+    stores.library.list.return_value = {"items": [listed]}
+    stores.monitors.list_radar_services.return_value = [service]
+    stores.library.get.return_value = saved
+    stores.proposals.get.return_value = proposal()
+    stores.library.service.return_value = runs
     async with connected(gateway) as client:
         assert said(await client.call_tool("list_designs", {})) == {
             "starters": [
@@ -720,7 +684,7 @@ async def test_a_design_is_read_from_where_it_is(gateway, monkeypatch):
                 }
             ],
         }
-        assert stand_in.last("GET", f"{MONITORS}/pipelines").params["limit"] == 100
+        assert stores.library.list.await_args.args[0].limit == 100
 
         async def read(source: str, key: str) -> dict:
             return said(

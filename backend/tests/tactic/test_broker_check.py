@@ -6,20 +6,12 @@ import ssl
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import catalogue as gateway
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import User
 from off_key_core.schemas.system import (
     SystemConnection,
-    SystemConnectionCheckScope,
     SystemDocument,
     SystemSnapshot,
 )
-from off_key_tactic_middleware.api.collection_auth import current_caller
-from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.config.system_live import (
     LiveCredential,
     SystemLiveSettings,
@@ -30,6 +22,8 @@ from off_key_tactic_middleware.services.catalogue.system_live_http import NOT_HT
 from paho.mqtt.client import WebsocketConnectionError
 from socks import ProxyError
 
+from tests.support.gateway import gateway_app, member
+from tests.support.http import asgi_client
 from tests.support.http_source import Reply, http_source
 from tests.support.mqtt import mqtt_broker, wait_until, withholding_server
 from tests.support.system_live import snapshot
@@ -148,15 +142,10 @@ async def test_blocked_definitions_never_open_a_socket():
 
 
 def _api(monkeypatch, *, role=MEMBER_ROLE):
-    app = FastAPI()
-    app.include_router(system_api.router)
+    app = gateway_app(member(role))
     checker = BrokerCheck(SystemLiveSettings(SYSTEM_LIVE_ALLOWED_HOSTS=["broker"]))
     checker.check = AsyncMock(wraps=checker.check)
     app.state.broker_check = checker
-    app.dependency_overrides[current_caller] = lambda: User(
-        id=1, email="member@example.com", role=role
-    )
-    app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     monkeypatch.setattr(
         SystemService,
         "read",
@@ -165,23 +154,17 @@ def _api(monkeypatch, *, role=MEMBER_ROLE):
     return app, checker
 
 
-def test_only_administrators_check_saved_brokers(monkeypatch):
+async def test_only_administrators_check_saved_brokers(monkeypatch):
     app, checker = _api(monkeypatch)
-    with TestClient(app) as client:
-        response = client.post(
-            "/system/connections/check", json={"connection_id": "broker"}
-        )
+    async with asgi_client(app) as client:
+        response = await client.post("/v1/brokers/check", json={"broker_id": "broker"})
     assert response.status_code == 403
     checker.check.assert_not_awaited()
 
     app, checker = _api(monkeypatch, role=ADMIN_ROLE)
-    with TestClient(app) as client:
-        unknown = client.post(
-            "/system/connections/check", json={"connection_id": "gone"}
-        )
-        result = client.post(
-            "/system/connections/check", json={"connection_id": "broker"}
-        )
+    async with asgi_client(app) as client:
+        unknown = await client.post("/v1/brokers/check", json={"broker_id": "gone"})
+        result = await client.post("/v1/brokers/check", json={"broker_id": "broker"})
     assert unknown.status_code == 404
     assert result.status_code == 200
     body = result.json()
@@ -196,55 +179,22 @@ def test_only_administrators_check_saved_brokers(monkeypatch):
     }
 
 
-async def test_gateway_forwards_the_check_with_the_member_token(monkeypatch):
-    request = AsyncMock(return_value={})
-    monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.check_broker(
-        SystemConnectionCheckScope(connection_id="broker"), "Bearer token"
-    )
-    request.assert_awaited_with(
-        "POST",
-        "/api/v1/system/connections/check",
-        json_data={"connection_id": "broker"},
-        headers={"Authorization": "Bearer token"},
-    )
-
-
-def test_only_administrators_reconnect_a_recorded_broker(monkeypatch):
+async def test_only_administrators_reconnect_a_recorded_broker(monkeypatch):
+    reconnect = AsyncMock(side_effect=lambda key: key == "broker")
+    monkeypatch.setattr(SystemService, "request_reconnect", reconnect)
     app, _ = _api(monkeypatch)
-    ingress = MagicMock(reconnect=AsyncMock(side_effect=lambda key: key == "broker"))
-    app.state.system_ingress = ingress
-    with TestClient(app) as client:
-        denied = client.post(
-            "/system/connections/reconnect", json={"connection_id": "broker"}
-        )
+    async with asgi_client(app) as client:
+        denied = await client.post("/v1/brokers/broker/reconnect")
     assert denied.status_code == 403
-    ingress.reconnect.assert_not_awaited()
+    reconnect.assert_not_awaited()
 
     app, _ = _api(monkeypatch, role=ADMIN_ROLE)
-    app.state.system_ingress = ingress
-    with TestClient(app) as client:
-        idle = client.post(
-            "/system/connections/reconnect", json={"connection_id": "idle"}
-        )
-        retried = client.post(
-            "/system/connections/reconnect", json={"connection_id": "broker"}
-        )
+    async with asgi_client(app) as client:
+        idle = await client.post("/v1/brokers/idle/reconnect")
+        retried = await client.post("/v1/brokers/broker/reconnect")
     assert idle.status_code == 409
     assert retried.status_code == 200
-    assert retried.json() == {"connection_id": "broker"}
-
-
-async def test_gateway_forwards_a_reconnect_with_the_member_token(monkeypatch):
-    request = AsyncMock(return_value={})
-    monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.reconnect_broker("broker", "Bearer token")
-    request.assert_awaited_with(
-        "POST",
-        "/api/v1/system/connections/reconnect",
-        json_data={"connection_id": "broker"},
-        headers={"Authorization": "Bearer token"},
-    )
+    assert retried.json() == {"broker_id": "broker"}
 
 
 def _http(port, **fields):
@@ -356,7 +306,7 @@ async def test_an_unreachable_or_foreign_http_port_is_named():
     assert (foreign.status, foreign.message) == ("refused", NOT_HTTP)
 
 
-def test_the_check_asks_an_http_source_for_its_first_readings_path(monkeypatch):
+async def test_the_check_asks_an_http_source_for_its_first_readings_path(monkeypatch):
     app, checker = _api(monkeypatch, role=ADMIN_ROLE)
     saved = SystemSnapshot(
         revision=1,
@@ -378,10 +328,10 @@ def test_the_check_asks_an_http_source_for_its_first_readings_path(monkeypatch):
         ),
     )
     monkeypatch.setattr(SystemService, "read", AsyncMock(return_value=saved))
-    with TestClient(app) as client:
+    async with asgi_client(app) as client:
         for connection in ("api", "bare"):
-            response = client.post(
-                "/system/connections/check", json={"connection_id": connection}
+            response = await client.post(
+                "/v1/brokers/check", json={"broker_id": connection}
             )
             assert response.json()["status"] == "blocked"
 

@@ -1,18 +1,12 @@
 """Integration-style tests for the static monitoring start contract."""
 
-import inspect
 import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from off_key_api_gateway.api.v1.monitors import (
-    TacticError,
-    create_monitor,
-    delete_monitor,
-    stop_monitor,
-)
+from off_key_api_gateway.providers import get_form_monitor_starter
 from off_key_core.schemas.radar import MonitorSetup
 from off_key_core.schemas.radar import (
     PerformanceConfig as GatewayPerformanceConfig,
@@ -25,26 +19,15 @@ from off_key_tactic_middleware.services.orchestration.radar_status import (
     derive_operational_status,
 )
 from pydantic import ValidationError
-from starlette.requests import Request
 
 from tests.support.env import DATABASE_ENVIRONMENT, set_environment
 from tests.support.form_pipeline import form_launch
-
-
-def _build_request() -> Request:
-    return Request(
-        {
-            "type": "http",
-            "method": "POST",
-            "path": "/v1/monitors",
-            "headers": [],
-            "client": ("127.0.0.1", 12345),
-        }
-    )
+from tests.support.gateway import gateway_app, member, returning
+from tests.support.http import asgi_client
 
 
 @pytest.mark.asyncio
-async def test_gateway_start_monitor_forwards_static_performance_config():
+async def test_starting_a_monitor_hands_on_its_performance_config():
     setup = MonitorSetup(
         display_name="radar-charger-1",
         reading_ids=["sine", "cosine"],
@@ -59,24 +42,26 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
             "future_tolerance_seconds": 2.0,
         },
     )
-    expected = {
-        "service_id": "svc-1",
-        "activation_id": "activation-1",
-        "container_name": "pipeline-svc-1",
-        "status": "requested",
-        "reading_ids": ["sine", "cosine"],
-    }
-
-    mock_start = AsyncMock(return_value=expected)
-    with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.start_radar_service",
-        mock_start,
-    ):
-        response = await inspect.unwrap(create_monitor)(
-            request=_build_request(), monitor=setup
+    mock_start = AsyncMock(
+        return_value=SimpleNamespace(
+            id="activation-1", service_id="svc-1", phase="requested"
+        )
+    )
+    app = gateway_app(
+        member("admin"), overrides={get_form_monitor_starter: returning(mock_start)}
+    )
+    async with asgi_client(app) as client:
+        response = await client.post(
+            "/v1/monitors", json=setup.model_dump(mode="json", exclude_unset=True)
         )
 
-    assert response == expected
+    assert response.status_code == 202, response.text
+    assert response.json() == {
+        "monitor_id": "svc-1",
+        "activation_id": "activation-1",
+        "phase": "requested",
+        "reading_ids": ["sine", "cosine"],
+    }
     forwarded = mock_start.await_args.args[0].model_dump()
     assert forwarded["reading_ids"] == ["sine", "cosine"]
     assert forwarded["monitoring"]["strategy"] == "static_baseline"
@@ -191,72 +176,6 @@ def test_gateway_resolves_default_static_baseline_config():
             "simulation_count": 5000,
         },
     }
-
-
-@pytest.mark.asyncio
-async def test_gateway_stop_preserves_tactic_error_status():
-    mock_stop = AsyncMock(
-        side_effect=TacticError(
-            "missing", status=404, body={"detail": "RADAR service not found"}
-        )
-    )
-    with (
-        patch(
-            "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
-        ),
-        pytest.raises(TacticError) as exc_info,
-    ):
-        await inspect.unwrap(stop_monitor)(
-            request=_build_request(), monitor_id="missing"
-        )
-    # The route class turns it into the HTTP response; the catch-all must not.
-    assert exc_info.value.status == 404
-
-
-@pytest.mark.asyncio
-async def test_gateway_stop_forwards_the_monitor_id():
-    mock_stop = AsyncMock(return_value={"status": "stopped", "service_id": "svc-1"})
-    with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
-    ):
-        response = await inspect.unwrap(stop_monitor)(
-            request=_build_request(), monitor_id="svc-1"
-        )
-    assert response["status"] == "stopped"
-    mock_stop.assert_awaited_once_with("svc-1")
-
-
-@pytest.mark.asyncio
-async def test_gateway_delete_uses_the_monitor_id_endpoint():
-    mock_delete = AsyncMock(return_value={"status": "deleted", "service_id": "svc-1"})
-    with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service", mock_delete
-    ):
-        response = await inspect.unwrap(delete_monitor)(
-            request=_build_request(), monitor_id="svc-1"
-        )
-    assert response.status_code == 204
-    mock_delete.assert_awaited_once_with("svc-1")
-
-
-@pytest.mark.asyncio
-async def test_gateway_delete_preserves_tactic_error_status():
-    mock_delete = AsyncMock(
-        side_effect=TacticError(
-            "missing", status=404, body={"detail": "RADAR service not found"}
-        )
-    )
-    with (
-        patch(
-            "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service",
-            mock_delete,
-        ),
-        pytest.raises(TacticError) as exc_info,
-    ):
-        await inspect.unwrap(delete_monitor)(
-            request=_build_request(), monitor_id="missing"
-        )
-    assert exc_info.value.status == 404
 
 
 def _validator(monkeypatch, validated_params=None):

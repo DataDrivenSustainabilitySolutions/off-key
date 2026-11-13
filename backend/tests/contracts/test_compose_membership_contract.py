@@ -22,7 +22,6 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
         "MQTT_APIKEY": "fixture-proxy-password",
         "MQTT_CA_FILE": "/certs/proxy-ca.pem",
         "TACTIC_RADAR_DEFAULT_MQTT_USERNAME": "fixture-managed-radar",
-        "TACTIC_SERVICE_HOST": "fixture-tactic",
         "SYNC_API_PORT": "9009",
     }
     env_file = tmp_path / ".env"
@@ -56,7 +55,13 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
         check=True,
     )
     services = json.loads(result.stdout)["services"]
-    for key in ("JWT_SECRET", "INTERNAL_API_SECRET", "EMAIL_PASSWORD"):
+    for key in ("JWT_SECRET", "POSTGRES_PASSWORD", "EMAIL_PASSWORD"):
+        assert {
+            name
+            for name, service in services.items()
+            if key in service.get("environment", {})
+        } >= {"api-gateway", "tactic-middleware"}
+    for key in ("JWT_SECRET", "EMAIL_PASSWORD"):
         assert {
             name
             for name, service in services.items()
@@ -67,7 +72,7 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
         for key in services["frontend"]["environment"]
     )
     expected = {
-        "api-gateway": ("TACTIC_SERVICE_HOST",),
+        "api-gateway": ("TACTIC_RADAR_DEFAULT_MQTT_USERNAME",),
         "db-sync": ("SYNC_API_PORT",),
         "mqtt-proxy": ("MQTT_USERNAME", "MQTT_APIKEY", "MQTT_CA_FILE"),
         "tactic-middleware": ("TACTIC_RADAR_DEFAULT_MQTT_USERNAME",),

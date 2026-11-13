@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
-from fastapi import APIRouter, FastAPI
+from off_key_api_gateway.providers import get_pipeline_activations
 from off_key_core.auth.agents import (
     AGENT_KEY_PREFIX,
     OPEN_TO_AGENTS,
@@ -15,17 +15,15 @@ from off_key_core.auth.agents import (
     new_agent_key,
     shadow_refusal,
 )
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Agent, User
 from off_key_core.models.pipelines import pipeline_catalog
 from off_key_core.schemas.agents import AgentCreate, AgentUpdate
-from off_key_tactic_middleware.api.v1 import agents, members, pipelines
 from off_key_tactic_middleware.domain import ConflictError, NotFoundError
-from off_key_tactic_middleware.provider import get_pipeline_activations
 from off_key_tactic_middleware.services.accounts.agents import AgentService
 from sqlalchemy import select
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app, returning
 from tests.support.http import asgi_client
 from tests.support.membership import bootstrap
 from tests.support.tokens import access_token
@@ -110,23 +108,12 @@ async def test_a_member_hands_out_a_key_once_and_revokes_it(keys):
             await service.revoke(other.id, admin)
 
 
-def tactic(sessions, activations=None) -> FastAPI:
-    """The routers under one parent, as the service mounts them."""
-
-    async def session():
-        async with sessions() as value:
-            yield value
-            await value.commit()
-
-    app = FastAPI()
-    business = APIRouter()
-    for router in (agents.router, members.router, pipelines.router):
-        business.include_router(router, prefix="/api/v1")
-    app.include_router(business)
-    app.dependency_overrides[get_db_async] = session
+def api(sessions, activations=None):
+    """The API over the members' schema."""
+    overrides = {}
     if activations is not None:
-        app.dependency_overrides[get_pipeline_activations] = lambda: activations
-    return app
+        overrides[get_pipeline_activations] = returning(activations)
+    return gateway_app(sessions=sessions, overrides=overrides)
 
 
 def start_request(**fields) -> dict:
@@ -154,13 +141,13 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
             reached.append((change.display_name, change.shadow))
             raise ValueError("Reached the activation service")
 
-    async with asgi_client(tactic(keys, Activations())) as client:
+    async with asgi_client(api(keys, Activations())) as client:
         by_key = {"Authorization": f"Bearer {key}"}
         by_member = {"Authorization": f"Bearer {token}"}
 
         async def call(method, path, headers=by_key, **kwargs):
             response = await client.request(
-                method, "/api/v1" + path, headers=headers, **kwargs
+                method, "/v1" + path, headers=headers, **kwargs
             )
             return response.status_code, response.json() if response.content else None
 
@@ -168,23 +155,21 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
         assert status == 200 and profile["name"] == "Designer"
         assert profile["starts"] == "nothing" and "key" not in profile
         # It reads the catalog and checks a design it holds.
-        assert (await call("GET", "/monitors/pipelines/catalog/search?query=smooth"))[
-            0
-        ] == 200
+        assert (await call("GET", "/pipeline-components/search?query=smooth"))[0] == 200
         definition = start_request()["definition"]
         status, report = await call(
-            "POST", "/monitors/pipelines/validate", json={"definition": definition}
+            "POST", "/pipelines/validate", json={"definition": definition}
         )
         assert status == 200 and "issues" in report
         # Anything not opened to keys needs a member, whatever the key may do.
         for method, path in (
-            ("GET", "/members/me"),
+            ("GET", "/me"),
             ("GET", "/agents"),
             ("POST", "/agents"),
             ("DELETE", f"/agents/{agent.id}"),
-            ("POST", "/monitors/pipelines"),
-            ("POST", "/monitors/pipeline-activations"),
-            ("PUT", "/monitors/service-1/pipeline-layout"),
+            ("POST", "/pipelines"),
+            ("POST", "/pipeline-activations"),
+            ("PUT", "/monitors/service-1/pipeline/layout"),
         ):
             status, body = await call(method, path, json={})
             assert (status, body["detail"]) == (
@@ -192,22 +177,18 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
                 "A key for an agent cannot do this. It needs a member.",
             ), path
         # Starting a service is allowed per key.
-        status, body = await call(
-            "POST", "/monitors/pipelines/apply", json=start_request()
-        )
+        status, body = await call("POST", "/pipelines/apply", json=start_request())
         assert status == 403 and "may not start" in body["detail"]
         # A key that starts in shadow only starts no service that raises alarms.
         status, _ = await call(
             "PATCH", f"/agents/{agent.id}", by_member, json={"starts": "shadow"}
         )
         assert status == 200
-        status, body = await call(
-            "POST", "/monitors/pipelines/apply", json=start_request()
-        )
+        status, body = await call("POST", "/pipelines/apply", json=start_request())
         assert status == 403 and "in shadow only" in body["detail"]
         assert reached == []
         status, body = await call(
-            "POST", "/monitors/pipelines/apply", json=start_request(shadow=True)
+            "POST", "/pipelines/apply", json=start_request(shadow=True)
         )
         assert (status, body["detail"]) == (422, "Reached the activation service")
         assert reached == [("Pump vibration", True)]
@@ -215,9 +196,7 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
             "PATCH", f"/agents/{agent.id}", by_member, json={"starts": "live"}
         )
         assert status == 200
-        status, body = await call(
-            "POST", "/monitors/pipelines/apply", json=start_request()
-        )
+        status, body = await call("POST", "/pipelines/apply", json=start_request())
         assert (status, body["detail"]) == (422, "Reached the activation service")
         assert (
             await call(
@@ -227,7 +206,7 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
         # Taking a running service away stays with a member.
         status, body = await call(
             "POST",
-            "/monitors/pipelines/apply",
+            "/pipelines/apply",
             json=start_request(replace_service_id="service-1"),
         )
         assert status == 403 and "needs a member" in body["detail"]
@@ -251,25 +230,23 @@ async def test_a_member_creates_a_key_over_the_api_and_sees_it_once(keys):
     async with keys() as session:
         admin = await admin_of(session)
         token = access_token(admin)
-    async with asgi_client(tactic(keys)) as client:
+    async with asgi_client(api(keys)) as client:
         headers = {"Authorization": f"Bearer {token}"}
         created = await client.post(
-            "/api/v1/agents", headers=headers, json={"name": "Night shift"}
+            "/v1/agents", headers=headers, json={"name": "Night shift"}
         )
         assert created.status_code == 201
         body = created.json()
         assert is_agent_key(body["key"]) and body["key"].endswith(body["key_hint"])
         assert (body["starts"], body["created_by"]) == ("nothing", "admin@example.com")
         again = await client.post(
-            "/api/v1/agents", headers=headers, json={"name": "night shift"}
+            "/v1/agents", headers=headers, json={"name": "night shift"}
         )
         assert again.status_code == 409
-        blank = await client.post(
-            "/api/v1/agents", headers=headers, json={"name": "  "}
-        )
+        blank = await client.post("/v1/agents", headers=headers, json={"name": "  "})
         assert blank.status_code == 422
         # The new key works at once.
         me = await client.get(
-            "/api/v1/agents/me", headers={"Authorization": f"Bearer {body['key']}"}
+            "/v1/agents/me", headers={"Authorization": f"Bearer {body['key']}"}
         )
         assert me.status_code == 200 and me.json()["id"] == body["id"]

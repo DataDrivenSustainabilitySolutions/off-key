@@ -20,10 +20,15 @@ services:
 
   api:
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
+    # Monitor stops reach Docker; live views and broker checks reach brokers.
     networks:
       app-network:
         aliases:
           - api-gateway
+      socket-network:
+      emqx-network:
+    environment:
+      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
     # Clients reach the API under /api, which the proxy strips; the root path
     # puts that prefix in the OpenAPI `servers` entry and keeps /api/docs working.
     command: ["uvicorn", "off_key_api_gateway.main:app",

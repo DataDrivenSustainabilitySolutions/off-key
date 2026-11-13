@@ -5,8 +5,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
@@ -27,7 +25,6 @@ from off_key_core.schemas.dojo import (
     RunResultsQuery,
 )
 from off_key_mqtt_radar.dojo.worker import DojoWorker, WorkerOptions
-from off_key_tactic_middleware.api.v1.dojo import router
 from off_key_tactic_middleware.domain import (
     ConflictError,
     NotFoundError,
@@ -40,6 +37,7 @@ from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 from sqlalchemy import func, select
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
 from tests.support.membership import bootstrap
 from tests.support.pipelines import quick
@@ -398,15 +396,7 @@ async def test_concurrent_requests_cannot_exceed_active_run_limit(
 
 
 def app(factory):
-    application = FastAPI()
-    application.include_router(router, prefix="/api/v1")
-
-    async def database():
-        async with factory() as session:
-            yield session
-
-    application.dependency_overrides[get_db_async] = database
-    return application
+    return gateway_app(sessions=factory)
 
 
 @pytest.mark.asyncio
@@ -418,29 +408,25 @@ async def test_routes_queue_and_cancel_runs(sessions):
     headers = {"Authorization": f"Bearer {access_token(admin)}"}
     async with asgi_client(app(factory)) as client:
         created = await client.post(
-            "/api/v1/dojo/runs",
+            "/v1/dojo/runs",
             json=request(view).model_dump(mode="json"),
             headers=headers,
         )
         assert created.status_code == 201, created.text
         run_id = created.json()["id"]
-        cancelled = await client.post(
-            f"/api/v1/dojo/runs/{run_id}/cancel", headers=headers
-        )
-        results = await client.get(
-            f"/api/v1/dojo/runs/{run_id}/results", headers=headers
-        )
+        cancelled = await client.post(f"/v1/dojo/runs/{run_id}/cancel", headers=headers)
+        results = await client.get(f"/v1/dojo/runs/{run_id}/results", headers=headers)
         outline = await client.get(
-            f"/api/v1/dojo/runs/{run_id}/outline?buckets=12", headers=headers
+            f"/v1/dojo/runs/{run_id}/outline?buckets=12", headers=headers
         )
         too_many = await client.get(
-            f"/api/v1/dojo/runs/{run_id}/outline?buckets=100000", headers=headers
+            f"/v1/dojo/runs/{run_id}/outline?buckets=100000", headers=headers
         )
-        steps = await client.get(f"/api/v1/dojo/runs/{run_id}/steps", headers=headers)
-        no_steps = await client.get("/api/v1/dojo/runs/missing/steps", headers=headers)
-        deleted = await client.delete(f"/api/v1/dojo/runs/{run_id}", headers=headers)
+        steps = await client.get(f"/v1/dojo/runs/{run_id}/steps", headers=headers)
+        no_steps = await client.get("/v1/dojo/runs/missing/steps", headers=headers)
+        deleted = await client.delete(f"/v1/dojo/runs/{run_id}", headers=headers)
         broken = await client.post(
-            "/api/v1/dojo/runs",
+            "/v1/dojo/runs",
             json={**request(view).model_dump(mode="json"), "bindings": {"x": "y"}},
             headers=headers,
         )

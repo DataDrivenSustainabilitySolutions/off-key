@@ -1,6 +1,8 @@
 # Optional services of the isolated public demo, never the production stack.
 services:
   api:
+    networks:
+      - demo-source-network
     secrets:
       - source: demo_viewer_password
         target: DEMO_VIEWER_PASSWORD

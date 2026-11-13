@@ -2,15 +2,17 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.schemas.devices import ChartEvidence, Evidence
+from off_key_tactic_middleware.services.data import CatalogueDataService
 
-from ..errors import TacticErrorRoute
+from ...providers import get_catalogue_data_service
+from ..errors import DomainErrorRoute
 from ..rate_limiter import limiter
-from .devices import data_request, present, query_time
+from .devices import utc
 
-router = APIRouter(route_class=TacticErrorRoute)
+router = APIRouter(route_class=DomainErrorRoute)
 MAX_CHART_READINGS = 200
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
 
@@ -21,12 +23,13 @@ async def list_evidence(
     request: Request,
     reading_id: str = Query(description="Catalogue reading id."),
     limit: int = Query(default=2000, ge=1, le=10000),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
     """Detector evidence of the newest monitor observations that covered one
     reading, oldest first: scores, calibrated p-values and the accumulated
     evidence behind alarms.
     """
-    return await data_request("/evidence", {"stream_id": reading_id, "limit": limit})
+    return await service.evidence(reading_id, limit=limit)
 
 
 @router.get("/chart", response_model=list[ChartEvidence], openapi_extra=OPEN_TO_AGENTS)
@@ -46,6 +49,7 @@ async def list_chart_evidence(
     after_monitor_id: str | None = None,
     after_sequence_number: int | None = Query(default=None, ge=1),
     limit: int = Query(default=2000, ge=1, le=10000),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
     """What reading charts draw for monitor observations, oldest first when
     paging forward.
@@ -71,18 +75,13 @@ async def list_chart_evidence(
             status_code=422,
             detail="All monitoring evidence cursor fields are required together",
         )
-    return await data_request(
-        "/evidence/chart",
-        present(
-            {
-                "device_id": device_id,
-                "stream_id": reading_id,
-                "service_id": monitor_id,
-                "after_created": query_time(after_created),
-                "after_timestamp": query_time(after_timestamp),
-                "after_service_id": after_monitor_id,
-                "after_sequence_number": after_sequence_number,
-                "limit": limit,
-            }
-        ),
+    return await service.chart_evidence(
+        device_id=device_id,
+        stream_ids=reading_id,
+        service_id=monitor_id,
+        after_created=utc(after_created),
+        after_timestamp=utc(after_timestamp),
+        after_service_id=after_monitor_id,
+        after_sequence_number=after_sequence_number,
+        limit=limit,
     )

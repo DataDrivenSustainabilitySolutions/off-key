@@ -18,7 +18,12 @@ from off_key_mqtt_proxy.health_api import ProxyHealthApp
 from off_key_tactic_middleware.main import create_app
 from pydantic import SecretStr
 
-from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
+from tests.support.env import (
+    AUTH_ENVIRONMENT,
+    DATABASE_ENVIRONMENT,
+    EMAIL_ENVIRONMENT,
+    set_environment,
+)
 from tests.support.http import asgi_client
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
@@ -130,7 +135,7 @@ def applications(monkeypatch, tmp_path):
         {
             **AUTH_ENVIRONMENT,
             **EMAIL_ENVIRONMENT,
-            "INTERNAL_API_SECRET": "test-internal-service-secret-123456789",
+            **DATABASE_ENVIRONMENT,
             "APP_NAME": "off-key-test",
             "DEBUG": "false",
             "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",

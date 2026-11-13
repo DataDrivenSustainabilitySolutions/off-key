@@ -1,30 +1,27 @@
-"""TACTIC tells the composer what the forecast service holds and starts downloads."""
+"""The API tells the composer what the forecast service holds and starts downloads."""
 
 import threading
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
-from off_key_core.db.models import User
 from off_key_core.models.adaptive import TIMESTRAL_CHECKPOINTS
 from off_key_core.utils import forecast_client
 from off_key_core.utils.forecast_client import ForecastServiceError
 from off_key_forecast.api import create_app
 from off_key_forecast.registry import ModelRegistry
-from off_key_tactic_middleware.api.collection_auth import current_caller
-from off_key_tactic_middleware.api.v1.pipelines import router
 from off_key_tactic_middleware.domain import ConflictError, NotFoundError
 from off_key_tactic_middleware.services.pipelines import forecast_models
 from pydantic import SecretStr
 
 from tests.support.forecast_service import StandInCheckpoint
+from tests.support.gateway import gateway_app, member
 
 TOKEN = "forecast-token-" + "t" * 32
 SMALL, LARGE = TIMESTRAL_CHECKPOINTS[:2]
-MODELS = "/monitors/pipelines/forecast-models"
+MODELS = "/v1/forecast-models"
 
 
 class Downloadable(StandInCheckpoint):
@@ -49,7 +46,7 @@ class Downloadable(StandInCheckpoint):
 
 @pytest.fixture
 def service(monkeypatch, tmp_path):
-    """A forecast service that asks for its token, where TACTIC is told to find it."""
+    """A forecast service that asks for its token, where the API is told to find it."""
     large = Downloadable(LARGE)
     registry = ModelRegistry([StandInCheckpoint(SMALL, 1), large], tmp_path)
     http = TestClient(create_app(registry, SecretStr(TOKEN)))
@@ -76,12 +73,7 @@ def service(monkeypatch, tmp_path):
 
 
 def api(role=ADMIN_ROLE) -> TestClient:
-    app = FastAPI()
-    app.include_router(router)
-    app.dependency_overrides[current_caller] = lambda: User(
-        id=1, email="member@example.com", role=role
-    )
-    return TestClient(app)
+    return TestClient(gateway_app(member(role)))
 
 
 def test_a_deployment_without_the_service_says_so_and_downloads_nothing(monkeypatch):

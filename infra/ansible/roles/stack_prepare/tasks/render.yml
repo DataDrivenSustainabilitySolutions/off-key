@@ -2,15 +2,6 @@
 # A failed release shows only task names in the public workflow log; results and
 # fail_msg stay in the private log. Every check of a vault variable therefore
 # names that variable, so the public log says what to add or correct.
-- name: Require a dedicated internal API credential (vault internal_api_secret, different from jwt_secret)
-  assert:
-    that:
-      - internal_api_secret | default('') | length >= 32
-      - internal_api_secret != jwt_secret
-      - "'CHANGE_ME' not in internal_api_secret"
-    fail_msg: Set internal_api_secret to a new random secret of at least 32 characters in the environment vault.
-  no_log: true
-
 - name: Validate the Resend API key without exposing it
   set_fact:
     resend_api_key_valid: >-
@@ -133,13 +124,13 @@
   no_log: true
 
 # The forecast service is reachable only on the app network. Its token defaults to
-# one derived from the internal API credential, so a release needs no new vault
-# entry; the hash does not reveal that credential.
-- name: Require a forecast service token of at least 32 characters that differs from internal_api_secret (vault forecast_api_token, optional)
+# one derived from the token signing secret, so a release needs no new vault
+# entry; the hash does not reveal that secret.
+- name: Require a forecast service token of at least 32 characters that differs from jwt_secret (vault forecast_api_token, optional)
   assert:
     that:
       - forecast_service_token | length >= 32
-      - forecast_service_token != internal_api_secret
+      - forecast_service_token != jwt_secret
       - "'CHANGE_ME' not in forecast_service_token"
     fail_msg: >-
       Remove forecast_api_token from the environment vault to derive it, or set it

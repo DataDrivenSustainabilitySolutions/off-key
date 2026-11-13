@@ -1,13 +1,12 @@
 """Proposals: a design handed to a member to decide on, with the reason for it."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from fastapi import APIRouter, FastAPI
 from off_key_api_gateway.api.rate_limiter import limiter
-from off_key_api_gateway.api.v1 import pipelines as gateway_pipelines
-from off_key_core.db.base import get_db_async
+from off_key_api_gateway.providers import get_pipeline_proposals
 from off_key_core.db.models import (
     Agent,
     DeploymentMaintenance,
@@ -27,7 +26,6 @@ from off_key_core.schemas.pipelines import (
     PipelineProposalCreate,
     PipelineProposalDecision,
 )
-from off_key_tactic_middleware.api.v1 import pipelines
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.domain import (
     ConflictError,
@@ -42,7 +40,7 @@ from pydantic import ValidationError as SchemaError
 from sqlalchemy import select
 
 from tests.support.env import set_auth_env
-from tests.support.gateway import gateway_app, member_profile
+from tests.support.gateway import gateway_app, member, returning
 from tests.support.http import asgi_client
 from tests.support.membership import bootstrap
 from tests.support.tokens import access_token
@@ -295,20 +293,6 @@ async def test_a_test_is_evidence_only_for_the_design_it_ran(library):
         await refused("The test ran another design", test_run_id="run-6")
 
 
-def tactic(sessions) -> FastAPI:
-    async def session():
-        async with sessions() as value:
-            yield value
-            await value.commit()
-
-    app = FastAPI()
-    business = APIRouter()
-    business.include_router(pipelines.router, prefix="/api/v1")
-    app.include_router(business)
-    app.dependency_overrides[get_db_async] = session
-    return app
-
-
 @pytest.mark.asyncio
 async def test_a_key_proposes_and_withdraws_but_does_not_decide(library):
     async with library() as session:
@@ -317,8 +301,8 @@ async def test_a_key_proposes_and_withdraws_but_does_not_decide(library):
     by_key = {"Authorization": f"Bearer {key}"}
     by_member = {"Authorization": f"Bearer {token}"}
     body = proposal(replace_monitor_id="service-1").model_dump(mode="json")
-    async with asgi_client(tactic(library)) as client:
-        base = "/api/v1/monitors/pipeline-proposals"
+    async with asgi_client(gateway_app(sessions=library)) as client:
+        base = "/v1/pipeline-proposals"
         created = await client.post(base, headers=by_key, json=body)
         assert created.status_code == 201
         made = created.json()
@@ -356,9 +340,7 @@ async def test_a_key_proposes_and_withdraws_but_does_not_decide(library):
 
 
 @pytest.mark.asyncio
-async def test_the_gateway_passes_proposals_on_under_their_public_names(monkeypatch):
-    calls = []
-
+async def test_proposals_travel_under_their_public_names():
     made = {
         "id": "proposal-1",
         "name": "Pump vibration",
@@ -376,16 +358,18 @@ async def test_the_gateway_passes_proposals_on_under_their_public_names(monkeypa
         "decided_at": None,
         "decision_note": None,
     }
+    proposals = AsyncMock()
+    proposals.list.return_value = {"items": []}
+    proposals.create.return_value = made
+    admin = member("admin")
 
-    async def request(method, endpoint, **kwargs):
-        calls.append((method, endpoint, kwargs.get("json_data"), kwargs.get("params")))
-        return made if method == "POST" else {"items": []}
+    def api(caller):
+        return gateway_app(
+            caller, overrides={get_pipeline_proposals: returning(proposals)}
+        )
 
-    monkeypatch.setattr(gateway_pipelines.tactic, "request", request)
     try:
-        signed_in = {"Authorization": "Bearer member"}
-        async with asgi_client(gateway_app(member_profile("admin"))) as client:
-            client.headers.update(signed_in)
+        async with asgi_client(api(admin)) as client:
             listed = await client.get("/v1/pipeline-proposals?status=open")
             assert listed.json() == {"items": []}
             body = proposal().model_dump(mode="json") | {
@@ -395,8 +379,7 @@ async def test_the_gateway_passes_proposals_on_under_their_public_names(monkeypa
             created = await client.post("/v1/pipeline-proposals", json=body)
             assert created.status_code == 201
             assert created.json()["replace_monitor_id"] == "service-1"
-        async with asgi_client(gateway_app(member_profile())) as client:
-            client.headers.update(signed_in)
+        async with asgi_client(api(member())) as client:
             # A member who cannot manage monitors reads proposals and makes none.
             assert (await client.get("/v1/pipeline-proposals")).status_code == 200
             for path in ("", "/one/decision", "/one/withdraw"):
@@ -404,17 +387,11 @@ async def test_the_gateway_passes_proposals_on_under_their_public_names(monkeypa
                 assert refused.status_code == 403, path
     finally:
         limiter.reset()
-    assert calls[0] == (
-        "GET",
-        "/api/v1/monitors/pipeline-proposals",
-        None,
-        {"status": "open"},
-    )
-    method, endpoint, sent, _ = calls[1]
-    assert (method, endpoint) == ("POST", "/api/v1/monitors/pipeline-proposals")
-    assert (
-        sent["replace_service_id"] == "service-1" and sent["name"] == "Pump vibration"
-    )
-    assert [call[:2] for call in calls[2:]] == [
-        ("GET", "/api/v1/monitors/pipeline-proposals")
+    assert [call.args for call in proposals.list.await_args_list] == [
+        ("open",),
+        (None,),
     ]
+    sent, author = proposals.create.await_args.args
+    assert author is admin
+    assert (sent.replace_service_id, sent.name) == ("service-1", "Pump vibration")
+    assert proposals.create.await_count == 1

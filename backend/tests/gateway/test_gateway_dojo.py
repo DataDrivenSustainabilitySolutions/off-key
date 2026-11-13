@@ -1,15 +1,19 @@
-"""The gateway forwards Dojo uploads as raw CSV and refuses oversized bodies."""
+"""Dojo routes: raw CSV uploads, bounded queries and who may change what."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from off_key_api_gateway import providers
 from off_key_api_gateway.api.v1 import dojo
 from off_key_core.schemas import dojo as dojo_schemas
+from off_key_core.schemas.dojo import RunAlignment
 
-from tests.support.gateway import gateway_app, member_profile
+from tests.support.gateway import gateway_app, member, returning
 from tests.support.http import asgi_client
+from tests.support.pipelines import quick
 
-TOKEN = {"Authorization": "Bearer member-token"}
 DATASET = {
     "id": "d1",
     "name": "Trip",
@@ -27,74 +31,84 @@ DATASET = {
 
 
 @pytest.fixture
-def calls(monkeypatch):
-    recorded = []
+def dojo_services():
+    return SimpleNamespace(
+        datasets=AsyncMock(), labels=AsyncMock(), runs=AsyncMock(), metrics=AsyncMock()
+    )
 
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return DATASET
 
-    monkeypatch.setattr(dojo.tactic, "request", request)
-    return recorded
+@pytest.fixture
+def api(dojo_services):
+    def client(caller=None):
+        return asgi_client(
+            gateway_app(
+                caller or member("admin"),
+                overrides={
+                    providers.get_dojo_datasets: returning(dojo_services.datasets),
+                    providers.get_dojo_labels: returning(dojo_services.labels),
+                    providers.get_dojo_runs: returning(dojo_services.runs),
+                    providers.get_dojo_metrics: returning(dojo_services.metrics),
+                },
+            )
+        )
+
+    return client
+
+
+def asked(dojo_services) -> list:
+    return [
+        call for service in vars(dojo_services).values() for call in service.mock_calls
+    ]
 
 
 @pytest.mark.asyncio
-async def test_csv_upload_is_forwarded_unchanged_with_the_callers_token(calls):
-    app = gateway_app(member_profile("admin"))
-    async with asgi_client(app) as client:
+async def test_a_csv_upload_reaches_the_import_unchanged(api, dojo_services):
+    dojo_services.datasets.import_csv.return_value = DATASET
+    async with api() as client:
         response = await client.post(
             "/v1/dojo/datasets/csv",
             params={"name": "Trip", "layout": "long"},
             content=b"series,timestamp,value\na,1,2\n",
-            headers=TOKEN,
         )
     assert response.status_code == 201, response.text
-    [(method, endpoint, kwargs)] = calls
-    assert (method, endpoint) == ("POST", "/api/v1/dojo/datasets/csv")
-    assert kwargs["content"] == b"series,timestamp,value\na,1,2\n"
-    assert kwargs["content_type"] == "text/csv"
-    assert kwargs["params"] == {
+    body, query = dojo_services.datasets.import_csv.await_args.args
+    assert body == b"series,timestamp,value\na,1,2\n"
+    assert query.model_dump(exclude_none=True) == {
         "name": "Trip",
         "description": "",
         "layout": "long",
         "series_column": "series",
         "value_column": "value",
     }
-    assert kwargs["headers"] == TOKEN
+    assert dojo_services.datasets.import_csv.await_args.kwargs == {"created_by": 17}
 
 
 @pytest.mark.asyncio
-async def test_oversized_upload_is_refused_before_reaching_tactic(calls, monkeypatch):
+async def test_an_oversized_upload_is_refused_before_it_is_read(
+    api, dojo_services, monkeypatch
+):
     monkeypatch.setattr(dojo, "MAX_UPLOAD_BYTES", 8)
-    app = gateway_app(member_profile("admin"))
-    async with asgi_client(app) as client:
+    async with api() as client:
         response = await client.post(
             "/v1/dojo/datasets/csv",
             params={"name": "Big"},
             content=b"t,a\n1,1\n2,2\n",
-            headers=TOKEN,
         )
     assert response.status_code == 413
-    assert calls == []
+    assert asked(dojo_services) == []
 
 
 @pytest.mark.asyncio
-async def test_members_without_the_administrator_role_are_refused(calls):
-    app = gateway_app(member_profile("user"))
-    async with asgi_client(app) as client:
-        response = await client.get("/v1/dojo/datasets", headers=TOKEN)
+async def test_members_without_the_dojo_are_refused(api, dojo_services):
+    async with api(member("user")) as client:
+        response = await client.get("/v1/dojo/datasets")
     assert response.status_code == 403
-    assert calls == []
+    assert asked(dojo_services) == []
 
 
 @pytest.mark.asyncio
-async def test_run_creation_is_forwarded_as_json(monkeypatch):
-    from off_key_core.schemas.dojo import RunAlignment
-
-    from tests.support.pipelines import quick
-
-    recorded = []
-    run = {
+async def test_a_run_is_created_with_its_bindings_and_alignment(api, dojo_services):
+    dojo_services.runs.create.return_value = {
         "id": "r1",
         "dataset_id": "d1",
         "name": "",
@@ -115,52 +129,39 @@ async def test_run_creation_is_forwarded_as_json(monkeypatch):
         "cancel_requested": False,
         "stats": {},
     }
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return run
-
-    monkeypatch.setattr(dojo.tactic, "request", request)
     body = {
         "dataset_id": "d1",
         "definition": quick().model_dump(mode="json"),
         "bindings": {"voltage": "s1", "current": "s2", "temperature": "s3"},
     }
-    async with asgi_client(gateway_app(member_profile("admin"))) as client:
-        response = await client.post("/v1/dojo/runs", json=body, headers=TOKEN)
+    async with api() as client:
+        response = await client.post("/v1/dojo/runs", json=body)
     assert response.status_code == 201, response.text
-    [(method, endpoint, kwargs)] = recorded
-    assert (method, endpoint) == ("POST", "/api/v1/dojo/runs")
-    assert kwargs["json_data"]["bindings"] == body["bindings"]
-    assert kwargs["json_data"]["alignment"] == RunAlignment().model_dump()
+    [run] = dojo_services.runs.create.await_args.args
+    assert run.bindings == body["bindings"]
+    assert run.alignment == RunAlignment()
+    assert dojo_services.runs.create.await_args.kwargs == {"created_by": 17}
 
 
 @pytest.mark.asyncio
-async def test_label_suggestions_forward_the_gap(monkeypatch):
-    recorded = []
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return {"items": [], "truncated": False}
-
-    monkeypatch.setattr(dojo.tactic, "request", request)
-    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+async def test_label_suggestions_take_the_gap(api, dojo_services):
+    dojo_services.labels.suggestions.return_value = {"items": [], "truncated": False}
+    async with api() as client:
         response = await client.get(
-            "/v1/dojo/datasets/d1/label-suggestions?gap_seconds=60", headers=TOKEN
+            "/v1/dojo/datasets/d1/label-suggestions?gap_seconds=60"
         )
         refused = await client.get(
-            "/v1/dojo/datasets/d1/label-suggestions?gap_seconds=-1", headers=TOKEN
+            "/v1/dojo/datasets/d1/label-suggestions?gap_seconds=-1"
         )
     assert response.status_code == 200, response.text
-    [(method, endpoint, kwargs)] = recorded
-    assert (method, endpoint) == ("GET", "/api/v1/dojo/datasets/d1/label-suggestions")
-    assert kwargs["params"] == {"gap_seconds": 60.0}
+    dataset_id, query = dojo_services.labels.suggestions.await_args.args
+    assert (dataset_id, query.gap_seconds) == ("d1", 60.0)
     assert refused.status_code == 422
+    assert dojo_services.labels.suggestions.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_a_run_outline_forwards_the_number_of_stretches(monkeypatch):
-    recorded = []
+async def test_a_run_outline_takes_the_number_of_stretches(api, dojo_services):
     outline = {
         "run_id": "r1",
         "strategy": "adaptive_stream",
@@ -169,38 +170,26 @@ async def test_a_run_outline_forwards_the_number_of_stretches(monkeypatch):
         "bucket_seconds": 0.0,
         "buckets": [],
     }
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return outline
-
-    monkeypatch.setattr(dojo.tactic, "request", request)
-    async with asgi_client(gateway_app(member_profile("admin"))) as client:
-        response = await client.get(
-            "/v1/dojo/runs/r1/outline?buckets=120", headers=TOKEN
-        )
-        default = await client.get("/v1/dojo/runs/r1/outline", headers=TOKEN)
-        refused = await client.get("/v1/dojo/runs/r1/outline?buckets=0", headers=TOKEN)
+    dojo_services.runs.outline.return_value = outline
+    async with api() as client:
+        response = await client.get("/v1/dojo/runs/r1/outline?buckets=120")
+        default = await client.get("/v1/dojo/runs/r1/outline")
+        refused = await client.get("/v1/dojo/runs/r1/outline?buckets=0")
         beyond = await client.get(
-            f"/v1/dojo/runs/r1/outline?buckets={dojo_schemas.MAX_OUTLINE_BUCKETS + 1}",
-            headers=TOKEN,
+            f"/v1/dojo/runs/r1/outline?buckets={dojo_schemas.MAX_OUTLINE_BUCKETS + 1}"
         )
     assert response.status_code == 200, response.text
     assert response.json() == outline
-    assert [(method, endpoint) for method, endpoint, _ in recorded] == [
-        ("GET", "/api/v1/dojo/runs/r1/outline")
-    ] * 2
-    assert [kwargs["params"] for _, _, kwargs in recorded] == [
-        {"buckets": 120},
-        {"buckets": 300},
-    ]
+    assert [
+        (call.args[0], call.args[1].buckets)
+        for call in dojo_services.runs.outline.await_args_list
+    ] == [("r1", 120), ("r1", 300)]
     assert default.status_code == 200
     assert (refused.status_code, beyond.status_code) == (422, 422)
 
 
 @pytest.mark.asyncio
-async def test_the_sampled_steps_of_a_run_are_read_through(monkeypatch):
-    recorded = []
+async def test_the_sampled_steps_of_a_run_are_read(api, dojo_services):
     steps = {
         "run_id": "r1",
         "samples": [
@@ -225,89 +214,67 @@ async def test_the_sampled_steps_of_a_run_are_read_through(monkeypatch):
             }
         ],
     }
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint))
-        return steps
-
-    monkeypatch.setattr(dojo.tactic, "request", request)
-    async with asgi_client(gateway_app(member_profile("admin"))) as client:
-        response = await client.get("/v1/dojo/runs/r1/steps", headers=TOKEN)
+    dojo_services.runs.steps.return_value = steps
+    async with api() as client:
+        response = await client.get("/v1/dojo/runs/r1/steps")
     assert response.status_code == 200, response.text
     assert response.json() == steps
-    assert recorded == [("GET", "/api/v1/dojo/runs/r1/steps")]
+    assert dojo_services.runs.steps.await_args.args == ("r1",)
 
 
 @pytest.mark.asyncio
-async def test_a_label_batch_is_forwarded_as_one_write(monkeypatch):
-    recorded = []
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return {"items": []}
-
-    monkeypatch.setattr(dojo.tactic, "request", request)
+async def test_a_label_batch_is_one_write(api, dojo_services):
+    dojo_services.labels.create_many.return_value = []
     label = {"start_at": "2026-03-01T00:00:00Z", "end_at": "2026-03-01T00:01:00Z"}
-    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+    async with api() as client:
         response = await client.post(
-            "/v1/dojo/datasets/d1/labels/batch",
-            json={"labels": [label] * 3},
-            headers=TOKEN,
+            "/v1/dojo/datasets/d1/labels/batch", json={"labels": [label] * 3}
         )
         empty = await client.post(
-            "/v1/dojo/datasets/d1/labels/batch", json={"labels": []}, headers=TOKEN
+            "/v1/dojo/datasets/d1/labels/batch", json={"labels": []}
         )
     assert response.status_code == 201, response.text
-    [(method, endpoint, kwargs)] = recorded
-    assert (method, endpoint) == ("POST", "/api/v1/dojo/datasets/d1/labels/batch")
-    assert len(kwargs["json_data"]["labels"]) == 3
+    dataset_id, labels = dojo_services.labels.create_many.await_args.args
+    assert (dataset_id, len(labels)) == ("d1", 3)
+    assert dojo_services.labels.create_many.await_count == 1
     assert empty.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_a_comparison_forwards_each_run_id(monkeypatch):
-    recorded = []
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return {"dataset_id": "d1", "labels": [], "runs": []}
-
-    monkeypatch.setattr(dojo.tactic, "request", request)
-    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+async def test_a_comparison_takes_each_run_id_once(api, dojo_services):
+    dojo_services.metrics.compare.return_value = {
+        "dataset_id": "d1",
+        "labels": [],
+        "runs": [],
+    }
+    async with api() as client:
         response = await client.get(
-            "/v1/dojo/datasets/d1/comparison?run_ids=r1&run_ids=r2", headers=TOKEN
+            "/v1/dojo/datasets/d1/comparison?run_ids=r1&run_ids=r2"
         )
         refused = await client.get(
-            "/v1/dojo/datasets/d1/comparison?run_ids=r1&run_ids=r1", headers=TOKEN
+            "/v1/dojo/datasets/d1/comparison?run_ids=r1&run_ids=r1"
         )
     assert response.status_code == 200, response.text
-    [(method, endpoint, kwargs)] = recorded
-    assert (method, endpoint) == ("GET", "/api/v1/dojo/datasets/d1/comparison")
-    assert kwargs["params"] == {"run_ids": ["r1", "r2"]}
+    dataset_id, query = dojo_services.metrics.compare.await_args.args
+    assert (dataset_id, query.run_ids) == ("d1", ["r1", "r2"])
+    assert dojo_services.metrics.compare.await_count == 1
     assert refused.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_promoting_a_run_needs_manage_monitors_too(monkeypatch):
-    recorded = []
-    promotion = {"pipeline_id": "p1", "pipeline_name": "Final", "bindings": []}
-
-    async def request(method, endpoint, **kwargs):
-        recorded.append((method, endpoint, kwargs))
-        return promotion
-
-    monkeypatch.setattr(dojo.tactic, "request", request)
-    trainer = member_profile("trainer", permissions=["use_dojo"])
-    async with asgi_client(gateway_app(trainer)) as client:
-        refused = await client.post(
-            "/v1/dojo/runs/r1/promote", json={"name": "Final"}, headers=TOKEN
-        )
-    async with asgi_client(gateway_app(member_profile("admin"))) as client:
-        response = await client.post(
-            "/v1/dojo/runs/r1/promote", json={"name": "Final"}, headers=TOKEN
-        )
+async def test_promoting_a_run_needs_manage_monitors_too(api, dojo_services):
+    dojo_services.runs.promote.return_value = {
+        "pipeline_id": "p1",
+        "pipeline_name": "Final",
+        "bindings": [],
+    }
+    async with api(member("trainer", permissions=["use_dojo"])) as client:
+        refused = await client.post("/v1/dojo/runs/r1/promote", json={"name": "Final"})
+    async with api() as client:
+        response = await client.post("/v1/dojo/runs/r1/promote", json={"name": "Final"})
     assert refused.status_code == 403
     assert response.status_code == 201, response.text
-    [(method, endpoint, kwargs)] = recorded
-    assert (method, endpoint) == ("POST", "/api/v1/dojo/runs/r1/promote")
-    assert kwargs["json_data"] == {"name": "Final", "description": ""}
+    run_id, promotion = dojo_services.runs.promote.await_args.args
+    assert run_id == "r1"
+    assert promotion.model_dump() == {"name": "Final", "description": ""}
+    assert dojo_services.runs.promote.await_count == 1

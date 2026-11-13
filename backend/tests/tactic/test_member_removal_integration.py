@@ -5,13 +5,10 @@ import hashlib
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials
-from off_key_core.db.base import get_db_async
+from fastapi import HTTPException
+from off_key_api_gateway.api.access import signed_in_member
 from off_key_core.db.models import Charger, MemberFavorite, RememberedSession, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
-from off_key_tactic_middleware.api.collection_auth import signed_in_member
-from off_key_tactic_middleware.api.v1.members import router
 from off_key_tactic_middleware.domain import (
     AuthenticationError,
     ConflictError,
@@ -25,6 +22,7 @@ from off_key_tactic_middleware.services.accounts.remembered_sessions import (
 from sqlalchemy import select
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
 from tests.support.membership import PASSWORD, bootstrap
 from tests.support.tokens import access_token
@@ -41,15 +39,7 @@ async def removal_database(member_database, monkeypatch):
 
 
 def member_app(sessions):
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v1")
-
-    async def database():
-        async with sessions() as session:
-            yield session
-
-    app.dependency_overrides[get_db_async] = database
-    return app
+    return gateway_app(sessions=sessions)
 
 
 @pytest.mark.asyncio
@@ -75,7 +65,9 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         )
         user_id = target.id
         old_token = access_token(target)
-        remembered = await RememberedSessionService(session).create(target)
+        remembered = await RememberedSessionService(session).create(
+            user_id=target.id, session_version=target.session_version
+        )
         reset = await service.issue_reset_token(target.email) if verified else None
         session.add(Charger(charger_id="shared-reading"))
         await session.flush()
@@ -86,7 +78,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         await session.commit()
 
     async with asgi_client(member_app(sessions)) as client:
-        path = f"/api/v1/members/{user_id}"
+        path = f"/v1/members/{user_id}"
         active = await client.delete(path, headers=admin_headers)
         assert active.status_code == 409
         assert "Disable this member" in active.json()["detail"]
@@ -98,7 +90,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         removed = await client.delete(path, headers=admin_headers)
         assert removed.status_code == 204 and removed.content == b""
         assert (await client.delete(path, headers=admin_headers)).status_code == 404
-        listed = await client.get("/api/v1/members", headers=admin_headers)
+        listed = await client.get("/v1/members", headers=admin_headers)
         assert [member["id"] for member in listed.json()] == [admin_id]
 
     async with sessions() as session:
@@ -132,11 +124,8 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         assert list(await session.scalars(select(MemberFavorite.user_id))) == [admin_id]
 
     async with sessions() as session:
-        credential = HTTPAuthorizationCredentials(
-            scheme="Bearer", credentials=old_token
-        )
         with pytest.raises(HTTPException) as denied:
-            await signed_in_member(credential, session)
+            await signed_in_member(old_token, session)
         assert denied.value.status_code == 401
 
 
@@ -160,7 +149,7 @@ async def test_removal_requires_current_administrator_and_protects_active_accoun
         admin_headers = {"Authorization": f"Bearer {access_token(actor)}"}
 
     async with asgi_client(member_app(sessions)) as client:
-        path = f"/api/v1/members/{admin_id}"
+        path = f"/v1/members/{admin_id}"
         assert (await client.delete(path)).status_code == 401
         assert (await client.delete(path, headers=user_headers)).status_code == 403
         assert (await client.delete(path, headers=admin_headers)).status_code == 409
@@ -168,7 +157,7 @@ async def test_removal_requires_current_administrator_and_protects_active_accoun
             await client.patch(path, headers=admin_headers, json={"is_active": False})
         ).status_code == 409
         assert (
-            await client.delete("/api/v1/members/999999", headers=admin_headers)
+            await client.delete("/v1/members/999999", headers=admin_headers)
         ).status_code == 404
 
 

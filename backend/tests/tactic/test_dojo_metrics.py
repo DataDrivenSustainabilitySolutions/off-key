@@ -6,8 +6,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
 from off_key_core.db.locks import DOJO_METRICS_LOCK
 from off_key_core.db.models import (
     DeploymentMaintenance,
@@ -28,7 +26,6 @@ from off_key_core.schemas.dojo import (
     LabelCreate,
     RunResultsQuery,
 )
-from off_key_tactic_middleware.api.v1.dojo import router
 from off_key_tactic_middleware.domain import (
     ConflictError,
     NotFoundError,
@@ -48,6 +45,7 @@ from pydantic import ValidationError as SchemaError
 from sqlalchemy import func, select, text
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
 from tests.support.membership import bootstrap
 from tests.support.tokens import access_token
@@ -608,15 +606,7 @@ async def test_deleting_a_dataset_removes_its_labels(sessions):
 
 
 def app(factory):
-    application = FastAPI()
-    application.include_router(router, prefix="/api/v1")
-
-    async def database():
-        async with factory() as session:
-            yield session
-
-    application.dependency_overrides[get_db_async] = database
-    return application
+    return gateway_app(sessions=factory)
 
 
 @pytest.mark.asyncio
@@ -627,7 +617,7 @@ async def test_routes_label_a_dataset_and_compare_runs(sessions):
     async with factory() as session:
         admin = await session.get(User, creator)
     headers = {"Authorization": f"Bearer {access_token(admin)}"}
-    base = f"/api/v1/dojo/datasets/{view.id}"
+    base = f"/v1/dojo/datasets/{view.id}"
     async with asgi_client(app(factory)) as client:
         created = await client.post(
             f"{base}/labels",
@@ -640,9 +630,7 @@ async def test_routes_label_a_dataset_and_compare_runs(sessions):
             f"{base}/labels/{label_id}", json={"note": "fault"}, headers=headers
         )
         listed = await client.get(f"{base}/labels", headers=headers)
-        metrics = await client.get(
-            f"/api/v1/dojo/runs/{run_id}/metrics", headers=headers
-        )
+        metrics = await client.get(f"/v1/dojo/runs/{run_id}/metrics", headers=headers)
         compared = await client.get(
             f"{base}/comparison", params={"run_ids": [run_id]}, headers=headers
         )

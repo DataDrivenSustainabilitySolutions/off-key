@@ -1,22 +1,38 @@
-"""Compose the API gateway application."""
+"""Compose the API application: every request of the web app and of agents."""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.bootstrap import start_service
+from off_key_core.config.database import get_database_settings
 from off_key_core.config.email import get_email_settings
 from off_key_core.config.logs import (
     CorrelationIdMiddleware,
     logger,
 )
 from off_key_core.config.runtime import get_runtime_settings
-from off_key_core.config.service_auth import get_service_auth_settings
+from off_key_core.db.base import get_async_session_local
+from off_key_core.db.maintenance import DeploymentInProgressError
+from off_key_tactic_middleware.config.config import get_tactic_settings
+from off_key_tactic_middleware.config.system_live import get_system_live_settings
+from off_key_tactic_middleware.services.catalogue.broker_access import (
+    BrokerRouteAccess,
+)
+from off_key_tactic_middleware.services.catalogue.broker_check import BrokerCheck
+from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.catalogue.system_live import (
+    SystemLiveService,
+)
+from off_key_tactic_middleware.services.orchestration.radar_workloads import (
+    close_shared_async_docker,
+)
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -25,7 +41,6 @@ from off_key_api_gateway.settings import (
     AppSettings,
     DemoSettings,
     get_app_settings,
-    get_service_endpoints_settings,
 )
 
 from .api.demo import DemoGuestMiddleware
@@ -34,10 +49,9 @@ from .api.middleware import RequestLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.request_guards import BodySizeLimitMiddleware, ClientRateLimitMiddleware
 from .api.v1.routes import router as v1_router
-from .facades.tactic import tactic
 
 API_DESCRIPTION = """\
-The gateway API of one Aberration installation: its MQTT sources, the readings
+The API of one Aberration installation: its MQTT sources, the readings
 it records, the monitors that watch them and the alarms they raise. The web app
 uses this same API, so every change it makes can be made here.
 
@@ -159,7 +173,7 @@ OPENAPI_TAGS = [
         "description": "Roles bundle permissions; every member holds one. Every "
         "member reads everything, and a permission allows changes in one area.",
     },
-    {"name": "health", "description": "Liveness of the gateway itself."},
+    {"name": "health", "description": "Liveness of the API process itself."},
 ]
 
 
@@ -168,32 +182,59 @@ def operation_id(route: APIRoute) -> str:
     return route.name
 
 
-# The gateway owns no database connection, so database settings are absent.
 VALIDATION_SPECS = [
     ("app", get_app_settings),
     ("runtime", get_runtime_settings),
+    ("database", get_database_settings),
     ("auth", get_auth_settings),
-    ("service_auth", get_service_auth_settings),
     ("email", get_email_settings),
-    ("services", get_service_endpoints_settings),
+    ("tactic", lambda: get_tactic_settings().config),
+    ("system_live", get_system_live_settings),
     ("demo", DemoSettings),
 ]
 
 
+async def _read_live_configuration():
+    async with get_async_session_local()() as session:
+        return await SystemService(session).read()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """FastAPI lifespan manager for startup and shutdown events."""
+    """Live views and broker checks live as long as the process; one replica
+    serves them, since a live view's broker clients are held in memory."""
+    access = BrokerRouteAccess(get_system_live_settings())
+    app.state.broker_check = BrokerCheck(
+        get_system_live_settings(), access_resolver=access
+    )
+    app.state.system_live = SystemLiveService(
+        get_system_live_settings(), access_resolver=access
+    )
+    app.state.system_live.start_supervisor(_read_live_configuration)
     logger.info("Application is now running...")
-    async with app.state.mcp():
-        yield
-
-    await tactic.close()
+    try:
+        async with app.state.mcp():
+            yield
+    finally:
+        try:
+            await app.state.system_live.close()
+        except Exception:
+            logger.exception("Error stopping live views")
+        app.state.system_live = None
+        app.state.broker_check = None
+        # Monitor stops and collection pauses open a Docker client on first use.
+        close_shared_async_docker()
     logger.info("Application shutdown...")
 
 
 async def health_check():
-    """Answer while the gateway process runs; says nothing about TACTIC or data."""
+    """Answer while the API process runs; says nothing about the database."""
     return {"status": "healthy", "service": "api-gateway"}
+
+
+async def deployment_in_progress(request: Request, exc: Exception) -> JSONResponse:
+    """A release holds application writes; the client retries shortly."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 def build_app(
@@ -214,9 +255,10 @@ def build_app(
     app.state.limiter = limiter
     demo_settings = demo_settings or DemoSettings()
     app.state.demo_enabled = demo_settings.DEMO_MODE
-    # Only the gateway's own limiter answers with its headers; a 429 forwarded
-    # from TACTIC keeps TACTIC's detail through the normal HTTPException path.
+    app.state.system_live = None
+    app.state.broker_check = None
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    app.add_exception_handler(DeploymentInProgressError, deployment_in_progress)
 
     # Added innermost first: requests pass CORS, the correlation ID, the
     # per-client rate limit, the body size limit, GZip, SlowAPI and request
@@ -251,6 +293,6 @@ def create_app() -> FastAPI:
         "api-gateway",
         Path(__file__).parent / "config" / "logging.yaml",
         VALIDATION_SPECS,
-        context="API gateway configuration",
+        context="API configuration",
     )
     return build_app(get_app_settings())

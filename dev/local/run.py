@@ -118,7 +118,6 @@ def initialize(args: argparse.Namespace) -> None:
     )
     for key in (
         "JWT_SECRET",
-        "INTERNAL_API_SECRET",
         "POSTGRES_PASSWORD",
         "EMAIL_PASSWORD",
         "EMQX_DASHBOARD_PASSWORD",

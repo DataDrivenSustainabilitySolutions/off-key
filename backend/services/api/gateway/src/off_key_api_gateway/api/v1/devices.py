@@ -2,13 +2,13 @@
 
 Devices and readings are named by their catalogue ids (`devices[].id`,
 `readings[].id` of `GET /v1/catalogue`). The recorded identity behind them is
-resolved inside the installation.
+resolved here, against the saved catalogue.
 """
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.schemas.devices import (
     Device,
@@ -20,26 +20,18 @@ from off_key_core.schemas.devices import (
 )
 from off_key_core.schemas.system import SystemStream
 from off_key_core.utils.timestamps import as_utc
+from off_key_tactic_middleware.services.data import CatalogueDataService
 
-from ...facades.tactic import path_segment, tactic
-from ..errors import TacticErrorRoute
+from ...providers import get_catalogue_data_service
+from ..errors import DomainErrorRoute
 
-router = APIRouter(route_class=TacticErrorRoute)
-readings_router = APIRouter(route_class=TacticErrorRoute)
-
-
-async def data_request(path: str, params: dict[str, Any] | None = None) -> Any:
-    return await tactic.request(
-        method="GET", endpoint=f"/api/v1/data{path}", params=params
-    )
+router = APIRouter(route_class=DomainErrorRoute)
+readings_router = APIRouter(route_class=DomainErrorRoute)
 
 
-def query_time(value: datetime | None) -> str | None:
-    return None if value is None else as_utc(value).isoformat()
-
-
-def present(params: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in params.items() if value is not None}
+def utc(value: datetime | None) -> datetime | None:
+    """A query time without a zone is UTC."""
+    return None if value is None else as_utc(value)
 
 
 @router.get("", response_model=list[Device], openapi_extra=OPEN_TO_AGENTS)
@@ -47,9 +39,10 @@ async def list_devices(
     active: bool | None = Query(
         None, description="Only devices that are sending data now, or only those not."
     ),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
     """Catalogue devices with their readings and whether they are sending data."""
-    return await data_request("/devices", present({"active": active}))
+    return await service.devices(active=active)
 
 
 @router.get(
@@ -57,9 +50,12 @@ async def list_devices(
     response_model=list[SystemStream],
     openapi_extra=OPEN_TO_AGENTS,
 )
-async def list_device_readings(device_id: str):
+async def list_device_readings(
+    device_id: str,
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
+):
     """The catalogue readings of one device. 404 when the catalogue lacks it."""
-    return await data_request(f"/devices/{path_segment(device_id)}/readings")
+    return service.device_readings(device_id)
 
 
 @readings_router.get(
@@ -82,6 +78,7 @@ async def list_measurements(
     paginated: bool = Query(
         False, description="Wrap the values together with the next cursor."
     ),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
     """Recorded values of one reading.
 
@@ -98,17 +95,13 @@ async def list_measurements(
             status_code=422,
             detail="Historical and live measurement cursors cannot be used together",
         )
-    return await data_request(
-        f"/readings/{path_segment(reading_id)}/measurements",
-        present(
-            {
-                "limit": limit,
-                "after_timestamp": query_time(after_timestamp),
-                "after_created": query_time(after_created),
-                "after_event_timestamp": query_time(after_event_timestamp),
-                "paginated": paginated,
-            }
-        ),
+    return await service.measurements(
+        reading_id,
+        limit=limit,
+        after_timestamp=utc(after_timestamp),
+        after_created=utc(after_created),
+        after_event_timestamp=utc(after_event_timestamp),
+        paginated=paginated,
     )
 
 
@@ -135,6 +128,7 @@ async def list_measurement_buckets(
         description="Minimum averaging interval in milliseconds; wider ranges "
         "may use a coarser interval.",
     ),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
     """Lowest and highest value per time bucket, so short spikes survive.
 
@@ -144,17 +138,13 @@ async def list_measurement_buckets(
         raise HTTPException(
             status_code=422, detail="Measurement range start must precede its end"
         )
-    return await data_request(
-        f"/readings/{path_segment(reading_id)}/measurements/buckets",
-        present(
-            {
-                "start": query_time(start),
-                "end": query_time(end),
-                "buckets": buckets,
-                "view": view,
-                "window_ms": window_ms,
-            }
-        ),
+    return await service.measurement_buckets(
+        reading_id,
+        start=utc(start),
+        end=utc(end),
+        buckets=buckets,
+        view=view,
+        window_ms=window_ms,
     )
 
 
@@ -164,6 +154,7 @@ async def list_measurement_buckets(
 async def profile_reading(
     reading_id: str,
     days: int = Query(14, ge=1, le=90, description="How far back to look."),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
     """What a reading looks like, so a design can be fitted to it.
 
@@ -177,6 +168,4 @@ async def profile_reading(
     reading stays flat, and its `levels` where it has at most ten. A window
     without values answers with nulls. 404 when the catalogue lacks the reading.
     """
-    return await data_request(
-        f"/readings/{path_segment(reading_id)}/profile", {"days": days}
-    )
+    return await service.profile(reading_id, days=days)

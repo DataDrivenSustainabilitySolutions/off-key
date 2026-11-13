@@ -2,17 +2,12 @@
 
 from unittest.mock import AsyncMock
 
-from fastapi import FastAPI
-from off_key_core.auth.permissions import MEMBER_ROLE
-from off_key_core.db.base import get_db_async
 from off_key_core.db.collection_runtime import CollectionRuntimeSnapshot
-from off_key_core.db.models import User
 from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
-from off_key_tactic_middleware.api.collection_auth import current_caller
-from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.services.catalogue import system as system_service
 
+from tests.support.gateway import gateway_app, member
 from tests.support.http import asgi_client
 
 
@@ -33,14 +28,8 @@ async def test_health_carries_the_diagnosis_next_to_the_raw_reports(monkeypatch)
             )
         ),
     )
-    app = FastAPI()
-    app.include_router(system_api.router)
-    app.dependency_overrides[current_caller] = lambda: User(
-        id=1, email="member@example.com", role=MEMBER_ROLE
-    )
-    app.dependency_overrides[get_db_async] = lambda: AsyncMock()
-    async with asgi_client(app) as client:
-        response = await client.get("/system/health")
+    async with asgi_client(gateway_app(member())) as client:
+        response = await client.get("/v1/recording/health")
     assert response.status_code == 200
     body = response.json()
     assert body["collection"] == collection

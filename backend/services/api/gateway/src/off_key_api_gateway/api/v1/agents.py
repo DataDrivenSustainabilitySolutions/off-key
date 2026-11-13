@@ -3,32 +3,25 @@
 from fastapi import APIRouter, Depends, Response
 from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.auth.permissions import Permission
+from off_key_core.db.models import Agent, User
 from off_key_core.schemas.agents import (
     AgentCreate,
     AgentCreated,
     AgentProfile,
     AgentUpdate,
 )
+from off_key_tactic_middleware.services.accounts.agents import AgentService
 
-from ...facades.tactic import tactic
-from ..access import current_agent, member_authorization, require_permission
-from ..errors import TacticErrorRoute
+from ...providers import get_agent_service
+from ..access import current_agent, require_permission
+from ..errors import DomainErrorRoute
 
-router = APIRouter(route_class=TacticErrorRoute)
+router = APIRouter(route_class=DomainErrorRoute)
 manage_members = require_permission(Permission.manage_members)
 
 
-async def agent_request(method, path, authorization, body=None):
-    return await tactic.request(
-        method,
-        f"/api/v1/agents{path}",
-        json_data=body,
-        headers={"Authorization": authorization},
-    )
-
-
 @router.get("/me", response_model=AgentProfile, openapi_extra=OPEN_TO_AGENTS)
-async def get_agent(agent: AgentProfile = Depends(current_agent)):
+async def get_agent(agent: Agent = Depends(current_agent)):
     """The agent whose key this is, and whether it may start monitoring services.
 
     Only a key can ask this; a member reads `GET /v1/me`.
@@ -39,19 +32,16 @@ async def get_agent(agent: AgentProfile = Depends(current_agent)):
 @router.get(
     "", response_model=list[AgentProfile], dependencies=[Depends(manage_members)]
 )
-async def list_agents(authorization: str = Depends(member_authorization)):
+async def list_agents(service: AgentService = Depends(get_agent_service)):
     """Every agent that holds a key. Needs `manage_members`."""
-    return await agent_request("GET", "", authorization)
+    return await service.list()
 
 
-@router.post(
-    "",
-    response_model=AgentCreated,
-    status_code=201,
-    dependencies=[Depends(manage_members)],
-)
+@router.post("", response_model=AgentCreated, status_code=201)
 async def create_agent(
-    change: AgentCreate, authorization: str = Depends(member_authorization)
+    change: AgentCreate,
+    actor: User = Depends(manage_members),
+    service: AgentService = Depends(get_agent_service),
 ):
     """Create an agent and its key. Needs `manage_members`.
 
@@ -59,39 +49,32 @@ async def create_agent(
     propose; `starts` allows this one to start monitoring services as well, in
     `shadow` only or `live`.
     """
-    return await agent_request(
-        "POST", "", authorization, change.model_dump(mode="json")
+    agent, key = await service.create(change, actor)
+    return AgentCreated.model_validate(
+        AgentProfile.model_validate(agent).model_dump() | {"key": key}
     )
 
 
-@router.patch(
-    "/{agent_id}",
-    response_model=AgentProfile,
-    dependencies=[Depends(manage_members)],
-)
+@router.patch("/{agent_id}", response_model=AgentProfile)
 async def update_agent(
     agent_id: int,
     change: AgentUpdate,
-    authorization: str = Depends(member_authorization),
+    actor: User = Depends(manage_members),
+    service: AgentService = Depends(get_agent_service),
 ):
     """Allow or forbid a key to start monitoring services. Needs `manage_members`."""
-    return await agent_request(
-        "PATCH", f"/{agent_id}", authorization, change.model_dump(mode="json")
-    )
+    return await service.update(agent_id, change, actor)
 
 
-@router.delete(
-    "/{agent_id}",
-    status_code=204,
-    response_class=Response,
-    dependencies=[Depends(manage_members)],
-)
+@router.delete("/{agent_id}", status_code=204, response_class=Response)
 async def revoke_agent(
-    agent_id: int, authorization: str = Depends(member_authorization)
+    agent_id: int,
+    actor: User = Depends(manage_members),
+    service: AgentService = Depends(get_agent_service),
 ):
     """Revoke an agent's key, which stops working at once. Needs `manage_members`.
 
     Monitoring services the agent started keep running.
     """
-    await agent_request("DELETE", f"/{agent_id}", authorization)
+    await service.revoke(agent_id, actor)
     return Response(status_code=204)

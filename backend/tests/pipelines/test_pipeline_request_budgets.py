@@ -1,42 +1,28 @@
-"""Real gateway limiting, HTTP forwarding, signed auth and PostgreSQL writes."""
-
-import asyncio
+"""Real API limiting, signed auth and PostgreSQL writes."""
 
 import httpx
 import pytest
-import uvicorn
-from fastapi import FastAPI
-from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
-from off_key_api_gateway.api.v1.pipelines import router as gateway_router
-from off_key_api_gateway.facades.tactic import tactic
+from off_key_api_gateway.api.rate_limiter import limiter
 from off_key_core.auth.permissions import ADMIN_ROLE
 from off_key_core.config.auth import get_auth_settings
-from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.models.pipelines import pipeline_catalog
 from off_key_core.schemas.pipelines import PipelineCreate
-from off_key_tactic_middleware.api.v1.members import router as members_router
-from off_key_tactic_middleware.api.v1.pipelines import router as tactic_router
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
-from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from tests.support.gateway import gateway_app
 from tests.support.pipeline_database import membership_token
 
 
 @pytest.mark.asyncio
 async def test_automatic_compilation_cannot_exhaust_writes_or_polling(
-    pipeline_database, monkeypatch, unused_tcp_port
+    pipeline_database, monkeypatch
 ):
     monkeypatch.setenv("JWT_SECRET", "pipeline-budget-integration-secret-" + "x" * 32)
     monkeypatch.setenv("SUPERUSER_MAIL", "budget-admin@example.com")
     monkeypatch.setenv("ALGORITHM", "HS256")
     monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
-    monkeypatch.setenv(
-        "INTERNAL_API_SECRET", "pipeline-budget-internal-secret-" + "x" * 32
-    )
-    get_service_auth_settings.cache_clear()
     get_auth_settings.cache_clear()
     limiter.reset()
     definition = pipeline_catalog().templates[0].definition
@@ -56,44 +42,15 @@ async def test_automatic_compilation_cannot_exhaust_writes_or_polling(
             )
         )
         token = membership_token(user)
-    upstream = FastAPI()
-    upstream.include_router(tactic_router, prefix="/api/v1")
-    upstream.include_router(members_router, prefix="/api/v1")
-
-    async def database_session():
-        async with pipeline_database() as session:
-            yield session
-
-    upstream.dependency_overrides[get_db_async] = database_session
-    server = uvicorn.Server(
-        uvicorn.Config(
-            upstream,
-            host="127.0.0.1",
-            port=unused_tcp_port,
-            log_level="warning",
-            lifespan="off",
-        )
-    )
-    task = asyncio.create_task(server.serve())
-    await tactic.close()
-    monkeypatch.setattr(tactic, "base_url", f"http://127.0.0.1:{unused_tcp_port}")
-    gateway = FastAPI()
-    gateway.state.limiter = limiter
-    gateway.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    gateway = gateway_app(sessions=pipeline_database)
     gateway.add_middleware(SlowAPIMiddleware)
-    gateway.include_router(gateway_router, prefix="/api/v1/pipelines")
     try:
-        async with asyncio.timeout(10):
-            while not server.started:
-                if task.done():
-                    await task
-                await asyncio.sleep(0.01)
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=gateway),
             base_url="http://gateway",
             headers={"Authorization": f"Bearer {token}"},
         ) as client:
-            path = f"/api/v1/pipelines/{design.id}"
+            path = f"/v1/pipelines/{design.id}"
             for _ in range(31):
                 response = await client.post(
                     path + "/validate",
@@ -142,7 +99,4 @@ async def test_automatic_compilation_cannot_exhaust_writes_or_polling(
             )
             assert response.status_code == 200, response.text[:1000]
     finally:
-        server.should_exit = True
-        await task
-        await tactic.close()
         limiter.reset()

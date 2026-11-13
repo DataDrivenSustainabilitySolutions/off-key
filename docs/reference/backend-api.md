@@ -4,14 +4,13 @@ This is the contract-oriented reference for the currently wired backend surfaces
 
 ## When to use this page
 
-Use this page when integrating a client, validating endpoint contracts, or triaging Gateway-to-TACTIC errors.
+Use this page when integrating a client, validating endpoint contracts, or triaging API errors.
 
 ## Base URLs
 
 | Service | Local base URL | Interactive schema |
 | --- | --- | --- |
 | API Gateway | `http://localhost:8000/v1` | `http://localhost:8000/docs` |
-| TACTIC | `http://localhost:8001/api/v1` | `http://localhost:8001/docs` |
 
 Deployed installations serve the gateway under `/api` on the dashboard host and
 start it with `--root-path /api`. Its schema at `/api/openapi.json` therefore
@@ -38,7 +37,7 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | Health and readiness | No token | Public operational probes in local deployments |
 
 !!! important
-    Always send `Authorization: Bearer <token>` for non-authentication user workflows, and supply the private service credential only for trusted gateway-to-TACTIC calls.
+    Always send `Authorization: Bearer <token>` for non-authentication user workflows.
 
 An explicitly enabled [public demo](../operations/public-demo.md) also accepts
 anonymous requests on its read allowlist. Every unlisted anonymous request is
@@ -646,183 +645,16 @@ one, and cannot replace a running monitor: that stays a proposal with
 | --- | --- | --- |
 | `GET` | `/health` | Gateway liveness; this route is outside the `/v1` prefix |
 
-## TACTIC API — `/api/v1`
+## TACTIC worker
 
-All business routes require `X-Off-Key-Service-Key`; collection, membership and
-role routes additionally validate the end-user bearer token and its permissions. TACTIC is private.
-Health and readiness remain available without this service credential.
-
-The gateway is the only caller. Its routes above forward to these, under the
-names the installation uses internally: a catalogue is the
-`system`, recording is `collection`, a broker is a `connection`, a live view is
-a `lease` and a monitor is a `service`.
-
-### Members, sessions and roles
+TACTIC runs in the background: it records the catalogue's sources, runs
+pipeline activations and keeps RADAR workloads in step with their records. It
+serves no business routes; every request goes to the API above.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/members/me` | Profile of the signed-in member with role and permissions |
-| `GET` | `/members` | List organization members |
-| `POST` | `/members/invitations` | Invite a member or resend the invitation |
-| `PATCH` | `/members/{user_id}` | Change a member's role, active state or both |
-| `DELETE` | `/members/{user_id}` | Permanently remove a disabled member; 204 |
-| `POST` | `/members/accept-invitation` | Activate an invited account with its token and a password |
-| `POST` | `/members/request-password-reset` | Send reset mail when the account exists |
-| `POST` | `/members/reset-password` | Set a new password with the token from the reset mail |
-| `POST` | `/members/sessions` | Create the remembered session behind the gateway's session cookie |
-| `POST` | `/members/sessions/refresh` | Rotate a remembered session's token |
-| `POST` | `/members/sessions/revoke` | Revoke a remembered session |
-| `POST` | `/members/sessions/revoke-access` | Revoke the supplied bearer token |
-| `GET` | `/roles` | Roles with their permissions and member counts |
-| `POST` | `/roles` | Create a role |
-| `PATCH` | `/roles/{role_id}` | Rename a role or replace its permissions |
-| `DELETE` | `/roles/{role_id}` | Delete a role no member holds; 204 |
-| `GET` | `/agents/me` | The agent a key belongs to; the gateway asks this for every request that carries a key |
-| `GET` | `/agents` | Agents that hold a key |
-| `POST` | `/agents` | Create an agent and its key, returned this once |
-| `PATCH` | `/agents/{agent_id}` | Allow or forbid the key to start monitoring services |
-| `DELETE` | `/agents/{agent_id}` | Revoke the key; 204 |
-
-### Catalogue, recording and live views
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/system` | Saved catalogue document, revision and how each reading is recorded |
-| `PUT` | `/system` | Save structural catalogue changes at an expected revision |
-| `GET` | `/system/revisions` | Saved catalogue revisions |
-| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes. For an HTTP broker, one `GET` |
-| `POST` | `/system/connections/reconnect` | Retry a recorded broker now instead of waiting for its backoff |
-| `PUT` | `/system/collection` | Apply confirmed recording policies |
-| `POST` | `/system/collection/preview` | Review a recording change and the monitors it affects |
-| `POST` | `/system/collection/status` | Recording state and latest values of the given readings |
-| `GET` | `/system/health` | Recording diagnosis with the raw ingress and collector reports |
-| `GET` | `/system/storage` | Storage size and managed retention status |
-| `GET` | `/system/live` | Open live views: brokers, readings and samples after a sequence number |
-| `POST` | `/system/live/leases` | Open a bounded live view of readings |
-| `PUT` | `/system/live/leases/{lease_id}` | Keep a live view open, optionally with other readings |
-| `DELETE` | `/system/live/leases/{lease_id}` | Close a live view; 204 |
-
-### Pipelines and monitor runs
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/monitors/workspace` | What the Monitoring page loads: every monitor, whether designs may be edited, and the selected monitor's pipeline state |
-| `GET` | `/monitors/{service_id}/pipeline` | The design a monitor runs, its current run, recent history and validation |
-| `GET` | `/monitors/{service_id}/pipeline-history` | Earlier runs the monitor replaced, newest first |
-| `GET` | `/monitors/{service_id}/pipeline-timeline` | The run's lifecycle events, oldest first, and how it ended |
-| `GET` | `/monitors/{service_id}/pipeline-metadata` | Validation with the fields available at a node |
-| `GET` | `/monitors/{service_id}/pipeline-state` | The diagnostic snapshot the running monitor last reported |
-| `PUT` | `/monitors/{service_id}/pipeline-layout` | Store where the nodes sit on the canvas; the graph is unchanged |
-| `GET` | `/monitors/pipelines` | Saved designs, paged |
-| `POST` | `/monitors/pipelines` | Save a new design as a draft |
-| `POST` | `/monitors/pipelines/apply` | Save, publish and activate a design in one step |
-| `POST` | `/monitors/pipelines/validate` | Check an unsaved design without creating a library record |
-| `POST` | `/monitors/pipelines/edit` | Change a design in small edits; nothing is stored |
-| `GET` | `/monitors/pipelines/catalog` | Components a design may use, each with its group, description and settings, and the starting templates |
-| `GET` | `/monitors/pipelines/catalog/search` | Components that fit a purpose, a few lines each |
-| `GET` | `/monitors/pipelines/catalog/components/{component_id}` | One component, with the JSON schema of its settings |
-| `GET` | `/monitors/pipelines/forecast-models` | The forecast service's models and their download state, asked with TACTIC's token |
-| `POST` | `/monitors/pipelines/forecast-models/downloads` | Have the forecast service download a model's weights |
-| `GET` | `/monitors/pipelines/{pipeline_id}` | One design with its draft, version and revisions |
-| `PATCH` | `/monitors/pipelines/{pipeline_id}` | Rename, describe or archive a design |
-| `PUT` | `/monitors/pipelines/{pipeline_id}/draft` | Replace a design's draft graph and layout |
-| `POST` | `/monitors/pipelines/{pipeline_id}/validate` | Check a graph against a saved design |
-| `GET` | `/monitors/pipelines/{pipeline_id}/revisions` | Published revisions, newest first |
-| `POST` | `/monitors/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run |
-| `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint |
-| `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node |
-| `GET` | `/monitors/pipeline-blocks` | Every saved block, by name |
-| `POST` | `/monitors/pipeline-blocks` | Save a chain of steps as a block |
-| `DELETE` | `/monitors/pipeline-blocks/{block_id}` | Delete a block; designs keep the steps they copied from it |
-| `GET` | `/monitors/pipeline-proposals` | Proposals, the newest first, without their designs |
-| `POST` | `/monitors/pipeline-proposals` | Hand a design to a member to decide on |
-| `GET` | `/monitors/pipeline-proposals/{proposal_id}` | One proposal with its design |
-| `POST` | `/monitors/pipeline-proposals/{proposal_id}/decision` | A member accepts or declines a proposal |
-| `POST` | `/monitors/pipeline-proposals/{proposal_id}/withdraw` | The author takes back a proposal that still waits |
-| `POST` | `/monitors/pipeline-activations` | Run a published revision as a monitor |
-| `GET` | `/monitors/pipeline-activations/{activation_id}` | Progress of an activation: phase, monitor and issues |
-| `DELETE` | `/monitors/pipeline-activations/{activation_id}` | Cancel an activation that has not finished |
-
-### Data adapter
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/data/devices` | Catalogue devices with recording status |
-| `GET` | `/data/devices/{device_id}/readings` | Catalogue readings of one device |
-| `GET` | `/data/readings/{stream_id}/measurements` | Measurements of a catalogue reading |
-| `GET` | `/data/readings/{stream_id}/measurements/buckets` | Downsampled measurements of a catalogue reading |
-| `GET` | `/data/readings/{stream_id}/profile` | What a catalogue reading looks like over its last days |
-| `GET` | `/data/evidence` | Evidence of a catalogue reading |
-| `GET` | `/data/evidence/chart` | Chart evidence of a catalogue device or of catalogue readings |
-| `POST` | `/data/auth/login` | Internal authentication check |
-| `GET` | `/data/users/{user_id}/favorites` | List favourites |
-| `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
-| `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
-| `GET` | `/data/alarms` | Alarms of a catalogue device or of catalogue readings |
-| `POST` | `/data/alarms/query` | Reporting query by catalogue reading |
-| `GET` | `/data/alarms/{alarm_id}` | One anomaly with its exact retained evidence |
-| `POST` | `/data/alarms/deletion-preview` | Freeze matching event identities for ten minutes |
-| `POST` | `/data/alarms/delete` | Commit a reviewed selection with an idempotent token |
-| `GET` | `/data/alarms/count` | Count alarms |
-| `POST` | `/data/alarms` | Record an alarm about catalogue readings |
-| `DELETE` | `/data/alarms/{alarm_id}` | Delete an alarm |
-
-### Dojo
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/dojo/datasets` | List datasets |
-| `POST` | `/dojo/datasets/csv` | Import a CSV body |
-| `POST` | `/dojo/datasets/history` | Copy recorded readings |
-| `GET` | `/dojo/datasets/{dataset_id}` | Read a dataset |
-| `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset |
-| `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset |
-| `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Page through one series |
-| `GET` | `/dojo/datasets/{dataset_id}/labels` | List a dataset's labels |
-| `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Suggest labels from recorded alarms |
-| `POST` | `/dojo/datasets/{dataset_id}/labels` | Add a label, refusing overlaps |
-| `POST` | `/dojo/datasets/{dataset_id}/labels/batch` | Add several labels as one write |
-| `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move or annotate a label |
-| `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label |
-| `GET` | `/dojo/datasets/{dataset_id}/comparison` | Score runs of one dataset side by side |
-| `GET` | `/dojo/runs` | List runs |
-| `POST` | `/dojo/runs` | Compile, bind and queue a run |
-| `GET` | `/dojo/runs/{run_id}` | Read a run |
-| `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a run |
-| `POST` | `/dojo/runs/{run_id}/promote` | Save a run's design as a template |
-| `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run |
-| `GET` | `/dojo/runs/{run_id}/metrics` | Score a finished run against the labels |
-| `GET` | `/dojo/runs/{run_id}/calibration` | Score the calibration methods a run also tried |
-| `GET` | `/dojo/runs/{run_id}/results` | Page through a run's results |
-| `GET` | `/dojo/runs/{run_id}/outline` | Sum a run's results up over equal stretches of time |
-| `GET` | `/dojo/runs/{run_id}/steps` | Read the values a few observations had at every step |
-
-### RADAR orchestration
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/orchestration/radar/services/` | List services |
-| `POST` | `/orchestration/radar/services/start/` | Start a form-configured monitor as a pipeline activation |
-| `GET` | `/orchestration/radar/services/{service_id}` | Get one service with its configuration |
-| `POST` | `/orchestration/radar/services/{service_id}/stop` | Stop a service and remove its workload |
-| `PATCH` | `/orchestration/radar/services/{service_id}/label` | Rename a service |
-| `DELETE` | `/orchestration/radar/services/{service_id}` | Delete by service identifier |
-
-### Model catalogue
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/models/` | List the detectors shipped in RADAR, optionally filtered by `strategy` |
-
-The catalogue is served from code (`off_key_core.models`). Adding a model means
-shipping its implementation and catalogue entry.
-
-### Middleware health
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/health` | Liveness; outside `/api/v1` |
-| `GET` | `/ready` | Docker API readiness; outside `/api/v1` |
+| `GET` | `/health` | Worker liveness |
+| `GET` | `/ready` | Docker API readiness |
 
 ## Error model
 
@@ -834,9 +666,9 @@ shipping its implementation and catalogue entry.
 | `404` | Target not found |
 | `409` | Duplicate or conflicting state |
 | `422` | Semantic/input validation failure |
-| `500` / `502` / `503` | Application, upstream, or infrastructure failure |
+| `500` / `503` | Application or infrastructure failure |
 
-FastAPI validation errors and Gateway-propagated TACTIC errors use a `detail` field; exact payload shape varies by layer.
+Errors carry a `detail` field. Validation errors list each failing field there.
 
 ## Compatibility notes
 

@@ -1,4 +1,4 @@
-"""TACTIC accepts only well-formed access tokens issued by the gateway."""
+"""The API accepts only well-formed access tokens it issued."""
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -8,9 +8,9 @@ import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
+from off_key_api_gateway.api.access import current_caller, signed_in_member
 from off_key_api_gateway.api.v1.auth import access_token_response
 from off_key_core.config.auth import get_auth_settings
-from off_key_tactic_middleware.api.collection_auth import signed_in_member
 
 from tests.support.env import set_auth_env
 
@@ -39,12 +39,16 @@ def signed(**claims):
 
 async def decode(token, user=None):
     session = SimpleNamespace(scalar=AsyncMock(return_value=user))
-    credentials = (
-        None
-        if token is None
-        else HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-    )
-    return await signed_in_member(credentials, session)
+    if token is None:
+        return await current_caller(SimpleNamespace(), None, session)
+    if token.startswith("Bearer "):
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials=token.removeprefix("Bearer ")
+        )
+        return await current_caller(
+            SimpleNamespace(state=SimpleNamespace()), credentials, session
+        )
+    return await signed_in_member(token, session)
 
 
 async def test_valid_token_resolves_the_current_member():
@@ -84,29 +88,10 @@ async def test_a_stale_session_version_is_rejected():
     assert rejected.value.detail == "This session is no longer valid"
 
 
-@pytest.mark.parametrize(
-    ("authenticated", "detail"),
-    [
-        ({"id": "7", "session_version": 0}, "returned an invalid user id"),
-        ({"id": 0, "session_version": 0}, "returned an invalid user id"),
-        ({"id": True, "session_version": 0}, "returned an invalid user id"),
-        ({"id": 7, "session_version": None}, "returned an invalid session"),
-        ({"id": 7, "session_version": -1}, "returned an invalid session"),
-    ],
-)
-def test_gateway_refuses_to_sign_an_invalid_authentication_result(
-    authenticated, detail
-):
-    with pytest.raises(HTTPException) as refused:
-        access_token_response({"email": "member@example.com", **authenticated})
-    assert refused.value.status_code == 502
-    assert detail in refused.value.detail
-
-
-async def test_gateway_issued_token_round_trips_through_tactic():
+async def test_an_issued_token_signs_its_member_in():
     issued = access_token_response(
         {"email": "member@example.com", "id": 7, "session_version": 2}
     )
     assert issued["member_id"] == 7
     user = SimpleNamespace(is_verified=True, is_active=True, session_version=2)
-    assert await decode(issued["access_token"], user) is user
+    assert await decode("Bearer " + issued["access_token"], user) is user

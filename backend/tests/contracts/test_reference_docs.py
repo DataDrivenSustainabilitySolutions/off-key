@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from off_key_api_gateway.api.v1.routes import router
 from off_key_core.db.models import Base
 from off_key_core.models.pipelines import validate_pipeline
@@ -86,7 +87,7 @@ def gateway_routes() -> set[tuple[str, str]]:
 
 def documented_gateway_routes() -> tuple[set[tuple[str, str]], set[str]]:
     text = page("backend-api.md")
-    section = text.split("## Gateway API", 1)[1].split("## TACTIC API", 1)[0]
+    section = text.split("## Gateway API", 1)[1].split("## TACTIC worker", 1)[0]
     rows = {
         (method, normalise(path))
         for method, path in re.findall(
@@ -116,21 +117,17 @@ def test_api_page_documents_every_gateway_route_and_no_other():
     assert sorted(families - {path for _, path in routes}) == []
 
 
-def test_api_page_documents_every_tactic_route_and_no_other(monkeypatch):
-    monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
+def test_api_page_documents_the_workers_probes_and_no_other():
     routes = {
-        (method.upper(), normalise(path.removeprefix("/api/v1")))
-        for path, operations in create_app().openapi()["paths"].items()
-        for method in operations
+        (method, route.path)
+        for route in create_app().routes
+        if isinstance(route, APIRoute)
+        for method in route.methods
     }
-    section = page("backend-api.md").split("## TACTIC API", 1)[1]
+    section = page("backend-api.md").split("## TACTIC worker", 1)[1]
     section = section.split("## Error model", 1)[0]
     rows = re.findall(r"^\| `([A-Z]+)` \| `(/[^`]*)` \|", section, re.M)
-    documented = {(method, normalise(path)) for method, path in rows}
-
-    assert len(rows) == len(documented), "a TACTIC route is listed twice"
-    assert sorted(routes - documented) == []
-    assert sorted(documented - routes) == []
+    assert sorted(rows) == sorted(routes) == [("GET", "/health"), ("GET", "/ready")]
 
 
 def test_design_file_page_shows_a_design_that_runs_and_publishes_its_schema():

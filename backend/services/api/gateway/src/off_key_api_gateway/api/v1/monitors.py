@@ -1,21 +1,29 @@
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from off_key_core.auth.agents import OPEN_TO_AGENTS
-from off_key_core.schemas.pipelines import MonitorDetail, MonitorSummary
+from off_key_core.schemas.pipelines import (
+    ComponentField,
+    MonitorDetail,
+    MonitorSummary,
+)
 from off_key_core.schemas.radar import (
     MonitoringStrategy,
     MonitorSetup,
     RadarServiceLabel,
 )
-from pydantic import AliasChoices, BaseModel, Field
+from off_key_tactic_middleware.models.catalog import available_models
+from off_key_tactic_middleware.services.orchestration.radar import (
+    RadarOrchestrationService,
+)
+from pydantic import BaseModel
 
-from ...facades.tactic import TacticError, tactic
-from ..errors import TacticErrorRoute
+from ...providers import get_form_monitor_starter, get_radar_orchestration_service
+from ..errors import DomainErrorRoute
 from ..rate_limiter import limiter
 from .pipelines import monitor_pipeline_router
 
-router = APIRouter(route_class=TacticErrorRoute)
+router = APIRouter(route_class=DomainErrorRoute)
 # Its /overview and /{monitor_id}/pipeline routes come before /{monitor_id}.
 router.include_router(monitor_pipeline_router)
 
@@ -23,15 +31,33 @@ shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
 shared_limit_execute = limiter.shared_limit("20/minute", scope="services")
 
 
-def _normalize_models_for_gateway(
-    models_from_tactic: list[dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """
-    Normalize TACTIC model list into gateway's existing dictionary response shape.
+class ModelInfo(BaseModel):
+    """One detector of the catalogue, with every field present."""
 
-    Data source stays TACTIC; only the transport shape is adapted for consumers.
-    """
-    # TACTIC's ModelInfo always carries every field; nulls pass through unchanged.
+    model_type: str
+    family: str
+    name: str
+    description: str | None = None
+    complexity: str | None = None
+    memory_usage: str | None = None
+    strategy: str = "static_baseline"
+    catalog_id: str | None = None
+    algorithm_family: str | None = None
+    available: bool = True
+    fields: list[ComponentField]
+    default_capabilities: dict[str, Any] | None = None
+    import_paths: list[str]
+    parameter_schema: dict[str, Any]
+    default_parameters: dict[str, Any]
+    version: str
+    requires_special_handling: bool
+
+
+def detectors_by_type(strategy: str | None = None) -> dict[str, dict[str, Any]]:
+    """The detector catalogue keyed by model type, as the setup forms read it."""
+    models = [
+        ModelInfo(**model).model_dump(mode="json") for model in available_models()
+    ]
     return {
         model["model_type"]: {
             "name": model["name"],
@@ -50,16 +76,17 @@ def _normalize_models_for_gateway(
             "available": model["available"],
             "default_capabilities": model["default_capabilities"],
         }
-        for model in models_from_tactic
+        for model in models
+        if not strategy or model["strategy"] == strategy
     }
 
 
 class MonitorStarted(BaseModel):
     """A monitor accepted for start; poll its activation until it settles."""
 
-    monitor_id: str = Field(validation_alias=AliasChoices("monitor_id", "service_id"))
+    monitor_id: str
     activation_id: str
-    phase: str = Field(validation_alias=AliasChoices("phase", "status"))
+    phase: str
     reading_ids: list[str]
 
 
@@ -69,19 +96,23 @@ class MonitorName(BaseModel):
 
 
 class MonitorStopped(BaseModel):
-    monitor_id: str = Field(validation_alias=AliasChoices("monitor_id", "service_id"))
+    monitor_id: str
     status: Literal["stopped"]
 
 
 @router.get("", response_model=list[MonitorSummary], openapi_extra=OPEN_TO_AGENTS)
 @shared_limit_fetch
-async def list_monitors(request: Request, active: bool | None = None):
+async def list_monitors(
+    request: Request,
+    active: bool | None = None,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+):
     """Every monitor with its state, strategy and the readings it watches.
 
     `active=true` keeps the monitors that should run, `active=false` the
     stopped ones.
     """
-    monitors = await tactic.list_radar_services(active_only=active is True)
+    monitors = await service.list_radar_services(active is True, False)
     if active is False:
         monitors = [item for item in monitors if not item.get("status")]
     return monitors
@@ -89,56 +120,95 @@ async def list_monitors(request: Request, active: bool | None = None):
 
 @router.post("", response_model=MonitorStarted, status_code=202)
 @shared_limit_execute
-async def create_monitor(request: Request, monitor: MonitorSetup):
+async def create_monitor(
+    request: Request,
+    monitor: MonitorSetup,
+    start_form_monitor=Depends(get_form_monitor_starter),
+):
     """Start a monitor on catalogue readings. Needs `manage_monitors`.
 
     `reading_ids` are recorded numeric readings of one device, or broker
     readings without a device; `monitoring` is the strategy and its detector.
-    TACTIC runs it as a pipeline. Answers 202 with the activation to poll at
+    It runs as a pipeline activation. Answers 202 with the activation to poll at
     `GET /v1/pipeline-activations/{activation_id}`. A monitor designed as a
     graph starts with `POST /v1/pipelines/apply` instead.
     """
-    return await tactic.start_radar_service(monitor)
+    activation = await start_form_monitor(monitor)
+    return MonitorStarted(
+        monitor_id=activation.service_id,
+        activation_id=activation.id,
+        phase=activation.phase,
+        reading_ids=monitor.reading_ids,
+    )
 
 
 @router.get("/{monitor_id}", response_model=MonitorDetail, openapi_extra=OPEN_TO_AGENTS)
 @shared_limit_fetch
-async def get_monitor(request: Request, monitor_id: str):
+async def get_monitor(
+    request: Request,
+    monitor_id: str,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+):
     """One monitor with the configuration it was started with."""
-    return await tactic.get_radar_service_details(monitor_id)
+    detail = await service.get_radar_service(monitor_id)
+    if not detail:
+        raise HTTPException(404, "RADAR service not found")
+    return detail
 
 
 @router.patch("/{monitor_id}", response_model=MonitorName)
 @shared_limit_execute
-async def update_monitor(request: Request, monitor_id: str, change: RadarServiceLabel):
+async def update_monitor(
+    request: Request,
+    monitor_id: str,
+    change: RadarServiceLabel,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+):
     """Change the name a monitor is shown with. Needs `manage_monitors`."""
-    return await tactic.rename_radar_service(monitor_id, change.display_name)
+    if not await service.rename_radar_service(monitor_id, change.display_name):
+        raise HTTPException(404, "Monitoring service not found")
+    return MonitorName(id=monitor_id, display_name=change.display_name)
 
 
 @router.post("/{monitor_id}/stop", response_model=MonitorStopped)
 @shared_limit_execute
-async def stop_monitor(request: Request, monitor_id: str):
+async def stop_monitor(
+    request: Request,
+    monitor_id: str,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+):
     """Stop a monitor and remove its workload. Needs `manage_monitors`.
 
     The monitor stays listed as stopped and its alarms stay in Reporting.
     """
-    return await tactic.stop_radar_service(monitor_id)
+    if not await service.stop_radar_service(monitor_id):
+        raise HTTPException(
+            404, f"RADAR service '{monitor_id}' was not found or not stopped"
+        )
+    return MonitorStopped(monitor_id=monitor_id, status="stopped")
 
 
 @router.delete(
     "/{monitor_id}", status_code=204, response_class=Response, response_model=None
 )
 @shared_limit_execute
-async def delete_monitor(request: Request, monitor_id: str):
+async def delete_monitor(
+    request: Request,
+    monitor_id: str,
+    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+):
     """Stop a monitor and delete it, releasing its readings. Needs `manage_monitors`.
 
     Its alarms stay in Reporting.
     """
-    await tactic.delete_radar_service(monitor_id)
+    if not await service.delete_radar_service(monitor_id):
+        raise HTTPException(
+            404, f"RADAR service '{monitor_id}' not found or could not be deleted"
+        )
     return Response(status_code=204)
 
 
-detectors_router = APIRouter(route_class=TacticErrorRoute)
+detectors_router = APIRouter(route_class=DomainErrorRoute)
 
 
 @detectors_router.get("", response_model=dict[str, Any], openapi_extra=OPEN_TO_AGENTS)
@@ -152,14 +222,6 @@ async def list_detectors(
 
     Filter by `strategy`. Cacheable for five minutes.
     """
-    # Enable client-side caching - models rarely change
+    # The catalogue ships with the release, so clients may cache it.
     response.headers["Cache-Control"] = "public, max-age=300"
-    try:
-        models = await tactic.list_available_models(strategy)
-        return _normalize_models_for_gateway(models)
-    except TacticError:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get available models: {e!s}"
-        ) from e
+    return detectors_by_type(strategy)

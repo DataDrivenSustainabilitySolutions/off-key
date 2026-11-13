@@ -292,9 +292,9 @@ class DeploymentTests(unittest.TestCase):
     def test_credentials_are_scoped_to_the_services_that_need_them(self):
         allowed = {
             "JWT_SECRET": {"api", "tactic"},
-            "INTERNAL_API_SECRET": {"api", "tactic"},
             "POSTGRES_PASSWORD": {
                 "postgres",
+                "api",
                 "tactic",
                 "db-sync",
                 "mqtt-proxy",
@@ -315,10 +315,8 @@ class DeploymentTests(unittest.TestCase):
                 }
                 with self.subTest(case=case, credential=key):
                     self.assertEqual(actual, expected)
-            self.assertEqual(
-                services["api"]["environment"]["INTERNAL_API_SECRET"],
-                services["tactic"]["environment"]["INTERNAL_API_SECRET"],
-            )
+            for service in services.values():
+                self.assertNotIn("INTERNAL_API_SECRET", service.get("environment", {}))
             self.assertEqual(services["frontend"].get("environment", {}), {})
             # The secret template never runs; TACTIC copies only its secrets.
             self.assertEqual(services["mqtt-radar"].get("environment", {}), {})
@@ -498,8 +496,8 @@ class DeploymentTests(unittest.TestCase):
             ({"radar_checkpoint_secret": "short-secret"}, "radar_checkpoint_secret"),
             ({"forecast_api_token": "short-token"}, "forecast_api_token"),
             (
-                # Workers hold this token; it must not be the internal credential.
-                {"forecast_api_token": "validation-internal-service-secret-123456789"},
+                # Workers hold this token; it must not be the signing secret.
+                {"forecast_api_token": same, "jwt_secret": same},
                 "forecast_api_token",
             ),
         ):
@@ -710,12 +708,13 @@ class DeploymentTests(unittest.TestCase):
             },
             "dojo-worker": {"forecast_api_token": "FORECAST_API_TOKEN"},
             "forecast": {"forecast_api_token": "FORECAST_API_TOKEN"},
-            "tactic": {
-                "emqx_ca_cert": "EMQX_CA_CERT",
-                "mqtt_proxy_password": "SYSTEM_COLLECTION_MQTT_API_KEY",
-                "forecast_api_token": "FORECAST_API_TOKEN",
-                "system_broker_routes": "SYSTEM_BROKER_ROUTES",
-            },
+        }
+        # Live views and broker checks run in the API, recording in the worker.
+        expected["api"] = expected["tactic"] = {
+            "emqx_ca_cert": "EMQX_CA_CERT",
+            "mqtt_proxy_password": "SYSTEM_COLLECTION_MQTT_API_KEY",
+            "forecast_api_token": "FORECAST_API_TOKEN",
+            "system_broker_routes": "SYSTEM_BROKER_ROUTES",
         }
         result = self.results["prod"]
         self.assertEqual(
@@ -786,13 +785,13 @@ class DeploymentTests(unittest.TestCase):
                     self.assertNotIn(
                         "FORECAST_API_TOKEN", service.get("environment", {}), name
                     )
-        # Without a vault entry the token is derived from the internal credential,
+        # Without a vault entry the token is derived from the signing secret,
         # one way, so a release needs no new secret.
-        internal = result["inputs"]["internal_api_secret"]
+        signing = result["config"]["services"]["api"]["environment"]["JWT_SECRET"]
         token = result["deployment_secret_material"]["forecast_api_token"]
         self.assertEqual(
             token,
-            hashlib.sha256(f"{internal}:forecast-api-token".encode()).hexdigest(),
+            hashlib.sha256(f"{signing}:forecast-api-token".encode()).hexdigest(),
         )
         self.assertNotIn(token, json.dumps(result["config"]))
         with tempfile.TemporaryDirectory() as directory:
@@ -1053,7 +1052,7 @@ class DeploymentTests(unittest.TestCase):
                 for name, service in config["services"].items()
                 if "broker-route-network" in service.get("networks", {})
             },
-            {"broker-route", "tactic"},
+            {"broker-route", "api", "tactic"},
         )
         self.assertNotIn("cap_add", config["services"]["broker-route"])
         self.assertNotIn("MQTT_SOURCE_TOPICS", proxy["environment"])
@@ -1103,7 +1102,11 @@ class DeploymentTests(unittest.TestCase):
         """Every key a first-party service receives is read by code it runs."""
         backend = ROOT.parent / "backend"
         sources = {
-            "api": [backend / "services/api/gateway/src"],
+            # The API serves the domain in process, so it runs the TACTIC package.
+            "api": [
+                backend / "services/api/gateway/src",
+                backend / "services/middleware/tactic/src",
+            ],
             "tactic": [backend / "services/middleware/tactic/src"],
             "db-sync": [backend / "services/db/sync/src"],
             "dojo-worker": [backend / "services/mqtt/radar/src"],

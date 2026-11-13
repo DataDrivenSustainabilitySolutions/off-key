@@ -3,13 +3,13 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from off_key_core.db.base import get_async_engine, reset_db_runtime_caches
+from off_key_core.db.base import get_async_engine, get_db_async, reset_db_runtime_caches
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
-from off_key_tactic_middleware.main import create_app
 from off_key_tactic_middleware.services.catalogue.system import SystemService
 from sqlalchemy import event
 
+from tests.support.gateway import gateway_app, member
 from tests.support.http import asgi_client
 
 CATALOGUE = SystemSnapshot(
@@ -80,7 +80,6 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
         """)
 
     url = disposable_database.url
-    secret = "disposable-reporting-integration-credential"
     for key, value in {
         "POSTGRES_USER": url.username,
         "POSTGRES_PASSWORD": url.password,
@@ -90,7 +89,6 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
         "POSTGRES_ASYNC_POOL_SIZE": 1,
         "POSTGRES_ASYNC_MAX_OVERFLOW": 0,
         "POSTGRES_ASYNC_POOL_TIMEOUT_SECONDS": 0.1,
-        "INTERNAL_API_SECRET": secret,
     }.items():
         monkeypatch.setenv(key, str(value))
 
@@ -106,19 +104,21 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
         if statement.startswith("SELECT"):
             selects.append(statement)
 
-    headers = {"X-Off-Key-Service-Key": secret}
-    path = "/api/v1/data/alarms/query"
+    path = "/v1/alarms/query"
+    app = gateway_app(member())
+    # The API's own pooled sessions, so a held connection exhausts the pool.
+    del app.dependency_overrides[get_db_async]
     line = ["temperature", "pressure"]
     try:
-        async with asgi_client(create_app()) as client:
+        async with asgi_client(app) as client:
 
             async def query(**body):
-                response = await client.post(path, headers=headers, json=body)
+                response = await client.post(path, json=body)
                 assert response.status_code == 200, response.text
                 return response.json()
 
             async with engine.connect():
-                unavailable = await client.post(path, headers=headers, json={})
+                unavailable = await client.post(path, json={})
                 assert unavailable.status_code == 503
                 assert "Try again" in unavailable.json()["detail"]
 
@@ -182,9 +182,7 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
             assert len(selects) == 3
             assert everything["summary"]["devices"] == 3
             # The alarms of an entity the catalogue no longer has name no device.
-            removed = await client.get(
-                "/api/v1/data/alarms", headers=headers, params={"limit": 1000}
-            )
+            removed = await client.get("/v1/alarms", params={"limit": 1000})
             assert removed.status_code == 200, removed.text
             orphans = [
                 item["device_label"]
@@ -193,9 +191,8 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
             ]
             assert sorted(orphans, key=str) == [None, "Plant MQTT"]
             device = await client.get(
-                "/api/v1/data/alarms",
-                headers=headers,
-                params={"device_id": "line", "service_id": "monitor-c"},
+                "/v1/alarms",
+                params={"device_id": "line", "monitor_id": "monitor-c"},
             )
             assert [item["monitor_id"] for item in device.json()] == ["monitor-c"]
             assert everything["summary"]["count"] == 506

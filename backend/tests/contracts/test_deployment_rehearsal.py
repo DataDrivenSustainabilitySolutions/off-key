@@ -53,27 +53,28 @@ def wait_for_measurement(client, entity, value):
 
 # What a detector setting means to a saved monitor. Its label, help and where an
 # editor shows it are presentation, and an older binary may word them otherwise.
-SETTING_CONTRACT = (
-    "name",
-    "type",
-    "default",
-    "required",
-    "has_default",
-    "minimum",
-    "maximum",
-    "exclusive_minimum",
-    "exclusive_maximum",
-    "options",
-    "nullable",
-    "discriminator",
-)
+# A listing may leave out a key at its empty value; it reads as that value.
+SETTING_CONTRACT = {
+    "name": None,
+    "type": None,
+    "default": None,
+    "required": False,
+    "has_default": False,
+    "minimum": None,
+    "maximum": None,
+    "exclusive_minimum": None,
+    "exclusive_maximum": None,
+    "options": None,
+    "nullable": False,
+    "discriminator": None,
+}
 
 
 def setting_contract(fields):
     """Detector settings without their presentation, for comparing releases."""
     return [
         {
-            **{key: field.get(key) for key in SETTING_CONTRACT},
+            **{key: field.get(key, empty) for key, empty in SETTING_CONTRACT.items()},
             "fields": setting_contract(field.get("fields") or []),
             "variants": {
                 choice: setting_contract(variant)

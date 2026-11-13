@@ -11,7 +11,13 @@ Only explicitly classified changes run less than everything:
   suites, whose inputs did not change, do not.
 
 Every other path, an unreadable diff, an empty diff, an unknown event or any
-error selects the full plan. Manual runs are always full. A main push compares
+error selects the full plan.
+
+Pull requests run only the fast suites of their plan. The heavy suites (image
+builds, Swarm rehearsals, RADAR, collection, infrastructure, observability)
+run on the main push after merging, which deployment requires to pass. A pull request labelled `full-ci` runs its whole plan; the
+label is read when the run starts, so re-running CI after adding it is enough.
+If the labels cannot be read, the pull request runs its whole plan. Manual runs are always full. A main push compares
 against the newest ancestor whose main CI run kept full release evidence, so a
 superseded or cancelled run can never hide an untested change.
 """
@@ -60,6 +66,16 @@ SELECTED = {
     "published-docs": {"static", "static-release"},
     "static": {"static", "static-release"},
 }
+# Suites a pull request leaves to the main push unless it carries FULL_CI_LABEL.
+HEAVY = {
+    "infrastructure",
+    "collection",
+    "radar",
+    "images",
+    "deployment-smoke",
+    "observability",
+}
+FULL_CI_LABEL = "full-ci"
 STATIC_RELEASE_MODES = {"landing", "published-docs", "static"}
 LANDING_PATHS = {
     "assets/landing/export.py",
@@ -202,7 +218,37 @@ def comparison(event_name, event, head, repository, api=None, ancestor=None):
     return None
 
 
+def wants_full_ci(event, api=None):
+    """Whether a pull request carries the full-ci label right now."""
+    api = api or github
+    try:
+        number = event["pull_request"]["number"]
+        labels = api(f"issues/{number}/labels?per_page=100")
+        return any(label.get("name") == FULL_CI_LABEL for label in labels)
+    except Exception:  # noqa: BLE001 - unreadable labels run the whole plan
+        return True
+
+
+def defer_heavy(event_name, event, mode, jobs, reason, api=None):
+    """Leave a pull request's heavy suites to the main push."""
+    if event_name != "pull_request" or not any(jobs[job] for job in HEAVY):
+        return mode, jobs, reason
+    if wants_full_ci(event, api):
+        return mode, jobs, f"{reason}; {FULL_CI_LABEL} label runs the whole plan"
+    jobs = {job: run and job not in HEAVY for job, run in jobs.items()}
+    return mode, jobs, f"{reason}; heavy suites run on the main push"
+
+
 def plan(event_name, event, head, repository, api=None, ancestor=None):
+    return defer_heavy(
+        event_name,
+        event,
+        *plan_without_deferral(event_name, event, head, repository, api, ancestor),
+        api=api,
+    )
+
+
+def plan_without_deferral(event_name, event, head, repository, api=None, ancestor=None):
     try:
         base = comparison(event_name, event, head, repository, api, ancestor)
         if base is None:
@@ -219,7 +265,13 @@ def main():
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
     head = git("rev-parse", "HEAD").strip()
     if head != os.environ["GITHUB_SHA"]:
-        mode, jobs, reason = "full", plan_for("full", event_name), "unexpected checkout"
+        mode, jobs, reason = defer_heavy(
+            event_name,
+            event,
+            "full",
+            plan_for("full", event_name),
+            "unexpected checkout",
+        )
     else:
         mode, jobs, reason = plan(
             event_name, event, head, os.environ["GITHUB_REPOSITORY"]

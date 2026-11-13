@@ -43,7 +43,7 @@ from off_key_core.schemas.members import MemberProfile
 from ...facades.tactic import path_segment, tactic
 from ..access import member_authorization, require_permission
 from ..errors import TacticErrorRoute
-from ..rate_limiter import limiter
+from ..rate_limiter import client_ip, limiter
 
 use_dojo = require_permission(Permission.use_dojo)
 manage_monitors = require_permission(Permission.manage_monitors)
@@ -54,6 +54,8 @@ async def member_scope(request: Request, member: MemberProfile = Depends(use_doj
 
 
 def member_key(request: Request) -> str:
+    if getattr(request.state, "demo_guest", False):
+        return f"demo:{client_ip(request)}"
     return request.state.dojo_member_id
 
 

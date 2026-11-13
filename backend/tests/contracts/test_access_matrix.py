@@ -147,6 +147,7 @@ TACTIC_ACCESS = {
 
 GATEWAY_ACCESS = {
     "public": {
+        "GET /v1/demo",
         "GET /docs",
         "GET /docs/oauth2-redirect",
         "GET /health",
@@ -333,13 +334,14 @@ def test_gateway_routes_match_the_access_table():
 
 
 @pytest.mark.parametrize("route", sorted(GATEWAY_ACCESS["public"]))
-def test_public_gateway_routes_are_documentation_health_or_sign_in(route):
+def test_public_gateway_routes_are_documentation_health_sign_in_or_demo_status(route):
     path = route.split()[1]
     assert path in {
         "/docs",
         "/docs/oauth2-redirect",
         "/redoc",
         "/health",
+        "/v1/demo",
     } or (path.startswith("/v1/auth/"))
 
 

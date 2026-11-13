@@ -52,6 +52,8 @@ service_environment:
     APP_NAME: aberration
     FRONTEND_BASE_URL: "{{ frontend_base_url }}"
     CORS_ALLOWED_ORIGINS: "{{ cors_allowed_origins }}"
+    DEMO_MODE: "{{ demo_mode | default(false) | bool | lower }}"
+    DEMO_VIEWER_EMAIL: "{{ demo_viewer_email | default(none) }}"
     TACTIC_SERVICE_HOST: "{{ tactic_service_host }}"
     TACTIC_SERVICE_PORT: "{{ tactic_service_port }}"
     ENABLE_REQUEST_LOGGING: "{{ enable_request_logging }}"
@@ -60,6 +62,9 @@ service_environment:
     RATE_LIMIT_LOG_LEVEL: "{{ rate_limit_log_level }}"
   tactic:
     <<: [*common, *database, *auth, *email]
+    DEMO_MODE: "{{ demo_mode | default(false) | bool | lower }}"
+    DEMO_VIEWER_EMAIL: "{{ demo_viewer_email | default(none) }}"
+    DEMO_FEEDS_JSON: "{{ demo_feed_selection | default({}) | to_json }}"
     # Keep TACTIC below the database's slot limit even during a request burst.
     POSTGRES_ASYNC_POOL_SIZE: "8"
     POSTGRES_ASYNC_MAX_OVERFLOW: "0"
@@ -128,6 +133,8 @@ service_environment:
     SYNC_API_HOST: "{{ sync_api_host }}"
     SYNC_API_PORT: "{{ sync_api_port }}"
     SQLALCHEMY_LOG_LEVEL: "{{ sqlalchemy_log_level }}"
+  demo-relay:
+    DEMO_FEEDS_JSON: "{{ demo_feed_selection | default({}) | to_json }}"
   mqtt-proxy:
     <<: [*common, *database]
     ENVIRONMENT: "{{ app_environment }}"
@@ -227,6 +234,7 @@ stack_interpolation_environment:
   OAUTH2_IMAGE: "{{ release.images.oauth2 }}"
   CLOUDFLARED_IMAGE: "{{ release.images.cloudflared }}"
   LANDING_IMAGE: "{{ release.images.landing }}"
+  DEMO_BROKER_CONFIG_HASH: "{{ (lookup('file', stack_source_dir ~ '/demo-broker.conf') | hash('sha256'))[:12] }}"
 
 stack_nfs_opts: rw,nfsvers=4,hard,timeo=150,retrans=3
 stack_nfs_spec: "{{ (broker_route_nfs_addr | default('')) ~ '|' ~ broker_route_state_dir ~ '|' ~ stack_nfs_opts }}"
@@ -240,7 +248,9 @@ stack_optional_overlays:
 
 # Services of left-out overlays receive no environment block.
 stack_omitted_services: >-
-  {{ [] if broker_route_enabled | bool else ['broker-route'] }}
+  {{ ([] if broker_route_enabled | bool else ['broker-route'])
+     + ([] if admin_ingress_enabled | default(true) | bool else ['oauth2-proxy'])
+     + ([] if demo_mode | default(false) | bool else ['demo-relay']) }}
 
 # Global Swarm config names; a second stack on the cluster gets its own.
 stack_config_prefix: "{{ '' if stack_name == 'off-key' else stack_name ~ '_' }}"

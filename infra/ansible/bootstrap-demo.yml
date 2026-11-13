@@ -1,0 +1,20 @@
+---
+# Finish first-run demo setup after accepting the administrator invitation.
+- import_playbook: validate-inventory.yml
+
+- name: Initialize the isolated public demo
+  hosts: swarm_manager
+  gather_facts: false
+  tasks:
+    - name: Require the dedicated demo inventory
+      assert:
+        that:
+          - demo_mode | default(false) | bool
+          - offkey_env == 'demo'
+          - stack_name != 'off-key'
+        fail_msg: Use the dedicated demo inventory to initialize public access.
+
+    - name: Create the restricted viewer and load an empty catalogue
+      include_role:
+        name: stack_deploy
+        tasks_from: bootstrap_demo

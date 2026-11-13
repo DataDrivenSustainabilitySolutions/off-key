@@ -8,6 +8,12 @@ import { tokenManager } from "@/auth/session";
 import Login from "../pages/Login";
 import { unsignedJwt as createUnsignedToken } from "./support/fixtures/auth";
 
+// Public-access discovery is covered by DemoGuest; these tests exercise sessions.
+vi.mock("@/auth/demo", () => ({
+  loadDemoStatus: async () => ({ enabled: false }),
+  isPublicDemo: () => false,
+}));
+
 const mockNavigate = vi.fn();
 
 vi.mock("react-router-dom", async () => {

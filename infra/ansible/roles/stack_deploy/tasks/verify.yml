@@ -116,3 +116,7 @@
 # next deployment repeats the setup instead of having to recover a release.
 - name: Initialize administrator access after the release completes
   include_tasks: bootstrap_admin.yml
+
+- name: Initialize public sources after administrator setup
+  include_tasks: bootstrap_demo.yml
+  when: demo_mode | default(false) | bool and (administrator_setup.stdout_lines | last | from_json).status == 'configured'

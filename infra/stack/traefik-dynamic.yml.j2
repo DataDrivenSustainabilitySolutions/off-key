@@ -20,6 +20,7 @@
 
 http:
   routers:
+{% if public_site_enabled | default(true) | bool %}
     docs:
       rule: "Host(`{{ docs_hostname }}`)"
       entryPoints: [web]
@@ -41,6 +42,7 @@ http:
       middlewares: [dashboard-redirect]
       service: noop@internal
 
+{% endif %}
     frontend:
       rule: "Host(`{{ frontend_hostname }}`)"
       entryPoints: [web]
@@ -55,6 +57,7 @@ http:
       middlewares: [api-strip]
       service: api
 
+{% if admin_ingress_enabled | default(true) | bool %}
     # oauth2-proxy's public endpoints on the dedicated auth host — NO auth middleware, since the
     # GitHub callback/sign-in must complete without a session (else an infinite auth loop).
     oauth2:
@@ -75,6 +78,7 @@ http:
       entryPoints: [web]
       middlewares: [oauth-errors, oauth-auth]
       service: api@internal
+{% endif %}
 {% if observability_active | default(false) | bool %}
 
     # Logs in Grafana. Grafana trusts the user oauth-auth's response sets.
@@ -86,6 +90,7 @@ http:
 {% endif %}
 
   services:
+{% if public_site_enabled | default(true) | bool %}
     docs:
       loadBalancer:
         servers:
@@ -94,6 +99,7 @@ http:
       loadBalancer:
         servers:
           - url: "http://{{ stack_name }}_landing:80"
+{% endif %}
     frontend:
       loadBalancer:
         servers:
@@ -102,6 +108,7 @@ http:
       loadBalancer:
         servers:
           - url: "http://{{ stack_name }}_api:8000"
+{% if admin_ingress_enabled | default(true) | bool %}
     emqx:
       loadBalancer:
         servers:
@@ -110,6 +117,7 @@ http:
       loadBalancer:
         servers:
           - url: "http://{{ stack_name }}_oauth2-proxy:4180"
+{% endif %}
 {% if observability_active | default(false) | bool %}
     grafana:
       loadBalancer:
@@ -145,6 +153,7 @@ http:
         prefixes:
           - /api
 
+{% if admin_ingress_enabled | default(true) | bool %}
     # forwardAuth: Traefik calls oauth2-proxy /oauth2/auth per request. 202 → allow (identity
     # headers copied through); 401 → handled by oauth-errors below. This is a header-only
     # sub-request — the request body never passes through oauth2-proxy.
@@ -166,3 +175,4 @@ http:
         query: "/oauth2/sign_in?rd={url}"
         statusRewrites:
           "401": 302
+{% endif %}

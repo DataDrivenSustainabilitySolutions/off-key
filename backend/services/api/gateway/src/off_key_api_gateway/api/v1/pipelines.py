@@ -38,7 +38,7 @@ from off_key_core.schemas.pipelines import (
 from ...facades.tactic import path_segment, tactic
 from ..access import current_member
 from ..errors import TacticErrorRoute
-from ..rate_limiter import limiter
+from ..rate_limiter import client_ip, limiter
 
 
 async def member_scope(
@@ -48,6 +48,8 @@ async def member_scope(
 
 
 def member_key(request: Request) -> str:
+    if getattr(request.state, "demo_guest", False):
+        return f"demo:{client_ip(request)}"
     return request.state.pipeline_member_id
 
 

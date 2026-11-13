@@ -48,6 +48,7 @@ Treat the values of these variables as secrets:
 | `EMQX_DASHBOARD_PASSWORD` | Unique EMQX administrative credential |
 | `EMQX_NODE_COOKIE` | Shared only by trusted nodes in the same EMQX cluster |
 | `MQTT_APIKEY` | Required only when MQTT authentication is enabled |
+| `DEMO_VIEWER_PASSWORD` | Dedicated 32–72 byte server-only password; never use a real member's credential |
 
 Generate secrets locally and put the output directly into the intended secret store or ignored environment file:
 
@@ -56,6 +57,20 @@ openssl rand -hex 32
 ```
 
 Do not paste generated output into issues, logs, commits, screenshots, or documentation.
+
+## Optional public demo
+
+Use these only in a separate demo installation. See [Public demo](../operations/public-demo.md)
+for deployment, administrator setup and source attribution.
+
+| Variable | Default and meaning |
+| --- | --- |
+| `DEMO_MODE` | `false`; enables the gateway's explicit anonymous read allowlist |
+| `DEMO_VIEWER_EMAIL` | Required in demo mode; identifies its dedicated viewer account |
+| `DEMO_VIEWER_PASSWORD` | Required in demo mode; API and setup read `/run/secrets/DEMO_VIEWER_PASSWORD` in Swarm |
+| `DEMO_GUEST_REQUESTS_PER_MINUTE` | `600`, from 10 to 6000; per-IP budget per gateway process |
+| `DEMO_FEEDS_JSON` | Empty uses example asset selections; relay and initializer must use the same JSON |
+| `DEMO_RELAY_HOST` | `demo-broker`; private destination broker, never a public provider |
 
 ## Application and HTTP
 

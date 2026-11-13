@@ -1,0 +1,52 @@
+# Optional services of the isolated public demo, never the production stack.
+services:
+  api:
+    secrets:
+      - source: demo_viewer_password
+        target: DEMO_VIEWER_PASSWORD
+  tactic:
+    networks:
+      - demo-source-network
+    secrets:
+      - source: demo_viewer_password
+        target: DEMO_VIEWER_PASSWORD
+  demo-broker:
+    image: "${EMQX_IMAGE}"
+    environment:
+      EMQX_NODE__COOKIE: "{{ emqx_node_cookie }}"
+    configs:
+      - source: demo_broker_config
+        target: /opt/emqx/etc/base.hocon
+    networks: [demo-source-network]
+    healthcheck:
+      test: [CMD, emqx, ctl, status]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true]
+      resources:
+        limits: {cpus: '0.5', memory: 512M}
+      restart_policy: {condition: any}
+  demo-relay:
+    image: "${MQTT_PROXY_IMAGE}"
+    command: [/app/bin/python, -m, off_key_mqtt_proxy.demo.relay]
+    networks: [demo-source-network, public-network]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true]
+      resources:
+        limits: {cpus: '0.5', memory: 128M}
+      restart_policy: {condition: any, delay: 10s}
+networks:
+  demo-source-network:
+    driver: overlay
+    internal: true
+configs:
+  demo_broker_config:
+    name: ${CONFIG_NAME_PREFIX}demo_broker_${DEMO_BROKER_CONFIG_HASH}
+    file: ./demo-broker.conf

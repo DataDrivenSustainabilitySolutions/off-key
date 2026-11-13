@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from off_key_core.auth.permissions import Permission
 
 from ..access import current_member, writes_require
+from ..demo import router as demo_router
 from . import (
     alarms,
     auth,
@@ -17,6 +18,7 @@ from . import (
 )
 
 router = APIRouter()
+router.include_router(demo_router, prefix="/demo", tags=["demo"])
 
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
 protected = APIRouter(dependencies=[Depends(current_member)])

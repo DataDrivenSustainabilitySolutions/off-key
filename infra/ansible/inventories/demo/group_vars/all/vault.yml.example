@@ -1,0 +1,26 @@
+# Copy to vault.yml, fill all values and encrypt with ansible-vault.
+# Each secret belongs to the DEMO installation. Never copy the production vault.
+internal_api_secret: CHANGE_ME_generate_a_unique_random_32_byte_secret
+jwt_secret: CHANGE_ME_generate_a_different_random_32_byte_secret
+postgres_password: CHANGE_ME
+emqx_dashboard_password: CHANGE_ME
+emqx_node_cookie: TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX
+emqx_ca_cert: |
+  -----BEGIN CERTIFICATE-----
+  TEST_ONLY_REPLACE_WITH_DEMO_CA_CERTIFICATE
+  -----END CERTIFICATE-----
+emqx_server_cert: |
+  -----BEGIN CERTIFICATE-----
+  TEST_ONLY_REPLACE_WITH_DEMO_SERVER_CERTIFICATE
+  -----END CERTIFICATE-----
+emqx_server_key: TEST_ONLY_REPLACE_WITH_DEMO_SERVER_PRIVATE_KEY_PEM
+mqtt_proxy_password: TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_PASSWORD
+mqtt_radar_password: TEST_ONLY_REPLACE_WITH_DIFFERENT_RANDOM_32_BYTE_PASSWORD
+radar_checkpoint_secret: TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_SECRET
+demo_viewer_password: CHANGE_ME_generate_with_openssl_rand_hex_32
+# A dedicated tunnel routes ONLY demo.aberration.app to this stack's Traefik.
+cloudflare_tunnel_token: CHANGE_ME_dedicated_demo_tunnel
+superuser_mail: owner@example.com
+email_password: re_CHANGE_ME
+ghcr_username: CHANGE_ME
+ghcr_token: CHANGE_ME

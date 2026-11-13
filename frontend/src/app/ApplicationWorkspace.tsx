@@ -95,8 +95,8 @@ function WorkspaceFrame() {
 }
 
 export function ApplicationWorkspace() {
-  const { userId, isAuthenticated } = useAuth();
-  return <CatalogueProvider key={userId ?? "local"}>
-    <MonitoringServicesProvider enabled={isAuthenticated}><WorkspaceFrame /></MonitoringServicesProvider>
+  const { userId, isAuthenticated, isGuest } = useAuth();
+  return <CatalogueProvider key={isGuest ? "demo" : userId ?? "local"}>
+    <MonitoringServicesProvider enabled={isAuthenticated || isGuest}><WorkspaceFrame /></MonitoringServicesProvider>
   </CatalogueProvider>;
 }

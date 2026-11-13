@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useAuth } from "@/auth/AuthContext";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InlineName } from "@/components/InlineName";
@@ -19,6 +20,8 @@ const RUN_POLL_MS = 3000;
 export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
   id: string; tab: DatasetTab; listHref: string; onTab: (tab: DatasetTab) => void; onDeleted: () => void;
 }) {
+  const { can } = useAuth();
+  const editable = can("use_dojo");
   const [dataset, setDataset] = useState<DatasetView | null>(null);
   const [labels, setLabels] = useState<LabelView[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -79,11 +82,11 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
   return <section className="dj-page dj-detail" aria-label={`Dataset ${dataset.name}`}>
     <Link className="dj-back" to={listHref}><ArrowLeft size={14} />All datasets</Link>
     <div className="dj-detail-header">
-      <div><h1><InlineName value={dataset.name} onSave={rename} ariaLabel="Rename dataset" /></h1>
+      <div><h1><InlineName value={dataset.name} onSave={rename} editable={editable} ariaLabel="Rename dataset" /></h1>
         {dataset.description && <small>{dataset.description}</small>}</div>
-      <div className="dj-detail-actions">
+      {editable && <div className="dj-detail-actions">
         <button type="button" className="dj-action" onClick={() => void remove()}><Trash2 size={15} />Delete</button>
-      </div>
+      </div>}
     </div>
     {deleteError && <p className="dj-error" role="alert">{deleteError}</p>}
     {error && <p className="ex-banner ex-error" role="alert">{error}</p>}

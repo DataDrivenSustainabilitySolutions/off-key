@@ -2,6 +2,7 @@ from functools import cache
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from off_key_core.auth.demo import DEMO_VIEWER_PERMISSIONS, DEMO_VIEWER_ROLE
 from off_key_core.auth.permissions import Permission
 from off_key_core.schemas.members import MemberProfile
 
@@ -32,6 +33,7 @@ async def member_authorization(
 
 
 async def current_member(
+    request: Request,
     authorization: str = Depends(member_authorization),
 ) -> MemberProfile:
     try:
@@ -42,7 +44,16 @@ async def current_member(
         )
     except TacticError as exc:
         raise_tactic_http_error(exc)
-    return MemberProfile.model_validate(result)
+    member = MemberProfile.model_validate(result)
+    if getattr(request.state, "demo_guest", False) and (
+        member.role != DEMO_VIEWER_ROLE
+        or set(member.permissions) != DEMO_VIEWER_PERMISSIONS
+        or not member.is_active
+        or not member.is_verified
+    ):
+        # Check current permissions, even while the viewer's token is cached.
+        raise HTTPException(503, "The public demo is unavailable right now.")
+    return member
 
 
 def _refuse_without(permission: Permission, user: MemberProfile) -> None:

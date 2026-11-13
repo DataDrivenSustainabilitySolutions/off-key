@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from off_key_core.demo.settings import DemoSettings as DemoSettings
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

@@ -1497,10 +1497,11 @@ The production rehearsal restores the current release's backup, runs an older
 pipeline-compatible build, then returns to the current build. Each cutover checks
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
-The test-only reference is immutable commit
-`14f26c367fa05b3dcbb2db7e95d3184f00413a01`. It retains the previous fixture's
-reporting runtime and adds only migration 032 (`alarm_deletions`) and its ORM
-metadata, so the rehearsal still switches between different application binaries.
+The reference is immutable commit
+`056593514244afdf904c4d311e717503cf476005`, the release that added shadow runs.
+Its layout holds switched-off steps and notes, and a step's title lives in the
+design, as in the current release. The rehearsal still switches between
+different application binaries.
 It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
@@ -1509,7 +1510,8 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `197cc239`, has no migration 032;
+The previous reference, `14f26c36`, refuses a layout with switched-off steps
+or notes, and returns a title on each card's place; `197cc239` has no migration 032;
 `efe30f4a` has no migration 031;
 `f02a9201` has no migration 030;
 `535b29cd` has neither migration 028 nor 029;

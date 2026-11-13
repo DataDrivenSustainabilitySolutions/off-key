@@ -11,7 +11,7 @@ import { PipelineFormula } from "@/features/pipelines/PipelineFormula";
 import { PipelineLearningSummary } from "@/features/pipelines/PipelineLearningSummary";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { combinedName, formulaName } from "@/features/pipelines/scope";
-import { STEP_FAMILIES, stepDescription, stepFamily, stepFields } from "@/features/pipelines/steps";
+import { STEP_FAMILIES, stepFamily, stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { PipelineState } from "@/features/pipelines/diagnostics";
 import type { JsonValue } from "@/types/monitoring";
@@ -22,8 +22,8 @@ const text = (name: string, label: string, required = false): Field => ({
   description: `${label} help`,
 });
 const result: Field = { name: "result", label: "Result", type: "enum", default: "add", has_default: true, options: ["replace", "add"] };
-const component = (id: string, fields: Field[]): PipelineComponent => ({
-  id, kind: "transform", label: id, description: "", input_type: "features", output_type: "features",
+const component = (id: string, fields: Field[], group: PipelineComponent["group"] = "combine"): PipelineComponent => ({
+  id, kind: "transform", group, label: id, description: "", input_type: "features", output_type: "features",
   fields,
 });
 const aggregate = component("prepare.aggregate", [
@@ -34,8 +34,8 @@ const aggregate = component("prepare.aggregate", [
   text("name", "Name"),
 ]);
 const formula = component("prepare.formula", [text("expression", "Formula", true), text("name", "Name"), result]);
-const gate = component("prepare.gate", [text("condition", "Condition", true)]);
-const mute = component("prepare.mute", [text("condition", "Condition", true)]);
+const gate = component("prepare.gate", [text("condition", "Condition", true)], "route");
+const mute = component("prepare.mute", [text("condition", "Condition", true)], "route");
 const condition = component("prepare.condition", [text("condition", "Condition", true), text("name", "Name")]);
 const assignment = component("prepare.set", [text("expression", "Formula", true), text("name", "Name")]);
 const constant = component("prepare.constant", [text("name", "Name"),
@@ -50,15 +50,13 @@ const summary = (step: PipelineComponent, params?: PipelineNode["params"]) =>
   nodeSummary(node(step, params), step, definition);
 
 describe("Combine and Gate steps in the composer", () => {
-  it("sit in the add-step menu: Aggregate and Formula under Combine, Gate and Mute alarms with the routes", () => {
+  it("sit in the add-step menu where the catalog files them, Combine second", () => {
     expect(STEP_FAMILIES[1]).toEqual({ id: "combine", label: "Combine" });
-    expect(stepFamily("transform", "prepare.aggregate")).toBe("combine");
-    expect(stepFamily("transform", "prepare.formula")).toBe("combine");
-    expect(stepFamily("transform", "prepare.gate")).toBe("route");
-    expect(stepFamily("transform", "prepare.mute")).toBe("route");
-    for (const step of [aggregate, formula, gate, mute]) expect(stepDescription(step)).not.toBe("");
-    // The two read alike, so each says what it does to learning and scoring.
-    expect(stepDescription(mute)).toBe("Raise no alarm while a condition holds; learning and scoring go on.");
+    expect(stepFamily(node(aggregate), aggregate)).toBe("combine");
+    expect(stepFamily(node(gate), gate)).toBe("route");
+    expect(stepFamily(node(mute), mute)).toBe("route");
+    // A step the catalog no longer lists is still a transform.
+    expect(stepFamily(node(formula), undefined)).toBe("transform");
   });
 
   it("leave the settings with controls of their own out of the generic list", () => {
@@ -402,14 +400,14 @@ describe("numeric primitives", () => {
     expect(summary(constant, { name: "limit", value: 42 }).text).toBe("limit = 42");
     expect(summary(condition, { name: "high", condition: "dc_voltage > 42" }).text)
       .toBe("high: 1 when dc_voltage > 42, otherwise 0");
-    for (const step of [constant, condition, assignment]) expect(stepFamily(step.kind, step.id)).toBe("combine");
   });
 
   it("offers a quantile setting only for the quantile statistic", () => {
     const rolling = component("prepare.rolling", [
       { name: "statistic", label: "Statistic", type: "enum", default: "mean", has_default: true },
-      { name: "quantile", label: "Quantile", type: "number", default: .5, has_default: true },
-    ]);
+      { name: "quantile", label: "Quantile", type: "number", default: .5, has_default: true,
+        shown_when: { field: "statistic", equals: ["quantile"] } },
+    ], "prepare");
     expect(stepFields(node(rolling), rolling).map(field => field.name)).toEqual(["statistic"]);
     expect(stepFields(node(rolling, { statistic: "quantile" }), rolling).map(field => field.name))
       .toEqual(["statistic", "quantile"]);

@@ -270,6 +270,10 @@ export function PipelineInspector({
           {component?.description && (
             <p className="pl-help">{component.description}</p>
           )}
+          {/* A calibration method's formula waits with its reference, below what it promises. */}
+          {component?.details && node.kind !== "calibration" && (
+            <p className="pl-help">{component.details}</p>
+          )}
           {component && (
             <p className="pl-help pl-inspector-signature">
               {input ? `${dataKinds[input].label} → ` : ""}
@@ -284,7 +288,7 @@ export function PipelineInspector({
                 (item) =>
                   item.kind === "detector" &&
                   (item.id === node.component ||
-                    `${item.label} ${item.description} ${learningLabel(item) ?? ""}`.toLocaleLowerCase().includes(query)),
+                    `${item.label} ${item.description} ${item.library ?? ""} ${learningLabel(item) ?? ""}`.toLocaleLowerCase().includes(query)),
               )
               .sort((left, right) => left.label.localeCompare(right.label));
             return (
@@ -325,7 +329,7 @@ export function PipelineInspector({
                   {query && models.length <= 1
                     ? "No other model matches this filter. "
                     : ""}
-                  {learningLabel(component) ? `${learningLabel(component)}. ` : ""}
+                  {[component?.library, learningLabel(component)].filter(Boolean).map((fact) => `${fact}. `).join("")}
                   Changing the model resets its settings and keeps its connections.
                 </small>
                 {swapNotice}
@@ -357,7 +361,11 @@ export function PipelineInspector({
                 {promise && <small className={`pl-help pl-coverage is-${component!.coverage}`}>
                   <strong>{promise.label}.</strong> {promise.help}
                 </small>}
-                {component?.reference && <small className="pl-help">{component.reference}</small>}
+                {(component?.details || component?.reference) && <details className="pl-method-details">
+                  <summary>Details</summary>
+                  {component.details && <p className="pl-help">{component.details}</p>}
+                  {component.reference && <p className="pl-help">{component.reference}</p>}
+                </details>}
                 <small className="pl-help">
                   {node.component === FIXED_SPLIT
                     ? "The calibration window stays as it is. Methods that adapt keep moving their boundary and alarm by the exceedance rule."
@@ -461,6 +469,7 @@ export function PipelineInspector({
           )}
           {component && (
             <ParameterFields
+              key={`${node.id}:${node.component}`}
               fields={stepFields(node, component)}
               issues={fieldIssues}
               values={node.params}

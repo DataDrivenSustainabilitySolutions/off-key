@@ -9,7 +9,7 @@ import { rejectionSummary } from "@/features/pipelines/diagnostics";
 import { rangeText } from "@/features/pipelines/features";
 import { PipelineTime } from "@/features/pipelines/PipelineTime";
 import { defaultSuffix, hasScope } from "@/features/pipelines/scope";
-import { stepDescription, stepFamily, stepFields } from "@/features/pipelines/steps";
+import { stepFamily, stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
 
@@ -17,7 +17,7 @@ type Field = PipelineComponent["fields"][number];
 const flag = (name: string, label: string, value = false): Field =>
   ({ name, label, type: "boolean", default: value, has_default: true });
 const step = (id: string, fields: Field[]): PipelineComponent => ({
-  id, kind: "transform", label: id, description: "", input_type: "features", output_type: "features", fields,
+  id, kind: "transform", group: "prepare", label: id, description: "", input_type: "features", output_type: "features", fields,
 });
 const time = step("prepare.time", [
   flag("elapsed", "Seconds since the previous observation", true),
@@ -33,8 +33,10 @@ const smooth = step("prepare.smooth", [
   { name: "suffix", label: "Suffix", type: "string", default: null, has_default: true, nullable: true },
   { name: "method", label: "Method", type: "enum", default: "exponential", has_default: true,
     options: ["exponential", "rolling", "time_constant"] },
-  { name: "window_size", label: "Window", type: "integer", default: 10, has_default: true },
-  { name: "time_constant", label: "Time constant", type: "number", default: 60, has_default: true },
+  { name: "window_size", label: "Window", type: "integer", default: 10, has_default: true,
+    shown_when: { field: "method", not_equals: ["time_constant"] } },
+  { name: "time_constant", label: "Time constant", type: "number", default: 60, has_default: true,
+    shown_when: { field: "method", equals: ["time_constant"] } },
 ]);
 
 const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
@@ -54,8 +56,7 @@ const box = (name: RegExp) => screen.getByRole("checkbox", { name }) as HTMLInpu
 
 describe("steps that read time, in the composer", () => {
   it("lists Time features with the Prepare steps and gives it its own controls", () => {
-    expect(stepFamily("transform", "prepare.time")).toBe("prepare");
-    expect(stepDescription(time)).toContain("seconds since the previous observation");
+    expect(stepFamily(node(time), time)).toBe("prepare");
     expect(hasScope(time)).toBe(false);
     expect(stepFields(node(time), time)).toEqual([]);
   });

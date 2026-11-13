@@ -21,6 +21,15 @@ export type ControlProps = {
 
 export const hasDefault = (field: FieldDescriptor) => field.has_default ?? field.default !== undefined;
 
+/** Whether a setting applies, given the value of the setting it depends on. A value
+ * that is not known hides nothing. */
+export function fieldApplies(field: FieldDescriptor, value: JsonValue | undefined) {
+  const when = field.shown_when;
+  if (!when || value === undefined) return true;
+  const choice = value as string | number | boolean | null;
+  return when.equals ? when.equals.includes(choice) : !when.not_equals?.includes(choice);
+}
+
 export const fieldDefaults = (fields: readonly FieldDescriptor[]): Parameters =>
   Object.fromEntries(fields.filter(hasDefault)
     .map(field => [field.name, structuredClone(field.default ?? null)]));

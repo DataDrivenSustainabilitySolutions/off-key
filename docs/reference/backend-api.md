@@ -195,7 +195,8 @@ here; changes need `manage_monitors`.
 | `POST` | `/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run | Body: `expected_version` |
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint | Path ids |
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node | `selected_node_id` |
-| `GET` | `/pipeline-components` | Components a design may use, with parameter schemas, and the starting templates | None |
+| `GET` | `/pipeline-components` | Components a design may use, each with its group, description and settings, and the starting templates | None |
+| `GET` | `/pipeline-components/{component_id}` | One component, with the JSON schema of its settings | None |
 | `GET` | `/pipeline-blocks` | Every saved block, by name: `items`, each with `id`, `name`, `description`, `steps` and `created_at` | None |
 | `POST` | `/pipeline-blocks` | Save a chain of steps as a block (HTTP 201). HTTP 409 when the name is taken or the library holds 100 blocks; 422 for a step a block cannot hold, such as a detector | Body: `name`, optional `description`, `steps` (1 to 16, each with `component` and optional `contract_version`, `params`, `label`) |
 | `DELETE` | `/pipeline-blocks/{block_id}` | Delete a block (HTTP 204); designs keep the steps they copied from it | Path: `block_id` |
@@ -486,7 +487,8 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/monitors/pipelines` | Save a new design as a draft |
 | `POST` | `/monitors/pipelines/apply` | Save, publish and activate a design in one step |
 | `POST` | `/monitors/pipelines/validate` | Check an unsaved design without creating a library record |
-| `GET` | `/monitors/pipelines/catalog` | Components a design may use, with parameter schemas, and the starting templates |
+| `GET` | `/monitors/pipelines/catalog` | Components a design may use, each with its group, description and settings, and the starting templates |
+| `GET` | `/monitors/pipelines/catalog/components/{component_id}` | One component, with the JSON schema of its settings |
 | `GET` | `/monitors/pipelines/forecast-models` | The forecast service's models and their download state, asked with TACTIC's token |
 | `POST` | `/monitors/pipelines/forecast-models/downloads` | Have the forecast service download a model's weights |
 | `GET` | `/monitors/pipelines/{pipeline_id}` | One design with its draft, version and revisions |

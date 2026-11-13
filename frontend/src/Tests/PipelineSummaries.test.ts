@@ -47,7 +47,7 @@ describe("card summaries", () => {
 
   it("lists changed detector settings against the catalogue defaults", () => {
     const detector: PipelineComponent = {
-      id: "detector:forest", kind: "detector", label: "Forest", description: "",      fields: [
+      id: "detector:forest", kind: "detector", group: "detector", label: "Forest", description: "",      fields: [
         { name: "window_size", label: "Window Size", type: "integer", default: 2048 },
         { name: "metric", label: "Metric", type: "enum", default: "axisparallel" },
         { name: "subsample", label: "Subsample", type: "number", default: 1 },
@@ -70,7 +70,7 @@ describe("card summaries", () => {
       { name: "result", label: "Result", type: "enum", default: "replace" },
     ];
     const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
-      id, kind: "transform", label: id, description: "", fields,
+      id, kind: "transform", group: "normalize", label: id, description: "", fields,
     });
     const scaler = step("adaptive.standard_scaler", [...scope,
       { name: "suffix", label: "Suffix", type: "string", default: "std" },

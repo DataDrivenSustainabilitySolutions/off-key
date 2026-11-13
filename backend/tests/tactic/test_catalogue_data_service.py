@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from off_key_core.schemas.collection_activity import reading_is_receiving
-from off_key_core.schemas.devices import ChartEvidence
+from off_key_core.schemas.devices import ChartEvidence, Evidence
 from off_key_core.schemas.system import SystemRuntime, SystemSnapshot
 from off_key_tactic_middleware.domain import NotFoundError, ValidationError
 from off_key_tactic_middleware.repositories.data import MonitoringEvidenceRepository
@@ -363,6 +363,61 @@ def test_chart_evidence_contract_requires_exact_input_timestamps():
 
     with pytest.raises(SchemaError, match="input_timestamps"):
         ChartEvidence.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_issued_forecast_survives_chart_and_full_evidence_serialization():
+    issued = {
+        "issued_at": NOW.isoformat(),
+        "origin_step": 21,
+        "origin_time": NOW.isoformat(),
+        "time_basis": "estimated_cadence",
+        "step_seconds": 1,
+        "points": [
+            {
+                "lead": 1,
+                "target_step": 22,
+                "target_time": (NOW + timedelta(seconds=1)).isoformat(),
+                "expected": 12.0,
+                "lower": 11.0,
+                "upper": 13.0,
+            }
+        ],
+    }
+    forecasts = [
+        {
+            "detector_id": "model",
+            "target": "flow",
+            "slot": "signal",
+            "lead": 1,
+            "expected": 11.0,
+            "lower": 10.0,
+            "upper": 12.0,
+            "issued": issued,
+        }
+    ]
+    data = service()
+    data._evidence.list_chart.return_value = [evidence(1, forecasts=forecasts)]
+    data._evidence.list_by_scope.return_value = [evidence(1, forecasts=forecasts)]
+    rows = await data.chart_evidence(
+        device_id="pump",
+        stream_ids=None,
+        service_id="monitor-1",
+        after_created=None,
+        after_timestamp=None,
+        after_service_id=None,
+        after_sequence_number=None,
+        limit=10,
+    )
+    full = await data.evidence("flow", limit=10)
+    assert (
+        ChartEvidence.model_validate(rows[0]).model_dump(mode="json")["forecasts"]
+        == forecasts
+    )
+    assert (
+        Evidence.model_validate(full[0]).model_dump(mode="json")["forecasts"]
+        == forecasts
+    )
 
 
 def repository_session():

@@ -27,7 +27,7 @@ export async function inspectMonitoringHistory({ page, api, headers, serviceId, 
   await expect(chart).toBeVisible();
   const latest = history.getByLabel("Latest detector result", { exact: true });
   await expect(latest).toContainText(strategy === "adaptive_stream" ? "Joint anomaly score" : "Restarted e-process");
-  await expect(history).toContainText("Threshold:");
+  await expect(history).toContainText("Score threshold:");
   await setAppearance(page, "Light");
   // Each input curve must actually paint inside its plot, excluding titles/axes.
   await expect.poll(() => chart.evaluate(element => {

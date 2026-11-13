@@ -109,14 +109,54 @@ Charts draw each selected alarm statistic on a logarithmic secondary axis with
 its threshold, shaded above it from each evaluation to the next. Evidence more
 than four decades above the threshold is marked at the top edge instead of
 stretching the axis. The line joins consecutive evaluations and breaks only
-across a pause, such as one a Gate holds back. A **Detector inputs** pane under
-the readings plots the scored features, so derived values such as phase
-deviations sit beside the raw readings. A feature that a forecaster step scores
-also shows what the step expected: the forecast as a dashed line, and around it
-a band of the values that raise no alarm. A value outside the band is one the
-step scored above its boundary. The band is missing while the boundary is still
-being learned and when the design combines several detectors, because then no
-single step has a boundary of its own. Telemetry and evidence use the same payload
+across a pause, such as one a Gate holds back. The service's **Evidence** tab
+omits detector inputs whose saved provenance identifies them as unchanged raw
+readings. Derived features, such as phase deviations, retain their separate scale.
+Unknown associations stay separate until the pipeline's reading bindings load.
+
+For forecasters, **Forecast and deviations** overlays the dashed forecast and
+its recorded calibrated interval on the original reading, at the exact input
+timestamp the forecast evaluated. A transformed target stays on its feature
+scale. The panel below shows the signed residual (observed minus forecast), with
+the same interval shifted by the forecast around zero. Red dots mark observations
+outside that interval; vertical red lines still mark the service's alarm decision,
+which can also depend on persistence or a combined policy.
+
+The small chart button cycles through **Overlay → Forecast ahead → Data only**.
+Overlay includes evaluated predictions and the newly issued future forecast;
+Forecast ahead keeps the observations but hides historical predictions; Data
+only hides both forecast lines and their intervals. Its icon and tooltip show
+the current view. Switching preserves the selected lead, zoom and pipeline
+smoothing. **Show residuals** independently collapses or restores the lower
+panel; it always uses evaluated observations, never future values.
+
+**Forecast lead** selects a recorded lead in both charts together. Leads count
+updates, not seconds. **Latest forecast results** compares the latest available
+evaluation of each lead, including its timestamp, residual, interval and result;
+select a row to inspect that lead. Different detector/target/lead combinations
+remain separate. **Show detector scores** restores the score or sequential-evidence
+pane when needed. It is hidden initially for a forecast view.
+
+The interval is the pair of lower and upper bounds stored with that forecast,
+not the shaded region above a score threshold. Its label names NexCP or ACI when
+the saved calibration step identifies that method; otherwise it says **Calibrated
+interval**. No nominal confidence percentage is inferred. Missing bounds remain
+unavailable, including configurations where a combined policy has no boundary for
+an individual detector. A point forecast and residual can still be displayed.
+Future values come from the forecast actually issued after the latest evaluated
+observation. Target times are estimates based on recent, consistent observation
+cadence; leads still count updates. After a restart or irregular timestamps,
+the future line waits until timing is available. Old evidence and a forecast
+service outage can also have no future trajectory. The chart never shifts an
+evaluated prediction into the future or revives an older issuance as the latest.
+
+Only the configured lead has a calibrated future interval, shown as a vertical
+interval at that point. Other leads from the model remain point predictions.
+Future bounds use the calibration boundary at issue, which may subsequently
+adapt. Hover shows issue time, origin and estimated target time. A one-update
+forecaster provides one future point, not an invented longer horizon.
+
+Telemetry and evidence use the same payload
 event timestamp and share zoom and crosshair, so observations from one inference
 stay vertically aligned; receive time is used only when a publisher omits its
 event timestamp.

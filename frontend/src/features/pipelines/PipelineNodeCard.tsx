@@ -94,7 +94,7 @@ export function PipelineNodeCard({
         : Clock3;
   return (
     <div
-      className={`pl-node${selected ? " is-selected" : ""}`}
+      className={`pl-node${selected ? " is-selected" : ""}${data.off ? " is-off" : ""}`}
       data-kind={data.kind}
       onClick={(event) => {
         // A dot tap connects; only the card body opens component settings.
@@ -132,6 +132,11 @@ export function PipelineNodeCard({
         connectable={isConnectable && data.available} issue={data.outputIssue}
         count={data.outputCount} features={data.outputFeatures} stale={data.outputStale} />}
       <div className="pl-node-status">
+        {data.change && (
+          <span className="pl-node-change" title={data.change.detail}>
+            {data.change.kind === "new" ? "New" : "Changed"}
+          </span>
+        )}
         {!data.available && (
           <span className="pl-node-issue">
             <TriangleAlert size={11} aria-hidden="true" />
@@ -151,6 +156,11 @@ export function PipelineNodeCard({
           <span className="pl-node-issue is-warning" title="Warnings do not stop this design. Select the step for details.">
             <TriangleAlert size={11} aria-hidden="true" />
             {data.warningCount} {data.warningCount === 1 ? "warning" : "warnings"}
+          </span>
+        )}
+        {data.open && (
+          <span className="pl-node-issue is-open" title="This step is not finished yet. Select it for details.">
+            {data.open}
           </span>
         )}
         {status && (

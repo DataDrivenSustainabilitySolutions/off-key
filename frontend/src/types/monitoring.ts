@@ -120,6 +120,8 @@ export interface ActiveService {
   /** True while the monitor should run; false once it is stopped. */
   active: boolean;
   operational_status: OperationalStatus;
+  /** A shadow service records the alarms it would raise and raises none. */
+  shadow?: boolean;
   monitoring_strategy?: MonitoringStrategy | null;
   model_type?: string;
   created_at?: string;
@@ -261,6 +263,8 @@ interface MonitoringEvidence {
   forecasts?: MonitoringForecast[];
   threshold: number;
   alarm: boolean;
+  /** The detection rule fired and a Mute alarms step held the alarm back; alarm is then false. */
+  muted?: boolean;
 }
 
 /** The features one detector scored. The id is null when the service has one detector. */
@@ -318,6 +322,8 @@ export interface MartingaleTrackerResult {
   threshold_window_position?: number | null;
   threshold_window_reset?: boolean;
   alarm_fired: boolean;
+  /** The tracker crossed its threshold here and a Mute alarms step held the alarm back. */
+  alarm_muted?: boolean;
   alarm_active: boolean;
   alarm_count: number;
   tested_count: number;
@@ -337,6 +343,7 @@ export type MonitoringChartEvidence = Pick<
   | 'forecasts'
   | 'threshold'
   | 'alarm'
+  | 'muted'
 > & {
   created: string;
   strategy?: MonitoringStrategy;

@@ -5,7 +5,7 @@ import type { RuleEdit } from "@/domain/system/collectionRules";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { CollectionPolicy } from "@/types/collection";
 import type { Recording } from "./useRecording";
-import { recordingEdit, type Choice } from "./recordingEdits";
+import { POLL_SECONDS, recordingEdit, type Choice } from "./recordingEdits";
 
 type Props = { scope: RuleScope; ids: string[]; document: SystemDocument; runtime?: SystemRuntime;
   canEdit: boolean; recording: Recording };
@@ -17,7 +17,9 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   const stored: Choice = scope.kind === "broker" && own === "inherit" ? "off" : own;
   // The picked option stays selected while it saves or waits for the monitor confirmation.
   const [picked, setPicked] = useState<Choice>();
-  const saved = rule?.policy?.interval_seconds ?? 10;
+  // An HTTP source sends nothing by itself: it is asked at an interval, never recorded per message.
+  const polled = document.brokers.find(item => item.id === scope.broker_id)?.protocol === "http";
+  const saved = rule?.policy?.interval_seconds ?? (polled ? POLL_SECONDS : 10);
   const [interval, setIntervalText] = useState(String(saved));
   const selected = ids.flatMap(id => runtime?.bindings?.[id] ?? []);
   const enabled = selected.filter(item => item.policy.mode !== "off").length;
@@ -56,14 +58,14 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   const collectionFailed = collection?.status === "error" || collection?.status === "disabled";
   const options: [Choice, string][] = [
     ...scope.kind === "broker" ? [] : [["inherit", "Same as above"] as [Choice, string]],
-    ["off", "Off"], ["original", "Every message"], ["sample", "At intervals"],
+    ["off", "Off"], ...polled ? [] : [["original", "Every message"] as [Choice, string]], ["sample", "At intervals"],
   ];
   // Readings opt in by following this scope when it records, or with their own rule when it does not.
   const parentRecords = choice === "original" || choice === "sample";
   const readingEdit = (reading_id: string, on: boolean): RuleEdit => {
     const reading: RuleScope = { kind: "reading", broker_id: scope.broker_id, reading_id };
     return on ? parentRecords ? { scope: reading, operation: "inherit" }
-      : { scope: reading, operation: "set", policy: { mode: "original", interval_seconds: saved } }
+      : { scope: reading, operation: "set", policy: { mode: polled ? "sample" : "original", interval_seconds: saved } }
       : { scope: reading, operation: "set", policy: { mode: "off", interval_seconds: saved } };
   };
   const isOn = (id: string) => (runtime?.bindings?.[id]?.policy.mode ?? "off") !== "off";

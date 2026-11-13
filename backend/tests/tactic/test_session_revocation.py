@@ -15,7 +15,7 @@ from off_key_core.auth.tokens import (
 )
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.db.models import RememberedSession, RevokedAccessToken, User
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import signed_in_member
 from off_key_tactic_middleware.domain import AuthenticationError
 from off_key_tactic_middleware.services.accounts.remembered_sessions import (
     RememberedSessionService,
@@ -114,7 +114,7 @@ async def test_bearer_logout_is_persistent_and_preserves_other_sign_ins(
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
         for variant in variants:
             assert (
-                await current_member(
+                await signed_in_member(
                     credentials.model_copy(update={"credentials": variant}), session
                 )
             ).id == user_id
@@ -125,12 +125,12 @@ async def test_bearer_logout_is_persistent_and_preserves_other_sign_ins(
     async with sessions() as session:
         for variant in variants:
             with pytest.raises(HTTPException) as failure:
-                await current_member(
+                await signed_in_member(
                     credentials.model_copy(update={"credentials": variant}), session
                 )
             assert failure.value.status_code == 401
         assert (
-            await current_member(
+            await signed_in_member(
                 HTTPAuthorizationCredentials(scheme="Bearer", credentials=other),
                 session,
             )
@@ -158,7 +158,7 @@ async def test_refresh_response_arriving_after_logout_cannot_restore_access(
         )
     async with sessions() as session:
         with pytest.raises(HTTPException) as failure:
-            await current_member(
+            await signed_in_member(
                 HTTPAuthorizationCredentials(scheme="Bearer", credentials=late_token),
                 session,
             )
@@ -208,7 +208,7 @@ async def test_other_logout_cannot_remove_a_still_accepted_revocation(
         await RememberedSessionService(session).revoke_access(other)
         assert await session.get(RevokedAccessToken, access_token_digest(token))
         with pytest.raises(HTTPException) as failure:
-            await current_member(
+            await signed_in_member(
                 HTTPAuthorizationCredentials(scheme="Bearer", credentials=token),
                 session,
             )

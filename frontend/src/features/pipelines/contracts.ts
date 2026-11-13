@@ -39,6 +39,16 @@ export type PipelineComponent = Omit<Wire.PipelineComponent, "fields"> & {
    * already holds it still shows it. */
   unavailable?: string;
 };
+/** One step of a block: a component with its settings and its title. */
+export type BlockStep = {
+  component: string;
+  contract_version: number;
+  params: Record<string, JsonValue>;
+  label?: string;
+};
+/** A named chain of steps from the library. A design copies the steps and keeps no tie
+ * to the block. */
+export type PipelineBlock = Omit<Wire.PipelineBlockView, "steps"> & { steps: BlockStep[] };
 export type PipelineRevisionView = Omit<
   Wire.PipelineRevisionView,
   "definition"
@@ -107,6 +117,17 @@ export function normalizeDefinition(
     },
   };
 }
+export function normalizeBlock(block: Wire.PipelineBlockView): PipelineBlock {
+  return {
+    ...block,
+    steps: block.steps.map((step) => ({
+      component: step.component,
+      contract_version: step.contract_version ?? 1,
+      params: (step.params ?? {}) as Record<string, JsonValue>,
+      ...(step.label ? { label: step.label } : {}),
+    })),
+  };
+}
 export function normalizeLayout(layout?: Wire.PipelineLayout): PipelineLayout {
   return { ...layout, nodes: layout?.nodes ?? {} };
 }
@@ -143,6 +164,14 @@ export function normalizeView(view: Wire.PipelineView): PipelineView {
     layout: placeCalibration(draft, normalizeLayout(view.layout)),
     revisions: view.revisions ?? [],
   };
+}
+/** A proposal as the setup opens it: the design, where its cards stand and the readings it names. */
+export type PipelineProposal = Omit<Wire.PipelineProposalView, "definition" | "layout"> & {
+  definition: PipelineDefinition;
+  layout: PipelineLayout;
+};
+export function normalizeProposal(view: Wire.PipelineProposalView): PipelineProposal {
+  return { ...view, definition: normalizeDefinition(view.definition), layout: normalizeLayout(view.layout) };
 }
 export function normalizeCatalog(
   catalog: Wire.PipelineCatalog,

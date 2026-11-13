@@ -229,6 +229,32 @@ async def test_chart_evidence_of_several_readings_forwards_each(remote):
 
 
 @pytest.mark.asyncio
+async def test_a_profile_forwards_how_far_back_to_look(remote):
+    remote.return_value = {
+        "reading_id": "stream:1",
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-01-15T00:00:00Z",
+        "bucket_seconds": 900,
+    }
+    response = await get("readings/stream:1/profile")
+
+    assert response.status_code == 200
+    assert remote.await_args.kwargs == {
+        "method": "GET",
+        "endpoint": "/api/v1/data/readings/stream%3A1/profile",
+        "params": {"days": 14},
+    }
+    # A window without values answers with nulls, not with an error.
+    assert response.json()["recent"] is None and response.json()["coverage"] is None
+    assert (await get("readings/stream:1/profile", days=90)).status_code == 200
+    assert remote.await_args.kwargs["params"] == {"days": 90}
+    for days in (0, 91, "week"):
+        refused = await get("readings/stream:1/profile", days=days)
+        assert refused.status_code == 422
+    assert remote.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_history_display_options_are_forwarded_without_changing_measurements(
     remote,
 ):

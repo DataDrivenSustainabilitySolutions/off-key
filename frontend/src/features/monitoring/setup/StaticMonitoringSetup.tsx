@@ -279,7 +279,7 @@ export function StaticMonitoringSetup({
                 <div className="text-[length:var(--text-display)] font-semibold leading-[var(--leading-display)] tracking-[-0.02em] tabular-nums">
                   {draft.martingaleTrackers.length}
                 </div>
-                <span className="mb-1 rounded-full border border-emerald-500/25 bg-background/70 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                <span className="mb-1 rounded-full border border-emerald-500/25 bg-card/70 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                   {draft.martingaleTrackers.length === 1 ? "Tracker" : "Trackers"}
                 </span>
               </div>

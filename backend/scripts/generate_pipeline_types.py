@@ -1,4 +1,7 @@
-"""Generate browser contracts from the canonical Pydantic pipeline and Dojo schemas."""
+"""Generate browser contracts from the canonical Pydantic pipeline and Dojo schemas.
+
+The schema of a design file is written beside them, for the documentation to publish.
+"""
 
 import argparse
 import inspect
@@ -92,9 +95,28 @@ def pipeline_contracts(definitions: dict) -> str:
         f"nodes: {limits['nodes']['maxItems']}, "
         f"edges: {limits['edges']['maxItems']}, "
         f"slots: {limits['input_slots']['maxItems']}, "
-        f"detectors: {pipelines.MAX_DETECTORS} }} as const;\n"
+        f"detectors: {pipelines.MAX_DETECTORS}, "
+        f"blockSteps: {pipelines.MAX_BLOCK_STEPS} }} as const;\n"
+    )
+    file = pipelines.PipelineDesignFile.model_json_schema()["properties"]
+    text += (
+        "\nexport const DESIGN_FILE = { "
+        f"format: {json.dumps(pipelines.DESIGN_FILE_FORMAT)}, "
+        f"version: {file['schema_version']['const']}, "
+        f"schema: {json.dumps(pipelines.DESIGN_FILE_SCHEMA)} }} as const;\n"
     )
     return text
+
+
+def design_file_schema() -> str:
+    """The published JSON Schema of a design file."""
+    schema = pipelines.PipelineDesignFile.model_json_schema()
+    document = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": pipelines.DESIGN_FILE_SCHEMA,
+        **schema,
+    }
+    return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 
 def dojo_contracts(shared: dict) -> str:
@@ -122,6 +144,7 @@ def dojo_contracts(shared: dict) -> str:
         f"points: {dojo.MAX_DATASET_POINTS}, "
         f"pointsPage: {dojo.MAX_POINTS_PAGE}, "
         f"resultsPage: {dojo.MAX_RESULTS_PAGE}, "
+        f"outlineBuckets: {dojo.MAX_OUTLINE_BUCKETS}, "
         f"labels: {dojo.MAX_DATASET_LABELS}, "
         f"comparedRuns: {dojo.MAX_COMPARED_RUNS} }} as const;\n"
     )
@@ -133,10 +156,12 @@ def main() -> None:
     parser.add_argument("--check", action="store_true")
     options = parser.parse_args()
     shared = contracts(pipelines)
-    types = Path(__file__).resolve().parents[2] / "frontend/src/types"
+    repository = Path(__file__).resolve().parents[2]
+    types = repository / "frontend/src/types"
     files = {
         types / "pipelines.generated.ts": pipeline_contracts(shared),
         types / "dojo.generated.ts": dojo_contracts(shared),
+        repository / "docs/reference/design-file.schema.json": design_file_schema(),
     }
     for target, text in files.items():
         if options.check:

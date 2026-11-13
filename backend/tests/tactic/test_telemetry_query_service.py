@@ -1,6 +1,6 @@
 """Tests for compact, cursor-based telemetry queries."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -176,3 +176,60 @@ async def test_inverted_range_is_rejected():
             end=datetime(2026, 7, 27, tzinfo=UTC),
             buckets=600,
         )
+
+
+@pytest.mark.asyncio
+async def test_profile_reads_the_window_in_buckets_and_the_newest_values():
+    repository = AsyncMock()
+    now = datetime.now(UTC)
+    repository.list_range.return_value = [
+        (now - timedelta(hours=3), 1.0),
+        (now - timedelta(hours=2), 5.0),
+    ]
+    # Newest first, as the table is read; one from before the window.
+    repository.list_data.return_value = [
+        (now - timedelta(seconds=10), 4.0, None),
+        (now - timedelta(seconds=20), 2.0, None),
+        (now - timedelta(days=9), 99.0, None),
+    ]
+
+    profile = await TelemetryQueryService(repository).get_reading_profile(
+        reading_id="reading-1", charger_id="charger-1", telemetry_type="voltage", days=7
+    )
+
+    window = repository.list_range.await_args.kwargs
+    assert (window["charger_id"], window["telemetry_type"]) == ("charger-1", "voltage")
+    assert window["end"] - window["start"] == timedelta(days=7)
+    # A quarter of an hour each, which is how the profile reads them again.
+    assert window["buckets"] == 7 * 96
+    assert repository.list_data.await_args.kwargs == {
+        "charger_id": "charger-1",
+        "telemetry_type": "voltage",
+        "limit": 5000,
+        "after_timestamp": None,
+        "after_created": None,
+        "after_event_timestamp": None,
+    }
+    assert profile.reading_id == "reading-1"
+    assert (profile.start, profile.end) == (window["start"], window["end"])
+    assert (profile.minimum, profile.maximum, profile.coverage) == (1, 5, 0.4)
+    assert (profile.recent.count, profile.recent.mean) == (2, 3)
+    assert profile.recent.interval_seconds == 10
+
+
+@pytest.mark.asyncio
+async def test_profile_of_a_long_window_stays_within_the_bucket_limit():
+    repository = AsyncMock()
+    repository.list_range.return_value = []
+    repository.list_data.return_value = []
+
+    profile = await TelemetryQueryService(repository).get_reading_profile(
+        reading_id="reading-1",
+        charger_id="charger-1",
+        telemetry_type="voltage",
+        days=90,
+    )
+
+    assert repository.list_range.await_args.kwargs["buckets"] == 2000
+    assert profile.bucket_seconds == 3888
+    assert profile.first is None and profile.recent is None

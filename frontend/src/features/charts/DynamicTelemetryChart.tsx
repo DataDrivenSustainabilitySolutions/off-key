@@ -49,6 +49,8 @@ interface DynamicTelemetryChartProps {
   anomalies?: Alarm[];
   evidence?: MonitoringChartEvidence[];
   monitoringService?: ActiveService;
+  /** A recorded event window has no live subscription to resume. */
+  historical?: boolean;
   navigationState?: ChartNavigationState;
   timelineExtent?: readonly [startMs: number, endMs: number];
   onNavigationStateChange?: (
@@ -78,6 +80,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   anomalies = [],
   evidence = [],
   monitoringService,
+  historical = false,
   navigationState,
   timelineExtent,
   onNavigationStateChange,
@@ -263,12 +266,13 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     service: monitoringService,
     selectionKey: `${telemetryData.type}\u0000${monitoringService?.id ?? ""}`,
   });
-  // Only one service's inputs belong on the chart; without a service there is nothing to show.
+  // Event investigations can outlive their monitor, but still carry its exact evidence.
   const detectorInputs = useMemo(() => {
     const first = filteredData[0]?.[0], last = filteredData[filteredData.length - 1]?.[0];
-    return monitoringService && first !== undefined && last !== undefined
+    const singleMonitor = monitoringService || (historical && new Set(serviceEvidence.map(row => row.monitor_id)).size === 1);
+    return singleMonitor && first !== undefined && last !== undefined
       ? buildDetectorInputSeries(serviceEvidence, row => getEvidenceTimeForSensor(row, telemetryData.type), [first, last]) : [];
-  }, [monitoringService, serviceEvidence, telemetryData.type, filteredData]);
+  }, [monitoringService, historical, serviceEvidence, telemetryData.type, filteredData]);
   const presentation = useMemo(() => {
     const view: HistoryPreference = numeric ? preference : { mode: "raw" };
     const overview = presentHistory(filteredData, view, buckets);
@@ -432,7 +436,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? "" : "min-h-96"}`}
     >
       <div
-        className={`flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? "flex-row items-center justify-between" : "flex-col lg:flex-row lg:items-center lg:justify-between"}`}
+        className={`telemetry-chart-heading flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? "flex-row items-center justify-between" : "flex-col lg:flex-row lg:items-center lg:justify-between"}`}
       >
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <CardTitle
@@ -441,13 +445,13 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             {displayName}
           </CardTitle>
           {hasStaticPane && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+            <span className="telemetry-evidence-label inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               Sequential evidence
             </span>
           )}
           {hasAdaptivePane && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
+            <span className="telemetry-evidence-label inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
               <span className="size-1.5 rounded-full bg-violet-500" />
               Adaptive scores
             </span>
@@ -469,7 +473,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {!collapsed && (
-            <div className="flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-xs">
+            <div className="telemetry-range-controls flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-xs">
               <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="min-w-0 space-y-1">
                   <span className="block text-xs font-medium text-muted-foreground">
@@ -582,7 +586,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   aria-live="polite"
                 >
                   <span>
-                    {hasNewData ? "New data available" : "Inspection paused"}
+                    {historical ? "Historical window" : hasNewData ? "New data available" : "Inspection paused"}
                   </span>
                   <Button
                     type="button"
@@ -590,7 +594,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     size="sm"
                     onClick={resetViewport}
                   >
-                    Return to live
+                    {historical ? "Reset zoom" : "Return to live"}
                   </Button>
                 </div>
               )}
@@ -601,7 +605,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 onViewportChange={handleViewportChange}
                 className={`${chartHeightClass} w-full min-w-0 touch-none`}
               />
-              <TelemetryChartSummary model={chartModel} timeZone={timeZone} />
+              <TelemetryChartSummary model={chartModel} timeZone={timeZone} historical={historical} />
               <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
             </>
           ) : null}

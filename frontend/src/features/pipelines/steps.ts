@@ -1,9 +1,9 @@
+import { fieldApplies } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { hasScope, SCOPE_FIELDS, setting } from "./scope";
+import { hasScope, SCOPE_FIELDS, setting, TIME_FEATURES } from "./scope";
 
-export type StepFamily =
-  "prepare" | "combine" | "normalize" | "reduce" | "route" | "transform" | "input" | "forecaster" | "detector"
-  | "calibration" | "policy" | "output";
+/** Where the catalog files a step. "transform" is for a transform the catalog does not list. */
+export type StepFamily = PipelineComponent["group"] | "transform";
 
 /** Menu order: the steps people add most come first, the one-per-pipeline steps last.
  * Prepare steps lead because they run first, before anything learns; Combine steps
@@ -23,87 +23,45 @@ export const STEP_FAMILIES: { id: StepFamily; label: string }[] = [
   { id: "output", label: "Evidence output" },
 ];
 
-// A Gate decides whether an observation goes on, so it sits with the routes.
-const ROUTES = new Set(["features.select", "features.rename", "features.passthrough", "prepare.gate"]);
-/** Steps that compute one feature from the features that arrive. */
-const COMBINE_STEPS = new Set([
-  "prepare.aggregate", "prepare.formula", "prepare.constant", "prepare.condition", "prepare.set",
-]);
+/** As far as a kind alone tells, for a step whose component the catalog does not list. */
+const BY_KIND: Record<PipelineNode["kind"], StepFamily> = {
+  source: "input", transform: "transform", merge: "route", detector: "detector",
+  calibration: "calibration", policy: "policy", output: "output",
+};
 
-/** Steps that run once per observation, in arrival order, before anything learns. */
-const isPrepare = (component: string) => component.startsWith("prepare.");
-
-/** Detectors that score one feature against the forecast made for it. Some learn
- * as data arrives; a pretrained one ("forecast.") is ready from the first values. */
-const isForecaster = (component: string) => component.endsWith("_forecaster") || component.startsWith("forecast.");
-
-/** What a step does, by its kind and component; unknown transforms stay "Transform". */
-export function stepFamily(kind: PipelineNode["kind"], component: string): StepFamily {
-  if (kind === "source") return "input";
-  if (kind === "merge" || ROUTES.has(component)) return "route";
-  if (kind === "detector" && isForecaster(component)) return "forecaster";
-  if (kind !== "transform") return kind;
-  if (COMBINE_STEPS.has(component)) return "combine";
-  if (isPrepare(component)) return "prepare";
-  if (/(standard|min_max|robust)_scaler$/.test(component)) return "normalize";
-  if (/(pca|random_projection)$/.test(component)) return "reduce";
-  return "transform";
-}
+/** What a step does. The catalog says so for every component it lists. */
+export const stepFamily = (node: Pick<PipelineNode, "kind">, component: Pick<PipelineComponent, "group"> | undefined): StepFamily =>
+  component?.group ?? BY_KIND[node.kind];
 
 export const familyLabel = (family: StepFamily) =>
   STEP_FAMILIES.find((item) => item.id === family)?.label ?? "Transform";
 
-/** One line each for the add-step menu; the catalog's own text is the fallback. */
-const DESCRIPTIONS: Record<string, string> = {
-  "source.aligned": "The chosen readings as one observation.",
-  "features.select": "Keep only the chosen features.",
-  "features.rename": "Give features new names.",
-  "features.passthrough": "Forward features unchanged.",
-  "features.merge": "Join branches into one feature list.",
-  "prepare.smooth": "Average recent values to calm noise.",
-  "prepare.despike": "Replace sudden spikes with the recent median.",
-  "prepare.change": "Add the change since earlier observations.",
-  "prepare.rolling": "Add a sum, quantile, spread or trend of recent values.",
-  "prepare.accumulate": "Keep a running total, minimum or maximum.",
-  "prepare.math": "Take a log, root, absolute value, square or scale.",
-  "prepare.range": "Clip values to a range, or skip observations outside it.",
-  "prepare.aggregate": "Combine features into their mean, sum, extreme, spread or range.",
-  "prepare.formula": "Compute a feature from others, such as dc_voltage * dc_current.",
-  "prepare.gate": "Learn and score only while a condition holds.",
-  "prepare.constant": "Add a named constant to use in later steps.",
-  "prepare.condition": "Turn a comparison or Boolean condition into a 1 or 0 feature.",
-  "prepare.set": "Calculate or replace one feature, keeping the others.",
-  "static.standard_scaler": "Center and scale with training statistics.",
-  "adaptive.standard_scaler": "Center and scale with running statistics.",
-  "static.min_max_scaler": "Scale to 0 to 1 with training bounds.",
-  "adaptive.min_max_scaler": "Scale to 0 to 1 with the bounds seen so far.",
-  "static.robust_scaler": "Center on the median and divide by the quartile range of training data.",
-  "adaptive.robust_scaler": "Center on the recent median and divide by the recent quartile range.",
-  "static.pca": "Keep the main directions of the training data.",
-  "adaptive.uncentered_pca": "Keep the main directions, updated as data arrives.",
-  "static.random_projection": "Fewer dimensions through a fixed random map.",
-  "adaptive.random_projection": "Fewer dimensions through a fixed random map.",
-  "detector:aberrant_seasonal_naive_forecaster": "Expect the value one cycle ago and score the miss.",
-  "detector:aberrant_holt_winters_forecaster": "Expect a level, a trend and a repeating cycle, and score the miss.",
-  "forecast.timestral": "Expect what a pretrained model forecasts from the recent values and score the miss.",
-  "policy.martingale": "Alarm when evidence of change builds up.",
-  "policy.quantile": "Alarm when scores pass a calibrated threshold.",
-  "policy.exceedance": "Alarm when scores stay above the boundary the calibration step adapts.",
-  "calibrate.fixed_split": "Rank every score against the calibration window, which then stays as it is.",
-  "output.evidence": "Store scores, evidence and alarms.",
-};
-
-export const stepDescription = (component: PipelineComponent) =>
-  DESCRIPTIONS[component.id] ?? component.description;
-
-/** Settings with controls of their own: the formula editor, For each, Result, Name and Suffix. */
+/** Settings with controls of their own: the formula editor, For each, Result, Name, Suffix,
+ * the feature a Rolling relation compares with, an Expected value's target and the list of
+ * time features. */
 const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
   "prepare.gate": new Set(["condition"]),
+  "prepare.mute": new Set(["condition"]),
   "prepare.condition": new Set(["condition", "name"]),
   "prepare.set": new Set(["expression", "name"]),
+  "prepare.calculate": new Set(["formulas"]),
+  "prepare.accumulate": new Set(["reset_when"]),
+  "prepare.hold": new Set(["update_when"]),
+  "prepare.relation": new Set(["against"]),
+  "prepare.time": new Set([...TIME_FEATURES.map(([name]) => name), "timezone"]),
+  "static.expected_value": new Set(["target", "name"]),
+  "adaptive.expected_value": new Set(["target", "name"]),
 };
+/** Steps that compute or decide by a formula; it is their main setting. */
+export const FORMULA_STEPS = new Set([
+  "prepare.formula", "prepare.gate", "prepare.mute", "prepare.condition", "prepare.set", "prepare.calculate",
+]);
+/** Steps that decide by a condition and pass every feature on, so no feature row names them. */
+export const DECISION_STEPS = new Set(["prepare.gate", "prepare.mute"]);
+/** Steps that work on each feature and read a condition as well, below their own settings. */
+export const CONDITION_STEPS = new Set(["prepare.accumulate", "prepare.hold"]);
 // Combine detectors has its own control, shown once the design has two detectors.
 const CALIBRATION_CONTROLS = new Set(["fusion"]);
 
@@ -116,14 +74,11 @@ export const FUSION_CHOICES = [
 export const fusionChoice = (node: PipelineNode) =>
   FUSION_CHOICES.find((choice) => choice.value === node.params.fusion) ?? FUSION_CHOICES[0];
 
-/** The settings the inspector lists below Applies to and Result. Scale and offset
- * only mean something to a linear Math step, so they stay hidden otherwise. */
+/** The settings the inspector lists below Applies to and Result: those without a control
+ * of their own that apply with the step's other settings. */
 export function stepFields(node: PipelineNode, component: PipelineComponent) {
   const own = node.kind === "calibration" ? CALIBRATION_CONTROLS : OWN_CONTROLS[node.component];
-  const fields = component.fields.filter((field) =>
-    !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name));
-  if (node.component === "prepare.rolling" && setting(node, component, "statistic") !== "quantile")
-    return fields.filter((field) => field.name !== "quantile");
-  if (node.component !== "prepare.math" || setting(node, component, "function") === "linear") return fields;
-  return fields.filter((field) => field.name !== "scale" && field.name !== "offset");
+  return component.fields.filter((field) =>
+    !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name)
+    && fieldApplies(field, setting(node, component, field.shown_when?.field ?? "")));
 }

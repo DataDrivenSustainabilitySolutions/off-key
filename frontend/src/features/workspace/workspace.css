@@ -13,7 +13,7 @@
 .app-main :is(.ex-main-content, .app-page-content) { padding-inline: 48px; }
 /* The reopen control sits in the page's top inset without adding a layout row. */
 .app-sidebar-reopen { position: absolute; top: 0; left: 4px; z-index: 40; }
-.app-sidebar-reopen .app-sidebar-toggle { background: var(--ex-bg); }
+.app-sidebar-reopen .app-sidebar-toggle { background: hsl(var(--card)); }
 .app-sidebar-reopen .app-sidebar-toggle:hover { background: var(--ex-hover); }
 
 /* Sidebar */
@@ -45,6 +45,7 @@
 .app-sidebar-item > svg { flex-shrink: 0; color: var(--ex-muted); }
 .app-sidebar-item > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-sidebar-item > small { flex-shrink: 0; color: var(--ex-muted); font-size: var(--text-caption); }
+.app-sidebar-collection { display: flex; align-items: center; }
 .app-sidebar-item:hover { background: var(--ex-hover); }
 .app-sidebar-item:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: -2px; }
 /* The current workspace, a shown source and an applied collection share one quiet highlight. */

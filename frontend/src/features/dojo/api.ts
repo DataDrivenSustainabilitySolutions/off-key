@@ -21,10 +21,13 @@ import type {
   RunListPage,
   RunListQuery,
   RunMetrics,
+  RunOutline,
+  RunOutlineQuery,
   RunPromote,
   RunPromotion,
   RunResultsPage,
   RunResultsQuery,
+  RunSteps,
   RunView,
 } from "@/types/dojo.generated";
 
@@ -77,6 +80,11 @@ export const dojoApi = {
   promoteRun: (id: string, request: RunPromote) => apiUtils.post<RunPromotion>(`${run(id)}/promote`, request),
   results: (id: string, query: RunResultsQuery, signal?: AbortSignal) =>
     apiUtils.get<RunResultsPage>(`${run(id)}/results`, { ...read, signal, params: query }),
+  // Scores, boundary and alarms per stretch of time: enough to draw a run without reading every result.
+  outline: (id: string, query: RunOutlineQuery = {}, signal?: AbortSignal) =>
+    apiUtils.get<RunOutline>(`${run(id)}/outline`, { ...read, signal, params: query }),
+  // What a few observations of an ended run looked like at every step of its design.
+  steps: (id: string) => apiUtils.get<RunSteps>(`${run(id)}/steps`, read),
   metrics: (id: string, signal?: AbortSignal) => apiUtils.get<RunMetrics>(`${run(id)}/metrics`, { ...read, signal }),
   calibration: (id: string, signal?: AbortSignal) =>
     apiUtils.get<MethodComparison>(`${run(id)}/calibration`, { ...read, signal }),

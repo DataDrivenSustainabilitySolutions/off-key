@@ -6,7 +6,7 @@ import { SystemLiveControls } from "./SystemLiveControls";
 import { scopeForNode, safeServiceReturn, policyLabel, recordingScopeReadingIds } from "@/domain/system/collectionRules";
 import { useRecording } from "./useRecording";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
-import { startRecording, stopRecording } from "./recordingEdits";
+import { POLL_SECONDS, startRecording, stopRecording } from "./recordingEdits";
 import { BrokerCheckMark } from "./BrokerCheck";
 import { checkProblem, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
@@ -15,6 +15,8 @@ import { catalogueSelectionLabel } from "../workspace/catalogue-navigation";
 import { systemApi } from "@/domain/system/systemApi";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import "./sources.css";
+import { SourceIcon } from "@/components/source-icons/SourceIcon";
+import { setSourceAppearance } from "@/domain/system/sourceAppearance";
 
 const Preview = lazy(() => import("../readings/ExplorerPreview"));
 
@@ -43,6 +45,7 @@ export function SourcesWorkspace() {
   // MQTT topic policies apply across the whole broker, even when reached through an entity.
   const ids = useMemo(() => scope && selected ? recordingScopeReadingIds(document, selected) : streamIds ?? [], [document, scope, selected, streamIds]);
   const recording = useRecording(system.snapshot, system.applyRules);
+  const isPolled = (id: string) => document.brokers.find(item => item.id === id)?.protocol === "http";
   const brokerChecks = useBrokerChecks();
   const sources = runtime?.ingress?.sources;
   // A recorded broker already reports its state; only the others need a check.
@@ -77,8 +80,11 @@ export function SourcesWorkspace() {
         <RotateCw size={14} />{pending ? "Reconnecting…" : "Reconnect recording"}</Button>{stop}</>;
     }
     if (recorded) return stop;
-    return <Button variant="outline" size="sm" disabled={busy} title="Record every message from this broker, also while you are signed out"
-      aria-label={`Record ${label}`} onClick={() => void recording.save(startRecording(id))}>
+    const polled = isPolled(id);
+    return <Button variant="outline" size="sm" disabled={busy} title={polled
+      ? `Ask this API every ${POLL_SECONDS} seconds and record its readings, also while you are signed out`
+      : "Record every message from this broker, also while you are signed out"}
+      aria-label={`Record ${label}`} onClick={() => void recording.save(startRecording(id, polled))}>
       <Circle size={12} />{busy ? "Starting…" : "Record"}</Button>;
   };
   const safeReturn = safeServiceReturn(params.get("returnTo"));
@@ -93,12 +99,12 @@ export function SourcesWorkspace() {
       const stream = document.readings.find(item => item.id === id);
       const node = index.nodes.get(index.objectKeys.get(id)?.[0] ?? "");
       return stream && node ? <button key={id} className="source-broker" onClick={() => selectSource(node)}>
-        <strong>{stream.label}</strong><span>{stream.topic}</span><span>{policyLabel(runtime?.bindings?.[id]?.policy)}</span>
+        <strong className="source-identity"><SourceIcon kind="stream" appearance={stream.appearance} />{stream.label}</strong><span>{stream.topic}</span><span>{policyLabel(runtime?.bindings?.[id]?.policy)}</span>
       </button> : [];
     }) : <p className="ex-muted">No readings registered for this entity.</p>}
   </section>;
   const configuration = scope ? <>
-    {scope.kind === "topic" && <p className="ex-muted">A topic setting applies to all matching readings on this broker.</p>}
+    {scope.kind === "topic" && <p className="ex-muted">A {isPolled(scope.broker_id) ? "path" : "topic"} setting applies to all matching readings on this broker.</p>}
     <SourceRecordingInspector key={JSON.stringify(scope)} scope={scope} ids={ids} document={document}
       runtime={runtime} canEdit={system.canEdit} recording={recording} />
   </> : readingLinks;
@@ -132,6 +138,7 @@ export function SourcesWorkspace() {
     {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
       <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
         canEdit={system.canEdit} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
+        onAppearanceChange={appearance => system.save(setSourceAppearance(document, selected, appearance), system.revision ?? 0)}
         runtime={runtime} connectionStatusOnly pageTitle collectionControls={configuration}
         connectionCheck={selectedBroker && !selectedState ? checkProblem(brokerChecks.checks[selectedBroker]) : undefined} />
     </Suspense> : <section aria-label="Broker overview" className="source-overview">
@@ -147,7 +154,7 @@ export function SourcesWorkspace() {
         const node = index.nodes.get(index.objectKeys.get(item.id)![0]!)!;
         return <div key={item.id} className={`source-broker source-broker--${status.tone}`}>
           <button type="button" className="source-broker-open" onClick={() => { selectSource(node); setExpanded(node.key, true); }}>
-            <strong>{item.label}{check && <BrokerCheckMark check={check} visibleReason={reason} />}</strong></button>
+            <strong className="source-identity"><SourceIcon kind="connection" appearance={item.appearance} />{item.label}{check && <BrokerCheckMark check={check} visibleReason={reason} />}</strong></button>
           <span>{readings} {readings === 1 ? "reading" : "readings"}{enabled > 0 && readings > 1 ? ` · ${enabled} enabled` : ""}</span>
           {reason && <span className="source-broker-reason">{reason}</span>}
           <div className="source-broker-status"><span className={`mn-state mn-state--${status.tone}`}>{status.label}</span>

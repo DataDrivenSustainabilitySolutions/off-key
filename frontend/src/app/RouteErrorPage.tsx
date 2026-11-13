@@ -17,7 +17,7 @@ export function RouteErrorPage({ notFound = false }: { notFound?: boolean }) {
           <p className="text-sm text-muted-foreground">
             {notFound ? "404" : "Page unavailable"}
           </p>
-          <h1 id="route-error-title" className="text-[length:var(--text-title1)] font-semibold leading-[var(--leading-title1)] tracking-[-0.02em]">
+          <h1 id="route-error-title" className="app-page-title">
             {notFound ? "Page not found" : "Something went wrong"}
           </h1>
           <p className="leading-6 text-muted-foreground">

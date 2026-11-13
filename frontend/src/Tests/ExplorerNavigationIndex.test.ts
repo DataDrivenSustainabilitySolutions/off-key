@@ -7,6 +7,7 @@ import {
   searchNavigation,
   type NavigationIndex,
 } from "@/domain/system/navigationIndex";
+import { recordingScopeReadingIds, scopeForNode } from "@/domain/system/collectionRules";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { SystemConnection, SystemDocument, SystemStream } from "@/types/system";
 import { mqttConnection } from "./support/fixtures/system";
@@ -104,6 +105,23 @@ describe("catalogue navigation index", () => {
     expect(searchNavigation(index, "測定").map((node) => node.objectId)).toContain("s-4");
     const emptyChain = buildNavigationIndex(fixture({ readings: [stream("empty", "//value/")] }));
     expect(navigationRows(emptyChain, object(emptyChain, "broker").key)[0]!.label).toBe("(empty level)/(empty level)/value/(empty level)");
+  });
+
+  it("reads an HTTP request path as levels that keep the leading slash and the whole query", () => {
+    const document = fixture({
+      brokers: [{ ...connection(), protocol: "http", port: 443, tls: true }],
+      readings: [stream("latest", "/v1/stations/7?fields=a/b"), stream("health", "/v1/health"), stream("root", "/")],
+    });
+    const index = buildNavigationIndex(document);
+    const levels = (key: string) => navigationRows(index, key).map((row) => [row.label, row.node.topic]);
+    expect(levels(object(index, "broker").key)).toEqual([["/", "/"], ["/v1", "/v1"]]);
+    const version = navigationRows(index, object(index, "broker").key)[1]!.node;
+    expect(levels(version.key)).toEqual([
+      ["health", "/v1/health"], ["stations/7?fields=a/b", "/v1/stations/7?fields=a/b"],
+    ]);
+    // A level is a recording scope: its prefix is what the request paths start with.
+    expect(scopeForNode(version)).toEqual({ kind: "topic", broker_id: "broker", topic_prefix: "/v1" });
+    expect(recordingScopeReadingIds(document, version)).toEqual(["latest", "health"]);
   });
 
   it("uses collision-safe identities for brokers, entities, and exact topic paths", () => {

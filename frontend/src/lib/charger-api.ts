@@ -7,6 +7,9 @@ import type {
   Alarm,
   AlarmPage,
   AlarmQuery,
+  AlarmDetail,
+  AlarmSelection,
+  AlarmDeletionPreview,
   TelemetryDataPoint,
   TelemetryCursor,
   TelemetryTypeData,
@@ -36,6 +39,14 @@ const get = <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
   signal
     ? apiUtils.get<T>(endpoint, { signal })
     : apiUtils.get<T>(endpoint);
+
+/** Stored history downsampled to each bucket's extremes; no startMs means all of it. */
+export const getTelemetryRange = (
+  readingId: string,
+  range: { startMs?: number; endMs?: number; buckets?: number },
+  signal?: AbortSignal,
+): Promise<TelemetryDataPoint[]> =>
+  get<TelemetryDataPoint[]>(API_CONFIG.ENDPOINTS.READINGS.BUCKETS(readingId, range), signal);
 
 /** Original samples or labelled means, calculated from the stored measurements. */
 export const getTelemetryHistory = async (
@@ -149,3 +160,10 @@ export const deleteAlarm = async (alarmId: string): Promise<void> => {
   }
   await apiUtils.delete(API_CONFIG.ENDPOINTS.ALARMS.DELETE(alarmId));
 };
+
+export const getAlarm = (id: string, signal?: AbortSignal) =>
+  get<AlarmDetail>(API_CONFIG.ENDPOINTS.ALARMS.ITEM(id), signal);
+export const previewAlarmDeletion = (selection: AlarmSelection) =>
+  apiUtils.post<AlarmDeletionPreview>('/v1/alarms/deletion-preview', selection);
+export const deleteAlarmSelection = (token: string) =>
+  apiUtils.post<{ count: number }>('/v1/alarms/delete', { token });

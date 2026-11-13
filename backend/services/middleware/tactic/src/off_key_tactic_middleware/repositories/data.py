@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .anomaly_filters import AnomalyFilters, ReadingScope
 
 # An anomaly row and its public identity share this natural key.
-_ANOMALY_IDENTITY_JOIN = and_(
+ANOMALY_IDENTITY_JOIN = and_(
     Anomaly.charger_id == AnomalyIdentity.charger_id,
     Anomaly.timestamp == AnomalyIdentity.timestamp,
     Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
@@ -94,7 +94,7 @@ def _in_scope(scope: ReadingScope) -> ColumnElement[bool]:
     return and_(Anomaly.charger_id.in_(sorted(scope.entities)), touches)
 
 
-def _matching(filters: AnomalyFilters) -> list[ColumnElement[bool]]:
+def matching_anomalies(filters: AnomalyFilters) -> list[ColumnElement[bool]]:
     conditions = [
         _in_scope(scope)
         for scope in (filters.scope, filters.reading)
@@ -320,8 +320,8 @@ class AnomalyRepository:
         query = (
             select(AnomalyIdentity.anomaly_id, Anomaly)
             .select_from(Anomaly)
-            .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
-            .where(*_matching(filters))
+            .join(AnomalyIdentity, ANOMALY_IDENTITY_JOIN)
+            .where(*matching_anomalies(filters))
             .order_by(Anomaly.timestamp.desc(), AnomalyIdentity.anomaly_id.desc())
             .limit(limit)
         )
@@ -344,8 +344,8 @@ class AnomalyRepository:
                 func.max(Anomaly.timestamp),
             )
             .select_from(Anomaly)
-            .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
-            .where(*_matching(filters))
+            .join(AnomalyIdentity, ANOMALY_IDENTITY_JOIN)
+            .where(*matching_anomalies(filters))
         )
         count, entities, latest = result.one()
         return count, entities, latest
@@ -358,11 +358,11 @@ class AnomalyRepository:
         result = await self._session.execute(
             select(Anomaly.charger_id, keys.c.value, func.count())
             .select_from(Anomaly)
-            .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
+            .join(AnomalyIdentity, ANOMALY_IDENTITY_JOIN)
             .join(keys, true())
             .where(
                 keys.c.value != MULTIVARIATE_TELEMETRY_TYPE,
-                *_matching(AnomalyFilters(scope=scope)),
+                *matching_anomalies(AnomalyFilters(scope=scope)),
             )
             .group_by(Anomaly.charger_id, keys.c.value)
         )
@@ -380,7 +380,7 @@ class AnomalyRepository:
                 Anomaly.telemetry_type,
                 Anomaly.sensor_set,
             )
-            .where(*_matching(filters))
+            .where(*matching_anomalies(filters))
             .order_by(Anomaly.timestamp, Anomaly.service_id)
             .limit(limit)
         )
@@ -431,7 +431,7 @@ class AnomalyRepository:
     ) -> tuple[str, Anomaly] | None:
         result = await self._session.execute(
             select(AnomalyIdentity.anomaly_id, Anomaly)
-            .join(Anomaly, _ANOMALY_IDENTITY_JOIN)
+            .join(Anomaly, ANOMALY_IDENTITY_JOIN)
             .where(AnomalyIdentity.anomaly_id == anomaly_id)
         )
         row = result.first()
@@ -508,6 +508,7 @@ class MonitoringEvidenceRepository:
                 list[dict[str, object]],
                 float,
                 bool,
+                bool,
                 datetime | None,
             ]
         ]
@@ -529,6 +530,7 @@ class MonitoringEvidenceRepository:
             MonitoringEvidence.forecasts,
             MonitoringEvidence.threshold,
             MonitoringEvidence.alarm,
+            MonitoringEvidence.muted,
             MonitoringEvidence.created,
         ).where(_evidence_scope(scope))
 

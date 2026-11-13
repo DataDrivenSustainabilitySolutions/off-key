@@ -67,12 +67,13 @@
 .pl-diagnostics button,
 .pl-run button,
 .pl-design-settings button,
+.pl-proposal button,
 .pl-library button {
   font-size: var(--text-caption);
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius-control);
   padding: 7px 10px;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -117,15 +118,16 @@
 .pl-field textarea,
 .pl-search input,
 .pl-toolbox > input,
+.pl-proposal-decline input,
 .pl-number-list input {
   width: 100%;
   min-width: 0;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--input));
   border-radius: var(--radius-control);
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
   padding: 8px 10px;
-  font-size: var(--text-caption);
+  font-size: var(--text-body);
   font-weight: 400;
 }
 
@@ -140,7 +142,8 @@
 
 .pl-field input:focus,
 .pl-field textarea:focus,
-.pl-field select:focus {
+.pl-field select:focus,
+.pl-proposal-decline input:focus {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
 }

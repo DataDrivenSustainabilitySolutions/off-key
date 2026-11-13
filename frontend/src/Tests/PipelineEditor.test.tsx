@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -20,10 +21,16 @@ import {
   normalizeView,
 } from "@/features/pipelines/contracts";
 import { pipelinesApi } from "@/features/pipelines/api";
+import { dojoApi } from "@/features/dojo/api";
+import { useDesignTest } from "@/features/dojo/designTest";
+import { DesignTestContext } from "@/features/pipelines/designTest";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { ApiRequestError } from "@/lib/api-client";
 
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
+const access = vi.hoisted(() => ({ dojo: false }));
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1,
+  can: (permission: string) => access.dojo && permission === "use_dojo" }) }));
+vi.mock("@/features/dojo/api", () => ({ dojoApi: { datasets: vi.fn(), importHistory: vi.fn(), createRun: vi.fn(), run: vi.fn() } }));
 vi.mock("@/components/theme-provider", () => ({
   useTheme: () => ({ resolvedTheme: "light" }),
 }));
@@ -36,6 +43,7 @@ vi.mock("@/features/pipelines/api", () => ({
     create: vi.fn(),
     revision: vi.fn(),
     apply: vi.fn(), activation: vi.fn(), cancel: vi.fn(), list: vi.fn(), catalog: vi.fn(), service: vi.fn(),
+    blocks: vi.fn(),
   },
 }));
 
@@ -63,6 +71,7 @@ const catalog = normalizeCatalog({
     {
       id: "source.aligned",
       kind: "source",
+      group: "input",
       label: "Inputs",
       description: "Aligned values",
       input_type: null,
@@ -71,6 +80,7 @@ const catalog = normalizeCatalog({
     {
       id: "detector:test",
       kind: "detector",
+      group: "detector",
       label: "Detector",
       description: "Scores",
       learning: "online",
@@ -80,6 +90,7 @@ const catalog = normalizeCatalog({
     {
       id: "calibrate.fixed_split",
       kind: "calibration",
+      group: "calibration",
       label: "Fixed split",
       description: "Calibration",
       family: "conformal",
@@ -90,6 +101,7 @@ const catalog = normalizeCatalog({
     {
       id: "policy.quantile",
       kind: "policy",
+      group: "policy",
       label: "Threshold",
       description: "Threshold",
       input_type: "p_values",
@@ -98,6 +110,7 @@ const catalog = normalizeCatalog({
     {
       id: "output.evidence",
       kind: "output",
+      group: "output",
       label: "Evidence",
       description: "Evidence",
       input_type: "decisions",
@@ -151,10 +164,12 @@ const target: MonitoringTarget = { id: "room", label: "Room", inputs: [
 const telemetry = new SystemLiveTelemetry();
 vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => ({ system: { snapshot: null }, document: undefined, telemetry, liveStreamIds: [], previewStreamIds: [] }) }));
 beforeEach(() => {
-  vi.resetAllMocks(); clearNavigationDrafts();
+  vi.resetAllMocks(); clearNavigationDrafts(); access.dojo = false;
+  vi.mocked(dojoApi.datasets).mockResolvedValue({ items: [], next_offset: null });
   vi.mocked(pipelinesApi.get).mockResolvedValue(pipeline());
   vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: true, definition: normalizeDefinition(definition), issues: [], features: {}, provenance_complete: true }));
   vi.mocked(pipelinesApi.list).mockResolvedValue({ items: [], next_offset: null });
+  vi.mocked(pipelinesApi.blocks).mockResolvedValue([]);
   vi.mocked(pipelinesApi.revision).mockImplementation(async (_id, id) => {
     if (id !== "revision") throw new ApiRequestError("Published revision not found", 404);
     return { ...pipeline().revisions[0]!, definition };
@@ -199,13 +214,18 @@ describe("simple monitoring setup", () => {
     expect(pipelinesApi.save).not.toHaveBeenCalled();
   });
 
-  it("opens a new service at its readings and reaches each panel from the header", () => {
+  it("opens a new service at its readings and reaches each panel from the header", async () => {
     render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>);
     expect(screen.getByRole("heading", { name: "Create monitoring service" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Input" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Validate" })).toBeNull();
-    // The header says how the detectors learn; a design has no strategy to switch.
-    fireEvent.click(screen.getByRole("button", { name: "Learning: Learns continuously" }));
+    // A new service leaves the detector to choose; the place kept for it offers the starter's own first.
+    fireEvent.click(await screen.findByRole("button", { name: "Choose a detector" }));
+    fireEvent.click(within(screen.getByRole("menu", { name: "Choose a detector" })).getByRole("menuitem", { name: /Suggested$/ }));
+    expect(screen.queryByRole("button", { name: "Choose a detector" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Step settings" })).toBeTruthy();
+    // A design has no strategy to switch; the service's settings say how its detectors learn.
+    fireEvent.click(screen.getByRole("button", { name: "Service settings" }));
     expect(screen.getByRole("heading", { name: "Service settings" })).toBeTruthy();
     expect(screen.getByText(/The detectors take in every observation and keep adapting/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Static baseline" })).toBeNull();
@@ -213,6 +233,66 @@ describe("simple monitoring setup", () => {
     expect(screen.getByRole("heading", { name: "Before the first alarm" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Input: Room, 3 readings" }));
     expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("tests the design on the history of its readings, for members who may use the Dojo", async () => {
+    vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ definition: normalizeDefinition(definition),
+      valid: !!definition.nodes?.some((node) => node.kind === "detector"), issues: [], features: {}, provenance_complete: true }));
+    // The screen that mounts the composer hands it the test, where the member may use the Dojo.
+    function Screen() {
+      return <MemoryRouter><DesignTestContext.Provider value={useDesignTest()}>
+        <PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></DesignTestContext.Provider></MemoryRouter>;
+    }
+    const ui = <Screen />;
+    const view = render(ui);
+    expect(screen.queryByRole("button", { name: "Test on history" })).toBeNull();
+    expect(screen.queryByText("Values in the last test")).toBeNull();
+    view.unmount();
+    access.dojo = true;
+    render(ui);
+    const open = screen.getByRole("button", { name: "Test on history" });
+    fireEvent.click(open);
+    expect(screen.getByRole("heading", { name: "Test on history" })).toBeTruthy();
+    // The detector is still to choose, so there is nothing to run yet.
+    expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Checking the design…")).toBeTruthy();
+    expect(await screen.findByText(/The design is not ready to run/, undefined, { timeout: 3000 })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close test" }));
+    expect(screen.queryByRole("heading", { name: "Test on history" })).toBeNull();
+    expect(document.activeElement).toBe(open);
+    fireEvent.click(screen.getByRole("button", { name: "Choose a detector" }));
+    fireEvent.click(within(screen.getByRole("menu", { name: "Choose a detector" })).getByRole("menuitem", { name: /Suggested$/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Three phases" } });
+    fireEvent.click(open);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(false),
+      { timeout: 3000 });
+    // The run stays queued: the button that opens the panel says so while the panel is closed.
+    vi.mocked(dojoApi.importHistory).mockResolvedValue({ id: "copy", name: "Room · last 7 days", description: "", origin: "history",
+      point_count: 3, series_count: 3, start_at: null, end_at: null, created_by: 1, created_at: "2026-10-20T10:00:00Z", source: {},
+      series: ["AC1", "AC2", "AC3"].map((id, position) => ({ id: `s-${id}`, position, name: id, unit: "A", reading_id: id,
+        point_count: 1, start_at: null, end_at: null })) });
+    const queued = { id: "run", dataset_id: "copy", name: "", status: "queued" as const, strategy: "adaptive_stream", points_total: 3,
+      points_read: 0, result_count: 0, alarm_count: 0, error: null, created_by: 1, created_at: "2026-10-20T10:00:00Z",
+      started_at: null, finished_at: null, definition: {}, bindings: [], alignment: {}, cancel_requested: false, stats: {} };
+    vi.mocked(dojoApi.createRun).mockResolvedValue(queued);
+    vi.mocked(dojoApi.run).mockResolvedValue(queued);
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
+    await waitFor(() => expect(dojoApi.createRun).toHaveBeenCalled());
+    expect(vi.mocked(dojoApi.importHistory).mock.calls[0]![0]).toMatchObject({ name: "Room · last 7 days", reading_ids: ["AC1", "AC2", "AC3"] });
+    const started = vi.mocked(dojoApi.createRun).mock.calls[0]![0];
+    expect(started.name).toMatch(/^Three phases · /);
+    expect(new Set(Object.values(started.bindings))).toEqual(new Set(["s-AC1", "s-AC2", "s-AC3"]));
+    expect(started.definition.nodes?.some((node) => node.kind === "detector")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close test" }));
+    expect(await screen.findByRole("button", { name: "Test on history, waiting…" })).toBeTruthy();
+    // A step's settings hold the values it had in the last test, folded until asked for.
+    fireEvent.click(screen.getByRole("button", { name: "Step settings" }));
+    const values = screen.getByText("Values in the last test").closest("details")!;
+    expect(values.open).toBe(false);
+    values.open = true;
+    fireEvent(values, new Event("toggle"));
+    expect(await within(values).findByText(/^The test is running\. The values that go into this step/)).toBeTruthy();
   });
 
   it("blocks an empty selection and excludes collection-off readings from Select all available", () => {
@@ -286,6 +366,32 @@ describe("simple monitoring setup", () => {
     await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
     await waitFor(() => expect(callbacks.onStarted).toHaveBeenCalledWith("service"));
   });
+  it("starts a service in shadow, and an update without it takes the service live", async () => {
+    const view = render(<MemoryRouter><PipelineCreate {...props()} initialDesign={pipeline()} /></MemoryRouter>);
+    await settings();
+    const shadow = () => screen.getByRole("checkbox", { name: /^Shadow run/ }) as HTMLInputElement;
+    expect(shadow().checked).toBe(false);
+    fireEvent.click(shadow());
+    fireEvent.click(screen.getByRole("button", { name: "Start in shadow" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
+    expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0]).toMatchObject({ shadow: true, replace_monitor_id: null });
+    view.unmount();
+    clearNavigationDrafts();
+    // An update of a shadow service stays in shadow until the member takes it live.
+    const old: ActiveService = { id: "old", display_name: "Existing health", reading_ids: [], active: true, shadow: true,
+      operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
+    render(<MemoryRouter><PipelineCreate {...props()} initialDesign={pipeline()} replaceService={old}
+      predecessor={{ run: null, history: [], definition, layout: normalizeLayout() }} /></MemoryRouter>);
+    await settings();
+    expect(shadow().checked).toBe(true);
+    expect(screen.getByRole("button", { name: "Update in shadow" })).toBeTruthy();
+    expect(screen.queryByText(/Compared with what runs now/)).toBeNull();
+    fireEvent.click(shadow());
+    expect(screen.getByText("Compared with what runs now: Goes live.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Update monitoring" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(pipelinesApi.apply).mock.calls[1]![0]).toMatchObject({ shadow: false, replace_monitor_id: "old" });
+  });
   it("keeps a failed service load visible when the catalog arrives afterwards", async () => {
     let finishCatalog!: (value: typeof catalog) => void;
     vi.mocked(pipelinesApi.catalog).mockImplementation(() => new Promise((resolve) => { finishCatalog = resolve; }));
@@ -338,7 +444,10 @@ describe("simple monitoring setup", () => {
   it("blocks an invalid processing graph before reserving a start", async () => {
     vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: false, definition: normalizeDefinition(definition), issues: [{ code: "disconnected", message: "Connect the detector" }], features: {}, provenance_complete: true }));
     mount(); fireEvent.click(await screen.findByRole("button", { name: "Start monitoring" }));
-    await screen.findByText("Resolve the highlighted processing issues before applying.");
+    // What stops the start opens as a list beside the status, without a banner that moves the page.
+    await screen.findByRole("heading", { name: "Needs attention" });
+    expect(screen.getByText("Connect the detector")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("opens runtime preflight errors beside the affected parameter before correction", async () => {
@@ -373,6 +482,46 @@ describe("simple monitoring setup", () => {
     expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({ name: "Reusable health", expected_version: 1 }));
     expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Room pipeline");
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
+  });
+  it("downloads the design as a file and opens a file in its place", async () => {
+    const blobs: Blob[] = [];
+    // jsdom has no object URLs and follows no download link.
+    Object.assign(URL, { createObjectURL: (blob: Blob) => { blobs.push(blob); return "blob:design"; }, revokeObjectURL: () => {} });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mount(); const dialog = await saveDialog();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Template name" }), { target: { value: "Room health" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download as a file" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(click).toHaveBeenCalledTimes(1);
+    const written = JSON.parse(await blobs[0]!.text());
+    expect(written).toMatchObject({ format: "aberration-design", schema_version: 1, name: "Room health", definition });
+    expect(pipelinesApi.save).not.toHaveBeenCalled();
+
+    const open = async (contents: string) => {
+      fireEvent.click(screen.getByRole("button", { name: "Load template" }));
+      fireEvent.change(await screen.findByLabelText("Design file"), { target: { files: [new File([contents], "shorter.design.json")] } });
+    };
+    // A design without its last step, as another tool might have written it.
+    const shorter = { ...written, definition: { ...written.definition,
+      nodes: written.definition.nodes.filter((node: { id: string }) => node.id !== "output"),
+      edges: written.definition.edges.filter((edge: { target: string }) => edge.target !== "output") } };
+    expect((screen.getByRole("button", { name: "Undo graph change" }) as HTMLButtonElement).disabled).toBe(true);
+    await open(JSON.stringify(shorter));
+    // The design on the canvas is checked as every change is; Undo brings the previous one back.
+    await waitFor(() => expect((screen.getByRole("button", { name: "Undo graph change" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect(vi.mocked(pipelinesApi.validate).mock.lastCall![0].nodes!.map((node) => node.id))
+      .toEqual(["input", "detector", "calibrate", "policy"]));
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await open("not a design");
+    expect((await screen.findByRole("alert")).textContent).toBe("This file is not a design: it does not hold JSON.");
+
+    // A file dropped on the canvas is opened the same way.
+    fireEvent.drop(screen.getByLabelText("Pipeline graph"), { dataTransfer: { getData: () => "",
+      files: [new File([JSON.stringify(written)], "room-health.design.json")] } });
+    await waitFor(() => expect(vi.mocked(pipelinesApi.validate).mock.lastCall![0].nodes).toHaveLength(5));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    click.mockRestore();
   });
   it("preserves a concurrent template conflict and allows saving a separate copy", async () => {
     vi.mocked(pipelinesApi.save).mockRejectedValueOnce(new ApiRequestError("The template changed", 409));

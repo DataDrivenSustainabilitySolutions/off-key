@@ -13,6 +13,7 @@ def resolved_detector_config(
     from off_key_core.models.adaptive import (
         ADAPTIVE_MODELS_BY_TYPE,
         PRETRAINED_FORECASTERS,
+        RULE_DETECTORS,
         aberrant_model,
         bind_detector_parameters,
     )
@@ -36,6 +37,10 @@ def resolved_detector_config(
         config = resolve_service_detector(
             aberrant_model(definition, definition["default_parameters"] | params)
         )
+    elif model_type in RULE_DETECTORS:
+        from ..rules import resolve_rule_detector
+
+        config = resolve_rule_detector(aberrant_model(definition, params))
     else:
         config = DetectorConfig.from_mapping(
             {"version": 1, "model": aberrant_model(definition, params)}
@@ -64,22 +69,28 @@ def adaptive_graph(
     needed = plan.reads(detector_id) if plan.fused else None
     nodes = []
     stage = plan.stage
+    learned = [
+        node for node in plan.learned_nodes if needed is None or node.id in needed
+    ]
     # Without a Prepare stage the graph keeps its shape, also in checkpoints.
     # With one, the graph's input is the prepared row and each node crossing
     # the cut, the input included, becomes a node that picks its features.
     if stage is not None:
+        # Only what this graph reads across the cut: the input reaches a
+        # detector behind a Prepare step through that step alone.
+        crossing = {plan.detector_inputs[detector_id]}.union(
+            *(plan.parents(node.id) for node in learned)
+        )
         nodes.extend(
             GraphNode(key, Prepared(key, plan.names(key)))
             for key in stage.frontier
-            if needed is None or key in needed
+            if key in crossing
         )
 
     def reference(parent: str) -> str:
         return INPUT if stage is None and parent == plan.source_id else parent
 
-    for node in plan.learned_nodes:
-        if needed is not None and node.id not in needed:
-            continue
+    for node in learned:
         parents = plan.parents(node.id)
         inputs = [reference(parent) for parent in parents]
         if node.kind == "merge":

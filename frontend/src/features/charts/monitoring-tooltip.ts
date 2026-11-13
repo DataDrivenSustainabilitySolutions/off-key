@@ -1,7 +1,7 @@
 import { epochMilliseconds } from "@/lib/timestamps";
 import { forecastIntervalText } from "./detector-inputs";
 import type { MonitoringChartReading } from "./types";
-import type { DetectionObservation } from "./telemetry-detectors";
+import { alarmText, type DetectionObservation } from "./telemetry-detectors";
 
 type Entry = { seriesId?: unknown; seriesName?: unknown; value?: unknown;
   data?: { observation?: DetectionObservation; summary?: unknown; peak?: { count: number } } };
@@ -55,7 +55,7 @@ export function formatMonitoringObservationTooltip(
     if (result.timeMs !== observation.timeMs) continue;
     lines.push(`${String(entry.seriesName)}: ${result.value === null ? result.isInfinite ? "∞" : "unavailable" : String(result.value)}`);
     lines.push(`Alarm threshold: ${result.threshold === null ? "unavailable" : String(result.threshold)}`);
-    lines.push(`Alarm: ${result.alarmActive ? "active" : "inactive"}`);
+    lines.push(`Alarm: ${alarmText(result)}`);
   }
   // A policy that combines detectors names each one's part, so an alarm names its detector.
   for (const detector of observation.detectors ?? []) {

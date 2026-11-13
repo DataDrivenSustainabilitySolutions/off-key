@@ -1,4 +1,5 @@
 import { MarkerType, type Edge } from "@xyflow/react";
+import type { StepChange } from "./comparison";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import type { CanvasNode } from "./types";
 import { incomingEdges, nodeLabel, nodeOptionLabeler, type GraphDocument } from "./model";
@@ -10,9 +11,11 @@ import {
   NODE_SIZE,
   nodePosition,
   outputKind,
+  shownComponent,
+  switchedOff,
 } from "./semantics";
 import { learningLabel } from "./learning";
-import { isWarning } from "./scope";
+import { showIssues } from "./issues";
 import { familyLabel, stepFamily } from "./steps";
 import { nodeSummary } from "./summaries";
 
@@ -22,13 +25,19 @@ export function presentGraph(
   components: PipelineComponent[],
   states?: Record<string, string>,
   issues: PipelineValidation["issues"] = [],
+  changes?: Record<string, StepChange>,
 ) {
   const optionLabel = nodeOptionLabeler(document, components);
+  const shown = showIssues(document, components, issues);
+  const count = (id: string, tone: string) => shown.filter((issue) => issue.node_id === id && issue.tone === tone).length;
   const nodes: CanvasNode[] = document.definition.nodes.map((node, index) => {
     const component = componentFor(node, components);
     const input = inputKind(component);
     const output = outputKind(node, component);
-    const summary = nodeSummary(node, component, document.definition);
+    // A step that is switched off is drawn as what it was; its ports are those of the step that stands in.
+    const was = switchedOff(document.layout, node);
+    const standsFor = was ? shownComponent(node, components, document.layout) : component;
+    const summary = was ? { text: "Switched off", chips: undefined } : nodeSummary(node, component, document.definition);
     return {
       id: node.id,
       type: "component",
@@ -38,19 +47,22 @@ export function presentGraph(
       data: {
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,
-        family: familyLabel(stepFamily(node.kind, node.component)),
-        learning: learningLabel(component),
-        operation: component?.label ?? node.component,
+        family: familyLabel(stepFamily(node, standsFor)),
+        learning: was ? undefined : learningLabel(component),
+        operation: standsFor?.label ?? was?.component ?? node.component,
+        off: !!was,
         available: !!component,
         inputPort: component ? !!input : node.kind !== "source",
         outputPort: component ? !!output : node.kind !== "output",
         inputType: input,
         outputType: output,
         state: states?.[node.id],
-        issueCount: issues.filter((issue) => issue.node_id === node.id && !isWarning(issue)).length,
-        warningCount: issues.filter((issue) => issue.node_id === node.id && isWarning(issue)).length,
+        issueCount: count(node.id, "error"),
+        warningCount: count(node.id, "warning"),
+        open: shown.find((issue) => issue.node_id === node.id && issue.tone === "open")?.short,
         summary: summary.text,
         chips: summary.chips,
+        change: changes?.[node.id],
       },
     };
   });

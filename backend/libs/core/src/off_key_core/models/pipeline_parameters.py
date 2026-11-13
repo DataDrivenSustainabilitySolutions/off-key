@@ -2,10 +2,12 @@
 
 from typing import Any
 
-from ..schemas.pipeline_versions import component_learning
+from ..schemas.pipeline_versions import streams
 from ..schemas.pipelines import (
+    ExpectedValueParameters,
     FusionMode,
     MinMaxScalerParameters,
+    OnlineExpectedValueParameters,
     OnlinePCAParameters,
     PipelineDefinition,
     PipelineModel,
@@ -45,6 +47,8 @@ PARAMETER_MODELS: dict[str, type[PipelineModel]] = {
     "static.random_projection": ProjectionParameters,
     "adaptive.random_projection": ProjectionParameters,
     "adaptive.uncentered_pca": OnlinePCAParameters,
+    "static.expected_value": ExpectedValueParameters,
+    "adaptive.expected_value": OnlineExpectedValueParameters,
     **PREPARE_MODELS,
     EXCEEDANCE_RULE: ExceedanceRuleParameters,
     "output.evidence": PipelineModel,
@@ -80,13 +84,36 @@ def fusion_mode(params: dict[str, Any]) -> FusionMode:
     return params.get("fusion", "max")
 
 
+def _drop_unread(component: str, params: dict[str, Any]) -> None:
+    """Leave out the settings a Prepare step does not read.
+
+    A step that gains a setting then keeps the executable fingerprints of the
+    designs that do not use it, and a setting that changes nothing changes no
+    fingerprint.
+    """
+    match component:
+        case "prepare.rolling" if params["statistic"] != "quantile":
+            params.pop("quantile", None)
+        case "prepare.accumulate" if params["reset_when"] is None:
+            del params["reset_when"]
+        case "prepare.smooth":
+            # Smoothing by a time constant reads no window, and the other way round.
+            by_time = params["method"] == "time_constant"
+            del params["window_size" if by_time else "time_constant"]
+        case "prepare.time" if not any(
+            params[name] for name in ("hour", "weekday", "daily_cycle", "weekly_cycle")
+        ):
+            # Only the hour and the weekday follow a time zone.
+            del params["timezone"]
+
+
 def normalized_parameters(
     node: PipelineNode, definition: PipelineDefinition
 ) -> dict[str, Any]:
     if node.kind == "detector":
         identifier = node.component.removeprefix("detector:")
-        # Online and pretrained detectors score, then learn, every observation.
-        if component_learning(node.component) in ("online", "pretrained"):
+        # Detectors on the stream score every observation as it arrives.
+        if streams(node.component):
             return validate_adaptive_model_params(identifier, node.params)
         return validate_static_model_params(
             identifier, node.params, include_defaults=True
@@ -97,9 +124,7 @@ def normalized_parameters(
         or PARAMETER_MODELS[node.component]
     )
     params = model.model_validate(node.params).model_dump(mode="json")
-    if node.component == "prepare.rolling" and params["statistic"] != "quantile":
-        # Preserve the executable fingerprints of existing rolling steps.
-        params.pop("quantile", None)
+    _drop_unread(node.component, params)
     if node.component in POLICY_MODELS:
         # The calibration step combines detectors now; schema 1 designs move
         # their setting there when they are read.

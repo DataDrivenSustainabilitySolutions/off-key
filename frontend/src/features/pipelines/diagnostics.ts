@@ -8,6 +8,8 @@ const REJECTIONS: Record<string, string> = {
   non_finite: "not a finite number",
   out_of_domain: "outside the function's domain",
   out_of_range: "outside the range",
+  // A step that reads time got an observation measured no later than its previous one.
+  out_of_order: "not later than the one before",
   // A learned step or the detector failed, and nothing it had learned changed.
   error: "with an error",
 };

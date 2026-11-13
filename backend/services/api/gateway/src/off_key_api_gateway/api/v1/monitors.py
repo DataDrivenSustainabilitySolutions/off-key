@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
+from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.schemas.pipelines import MonitorDetail, MonitorSummary
 from off_key_core.schemas.radar import (
     MonitoringStrategy,
@@ -72,7 +73,7 @@ class MonitorStopped(BaseModel):
     status: Literal["stopped"]
 
 
-@router.get("", response_model=list[MonitorSummary])
+@router.get("", response_model=list[MonitorSummary], openapi_extra=OPEN_TO_AGENTS)
 @shared_limit_fetch
 async def list_monitors(request: Request, active: bool | None = None):
     """Every monitor with its state, strategy and the readings it watches.
@@ -100,7 +101,7 @@ async def create_monitor(request: Request, monitor: MonitorSetup):
     return await tactic.start_radar_service(monitor)
 
 
-@router.get("/{monitor_id}", response_model=MonitorDetail)
+@router.get("/{monitor_id}", response_model=MonitorDetail, openapi_extra=OPEN_TO_AGENTS)
 @shared_limit_fetch
 async def get_monitor(request: Request, monitor_id: str):
     """One monitor with the configuration it was started with."""
@@ -140,7 +141,7 @@ async def delete_monitor(request: Request, monitor_id: str):
 detectors_router = APIRouter(route_class=TacticErrorRoute)
 
 
-@detectors_router.get("", response_model=dict[str, Any])
+@detectors_router.get("", response_model=dict[str, Any], openapi_extra=OPEN_TO_AGENTS)
 @shared_limit_fetch
 async def list_detectors(
     request: Request,

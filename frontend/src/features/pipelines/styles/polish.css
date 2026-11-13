@@ -1,10 +1,9 @@
-/* A quieter, more refined finish for the composer: a dotted canvas, cards that lift
-   on hover and glow in their own colour when selected, and floating bars of frosted
-   glass. Only appearance lives here; sizes that layout and hit-testing rely on stay
-   where they are defined. */
+/* A quieter, more refined finish for the composer: a dotted canvas and cards that lift
+   on hover and glow in their own colour when selected. Only appearance lives here; sizes
+   that layout and hit-testing rely on stay where they are defined. */
 
 .pl-canvas-wrap {
-  --pl-canvas-bg: hsl(220 24% 97.6%);
+  --pl-canvas-bg: hsl(var(--background));
   --pl-grid-dot: hsl(220 16% 62% / 0.75);
   --pl-card-shadow: 0 1px 2px hsl(220 30% 20% / 0.05), 0 4px 14px -4px hsl(220 30% 20% / 0.08);
   --pl-card-shadow-hover: 0 2px 4px hsl(220 30% 20% / 0.06), 0 12px 28px -8px hsl(220 30% 20% / 0.16);
@@ -31,7 +30,8 @@
   border-color: color-mix(in srgb, var(--pl-node-accent) 42%, hsl(var(--border)));
   box-shadow: var(--pl-card-shadow-hover);
 }
-.pl-canvas-wrap .pl-node.is-selected {
+/* A chosen card keeps its ring under the pointer, where it was just chosen. */
+.pl-canvas-wrap .react-flow__node .pl-node.is-selected {
   outline: none;
   border-color: var(--pl-node-accent);
   box-shadow:
@@ -47,6 +47,15 @@
     0 0 0 4px hsl(var(--ring)),
     var(--pl-card-shadow-hover);
 }
+/* A step that is switched off stands aside: flat, dashed and quiet, like the place a detector goes. */
+.pl-canvas-wrap .pl-node.is-off {
+  border: 1.5px dashed hsl(var(--muted-foreground) / 0.55);
+  background: hsl(var(--card));
+  box-shadow: none;
+}
+.pl-canvas-wrap .pl-node.is-off .pl-node-kind,
+.pl-canvas-wrap .pl-node.is-off .pl-node-title strong { color: hsl(var(--muted-foreground)); }
+.pl-canvas-wrap .pl-node.is-off .pl-node-kind::before { background: hsl(var(--muted-foreground) / 0.55); }
 /* The kind reads as a small coloured tag. */
 .pl-canvas-wrap .pl-node-kind {
   font-weight: 600;
@@ -80,7 +89,11 @@
 .pl-canvas-wrap .pl-node .react-flow__handle:hover::after {
   transform: scale(1.18);
 }
+/* A count is wider than a dot, so it is centred on the port and not inset from its edges. */
 .pl-canvas-wrap .pl-node .react-flow__handle.has-count::after {
+  inset: auto;
+  left: 50%;
+  top: 50%;
   border-width: 2px;
 }
 .pl-canvas-wrap .pl-node .react-flow__handle.has-count:hover::after {
@@ -96,7 +109,7 @@
   padding: 4px;
   border: 1px solid hsl(var(--border) / 0.8);
   border-radius: 12px;
-  background: color-mix(in srgb, hsl(var(--background)) 86%, transparent);
+  background: color-mix(in srgb, hsl(var(--card)) 86%, transparent);
   backdrop-filter: blur(12px) saturate(1.4);
   box-shadow: var(--pl-float-shadow, var(--pl-card-shadow));
 }
@@ -126,56 +139,24 @@
   backdrop-filter: blur(12px);
 }
 
-/* Floating bars: frosted glass with a hairline edge and a soft, wide shadow. */
+/* The canvas's own controls float over it with a soft, wide shadow. */
 .pl-stage {
-  --pl-float-bg: color-mix(in srgb, hsl(var(--background)) 80%, transparent);
-  --pl-float-border: hsl(var(--border) / 0.85);
   --pl-float-shadow: 0 1px 1px hsl(220 30% 20% / 0.04), 0 10px 30px -10px hsl(220 30% 20% / 0.18);
 }
 .dark .pl-stage {
-  --pl-float-bg: color-mix(in srgb, hsl(var(--background)) 76%, transparent);
-  --pl-float-border: hsl(0 0% 100% / 0.08);
   --pl-float-shadow: 0 1px 1px #00000033, 0 12px 32px -10px #000000a6;
 }
-/* On a phone the header stacks above the canvas without cards, so this is wider screens only. */
-@media (min-width: 681px) {
-  .pl-stage .pl-setup-identity,
-  .pl-stage .pl-setup-actions,
-  .pl-stage .pl-canvas-toolbar > .pl-actions,
-  .pl-stage .pl-settings-panel {
-    border-color: var(--pl-float-border);
-    border-radius: 16px;
-    box-shadow: var(--pl-float-shadow);
-  }
-  .pl-stage .pl-setup-identity,
-  .pl-stage .pl-setup-actions,
-  .pl-stage .pl-canvas-toolbar > .pl-actions {
-    backdrop-filter: blur(14px) saturate(1.5);
-  }
+.pl-stage .pl-canvas-feedback {
+  box-shadow: var(--pl-float-shadow);
 }
 .pl-stage .pl-setup-actions > button,
 .pl-stage .pl-canvas-toolbar > .pl-actions button {
-  border-radius: 10px;
-  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
-}
-.pl-stage .pl-setup-actions > button.mn-primary {
-  background: linear-gradient(180deg, hsl(var(--primary) / 0.92), hsl(var(--primary)));
-  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.18), 0 1px 2px hsl(var(--primary) / 0.35),
-    0 4px 12px -4px hsl(var(--primary) / 0.5);
-}
-.pl-stage .pl-setup-actions > button.mn-primary:not(:disabled):hover {
-  filter: brightness(1.06);
-}
-.pl-stage .pl-canvas-toolbar .pl-segmented {
-  border-radius: 10px;
-}
-.pl-stage .pl-canvas-toolbar .pl-segmented button {
-  border-radius: 8px;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 /* Settings: the heading stays put above content that scrolls under it. */
 .pl-stage .pl-settings-panel {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading {
   position: sticky;
@@ -185,8 +166,7 @@
   margin: -16px -16px 12px;
   padding: 12px 12px 10px 16px;
   border-bottom: 1px solid hsl(var(--border) / 0.7);
-  background: color-mix(in srgb, hsl(var(--background)) 88%, transparent);
-  backdrop-filter: blur(10px);
+  background: hsl(var(--card));
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading button {
   border-color: transparent;
@@ -204,4 +184,145 @@
   .pl-stage .pl-canvas-toolbar > .pl-actions button {
     transition: none;
   }
+}
+
+/* The place a design keeps for its detector: an outline to fill, quieter than any step. */
+.pl-detector-slot-wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+.pl-detector-slot-wires path {
+  fill: none;
+  stroke: hsl(var(--muted-foreground) / 0.55);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 5;
+}
+.pl-canvas-wrap .pl-detector-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  grid-template-rows: 16px minmax(0, 1fr) 16px;
+  align-content: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  gap: 3px;
+  border: 1.5px dashed hsl(var(--muted-foreground) / 0.55);
+  border-radius: 8px;
+  background: hsl(var(--card) / 0.6);
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: all;
+  transition: border-color 120ms, background-color 120ms;
+}
+.pl-detector-slot-kind {
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pl-detector-slot-title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+.pl-detector-slot strong {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+  color: hsl(var(--foreground));
+}
+.pl-detector-slot small {
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+.pl-canvas-wrap .pl-detector-slot:is(:hover, :focus-visible) {
+  border-color: hsl(var(--foreground));
+  background: hsl(var(--card));
+}
+
+/* A note is text beside the steps it is about: as wide as a card, with no ports and no shadow. */
+.pl-canvas-wrap .pl-note {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background) / 0.92);
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: all;
+  user-select: none;
+  touch-action: none;
+}
+.pl-canvas-wrap .pl-note.is-movable { cursor: grab; }
+.pl-canvas-wrap .pl-note.is-movable:active { cursor: grabbing; }
+.pl-canvas-wrap .pl-note:is(:hover, :focus-visible) {
+  border-color: hsl(var(--muted-foreground) / 0.55);
+  color: hsl(var(--foreground));
+}
+.pl-canvas-wrap .pl-note:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+/* While it is written the note is a field that grows with its text. */
+.pl-canvas-wrap .pl-note.is-writing {
+  padding: 0;
+  border-color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  user-select: text;
+}
+.pl-note-grow { display: grid; }
+.pl-note-grow::after,
+.pl-note-grow > textarea {
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 56px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pl-note-grow::after {
+  content: attr(data-value) " ";
+  visibility: hidden;
+}
+.pl-note-grow > textarea {
+  resize: none;
+  overflow: hidden;
+  background: none;
+  color: inherit;
+  outline: none;
+}
+
+/* Open work in a step's settings: plain, because an unfinished design is no fault. */
+.pl-open {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }

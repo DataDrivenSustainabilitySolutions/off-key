@@ -26,5 +26,6 @@ Use this page as the entry point to choose the right runbook for your role.
 - [Monitoring pipelines](development/monitoring-pipelines.md): graph contracts, numerical ownership, activation, bounded inspection and rollout.
 - [Backend API guide](reference/backend-api.md): endpoint contracts, examples, and errors.
 - [Data model](reference/data-model.md): core entities and relationships.
+- [Design file](reference/design-file.md): the JSON document a monitoring design travels as, with its schema.
 - [Testing and debugging](development/testing-debugging.md): test commands, health checks, and triage playbooks.
 - [Contributing and CI](development/contributing-ci.md): contribution process and current CI checks.

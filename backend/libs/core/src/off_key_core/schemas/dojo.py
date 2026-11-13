@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .pipelines import PipelineDefinition
+from .pipelines import PipelineDefinition, PipelineNodePreview
 
 # One dataset stays a size a single comparison run can replay quickly.
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
@@ -15,6 +15,10 @@ MAX_POINTS_PAGE = 10_000
 # Runs replay on the Dojo worker; more than this many waiting is refused.
 MAX_ACTIVE_RUNS = 20
 MAX_RESULTS_PAGE = 10_000
+# A run's results are drawn from at most this many stretches of time.
+MAX_OUTLINE_BUCKETS = 2_000
+# A run keeps fewer observations than this with the values at every step.
+MAX_STEP_SAMPLES = 24
 MAX_DATASET_LABELS = 500
 # Recorded alarms read for label suggestions, and suggestions returned.
 MAX_SUGGESTION_ALARMS = 50_000
@@ -273,6 +277,73 @@ class RunResultsPage(DojoModel):
     items: list[RunResult] = Field(max_length=MAX_RESULTS_PAGE)
     next_after: int | None = Field(
         default=None, description="Pass as 'after' to read the next page."
+    )
+
+
+class RunOutlineQuery(DojoModel):
+    buckets: int = Field(
+        default=300,
+        ge=1,
+        le=MAX_OUTLINE_BUCKETS,
+        description="How many equal stretches of time the results are summed "
+        "up in, for example one per pixel column of a chart.",
+    )
+
+
+class OutlineBucket(DojoModel):
+    """The results of one stretch of time."""
+
+    start_at: datetime
+    results: int
+    score_min: float | None = Field(
+        description="The lowest and the highest score in the stretch, read "
+        "like a result's 'score'; null where nothing was scored yet."
+    )
+    score_max: float | None
+    threshold_min: float | None = Field(
+        description="The lowest and the highest alarm threshold in the "
+        "stretch; null where the results carry none."
+    )
+    threshold_max: float | None
+    alarms: int = Field(description="How many of the results alarmed.")
+
+
+class RunOutline(DojoModel):
+    """A run's results summed up over equal stretches of time."""
+
+    run_id: str
+    strategy: str
+    start_at: datetime | None = Field(
+        description="When the first and the last result were scored; null for "
+        "a run without results."
+    )
+    end_at: datetime | None
+    bucket_seconds: float = Field(description="How long one stretch is.")
+    buckets: list[OutlineBucket] = Field(
+        max_length=MAX_OUTLINE_BUCKETS,
+        description="The stretches that hold results, in time order.",
+    )
+
+
+class StepSample(DojoModel):
+    """What one observation of a run looked like at every step."""
+
+    sequence: int = Field(description="The result this observation gave.")
+    timestamp: datetime
+    phase: str
+    steps: dict[str, PipelineNodePreview] = Field(
+        description="By step: the values that went in and came out, at most "
+        "the first eight features of each, and why a step gave none."
+    )
+
+
+class RunSteps(DojoModel):
+    """A few observations of a run, spread from its first result to its last."""
+
+    run_id: str
+    samples: list[StepSample] = Field(
+        max_length=MAX_STEP_SAMPLES,
+        description="In time order; empty until the run has ended.",
     )
 
 

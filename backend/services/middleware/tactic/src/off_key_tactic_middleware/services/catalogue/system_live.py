@@ -1,4 +1,5 @@
-"""Leased, shared MQTT observation; telemetry exists only in bounded memory."""
+"""Leased, shared observation of MQTT brokers and polled HTTP sources; telemetry
+exists only in bounded memory."""
 
 import asyncio
 import hashlib
@@ -14,8 +15,13 @@ from off_key_core.utils.payload_decode import PayloadDecoder
 
 from ...config.system_live import SystemLiveSettings
 from .arrival_cadence import ArrivalCadence
-from .broker_access import ResolvedBroker, resolve_broker
+from .broker_access import ResolvedBroker, ResolvedHttpSource, peer, resolve_broker
+from .system_live_http import HttpPollWorker
 from .system_live_mqtt import LiveMqttWorker
+
+# A previewed request path is asked this often, or as rarely as the operator's
+# limit demands; recording follows each reading's own interval instead.
+PREVIEW_POLL_SECONDS = 5
 
 
 class LiveSessionError(Exception):
@@ -54,19 +60,21 @@ class SystemLiveService:
         settings: SystemLiveSettings,
         *,
         worker_factory=LiveMqttWorker,
+        http_worker_factory=HttpPollWorker,
         clock=time.monotonic,
         access_resolver=None,
     ):
         self.settings = settings
         self.worker_factory = worker_factory
+        self.http_worker_factory = http_worker_factory
         self.clock = clock
         self.access_resolver = access_resolver
         self.guard = RLock()
         self.operations = asyncio.Lock()
         self.leases: dict[str, tuple[int, float]] = {}
         self.lease_streams: dict[str, set[str]] = {}
-        self.workers: list[LiveMqttWorker] = []
-        self.connection_workers: dict[str, LiveMqttWorker] = {}
+        self.workers: list[LiveMqttWorker | HttpPollWorker] = []
+        self.connection_workers: dict[str, LiveMqttWorker | HttpPollWorker] = {}
         self.connection_deadlines: dict[str, float] = {}
         self.connections: dict[str, dict] = {}
         self.streams: dict[str, dict] = {}
@@ -142,7 +150,7 @@ class SystemLiveService:
                     state.update(
                         state="error",
                         message=(
-                            "Could not reach the broker within "
+                            f"Could not reach the {peer(worker.connection)} within "
                             f"{timeout} seconds. "
                             "Check network or VPN access, then retry."
                         ),
@@ -437,24 +445,37 @@ class SystemLiveService:
         if isinstance(resolved, str):
             state.update(state="blocked", message=resolved)
             return
-        connection, credential, proxy = (
-            resolved.connection,
-            resolved.credential,
-            resolved.proxy,
-        )
+        connection, proxy = resolved.connection, resolved.proxy
+        options = {"proxy": proxy} if proxy is not None else {}
+
+        def receive(topic, payload, retained):
+            self._receive(generation, connection.id, topic, payload, retained)
+
+        def report(status, message):
+            self._connection_state(generation, connection.id, status, message)
+
         try:
-            worker = self.worker_factory(
-                connection,
-                list(topics),
-                credential,
-                lambda topic, payload, retained: self._receive(
-                    generation, connection.id, topic, payload, retained
-                ),
-                lambda status, message: self._connection_state(
-                    generation, connection.id, status, message
-                ),
-                **({"proxy": proxy} if proxy is not None else {}),
-            )
+            if isinstance(resolved, ResolvedHttpSource):
+                worker = self.http_worker_factory(
+                    connection,
+                    list(topics),
+                    resolved.credential,
+                    receive,
+                    report,
+                    interval=max(
+                        self.settings.SYSTEM_HTTP_MIN_POLL_SECONDS, PREVIEW_POLL_SECONDS
+                    ),
+                    **options,
+                )
+            else:
+                worker = self.worker_factory(
+                    connection,
+                    list(topics),
+                    resolved.credential,
+                    receive,
+                    report,
+                    **options,
+                )
             self.workers.append(worker)
             self.connection_workers[connection.id] = worker
             self.connection_deadlines[connection.id] = (
@@ -465,23 +486,32 @@ class SystemLiveService:
             # Public state must never include exception text, host credentials,
             # connection URLs, certificates, or MQTT payloads.
             state.update(
-                state="error", message="Could not initialize the broker connection."
+                state="error",
+                message=f"Could not initialize the {peer(connection)} connection.",
             )
 
-    def _resolve_connection(self, connection, access) -> ResolvedBroker | str:
+    def _resolve_connection(
+        self, connection, access
+    ) -> ResolvedBroker | ResolvedHttpSource | str:
         """Checks run in a fixed order: capacity, access, then topic fan-out."""
         if len(self.workers) >= self.settings.SYSTEM_LIVE_MAX_CONNECTIONS:
             return "The connection exceeds the concurrent broker limit."
+        polled = connection.protocol == "http"
         resolved = resolve_broker(self.settings, connection, access)
         if resolved == "host_not_allowed":
-            return "The broker is not in the operator's live host allowlist."
+            return (
+                "The server is not in the operator's HTTP origin allowlist."
+                if polled
+                else "The broker is not in the operator's live host allowlist."
+            )
         if resolved == "credential_missing":
             return "The connection's private credential reference is unavailable."
         if any(
             len(streams) > 64
             for streams in self.bindings.get(connection.id, {}).values()
         ):
-            return "A topic exceeds the limit of 64 bound streams."
+            address = "request path" if polled else "topic"
+            return f"A {address} exceeds the limit of 64 bound streams."
         return resolved
 
     def _connection_state(self, generation, connection_id, status, message) -> None:

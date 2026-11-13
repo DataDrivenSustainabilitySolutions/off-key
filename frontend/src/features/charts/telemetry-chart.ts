@@ -15,6 +15,7 @@ import type { AnomalyMarker } from "@/lib/anomaly-utils";
 import { getPauseLimit, type TimeValue } from "./telemetry-data";
 import type { MonitoringChartReading, TelemetryChartSeries } from "./types";
 import {
+  alarmText,
   buildSelectedDetectorSeries,
   type TelemetryChartDetector,
   type SecondaryChartSeries,
@@ -274,7 +275,7 @@ const readTimeValue = (value: unknown): TimeValue | undefined => {
   return [Number(value[0]), Number(value[1])];
 };
 
-const readObservationDetails = (data: unknown): { threshold: number | null; alarmActive: boolean } | undefined => {
+const readObservationDetails = (data: unknown): { threshold: number | null; alarmActive: boolean; alarmMuted: boolean } | undefined => {
   if (typeof data !== "object" || data === null || !("observation" in data)) return undefined;
   const { observation } = data;
   if (typeof observation !== "object" || observation === null ||
@@ -282,7 +283,7 @@ const readObservationDetails = (data: unknown): { threshold: number | null; alar
       typeof observation.alarmActive !== "boolean") return undefined;
   const { threshold, alarmActive } = observation;
   if (threshold !== null && (typeof threshold !== "number" || !Number.isFinite(threshold))) return undefined;
-  return { threshold, alarmActive };
+  return { threshold, alarmActive, alarmMuted: "alarmMuted" in observation && observation.alarmMuted === true };
 };
 
 const readSummary = (data: unknown): HistoryPoint | undefined =>
@@ -343,7 +344,7 @@ export const formatTelemetryTooltip = (
     const observation = readObservationDetails(entry.data);
     if (observation) {
       lines.push(`Alarm threshold: ${observation.threshold !== null ? formatNumber(observation.threshold) : "unavailable"}`);
-      lines.push(`Alarm: ${observation.alarmActive ? "active" : "inactive"}`);
+      lines.push(`Alarm: ${alarmText(observation)}`);
     }
   }
   return lines.join("\n");
@@ -679,7 +680,12 @@ export const buildMonitoringChartOption = ({
         itemStyle: { color: alarmColor },
       }] : [];
     });
-    line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []), ...onsets] };
+    // An alarm a Mute alarms step held back: the same dot, left open over the line.
+    const muted = series.data.flatMap(point => point.observation?.alarmMuted && point.value[1] !== null ? [{
+      name: "Muted alarm", coord: [point.value[0], point.value[1]], symbol: "circle", symbolSize: 6,
+      itemStyle: { color: colors.popover, borderColor: alarmColor, borderWidth: 1 },
+    }] : []);
+    line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []), ...onsets, ...muted] };
     return [line, buildThresholdSeriesOption(series, paneIndex, alarmColor)];
   });
 

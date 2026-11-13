@@ -23,6 +23,8 @@ test("setup controls retain typed values and display real API field errors on de
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await model.selectOption("aberrant_x_stream");
+      // The settings that do not decide a detector's behavior wait under More settings.
+      await page.getByText("More settings", { exact: true }).click();
       const cache = page.getByRole("spinbutton", { name: "Max Feature Cache Size", exact: true });
       await page.getByRole("checkbox", { name: "Max Feature Cache Size automatic", exact: true }).check();
       await expect(cache).toBeDisabled();

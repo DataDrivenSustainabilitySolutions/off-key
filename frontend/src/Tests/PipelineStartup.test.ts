@@ -19,7 +19,12 @@ describe("start-up estimate", () => {
     expect(startupPhases(definition()).map((phase) => [phase.label, phase.observations]))
       .toEqual([["Detector learning", 1200], ["Calibration", 360]]);
     // Detectors that are all fitted once are trained.
-    expect(startupPhases(definition(), 0, true)[0]?.label).toBe("Training");
+    expect(startupPhases(definition(), 0, "fitted")[0]?.label).toBe("Training");
+    // Detectors that follow a rule learn nothing, so calibration is the whole start.
+    expect(startupPhases(definition(), 0, "none").map((phase) => [phase.label, phase.observations]))
+      .toEqual([["Calibration", 360]]);
+    expect(startupSentence(startupEstimate(definition(), [], 79, "none")))
+      .toBe("The first alarm can come after at least 439 observations: 79 to prepare and 360 to calibrate.");
   });
 
   it("is paced by the slowest reading, and unknown while any reading has no interval", () => {
@@ -40,7 +45,7 @@ describe("start-up estimate", () => {
     expect(startupSummary(timed)).toBe("≈ 26 min");
     expect(startupSentence(timed)).toBe("The first alarm can come after at least 1,560 observations: "
       + "1,200 to learn and 360 to calibrate. At one observation every 1 s, that is about 26 min.");
-    const untimed = startupEstimate(definition(), [1, undefined], 0, true);
+    const untimed = startupEstimate(definition(), [1, undefined], 0, "fitted");
     expect(startupSummary(untimed)).toBe("1,560 observations");
     expect(startupSentence(untimed)).toBe("The first alarm can come after at least 1,560 observations: "
       + "1,200 to train and 360 to calibrate.");

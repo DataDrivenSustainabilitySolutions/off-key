@@ -19,6 +19,8 @@ from off_key_tactic_middleware.services.catalogue.broker_access import (
 from off_key_tactic_middleware.services.catalogue.system_live import SystemLiveService
 from pydantic import ValidationError
 
+from tests.support.system_live import FakeWorker
+
 
 def snapshot(*, host, credential_ref=None):
     return SystemSnapshot(
@@ -193,3 +195,108 @@ def test_saving_a_recorded_reading_accepts_only_routed_or_allowed_brokers(
     validate(collection_definition("route-broker"))
     with pytest.raises(DomainValidationError, match="allowlist"):
         validate(collection_definition("unrouted-broker"))
+
+
+def http_snapshot(policy=None):
+    return SystemSnapshot(
+        revision=1,
+        storage_origin="saved",
+        document=SystemDocument(
+            connections=[
+                {
+                    "id": "api",
+                    "label": "API",
+                    "protocol": "http",
+                    "host": "api.example.com",
+                    "tls": True,
+                }
+            ],
+            streams=[
+                {
+                    "id": "temperature",
+                    "label": "Temperature",
+                    "connection_id": "api",
+                    "topic": "/v1/status",
+                    "payload_pointer": "/temperature",
+                    "policy": policy,
+                }
+            ],
+        ),
+    )
+
+
+class PollingWorker(FakeWorker):
+    def __init__(self, *arguments, interval, **options):
+        super().__init__(*arguments, **options)
+        self.interval = interval
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("minimum", "interval"), [(1, 5), (30, 30)])
+async def test_an_http_source_is_previewed_by_polling_its_paths(minimum, interval):
+    service = SystemLiveService(
+        SystemLiveSettings(
+            SYSTEM_LIVE_ENABLED=True,
+            SYSTEM_HTTP_ALLOWED_ORIGINS=["https://api.example.com"],
+            SYSTEM_HTTP_MIN_POLL_SECONDS=minimum,
+        ),
+        worker_factory=None,
+        http_worker_factory=PollingWorker,
+    )
+    try:
+        await service.acquire(http_snapshot(), 1, 1)
+        (worker,) = service.workers
+        assert (worker.topics, worker.interval) == (["/v1/status"], interval)
+        assert worker.connection.port == 443
+
+        worker.message("/v1/status", b'{"temperature": "21.5"}', False)
+        (reading,) = service.snapshot(0)["streams"]
+        assert (reading["value"], reading["decode_errors"]) == (21.5, 0)
+    finally:
+        await service.stop()
+
+
+@pytest.mark.asyncio
+async def test_an_http_preview_needs_an_allowed_origin():
+    service = SystemLiveService(
+        SystemLiveSettings(
+            SYSTEM_LIVE_ENABLED=True, SYSTEM_LIVE_ALLOWED_HOSTS=["api.example.com"]
+        ),
+        http_worker_factory=MagicMock(),
+        access_resolver=provider(route(hosts=["api.example.com"])),
+    )
+    try:
+        lease = await service.acquire(http_snapshot(), 1, 1)
+        (state,) = lease["telemetry"]["connections"]
+        assert (state["state"], state["message"]) == (
+            "blocked",
+            "The server is not in the operator's HTTP origin allowlist.",
+        )
+        assert not service.workers
+    finally:
+        await service.stop()
+
+
+def test_recording_an_http_reading_needs_an_allowed_origin(monkeypatch):
+    definition = SystemCollectionDefinition(
+        document=http_snapshot(CollectionPolicy(mode="sample")).document,
+        bindings=build_bindings(http_snapshot().document),
+        generation="test",
+    )
+    validate = system_collection.SystemCollectionService._validate_access
+    monkeypatch.setattr(
+        system_collection,
+        "get_system_live_settings",
+        lambda: SystemLiveSettings(SYSTEM_LIVE_ALLOWED_HOSTS=["api.example.com"]),
+    )
+    with pytest.raises(DomainValidationError, match="HTTP origin allowlist"):
+        validate(definition)
+
+    monkeypatch.setattr(
+        system_collection,
+        "get_system_live_settings",
+        lambda: SystemLiveSettings(
+            SYSTEM_HTTP_ALLOWED_ORIGINS=["https://api.example.com"]
+        ),
+    )
+    validate(definition)

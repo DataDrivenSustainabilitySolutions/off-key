@@ -39,6 +39,9 @@ LOCAL_LIVE_HOSTS = [
     *(broker.host for broker in _load_broker_fixture().BROKERS),
 ]
 
+# The test API of the fixture profile; compose.yml repeats it as its default.
+LOCAL_HTTP_ORIGINS = ["http://fixture-api:8080"]
+
 # Where workers find the opt-in forecast service on the app network.
 FORECAST_API_URL = "http://forecast:8020"
 
@@ -107,6 +110,9 @@ def initialize(args: argparse.Namespace) -> None:
         SYSTEM_LIVE_ENABLED="true",
         SYSTEM_LIVE_ALLOWED_HOSTS=json.dumps(LOCAL_LIVE_HOSTS, separators=(",", ":")),
         SYSTEM_LIVE_CREDENTIALS="{}",
+        SYSTEM_HTTP_ALLOWED_ORIGINS=json.dumps(
+            LOCAL_HTTP_ORIGINS, separators=(",", ":")
+        ),
         TACTIC_RADAR_WORKLOAD_LIFECYCLE="persistent",
         LOCAL_SOCKET_PROXY_IMAGE="ghcr.io/tecnativa/docker-socket-proxy:v0.4.2",
     )
@@ -336,6 +342,7 @@ def start_stack(
         print(
             "Existing local .env files keep their allowlist; include the fixture hosts."
         )
+        print(f"An HTTP API to poll answers at {LOCAL_HTTP_ORIGINS[0]} in the stack.")
 
 
 def port(value: str) -> int:

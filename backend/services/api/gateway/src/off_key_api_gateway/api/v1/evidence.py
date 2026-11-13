@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.schemas.devices import ChartEvidence, Evidence
 
 from ..errors import TacticErrorRoute
@@ -14,7 +15,7 @@ MAX_CHART_READINGS = 200
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
 
 
-@router.get("", response_model=list[Evidence])
+@router.get("", response_model=list[Evidence], openapi_extra=OPEN_TO_AGENTS)
 @shared_limit_fetch
 async def list_evidence(
     request: Request,
@@ -28,7 +29,7 @@ async def list_evidence(
     return await data_request("/evidence", {"stream_id": reading_id, "limit": limit})
 
 
-@router.get("/chart", response_model=list[ChartEvidence])
+@router.get("/chart", response_model=list[ChartEvidence], openapi_extra=OPEN_TO_AGENTS)
 @shared_limit_fetch
 async def list_chart_evidence(
     request: Request,

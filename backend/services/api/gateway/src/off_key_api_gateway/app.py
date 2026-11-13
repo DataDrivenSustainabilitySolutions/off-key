@@ -27,6 +27,7 @@ from off_key_api_gateway.settings import (
     get_service_endpoints_settings,
 )
 
+from .api.mcp_server import add_mcp
 from .api.middleware import RequestLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.request_guards import BodySizeLimitMiddleware, ClientRateLimitMiddleware
@@ -46,6 +47,13 @@ uses this same API, so every change it makes can be made here.
 `Authorization: Bearer <token>` on every other call and sign in again when it
 expires. Every member may read and keep favorites; other changes need a
 permission of the member's role, which `GET /v1/me` lists.
+
+**Agents.** An agent sends a key in place of a token, the same way. A member
+with `manage_members` creates keys under `/v1/agents`. A key reaches only the
+operations marked `x-agent-access`: with `any` every key may call it, with
+`start` only a key that may start monitoring services. `GET /v1/agents/me`
+tells an agent which it is. An agent that speaks the Model Context Protocol
+connects to `/v1/mcp` with its key and finds these operations as tools.
 
 **Vocabulary.** The web app and this API name the same things differently:
 
@@ -132,6 +140,12 @@ OPENAPI_TAGS = [
         "`manage_members` the organization's members and invitations.",
     },
     {
+        "name": "agents",
+        "description": "Agents sign in with a key in place of a password. A key "
+        "reads, designs, tests and proposes; starting monitoring services is "
+        "allowed per key. Members with `manage_members` create and revoke keys.",
+    },
+    {
         "name": "roles",
         "description": "Roles bundle permissions; every member holds one. Every "
         "member reads everything, and a permission allows changes in one area.",
@@ -160,7 +174,8 @@ VALIDATION_SPECS = [
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan manager for startup and shutdown events."""
     logger.info("Application is now running...")
-    yield
+    async with app.state.mcp():
+        yield
 
     await tactic.close()
     logger.info("Application shutdown...")
@@ -210,6 +225,7 @@ def build_app(app_settings: AppSettings) -> FastAPI:
 
     app.include_router(v1_router, prefix="/v1")
     app.add_api_route("/health", health_check, methods=["GET"], tags=["health"])
+    app.state.mcp = add_mcp(app)
     return app
 
 

@@ -154,6 +154,34 @@ describe("inline persisted names", () => {
     expect(save).toHaveBeenCalledOnce();
   });
 
+  it("does not save again when focus leaves the field before a failed save has enabled it", async () => {
+    let fail: (reason: Error) => void = () => undefined;
+    const save = vi.fn(
+      () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        }),
+    );
+    render(<InlineName value="Garage" onSave={save} />);
+    const input = edit();
+    fireEvent.change(input, { target: { value: "My name" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      fail(new Error("Conflict"));
+      await Promise.resolve();
+      await Promise.resolve();
+      // The failure is handled, but the field stays disabled until the next render. A browser takes
+      // focus from a disabled field on its own, and that is no reason to save.
+      expect(input.disabled).toBe(true);
+      input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Could not save the name.",
+    );
+    expect(input.disabled).toBe(false);
+    expect(save).toHaveBeenCalledOnce();
+  });
+
   it("keeps local validation visible when an earlier save had an error", () => {
     const save = vi.fn();
     render(

@@ -23,6 +23,7 @@ from off_key_core.schemas.dojo import (
     RunAlignment,
     RunCreate,
     RunListQuery,
+    RunOutlineQuery,
     RunResultsQuery,
 )
 from off_key_mqtt_radar.dojo.worker import DojoWorker, WorkerOptions
@@ -112,6 +113,12 @@ async def test_a_run_is_bound_queued_replayed_and_read_back(sessions):
         ("temperature", "t"),
     ]
     assert run.alignment == RunAlignment()
+    async with factory() as session:
+        pending = await DojoRuns(session).steps(run.id)
+    # The calibration step is reported with the detection rule that runs it.
+    nodes = {
+        node["id"] for node in run.definition["nodes"] if node["kind"] != "calibration"
+    }
 
     worker = DojoWorker(engine, WorkerOptions(worker_id="w", write_batch=40))
     assert await worker.run_once()
@@ -119,6 +126,7 @@ async def test_a_run_is_bound_queued_replayed_and_read_back(sessions):
     async with factory() as session:
         service = DojoRuns(session)
         done = await service.get(run.id)
+        steps = await service.steps(run.id)
         first = await service.results(run.id, RunResultsQuery(limit=150))
         rest = await service.results(
             run.id, RunResultsQuery(after=first.next_after, limit=150)
@@ -132,7 +140,94 @@ async def test_a_run_is_bound_queued_replayed_and_read_back(sessions):
     assert first.items[0].phase == "warmup" and first.items[0].score is None
     assert rest.items[-1].phase == "operational"
     assert rest.items[-1].timestamp == T0 + timedelta(minutes=199)
+
+    # The worker left what a few observations looked like at every step.
+    assert pending.samples == []
+    assert 12 <= len(steps.samples) < 24
+    by_sequence = {item.sequence: item for item in first.items + rest.items}
+    assert [item.sequence for item in steps.samples] == sorted(
+        {item.sequence for item in steps.samples}
+    )
+    for sample in steps.samples:
+        result = by_sequence[sample.sequence]
+        assert (sample.timestamp, sample.phase) == (result.timestamp, result.phase)
+        assert set(sample.steps) == nodes
+    learning, scored = steps.samples[0], steps.samples[-1]
+    assert learning.sequence == 1
+    assert learning.steps["detector"].state == "not_executed"
+    assert learning.steps["detector"].output is None
+    assert set(scored.steps["input"].output) == {"voltage", "current", "temperature"}
+    assert scored.steps["detector"].state == "ready"
+    assert scored.steps["detector"].output == pytest.approx(
+        by_sequence[scored.sequence].score
+    )
     assert [item.id for item in listed.items] == [run.id]
+
+
+@pytest.mark.asyncio
+async def test_an_outline_sums_the_results_up_in_equal_stretches_of_time(sessions):
+    engine, factory = sessions
+    creator, view = await dataset(factory)
+    async with factory() as session:
+        run = await DojoRuns(session).create(request(view), created_by=creator)
+        empty = await DojoRuns(session).outline(run.id, RunOutlineQuery())
+    assert (empty.start_at, empty.end_at, empty.buckets) == (None, None, [])
+    assert empty.strategy == "adaptive_stream"
+
+    worker = DojoWorker(engine, WorkerOptions(worker_id="w", write_batch=40))
+    assert await worker.run_once()
+
+    async with factory() as session:
+        service = DojoRuns(session)
+        done = await service.get(run.id)
+        results = (await service.results(run.id, RunResultsQuery(limit=500))).items
+        outline = await service.outline(run.id, RunOutlineQuery(buckets=20))
+        whole = await service.outline(run.id, RunOutlineQuery(buckets=1))
+        fine = await service.outline(run.id, RunOutlineQuery(buckets=2000))
+        with pytest.raises(NotFoundError):
+            await service.outline("missing", RunOutlineQuery())
+    assert done.status == "succeeded", done.error
+    assert (outline.start_at, outline.end_at) == (T0, T0 + timedelta(minutes=199))
+    assert outline.bucket_seconds == pytest.approx(199 * 60 / 20)
+    # 200 results a minute apart in 20 stretches: every stretch holds some,
+    # and the last result belongs to the last stretch.
+    assert len(outline.buckets) == 20
+    assert [item.start_at for item in outline.buckets] == [
+        T0 + timedelta(seconds=index * outline.bucket_seconds) for index in range(20)
+    ]
+    assert sum(item.results for item in outline.buckets) == len(results) == 200
+    assert sum(item.alarms for item in outline.buckets) == done.alarm_count
+    for index, item in enumerate(outline.buckets):
+        start = item.start_at
+        end = start + timedelta(seconds=outline.bucket_seconds)
+        inside = [
+            result
+            for result in results
+            if start <= result.timestamp < end
+            or (index == 19 and result.timestamp == outline.end_at)
+        ]
+        scores = [result.score for result in inside if result.score is not None]
+        thresholds = [
+            result.threshold for result in inside if result.threshold is not None
+        ]
+        assert item.results == len(inside)
+        assert item.alarms == sum(result.alarm for result in inside)
+        assert (item.score_min, item.score_max) == (
+            (min(scores), max(scores)) if scores else (None, None)
+        )
+        assert (item.threshold_min, item.threshold_max) == (
+            (min(thresholds), max(thresholds)) if thresholds else (None, None)
+        )
+    # Nothing is scored while the detector warms up.
+    assert outline.buckets[0].score_max is None
+    assert outline.buckets[-1].score_max is not None
+    scored = [result.score for result in results if result.score is not None]
+    assert [
+        (item.results, item.score_min, item.score_max) for item in whole.buckets
+    ] == [(200, min(scored), max(scored))]
+    # More stretches than results leave the empty ones out.
+    assert len(fine.buckets) == 200
+    assert {item.results for item in fine.buckets} == {1}
 
 
 @pytest.mark.asyncio
@@ -335,6 +430,14 @@ async def test_routes_queue_and_cancel_runs(sessions):
         results = await client.get(
             f"/api/v1/dojo/runs/{run_id}/results", headers=headers
         )
+        outline = await client.get(
+            f"/api/v1/dojo/runs/{run_id}/outline?buckets=12", headers=headers
+        )
+        too_many = await client.get(
+            f"/api/v1/dojo/runs/{run_id}/outline?buckets=100000", headers=headers
+        )
+        steps = await client.get(f"/api/v1/dojo/runs/{run_id}/steps", headers=headers)
+        no_steps = await client.get("/api/v1/dojo/runs/missing/steps", headers=headers)
         deleted = await client.delete(f"/api/v1/dojo/runs/{run_id}", headers=headers)
         broken = await client.post(
             "/api/v1/dojo/runs",
@@ -344,5 +447,16 @@ async def test_routes_queue_and_cancel_runs(sessions):
     assert created.json()["created_by"] == creator
     assert cancelled.json()["status"] == "cancelled"
     assert results.json() == {"items": [], "next_after": None}
+    assert outline.json() == {
+        "run_id": run_id,
+        "strategy": "adaptive_stream",
+        "start_at": None,
+        "end_at": None,
+        "bucket_seconds": 0.0,
+        "buckets": [],
+    }
+    assert too_many.status_code == 422
+    assert steps.json() == {"run_id": run_id, "samples": []}
+    assert no_steps.status_code == 404
     assert deleted.status_code == 204
     assert broken.status_code == 422

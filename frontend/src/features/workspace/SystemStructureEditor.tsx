@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconPicker } from "@/components/source-icons/IconPicker";
 import { getErrorMessage } from "@/lib/errors";
 import {
   collectionByKind,
-  DEFAULT_GROUP_COLOR,
+  connectionDefaults,
   ENTITY_NOUN,
+  httpPort,
   newSystemEntity,
   removeSystemEntity,
   systemRemovalIds,
@@ -70,6 +72,12 @@ export function SystemStructureEditor({
   const device = entity as SystemDevice;
   const stream = entity as SystemStream;
   const group = entity as SystemGroup;
+  const isPolled = (connectionId?: string) =>
+    baseline.brokers.find((item) => item.id === connectionId)?.protocol === "http";
+  // An HTTP API is asked for a request path; an MQTT broker sends topics.
+  const polled = kind === "connection" ? connection.protocol === "http" : isPolled(stream.broker_id);
+  // Readings hold topics or request paths, which one type cannot take from the other.
+  const typeFixed = baseline.readings.some((item) => item.broker_id === entityId);
   // The baseline is fixed for the dialog's lifetime, so typing only reruns
   // the search, not the dependency walk.
   const matches = useMemo(() => {
@@ -133,6 +141,10 @@ export function SystemStructureEditor({
         </p>
       </div>
       <fieldset disabled={disabled}>
+        <div className="source-appearance-field"><span>Appearance<small>A small icon and a quiet color.</small></span>
+          <IconPicker kind={kind} label={entity.label} value={entity.appearance} color={kind === "group" ? group.color : undefined}
+            disabled={disabled} onChange={appearance => update({ appearance })} />
+        </div>
         <label>
           Name
           <input
@@ -147,10 +159,32 @@ export function SystemStructureEditor({
         {kind === "connection" && (
           <>
             <label>
-              Broker host
+              Type
+              <select
+                aria-label="Connection type"
+                value={connection.protocol}
+                disabled={typeFixed}
+                onChange={(event) =>
+                  update({
+                    ...connectionDefaults(
+                      event.target.value as SystemConnection["protocol"],
+                    ),
+                    websocket_path: undefined,
+                  })
+                }
+              >
+                <option value="mqtt">MQTT broker</option>
+                <option value="http">HTTP API</option>
+              </select>
+              {typeFixed && (
+                <small>The type is fixed while readings use this connection.</small>
+              )}
+            </label>
+            <label>
+              {polled ? "Host" : "Broker host"}
               <input
-                aria-label="Broker host"
-                placeholder="mqtt.example.com"
+                aria-label={polled ? "Host" : "Broker host"}
+                placeholder={polled ? "api.example.com" : "mqtt.example.com"}
                 maxLength={253}
                 value={connection.host}
                 onChange={(event) => update({ host: event.target.value })}
@@ -161,7 +195,7 @@ export function SystemStructureEditor({
               <label>
                 Port
                 <input
-                  aria-label="Broker port"
+                  aria-label={polled ? "Port" : "Broker port"}
                   type="number"
                   min={1}
                   max={65535}
@@ -172,35 +206,56 @@ export function SystemStructureEditor({
                   required
                 />
               </label>
-              <label>
-                Transport
-                <select
-                  aria-label="Transport"
-                  value={connection.transport}
-                  onChange={(event) =>
-                    update({
-                      transport: event.target
-                        .value as SystemConnection["transport"],
-                      ...(event.target.value === "tcp"
-                        ? { websocket_path: undefined }
-                        : {}),
-                    })
-                  }
-                >
-                  <option value="tcp">MQTT / TCP</option>
-                  <option value="websocket">MQTT / WebSocket</option>
-                </select>
-              </label>
+              {polled ? (
+                <label>
+                  Scheme
+                  <select
+                    aria-label="Scheme"
+                    value={connection.tls ? "https" : "http"}
+                    onChange={(event) => {
+                      const tls = event.target.value === "https";
+                      // The port follows the scheme until one is typed in.
+                      const followed = connection.port === httpPort(!tls);
+                      update({ tls, ...(followed ? { port: httpPort(tls) } : {}) });
+                    }}
+                  >
+                    <option value="https">HTTPS</option>
+                    <option value="http">HTTP</option>
+                  </select>
+                </label>
+              ) : (
+                <label>
+                  Transport
+                  <select
+                    aria-label="Transport"
+                    value={connection.transport}
+                    onChange={(event) =>
+                      update({
+                        transport: event.target
+                          .value as SystemConnection["transport"],
+                        ...(event.target.value === "tcp"
+                          ? { websocket_path: undefined }
+                          : {}),
+                      })
+                    }
+                  >
+                    <option value="tcp">MQTT / TCP</option>
+                    <option value="websocket">MQTT / WebSocket</option>
+                  </select>
+                </label>
+              )}
             </div>
-            <label className="sp-system-check">
-              <input
-                type="checkbox"
-                checked={connection.tls}
-                onChange={(event) => update({ tls: event.target.checked })}
-              />
-              Use TLS
-            </label>
-            {connection.transport === "websocket" && (
+            {!polled && (
+              <label className="sp-system-check">
+                <input
+                  type="checkbox"
+                  checked={connection.tls}
+                  onChange={(event) => update({ tls: event.target.checked })}
+                />
+                Use TLS
+              </label>
+            )}
+            {!polled && connection.transport === "websocket" && (
               <label>
                 WebSocket path
                 <input
@@ -242,6 +297,9 @@ export function SystemStructureEditor({
                 update({
                   broker_id: event.target.value || undefined,
                   ...(kind === "stream" ? { device_id: undefined } : {}),
+                  ...(kind === "stream" && !isPolled(event.target.value)
+                    ? { timestamp_pointer: undefined }
+                    : {}),
                 })
               }
               required={kind === "stream"}
@@ -324,10 +382,12 @@ export function SystemStructureEditor({
               </select>
             </label>
             <label>
-              MQTT topic
+              {polled ? "Request path" : "MQTT topic"}
               <input
-                aria-label="MQTT topic"
-                placeholder="building/room-a/temperature"
+                aria-label={polled ? "Request path" : "MQTT topic"}
+                placeholder={
+                  polled ? "/v1/stations/7/latest" : "building/room-a/temperature"
+                }
                 maxLength={512}
                 value={stream.topic}
                 onChange={(event) => update({ topic: event.target.value })}
@@ -345,8 +405,28 @@ export function SystemStructureEditor({
                   update({ payload_pointer: event.target.value || undefined })
                 }
               />
-              <small>Leave empty to use the complete message value.</small>
+              <small>
+                Leave empty to use the complete {polled ? "reply" : "message value"}.
+              </small>
             </label>
+            {polled && (
+              <label>
+                Source timestamp
+                <input
+                  aria-label="Source timestamp"
+                  placeholder="Optional JSON pointer, e.g. /observed_at"
+                  maxLength={512}
+                  value={stream.timestamp_pointer ?? ""}
+                  onChange={(event) =>
+                    update({ timestamp_pointer: event.target.value || undefined })
+                  }
+                />
+                <small>
+                  Where the reply says when the value was measured. A poll that
+                  repeats it is not recorded again.
+                </small>
+              </label>
+            )}
             <div className="sp-system-field-pair">
               <label>
                 Value type
@@ -392,15 +472,6 @@ export function SystemStructureEditor({
         )}
         {kind === "group" && (
           <>
-            <label>
-              Colour
-              <input
-                aria-label="Collection colour"
-                type="color"
-                value={group.color ?? DEFAULT_GROUP_COLOR}
-                onChange={(event) => update({ color: event.target.value })}
-              />
-            </label>
             <label>
               Find members
               <input

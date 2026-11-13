@@ -2,17 +2,19 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ReactFlowProvider, type NodeProps } from "@xyflow/react";
 import { stepMenu } from "@/features/pipelines/contextMenu";
+import { duplicateSteps } from "@/features/pipelines/clipboard";
 import {
-  addAfter, afterBlocker, disconnectNode, duplicateBlocker, duplicateNode, type GraphDocument,
+  addAfter, afterBlocker, disconnectNode, duplicateBlocker, type GraphDocument,
 } from "@/features/pipelines/model";
 import { PipelineContextMenu } from "@/features/pipelines/PipelineContextMenu";
 import { PipelineNodeCard } from "@/features/pipelines/PipelineNodeCard";
 import { CardActionsContext } from "@/features/pipelines/cardActions";
 import type { CanvasNode } from "@/features/pipelines/types";
 import { normalizeDefinition, normalizeLayout, type PipelineComponent } from "@/features/pipelines/contracts";
+import { groupOf } from "./support/fixtures/pipelines";
 
 const component = (id: string, kind: PipelineComponent["kind"], label: string, extra: Partial<PipelineComponent> = {}) => ({
-  id, kind, label, description: "", fields: [],
+  id, kind, group: groupOf(kind), label, description: "", fields: [],
   input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : kind === "output" ? null : "features",
   ...extra,
@@ -22,7 +24,7 @@ const components = [
   component("source.aligned", "source", "Aligned inputs"),
   component("prepare.smooth", "transform", "Smooth"),
   component("prepare.despike", "transform", "Despike"),
-  component("adaptive.standard_scaler", "transform", "Standard scaler"),
+  component("adaptive.standard_scaler", "transform", "Standard scaler", { group: "normalize" }),
   component("detector:aberrant_knn", "detector", "KNN"),
   component("policy.quantile", "policy", "Quantile"),
 ];
@@ -32,28 +34,30 @@ const document = (): GraphDocument => ({
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
-      { id: "smooth", kind: "transform", component: "prepare.smooth", params: { window: 7 } },
+      { id: "smooth", kind: "transform", component: "prepare.smooth", label: "Calm", params: { window: 7 } },
       { id: "model", kind: "detector", component: "detector:aberrant_knn" },
     ],
     edges: [{ source: "input", target: "smooth" }, { source: "smooth", target: "model" }],
   }),
-  layout: normalizeLayout({ nodes: { input: { x: 0, y: 0 }, smooth: { x: 320, y: 0, label: "Calm" }, model: { x: 640, y: 0 } } }),
+  layout: normalizeLayout({ nodes: { input: { x: 0, y: 0 }, smooth: { x: 320, y: 0 }, model: { x: 640, y: 0 } } }),
 });
 
 describe("card menu operations", () => {
   it("duplicates a step with its settings and title below the original, unconnected", () => {
-    const result = duplicateNode(document(), "smooth", components)!;
-    const copy = result.document.definition.nodes.find((node) => node.id === result.id)!;
+    const result = duplicateSteps(document(), ["smooth"], components)!;
+    const id = result.ids[0]!;
+    const copy = result.document.definition.nodes.find((node) => node.id === id)!;
     expect(copy.params).toEqual({ window: 7 });
-    expect(result.document.layout.nodes[result.id]).toMatchObject({ x: 320, label: "Calm copy" });
-    expect(result.document.layout.nodes[result.id]!.y).toBeGreaterThan(0);
-    expect(result.document.definition.edges.some((edge) => edge.source === result.id || edge.target === result.id)).toBe(false);
+    expect(copy.label).toBe("Calm copy");
+    expect(result.document.layout.nodes[id]).toMatchObject({ x: 320 });
+    expect(result.document.layout.nodes[id]!.y).toBeGreaterThan(0);
+    expect(result.document.definition.edges.some((edge) => edge.source === id || edge.target === id)).toBe(false);
   });
 
   it("does not copy one-per-design steps or detectors", () => {
     expect(duplicateBlocker(document().definition, "input", components)).toBe("A design has one of these.");
     expect(duplicateBlocker(document().definition, "model", components)).toMatch(/detector's settings/);
-    expect(duplicateNode(document(), "model", components)).toBeUndefined();
+    expect(duplicateSteps(document(), ["model"], components)).toMatchObject({ ids: [], skipped: [expect.stringMatching(/detector's settings/)] });
   });
 
   it("puts a step after a card on its only connection, so the chain stays a chain", () => {
@@ -146,6 +150,26 @@ describe("canvas context menu", () => {
     expect(item.textContent).toContain("A design has one of these.");
     fireEvent.click(item);
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it("says in full what the entry in focus does, below a list of one line each", () => {
+    render(<PipelineContextMenu x={0} y={0} onClose={vi.fn()} menu={{ label: "Choose a detector", items: [
+      { key: "trees", label: "Half-space trees", help: "Count how often recent observations fall into random regions." },
+      { key: "knn", label: "k-nearest neighbors", help: "Score by the mean distance to the nearest neighbors." },
+      { key: "plain", label: "Plain" },
+    ] }} />);
+    const described = () => {
+      const item = screen.getAllByRole("menuitem").find((entry) => entry.getAttribute("data-active") === "true")!;
+      const id = item.getAttribute("aria-describedby");
+      return [item.textContent, id ? window.document.getElementById(id)!.textContent : undefined];
+    };
+    expect(described()).toEqual(["Half-space trees", "Count how often recent observations fall into random regions."]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(described()).toEqual(["k-nearest neighbors", "Score by the mean distance to the nearest neighbors."]);
+    // Only the text of the entry in focus shows; the others hold the panel's height.
+    expect(window.document.querySelectorAll(".pl-context-help p[data-active='true']")).toHaveLength(1);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(described()).toEqual(["Plain", undefined]);
   });
 });
 

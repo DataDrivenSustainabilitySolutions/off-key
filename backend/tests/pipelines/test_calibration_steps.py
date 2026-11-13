@@ -211,6 +211,19 @@ def test_a_small_alarm_rate_warns_of_a_short_window(
     assert run(needed).issues == []
 
 
+def test_the_warning_writes_a_small_alarm_rate_out():
+    # One alarm a week at an observation every five seconds.
+    result = validate_pipeline(
+        boundary_definition(
+            ("mad",), calibration="calibrate.aci", params={"alpha": 8.2672e-06}
+        )
+    )
+
+    assert result.issues[0].message.startswith(
+        "An alarm rate of 0.0000082672 needs at least 120,959 calibration observations"
+    )
+
+
 def test_a_method_that_tracks_the_boundary_itself_needs_no_window():
     assert minimum_window("pid", 0.001, 1, "max") == 1
     result = validate_pipeline(

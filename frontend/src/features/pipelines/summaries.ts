@@ -2,7 +2,10 @@ import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
 import { detectorIds } from "./model";
-import { addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import { writtenNames } from "./formula";
+import {
+  addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope, timeFeatures,
+} from "./scope";
 import { coverage } from "./learning";
 import { fusionChoice } from "./steps";
 
@@ -10,8 +13,8 @@ import { fusionChoice } from "./steps";
 export type NodeSummary = { text?: string; chips?: string[] };
 
 const count = (value: number, noun: string) => `${value.toLocaleString()} ${noun}${value === 1 ? "" : "s"}`;
-const number = (value: number) =>
-  Number.isInteger(value) ? value.toLocaleString() : Number(value.toPrecision(4)).toLocaleString();
+// Four digits that count, so that a small rate does not read as 0.
+const number = (value: number) => value.toLocaleString(undefined, { maximumSignificantDigits: Number.isInteger(value) ? 21 : 4 });
 const strings = (value: JsonValue | undefined) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 const sentence = (label: string) => label.charAt(0) + label.slice(1).toLowerCase();
@@ -19,12 +22,12 @@ const sentence = (label: string) => label.charAt(0) + label.slice(1).toLowerCase
 const isRecord = (value: JsonValue | undefined): value is Record<string, JsonValue> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Whether a setting holds its default, comparing lists and nested settings by value. */
-function same(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
+/** Whether two values of a setting are the same, comparing lists and nested settings by value. */
+export function sameSetting(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
   if (Array.isArray(left) && Array.isArray(right))
-    return left.length === right.length && left.every((item, index) => same(item, right[index]));
+    return left.length === right.length && left.every((item, index) => sameSetting(item, right[index]));
   if (isRecord(left) && isRecord(right))
-    return [...new Set([...Object.keys(left), ...Object.keys(right)])].every((key) => same(left[key], right[key]));
+    return [...new Set([...Object.keys(left), ...Object.keys(right)])].every((key) => sameSetting(left[key], right[key]));
   return (left ?? null) === (right ?? null);
 }
 
@@ -41,7 +44,7 @@ function formatted(field: FieldDescriptor, value: JsonValue): string | undefined
 function changedSettings(node: PipelineNode, component: PipelineComponent) {
   // The calibration step names how it combines detectors on its own, and only when there are several.
   const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name) && field.name !== "fusion"
-    && node.params[field.name] !== undefined && !same(node.params[field.name], field.default));
+    && node.params[field.name] !== undefined && !sameSetting(node.params[field.name], field.default));
   const lines = changed.map((field) => formatted(field, node.params[field.name]!));
   const shown = lines.filter((line): line is string => !!line).slice(0, 2);
   const rest = changed.length - shown.length;
@@ -69,8 +72,14 @@ function scopeSummary(
 const STATISTICS: Record<string, string> = {
   mean: "Mean", median: "Median", min: "Minimum", max: "Maximum", std: "Standard deviation", range: "Range",
   sum: "Sum", quantile: "Quantile", iqr: "Interquartile range", mad: "Median absolute deviation", slope: "Slope per observation",
+  zscore: "Z-score", robust_zscore: "Robust z-score", rank: "Rank", rms: "Root mean square",
+  skewness: "Skewness", kurtosis: "Excess kurtosis",
 };
 const AGGREGATES: Record<string, string> = { ...STATISTICS, sum: "Sum" };
+const ACCUMULATIONS: Record<string, string> = { sum: "total", min: "minimum", max: "maximum", count: "count" };
+const RELATIONS: Record<string, string> = {
+  correlation: "Correlation with", covariance: "Covariance with", slope: "Slope against", residual: "Residual against",
+};
 const FUNCTIONS: Record<string, string> = {
   log: "log(x)", log1p: "log(1 + x)", sqrt: "√x", abs: "|x|", square: "x²",
 };
@@ -93,8 +102,16 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
   };
   switch (node.component) {
     case "prepare.smooth": {
+      if (value("method") === "time_constant") return `Time constant ${number(amount("time_constant", 60))} s`;
       const window = number(amount("window_size", 10));
       return value("method") === "rolling" ? `Mean of last ${window}` : `Exponential over ${window}`;
+    }
+    case "prepare.time": {
+      const chosen = timeFeatures(node, component);
+      if (!chosen.length) return "No time feature yet";
+      // Only the hour and the weekday follow a clock; dt is the same everywhere.
+      const zone = chosen.some(([name]) => name !== "elapsed") ? ` · ${value("timezone") || "UTC"}` : "";
+      return `Adds ${listed(chosen.flatMap(([, names]) => names))}${zone}`;
     }
     case "prepare.despike":
       return `Window ${number(amount("window_size", 11))} · limit ${number(amount("threshold", 3))} MAD`;
@@ -103,10 +120,30 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       if (value("mode") === "lag") return `Value ${count(lag, "observation")} back`;
       return `${value("mode") === "percent" ? "Percent change" : "Difference"} over ${count(lag, "observation")}`;
     }
-    case "prepare.rolling":
-      return `${STATISTICS[String(value("statistic"))] ?? "Mean"}${value("statistic") === "quantile" ? ` ${number(amount("quantile", 0.5))}` : ""} of last ${number(amount("window_size", 60))}`;
-    case "prepare.accumulate":
-      return `Running ${value("function") === "sum" ? "total" : value("function") === "min" ? "minimum" : "maximum"} since the first accepted observation`;
+    case "prepare.rolling": {
+      const statistic = String(value("statistic"));
+      // A score or a rank places the latest value within the window; the rest describe the window.
+      const within = ["zscore", "robust_zscore", "rank"].includes(statistic);
+      return `${STATISTICS[statistic] ?? "Mean"}${statistic === "quantile" ? ` ${number(amount("quantile", 0.5))}` : ""} ${within ? "within" : "of"} last ${number(amount("window_size", 60))}`;
+    }
+    case "prepare.accumulate": {
+      const running = `Running ${ACCUMULATIONS[String(value("function"))] ?? "total"}`;
+      const reset = written(value("reset_when"));
+      return reset ? `${running} · starts over when ${reset}` : `${running} since the first accepted observation`;
+    }
+    case "prepare.hold": {
+      const condition = written(value("update_when"));
+      return condition ? `Value from the last time ${condition}` : "No condition yet";
+    }
+    case "prepare.relation": {
+      const against = value("against");
+      if (typeof against !== "string" || !against) return "No feature to compare with yet";
+      return `${RELATIONS[String(value("statistic"))] ?? RELATIONS.correlation} ${against} over last ${number(amount("window_size", 60))}`;
+    }
+    case "prepare.calculate": {
+      const names = writtenNames(typeof value("formulas") === "string" ? String(value("formulas")) : "");
+      return names.length ? `Writes ${listed(names)}` : "No formula yet";
+    }
     case "prepare.constant":
       return `${combinedName(node, component)} = ${number(amount("value", 0))}`;
     case "prepare.condition": {
@@ -148,6 +185,10 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
     case "prepare.gate": {
       const condition = written(value("condition"));
       return condition ? `Only when ${condition}` : "No condition yet";
+    }
+    case "prepare.mute": {
+      const condition = written(value("condition"));
+      return condition ? `No alarm while ${condition}` : "No condition yet";
     }
   }
 }
@@ -214,10 +255,19 @@ function settingsSummary(
     case "adaptive.uncentered_pca":
     case "adaptive.random_projection":
       return { text: count(typeof params.n_components === "number" ? params.n_components : 1, "component") };
+    case "static.expected_value":
+    case "adaptive.expected_value": {
+      if (typeof params.target !== "string" || !params.target) return { text: "No target yet" };
+      const from = strings(params.apply_to);
+      return { text: `Expects ${params.target} from ${from.length ? listed(from) : "the other features"}` };
+    }
     case "policy.quantile": {
       // The threshold freezes at this quantile of the calibration scores.
       const quantile = typeof params.quantile === "number" ? params.quantile : 1;
-      return { text: quantile === 1 ? "Above the calibration maximum" : `Above calibration quantile ${number(quantile)}` };
+      if (quantile === 1) return { text: "Above the calibration maximum" };
+      // As many digits as tell the quantile from 1.
+      const digits = quantile > 0 && quantile < 1 ? Math.min(Math.max(Math.ceil(-Math.log10(1 - quantile)) + 1, 3), 12) : 3;
+      return { text: `Above calibration quantile ${quantile.toLocaleString(undefined, { maximumFractionDigits: digits })}` };
     }
   }
   return component ? { text: changedSettings(node, component) } : {};

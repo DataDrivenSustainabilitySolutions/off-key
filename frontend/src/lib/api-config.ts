@@ -4,6 +4,7 @@
  */
 
 import { EVIDENCE_PAGE_SIZE } from "./forward-pages";
+import { isoTimestamp } from "./timestamps";
 import type { HistoryRequest } from "@/types/telemetry-history";
 
 export const API_CONFIG = {
@@ -45,8 +46,8 @@ export const API_CONFIG = {
         { startMs, endMs, buckets, view, windowMs }: HistoryRequest,
       ) => {
         const params = new URLSearchParams();
-        if (startMs !== undefined) params.append('start', new Date(startMs).toISOString());
-        if (endMs !== undefined) params.append('end', new Date(endMs).toISOString());
+        if (startMs !== undefined) params.append('start', isoTimestamp(startMs));
+        if (endMs !== undefined) params.append('end', isoTimestamp(endMs));
         if (buckets) params.append('buckets', buckets.toString());
         if (view) params.append('view', view);
         if (windowMs !== undefined) params.append('window_ms', windowMs.toString());
@@ -58,6 +59,7 @@ export const API_CONFIG = {
     // Alarms of catalogue devices and readings
     ALARMS: {
       QUERY: '/v1/alarms/query',
+      ITEM: (alarmId: string) => `/v1/alarms/${encodeURIComponent(alarmId)}`,
       /** The newest alarms of a device, or of the named readings. */
       LIST: (scope: { deviceId: string } | { readingIds: readonly string[] }) => {
         const params = new URLSearchParams();

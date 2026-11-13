@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.access import current_member, writes_require
+from off_key_api_gateway.api.access import current_caller, writes_require
 from off_key_api_gateway.api.v1 import monitors
 from off_key_core.auth.permissions import (
     ADMIN_ROLE,
@@ -159,7 +159,7 @@ def test_gateway_service_rename_obeys_operational_write_permissions(
         prefix="/v1/monitors",
         dependencies=[Depends(writes_require(Permission.manage_monitors))],
     )
-    app.dependency_overrides[current_member] = lambda: SimpleNamespace(
+    app.dependency_overrides[current_caller] = lambda: SimpleNamespace(
         role=role, permissions=role_permissions(role, ())
     )
     rename = AsyncMock(return_value={"id": "monitor", "display_name": "Climate"})

@@ -1,0 +1,476 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.aberration.app/reference/design-file.schema.json",
+  "$defs": {
+    "CanvasNote": {
+      "additionalProperties": false,
+      "description": "A note on the canvas: a few lines beside the steps they are about.",
+      "properties": {
+        "id": {
+          "description": "Tells the notes of a design apart.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "text": {
+          "description": "What the note says.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "x",
+        "y",
+        "text"
+      ],
+      "title": "CanvasNote",
+      "type": "object"
+    },
+    "CanvasPosition": {
+      "additionalProperties": false,
+      "description": "Where a card stands on the canvas, by its upper left corner.",
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "CanvasPosition",
+      "type": "object"
+    },
+    "CanvasViewport": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "zoom": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "title": "Zoom",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "CanvasViewport",
+      "type": "object"
+    },
+    "InputSlot": {
+      "additionalProperties": false,
+      "description": "A reading the design takes in; a service binds a real reading to it.",
+      "properties": {
+        "id": {
+          "description": "Name of the input in formulas and feature names.",
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "description": "Name of the input as it is shown.",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "InputSlot",
+      "type": "object"
+    },
+    "PipelineDefinition": {
+      "additionalProperties": false,
+      "description": "A monitoring design; held as schema 2, written as schema 1 when it can be.\n\nA design has no lane of its own: how it runs follows from how its steps\nlearn. ``strategy`` is read from schema 1 designs and then dropped. The\nschema 1 form that is written carries the lane the steps share, which is\nwhat a schema 1 design stored, so stored designs and fingerprints stay as\nthey were.",
+      "properties": {
+        "schema_version": {
+          "default": 1,
+          "enum": [
+            1,
+            2
+          ],
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "strategy": {
+          "anyOf": [
+            {
+              "enum": [
+                "static_baseline",
+                "adaptive_stream"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strategy"
+        },
+        "input_slots": {
+          "items": {
+            "$ref": "#/$defs/InputSlot"
+          },
+          "maxItems": 100,
+          "title": "Input Slots",
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/PipelineNode"
+          },
+          "maxItems": 65,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/PipelineEdge"
+          },
+          "maxItems": 129,
+          "title": "Edges",
+          "type": "array"
+        },
+        "settings": {
+          "$ref": "#/$defs/PipelineSettings"
+        }
+      },
+      "title": "PipelineDefinition",
+      "type": "object"
+    },
+    "PipelineEdge": {
+      "additionalProperties": false,
+      "description": "A connection from the output of one step to the input of another.",
+      "properties": {
+        "source": {
+          "description": "Id of the step the connection leaves.",
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "description": "Id of the step the connection enters.",
+          "title": "Target",
+          "type": "string"
+        },
+        "order": {
+          "default": 0,
+          "description": "Place among the inputs of a step that takes several.",
+          "maximum": 127,
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ],
+      "title": "PipelineEdge",
+      "type": "object"
+    },
+    "PipelineLayout": {
+      "additionalProperties": false,
+      "description": "How a design is drawn; it has no effect on what the design computes.",
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "nodes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CanvasPosition"
+          },
+          "description": "The place of each card, by the step's id.",
+          "title": "Nodes",
+          "type": "object"
+        },
+        "viewport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasViewport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "switched_off": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SwitchedOffStep"
+          },
+          "description": "Steps that are switched off, by id. In the definition such a step passes its features through; this keeps what it was.",
+          "maxProperties": 64,
+          "title": "Switched Off",
+          "type": "object"
+        },
+        "notes": {
+          "description": "Notes on the canvas. They say why a design is built the way it is and have no effect on what it computes.",
+          "items": {
+            "$ref": "#/$defs/CanvasNote"
+          },
+          "maxItems": 50,
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "title": "PipelineLayout",
+      "type": "object"
+    },
+    "PipelineNode": {
+      "additionalProperties": false,
+      "description": "One step of a design.",
+      "properties": {
+        "id": {
+          "description": "Name of the step within the design; connections refer to it.",
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What the step is; its component has the same.",
+          "enum": [
+            "source",
+            "transform",
+            "merge",
+            "detector",
+            "calibration",
+            "policy",
+            "output"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "component": {
+          "description": "Id of a component in the catalog, such as prepare.smooth.",
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Component",
+          "type": "string"
+        },
+        "contract_version": {
+          "default": 1,
+          "description": "Version of the component the step was made for.",
+          "minimum": 1,
+          "title": "Contract Version",
+          "type": "integer"
+        },
+        "params": {
+          "additionalProperties": true,
+          "description": "Settings of the step, named as the component's fields are.",
+          "title": "Params",
+          "type": "object"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "component"
+      ],
+      "title": "PipelineNode",
+      "type": "object"
+    },
+    "PipelineSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "training_window_size": {
+          "default": 1200,
+          "maximum": 1000000,
+          "minimum": 2,
+          "title": "Training Window Size",
+          "type": "integer"
+        },
+        "calibration_window_size": {
+          "default": 360,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Calibration Window Size",
+          "type": "integer"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 42,
+          "title": "Seed"
+        },
+        "conformal_strategy": {
+          "const": "split",
+          "default": "split",
+          "title": "Conformal Strategy",
+          "type": "string"
+        }
+      },
+      "title": "PipelineSettings",
+      "type": "object"
+    },
+    "SwitchedOffStep": {
+      "additionalProperties": false,
+      "description": "What a step was before it was switched off, to switch it on again as it was.",
+      "properties": {
+        "component": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Component",
+          "type": "string"
+        },
+        "contract_version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Contract Version",
+          "type": "integer"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "component"
+      ],
+      "title": "SwitchedOffStep",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A monitoring design as a file.\n\nThe composer saves and opens this document, and other tools may write it.\nIt holds what a saved template holds: a name, a description, the steps and\nconnections, and where the cards stand.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Where this schema is published, for editors that check the file.",
+      "title": "$Schema"
+    },
+    "format": {
+      "const": "aberration-design",
+      "description": "Marks the document as a monitoring design.",
+      "title": "Format",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "description": "Version of this file format.",
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "name": {
+      "default": "",
+      "description": "Name of the design; may be empty.",
+      "maxLength": 120,
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "description": "When to use the design.",
+      "maxLength": 2000,
+      "title": "Description",
+      "type": "string"
+    },
+    "definition": {
+      "$ref": "#/$defs/PipelineDefinition",
+      "description": "The steps, their settings and the connections between them, as schema 2. The component catalog lists the steps and their settings.",
+      "properties": {
+        "schema_version": {
+          "const": 2
+        }
+      },
+      "required": [
+        "schema_version"
+      ]
+    },
+    "layout": {
+      "$ref": "#/$defs/PipelineLayout",
+      "description": "Where each card stands on the canvas. Steps without a place are arranged when the file is opened."
+    }
+  },
+  "required": [
+    "format",
+    "definition"
+  ],
+  "title": "PipelineDesignFile",
+  "type": "object"
+}

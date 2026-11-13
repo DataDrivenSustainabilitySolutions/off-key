@@ -66,7 +66,7 @@ describe("account-scoped pipeline creation session", () => {
     listener.mockClear();
     await session.save();
     session.setDraft((draft) => ({ ...draft, name: "Edited while away", document: {
-      ...draft.document, layout: normalizeLayout({ nodes: { input: { x: 32, y: 48, label: "New title" } } }),
+      ...draft.document, layout: normalizeLayout({ nodes: { input: { x: 32, y: 48 } } }),
     } }));
     acknowledge(saved());
     await pending;
@@ -77,7 +77,7 @@ describe("account-scoped pipeline creation session", () => {
     expect(pipelinesApi.create).toHaveBeenCalledOnce();
     expect(session.getSnapshot().template?.id).toBe("created-design");
     expect(session.getSnapshot().draft.name).toBe("Edited while away");
-    expect(session.getSnapshot().draft.document.layout.nodes.input?.label).toBe("New title");
+    expect(session.getSnapshot().draft.document.layout.nodes.input).toEqual({ x: 32, y: 48 });
     expect(session.getSnapshot().draft.targetId).toBe("room");
     expect(session.isDirty()).toBe(true);
     session.acknowledge();

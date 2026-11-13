@@ -262,6 +262,7 @@ class PipelineActivations:
             monitoring=derive_monitoring_config(definition),
             performance_config=performance,
             pipeline=execution,
+            shadow=request.shadow,
         )
         collection_fingerprint = await monitoring_collection_fingerprint(
             self.session, topics

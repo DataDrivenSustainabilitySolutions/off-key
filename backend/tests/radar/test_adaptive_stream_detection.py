@@ -12,7 +12,11 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
-from off_key_core.models.adaptive import PRETRAINED_FORECASTERS, aberrant_model
+from off_key_core.models.adaptive import (
+    PRETRAINED_FORECASTERS,
+    RULE_DETECTORS,
+    aberrant_model,
+)
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
@@ -162,11 +166,18 @@ def _record(detector, scores: list[float]) -> list[float]:
     return learned
 
 
+# Every detector that learns or is pretrained; a rule detector has no warm-up.
+LEARNING_MODELS = [
+    item for item in ADAPTIVE_MODELS_BY_TYPE if item not in RULE_DETECTORS
+]
+
+
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
-    assert len(ADAPTIVE_MODELS_BY_TYPE) == 30
-    for definition in ADAPTIVE_MODELS_BY_TYPE.values():
-        spec = get_model_spec(definition["catalog_id"])
-        assert spec.load()
+    assert len(ADAPTIVE_MODELS_BY_TYPE) == 31
+    for model_type, definition in ADAPTIVE_MODELS_BY_TYPE.items():
+        # A rule detector is RADAR's own, so Aberrant has no specification of it.
+        if model_type not in RULE_DETECTORS:
+            assert get_model_spec(definition["catalog_id"]).load()
         assert definition["default_capabilities"]["event_kind"] in {
             "tabular",
             "univariate",
@@ -174,7 +185,7 @@ def test_catalog_contains_only_supported_numeric_detectors() -> None:
         }
 
 
-@pytest.mark.parametrize("model_type", ADAPTIVE_MODELS_BY_TYPE)
+@pytest.mark.parametrize("model_type", LEARNING_MODELS)
 def test_every_released_detector_runs_warmup_calibration_and_operational(
     model_type: str,
     monkeypatch: pytest.MonkeyPatch,

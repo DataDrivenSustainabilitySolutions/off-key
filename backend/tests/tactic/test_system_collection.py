@@ -255,6 +255,35 @@ def runtime_definition():
     )
 
 
+def test_a_source_timestamp_changes_only_the_signature_of_its_own_reading():
+    """Monitors keep a hash of the signature of every input they were started on."""
+    definition = runtime_definition()
+    stream = definition.streams()[0]
+    before = stream.signature
+    assert before == (
+        stream.ingress_topic.rsplit("/", 1)[1],
+        stream.accepted_topic,
+        "home/office/environment",
+        "/readings/temperature",
+        "number",
+        "°C",
+        "sample",
+        2,
+        {
+            "id": "broker-1",
+            "protocol": "mqtt",
+            "host": "localhost",
+            "port": 1883,
+            "transport": "tcp",
+            "tls": False,
+            "websocket_path": None,
+            "credential_ref": None,
+        },
+    )
+    definition.document.streams[0].timestamp_pointer = "/observed_at"
+    assert definition.streams()[0].signature == (*before, "/observed_at")
+
+
 def incoming(stream, payload, retained=False):
     now = datetime.now(UTC)
     return MQTTMessage(

@@ -92,6 +92,15 @@ their inventory check before they change the stack. To roll back past it anyway:
    reads on the manager (named in the production inventory next to
    `broker_route_legacy_exports_file`). Then dispatch the older SHA.
 
+### Rolling back past the HTTP source release
+
+A catalogue without HTTP sources is stored exactly as before, so this rollback
+needs nothing extra. Releases before HTTP sources cannot read a saved catalogue
+that holds an HTTP API or a reading with a source timestamp: their catalogue
+and recording requests fail. Before dispatching such a release, remove every
+HTTP API under **Sources** (its readings go with it) and wait until recording
+reports the change as applied. Recorded history stays in the database.
+
 There is **no automatic database downgrade**. If schema restoration is necessary,
 use a maintenance window, stop all writers and restore a verified backup before
 starting an older application. Restoring a database loses writes newer than the

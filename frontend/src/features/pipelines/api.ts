@@ -4,6 +4,9 @@ import type {
   ForecastModelInfo,
   PipelineActivationView,
   PipelineApplyRequest,
+  PipelineBlockCreate,
+  PipelineBlockList,
+  PipelineBlockView,
   PipelineCatalog,
   PipelineCreate,
   PipelineDefinition,
@@ -13,6 +16,10 @@ import type {
   PipelineListPage,
   PipelineListQuery,
   PipelineMetadataChange,
+  PipelineProposalDecision,
+  PipelineProposalList,
+  PipelineProposalSummary,
+  PipelineProposalView,
   PipelineRevisionView,
   PipelineRunTimeline,
   PipelineServiceView,
@@ -20,8 +27,10 @@ import type {
   PipelineView,
 } from "@/types/pipelines.generated";
 import {
+  normalizeBlock,
   normalizeCatalog,
   normalizeLayout,
+  normalizeProposal,
   normalizeRevision,
   normalizeService,
   normalizeValidation,
@@ -30,6 +39,8 @@ import {
 
 const base = "/v1/pipelines";
 const activations = "/v1/pipeline-activations";
+const blocks = "/v1/pipeline-blocks";
+const proposals = "/v1/pipeline-proposals";
 const item = (id: string) => `${base}/${encodeURIComponent(id)}`;
 const monitor = (id: string) => `/v1/monitors/${encodeURIComponent(id)}`;
 export const pipelinesApi = {
@@ -50,6 +61,26 @@ export const pipelinesApi = {
     }),
   downloadForecastModel: (model: string) =>
     apiUtils.post<ForecastModelInfo>("/v1/forecast-models/downloads", { model }),
+  /** The library's blocks: chains of steps to copy into a design. */
+  blocks: (signal?: AbortSignal) =>
+    apiUtils
+      .get<PipelineBlockList>(blocks, { signal, redirectOnUnauthorized: false })
+      .then((list) => list.items.map(normalizeBlock)),
+  createBlock: (request: PipelineBlockCreate) =>
+    apiUtils.post<PipelineBlockView>(blocks, request).then(normalizeBlock),
+  deleteBlock: (id: string) =>
+    apiUtils.delete<void>(`${blocks}/${encodeURIComponent(id)}`),
+  /** Proposals, the newest first: those that wait for a decision, or all of them. */
+  proposals: (status?: PipelineProposalSummary["status"], signal?: AbortSignal) =>
+    apiUtils
+      .get<PipelineProposalList>(proposals, { signal, redirectOnUnauthorized: false, params: status ? { status } : undefined })
+      .then((list) => list.items),
+  proposal: (id: string, signal?: AbortSignal) =>
+    apiUtils
+      .get<PipelineProposalView>(`${proposals}/${encodeURIComponent(id)}`, { signal, redirectOnUnauthorized: false })
+      .then(normalizeProposal),
+  decideProposal: (id: string, decision: PipelineProposalDecision) =>
+    apiUtils.post<PipelineProposalSummary>(`${proposals}/${encodeURIComponent(id)}/decision`, decision),
   list: (query: PipelineListQuery = {}, signal?: AbortSignal) =>
     apiUtils.get<PipelineListPage>(base, {
       signal,

@@ -13,12 +13,17 @@ from off_key_core.schemas.alarms import (
     Alarm,
     AlarmCount,
     AlarmCreate,
+    AlarmDeletionCommit,
+    AlarmDeletionPreview,
+    AlarmDetail,
     AlarmPage,
     AlarmQuery,
+    AlarmSelection,
 )
 from off_key_core.schemas.favorites import Favorite, FavoriteKind, FavoriteRef
 
 from ...provider import (
+    get_alarm_actions,
     get_alarm_service,
     get_favorite_service,
     get_system_service,
@@ -28,6 +33,7 @@ from ...schemas import UserLoginRequest
 from ...services.accounts.users import UserService
 from ...services.catalogue.system import SystemService
 from ...services.data import AlarmService, FavoriteService
+from ...services.data.alarm_actions import AlarmActions
 from ..errors import DomainErrorRoute
 
 router = APIRouter(route_class=DomainErrorRoute)
@@ -123,3 +129,28 @@ async def delete_alarm(
 ):
     await service.delete_alarm(alarm_id=alarm_id)
     return Response(status_code=204)
+
+
+@router.get("/alarms/{alarm_id}", response_model=AlarmDetail)
+async def alarm_detail(
+    alarm_id: str,
+    service: AlarmActions = Depends(get_alarm_actions),
+    system: SystemService = Depends(get_system_service),
+):
+    return await service.detail(alarm_id, await system.read())
+
+
+@router.post("/alarms/deletion-preview", response_model=AlarmDeletionPreview)
+async def preview_alarm_deletion(
+    selection: AlarmSelection,
+    service: AlarmActions = Depends(get_alarm_actions),
+    system: SystemService = Depends(get_system_service),
+):
+    return await service.preview(selection, await system.read())
+
+
+@router.post("/alarms/delete", response_model=AlarmCount)
+async def delete_alarm_selection(
+    selection: AlarmDeletionCommit, service: AlarmActions = Depends(get_alarm_actions)
+):
+    return AlarmCount(count=await service.delete(selection.token))

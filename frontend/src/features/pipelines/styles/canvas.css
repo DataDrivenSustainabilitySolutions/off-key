@@ -17,7 +17,7 @@
 .pl-settings-panel {
   min-width: 0;
   min-height: 0;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 
 .pl-canvas-wrap {
@@ -39,6 +39,10 @@
   position: relative;
   flex: 1;
   min-height: 480px;
+}
+/* The canvas takes focus when it is clicked, so its keys work; the cards show where focus is. */
+.pl-flow-surface:focus {
+  outline: none;
 }
 .pl-canvas-wrap .react-flow {
   min-height: 480px;
@@ -83,7 +87,7 @@
 }
 
 .pl-canvas-wrap .react-flow__controls-button {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   border-color: hsl(var(--border));
   color: hsl(var(--foreground));
   box-sizing: border-box;
@@ -105,16 +109,27 @@
   max-width: 16px;
   max-height: 16px;
 }
-.pl-canvas-wrap .react-flow__controls-button[aria-pressed] svg {
+/* React Flow's own icons are filled shapes; the others are drawn in lines. */
+.pl-canvas-wrap .react-flow__controls-button svg.lucide {
   fill: none;
 }
 .pl-canvas-wrap .react-flow__controls-button[aria-pressed="true"] {
   color: hsl(var(--primary));
-  background: color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--background)));
+  background: color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--card)));
 }
 
+/* The box that gathers steps is drawn in the ink of the page. Once it is let go the
+   chosen cards show the group themselves, and each stays within reach of the pointer. */
+.pl-canvas-wrap .react-flow__selection {
+  border: 1px dashed hsl(var(--foreground) / 0.55);
+  border-radius: 6px;
+  background: hsl(var(--foreground) / 0.04);
+}
+.pl-canvas-wrap .react-flow__nodesselection {
+  display: none;
+}
 .pl-canvas-wrap .react-flow__attribution {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: hsl(var(--muted-foreground));
 }
 
@@ -135,7 +150,7 @@
   gap: 3px;
   border: 1px solid color-mix(in srgb, var(--pl-node-accent) 35%, hsl(var(--border)));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--pl-node-accent) 7%, hsl(var(--background)));
+  background: color-mix(in srgb, var(--pl-node-accent) 7%, hsl(var(--card)));
   color: hsl(var(--foreground));
   box-shadow: 0 2px 6px #00000008;
 }
@@ -194,7 +209,7 @@
   border-radius: 8px;
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--pl-node-accent) 22%, transparent);
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
   font: inherit;
   font-size: 16px;
@@ -239,9 +254,9 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   padding: 0 7px;
-  border: 1px solid color-mix(in srgb, var(--pl-node-accent) 24%, hsl(var(--background)));
+  border: 1px solid color-mix(in srgb, var(--pl-node-accent) 24%, hsl(var(--card)));
   border-radius: 9px;
-  background: color-mix(in srgb, var(--pl-node-accent) 12%, hsl(var(--background)));
+  background: color-mix(in srgb, var(--pl-node-accent) 12%, hsl(var(--card)));
   color: color-mix(in srgb, var(--pl-node-accent) 78%, hsl(var(--foreground)));
   font-size: var(--text-caption);
   line-height: 16px;
@@ -274,6 +289,16 @@
 .pl-node-status svg {
   flex-shrink: 0;
 }
+/* Differs from the design that runs now: said in the foreground colour, which no state uses. */
+.pl-node-status > .pl-node-change {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  line-height: 1.5;
+}
 .pl-node-issue,
 .pl-node-sample--waiting {
   color: #92400e;
@@ -292,7 +317,9 @@
   color: #fcd34d;
 }
 .pl-node-issue.is-warning,
-.dark .pl-node-issue.is-warning {
+.dark .pl-node-issue.is-warning,
+.pl-node-issue.is-open,
+.dark .pl-node-issue.is-open {
   color: hsl(var(--muted-foreground));
 }
 .dark .pl-node-sample--ready {
@@ -313,7 +340,7 @@
   content: "";
   position: absolute;
   inset: 6px;
-  border: 2px solid hsl(var(--background));
+  border: 2px solid hsl(var(--card));
   border-radius: 50%;
   background: var(--pl-data-color, hsl(var(--muted-foreground)));
   pointer-events: none;
@@ -345,7 +372,7 @@
   height: 18px;
   padding: 0 4px;
   border-radius: 9px;
-  color: hsl(var(--background));
+  color: hsl(var(--card));
   font-size: var(--text-caption);
   font-weight: 700;
   line-height: 1;
@@ -353,7 +380,7 @@
 }
 /* A count from before the latest edit recedes until it has been checked again. */
 .pl-node .react-flow__handle.has-count.is-stale::after {
-  color: color-mix(in srgb, hsl(var(--background)) 45%, var(--pl-data-color));
+  color: color-mix(in srgb, hsl(var(--card)) 45%, var(--pl-data-color));
 }
 
 /* "+" on a pointed-at, focused or selected wire inserts a step there. At rest it
@@ -378,7 +405,7 @@
   padding: 0;
   border: 1.5px solid var(--pl-data-color, hsl(var(--muted-foreground)));
   border-radius: 50%;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: var(--pl-data-color, hsl(var(--muted-foreground)));
   box-shadow: 0 1px 4px #0000001f;
   cursor: pointer;
@@ -395,7 +422,7 @@
   left: 12px;
   right: 12px;
   padding: 10px;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   font-size: var(--text-caption);

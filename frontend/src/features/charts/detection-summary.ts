@@ -40,7 +40,7 @@ function settledIntervals(times: readonly number[], intervalMs: number): (time: 
 function peakSeries(series: SecondaryChartSeries, intervalMs: number): SecondaryChartSeries {
   const boundaries = new Map(series.overflow.map(({ observation, boundary }) => [observation, boundary]));
   const weight = ({ value, observation }: DetectionChartPoint) => boundaries.get(observation!) === "upper" ? 3
-    : value[1] === null ? 0 : (observation!.alarmFired ?? observation!.alarmActive) ? 2 : 1;
+    : value[1] === null ? 0 : (observation!.alarmFired ?? observation!.alarmActive) || observation!.alarmMuted ? 2 : 1;
   const intervalOf = settledIntervals(series.data.flatMap(point => point.observation ? [point.value[0]] : []), intervalMs);
   const data: DetectionChartPoint[] = [];
   let bucket: number | undefined, best: DetectionChartPoint | undefined, count = 0;

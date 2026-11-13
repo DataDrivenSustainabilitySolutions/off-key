@@ -4,7 +4,8 @@ export type AccumulateParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string | null;
-  function?: "sum" | "min" | "max";
+  function?: "sum" | "min" | "max" | "count";
+  reset_when?: string | null;
 };
 
 export type AdaptiveLearningState = {
@@ -39,16 +40,25 @@ export type BoundInput = {
   unit?: string | null;
 };
 
+export type CalculateParameters = {
+  formulas: string;
+};
+
+export type CanvasNote = {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+};
+
 export type CanvasPosition = {
   x: number;
   y: number;
-  label?: string | null;
 };
 
 export type CanvasViewport = {
   x: number;
   y: number;
-  label?: string | null;
   zoom?: number;
 };
 
@@ -79,6 +89,8 @@ export type ComponentField = {
   options?: Array<string> | null;
   nullable?: boolean;
   description?: string;
+  advanced?: boolean;
+  shown_when?: FieldCondition | null;
   fields?: Array<ComponentField>;
   discriminator?: string | null;
   variants?: Record<string, Array<ComponentField>> | null;
@@ -108,6 +120,13 @@ export type ElementwiseScopeParameters = {
   suffix?: string;
 };
 
+export type ExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+};
+
 export type FeatureDescription = {
   name: string;
   slots: Array<string>;
@@ -116,6 +135,12 @@ export type FeatureDescription = {
   raw?: boolean;
   previous?: string | null;
   steps?: Array<string>;
+};
+
+export type FieldCondition = {
+  field: string;
+  equals?: Array<string | number | number | boolean | null> | null;
+  not_equals?: Array<string | number | number | boolean | null> | null;
 };
 
 export type ForecastModelCatalog = {
@@ -156,6 +181,13 @@ export type GateParameters = {
   condition: string;
 };
 
+export type HoldParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  update_when: string;
+};
+
 export type InputSlot = {
   id: string;
   label: string;
@@ -193,6 +225,7 @@ export type MonitorDetail = {
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
+  shadow?: boolean;
   created_at?: string | null;
   configuration?: Record<string, unknown>;
 };
@@ -205,13 +238,26 @@ export type MonitorSummary = {
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
+  shadow?: boolean;
   created_at?: string | null;
+};
+
+export type MuteParameters = {
+  condition: string;
 };
 
 export type ObservedDetector = {
   detector_id: string;
   score: number | null;
   surprise: number | null;
+};
+
+export type OnlineExpectedValueParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  target: string;
+  name?: string | null;
+  forgetting?: number;
 };
 
 export type OnlinePCAParameters = {
@@ -229,6 +275,7 @@ export type PipelineActivationRequest = {
   display_name: string;
   idempotency_key: string;
   replace_monitor_id?: string | null;
+  shadow?: boolean;
 };
 
 export type PipelineActivationView = {
@@ -251,6 +298,7 @@ export type PipelineApplyRequest = {
   display_name: string;
   idempotency_key: string;
   replace_monitor_id?: string | null;
+  shadow?: boolean;
 };
 
 export type PipelineBindingMetadata = {
@@ -261,6 +309,31 @@ export type PipelineBindingMetadata = {
   collection_generation: string;
   collection_fingerprint: string;
   readings: Array<PipelineReadingMetadata>;
+};
+
+export type PipelineBlockCreate = {
+  name: string;
+  description?: string;
+  steps: Array<PipelineBlockStep>;
+};
+
+export type PipelineBlockList = {
+  items: Array<PipelineBlockView>;
+};
+
+export type PipelineBlockStep = {
+  component: string;
+  contract_version?: number;
+  params?: Record<string, unknown>;
+  label?: string | null;
+};
+
+export type PipelineBlockView = {
+  id: string;
+  name: string;
+  description: string;
+  steps: Array<PipelineBlockStep>;
+  created_at: string;
 };
 
 export type PipelineCatalog = {
@@ -275,9 +348,13 @@ export type PipelineComponent = {
   id: string;
   contract_version?: 1;
   kind: "source" | "transform" | "merge" | "detector" | "calibration" | "policy" | "output";
+  group: "input" | "prepare" | "combine" | "normalize" | "reduce" | "route" | "forecaster" | "detector" | "calibration" | "policy" | "output";
   label: string;
   description: string;
+  details?: string;
+  library?: string | null;
   learning?: "none" | "batch" | "online" | "pretrained";
+  counterpart?: string | null;
   parameter_schema?: Record<string, unknown>;
   fields?: Array<ComponentField>;
   input_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence" | null;
@@ -301,6 +378,16 @@ export type PipelineDefinition = {
   nodes?: Array<PipelineNode>;
   edges?: Array<PipelineEdge>;
   settings?: PipelineSettings;
+};
+
+export type PipelineDesignFile = {
+  $schema?: string | null;
+  format: "aberration-design";
+  schema_version?: 1;
+  name?: string;
+  description?: string;
+  definition: PipelineDefinition;
+  layout?: PipelineLayout;
 };
 
 export type PipelineDraftSave = {
@@ -349,6 +436,8 @@ export type PipelineLayout = {
   version?: number;
   nodes?: Record<string, CanvasPosition>;
   viewport?: CanvasViewport | null;
+  switched_off?: Record<string, SwitchedOffStep>;
+  notes?: Array<CanvasNote>;
 };
 
 export type PipelineListPage = {
@@ -416,6 +505,58 @@ export type PipelineObservation = {
 export type PipelineObservationPasses = {
   score: Record<string, PipelineNodePreview>;
   learn: Record<string, PipelineNodePreview>;
+};
+
+export type PipelineProposalCreate = {
+  name: string;
+  reason: string;
+  definition: PipelineDefinition;
+  layout?: PipelineLayout;
+  bindings?: Record<string, string>;
+  test_run_id?: string | null;
+  replace_monitor_id?: string | null;
+};
+
+export type PipelineProposalDecision = {
+  status: "accepted" | "declined";
+  note?: string | null;
+};
+
+export type PipelineProposalList = {
+  items: Array<PipelineProposalSummary>;
+};
+
+export type PipelineProposalSummary = {
+  id: string;
+  name: string;
+  reason: string;
+  author: string;
+  author_kind: "agent" | "member";
+  status: "open" | "accepted" | "declined" | "withdrawn";
+  test_run_id: string | null;
+  replace_monitor_id: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+};
+
+export type PipelineProposalView = {
+  id: string;
+  name: string;
+  reason: string;
+  author: string;
+  author_kind: "agent" | "member";
+  status: "open" | "accepted" | "declined" | "withdrawn";
+  test_run_id: string | null;
+  replace_monitor_id: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+  definition: PipelineDefinition;
+  layout: PipelineLayout;
+  bindings: Record<string, string>;
 };
 
 export type PipelinePublish = {
@@ -653,6 +794,7 @@ export type PreparationState = {
   required: number;
   rejected: number;
   held_back?: number;
+  muted?: number;
 };
 
 export type PrepareScopeParameters = {
@@ -677,6 +819,15 @@ export type RangeParameters = {
   action?: "clip" | "skip";
 };
 
+export type RelationParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  against: string;
+  statistic?: "correlation" | "covariance" | "slope" | "residual";
+  window_size?: number;
+};
+
 export type RenameParameters = {
   mapping: Record<string, string>;
 };
@@ -691,7 +842,7 @@ export type RollingParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string | null;
-  statistic?: "mean" | "median" | "min" | "max" | "std" | "range" | "sum" | "quantile" | "iqr" | "mad" | "slope";
+  statistic?: "mean" | "median" | "min" | "max" | "std" | "range" | "sum" | "quantile" | "iqr" | "mad" | "slope" | "zscore" | "robust_zscore" | "rank" | "rms" | "skewness" | "kurtosis";
   window_size?: number;
   quantile?: number;
 };
@@ -722,8 +873,9 @@ export type SmoothParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string | null;
-  method?: "exponential" | "rolling";
+  method?: "exponential" | "rolling" | "time_constant";
   window_size?: number;
+  time_constant?: number;
 };
 
 export type StandardScalerParameters = {
@@ -733,4 +885,21 @@ export type StandardScalerParameters = {
   with_std?: boolean;
 };
 
-export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4 } as const;
+export type SwitchedOffStep = {
+  component: string;
+  contract_version?: number;
+  params?: Record<string, unknown>;
+};
+
+export type TimeParameters = {
+  elapsed?: boolean;
+  hour?: boolean;
+  weekday?: boolean;
+  daily_cycle?: boolean;
+  weekly_cycle?: boolean;
+  timezone?: string;
+};
+
+export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4, blockSteps: 16 } as const;
+
+export const DESIGN_FILE = { format: "aberration-design", version: 1, schema: "https://docs.aberration.app/reference/design-file.schema.json" } as const;

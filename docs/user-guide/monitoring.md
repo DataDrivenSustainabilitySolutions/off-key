@@ -147,11 +147,47 @@ flow. **Save template** stores the current graph and layout under its own
 template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
+A design also travels as a file. **Download as a file** in the **Save
+template** dialog saves the graph and layout under the name and description
+entered there, as `<name>.design.json`, without saving a template. **Open a
+file…** under **Load template** opens such a file, and so does dropping it on
+the canvas. The opened design takes the place of the one on the canvas, and
+**Undo** brings that one back. A file that is not a design, or whose design
+cannot be read, is refused with the reason. The file holds no readings, so map
+them at the Input step as after loading a template. Its format is described
+under [Design file](../reference/design-file.md), for keeping designs under
+version control or writing them with other tools.
+
+A design can also arrive as a **proposal**. An agent with a key, or a member
+through the API, hands in a design with a reason instead of starting it. While
+proposals wait, the Monitoring page shows **Proposals** with their number
+beside **Create**. The list names each design, the reason given for it and who
+proposed it; **Show decided proposals** adds those already accepted, declined
+or withdrawn, each with who decided and what they answered. Select a proposal
+to open it in the setup page with its name and readings filled in and a note
+above the graph that says who proposed it and why. It is a design like any
+other, so change it before you start it if you wish. **Start monitoring**, or
+**Start in shadow** with **Shadow run** ticked, starts the service and accepts
+the proposal. **Decline** turns it down, with an
+optional word for its author. A proposal that replaces a running service says
+so in the list and opens as a change to that service, with the steps that
+differ from the running design marked on their cards. Members whose role cannot
+manage monitors can read a proposal and cannot decide on it.
+
+A proposal can name the test on history its author ran. The test is of the
+design as it was proposed: a test that ran an earlier version is refused when
+the proposal is made. For members who may use the Dojo the proposal then opens
+with **Test on history** beside the graph, showing that test and who ran it:
+when the design alarmed over the tested values, what it scored and its
+figures. The values it ran on are chosen, so **Test again**
+runs the design as you have changed it on the same values and puts the author's
+figures under yours.
+
 Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
 Detection rule or Evidence output), its title and its underlying operation; a
 step that learns also says how (**Learns continuously**, **Fitted once** or
-**Pretrained**); renaming a card helps explain its purpose while the operation name
+**Pretrained**), and a detector that learns nothing says **No training**; renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -188,17 +224,137 @@ text fields. Click empty canvas or press Escape to release a selection before
 using Delete. An unsaved setup survives a reload of the same browser tab, and
 **Reset** discards it.
 
+A **block** keeps steps you use again. Right-click a step, long-press it or
+press the menu key on it, and choose **Save as block**. The block holds that
+step and the steps after it, one after another, up to the **Last step** you
+choose, with their settings and titles. It ends before a detector and where
+the steps branch or merge, and holds at most 16 steps. Saving a block changes
+nothing in the design. Blocks are shared: every member sees them, and saving or
+deleting one needs the permission to manage monitors.
+
+Saved blocks are listed below the steps in **Add step**, in the **+** menu of a
+connection and in a step's **Add after** menu. Adding a block copies its steps
+into the design, connected to each other; on a connection they take the
+connection's place like a single step. The copies are ordinary steps with no tie
+to the block: changing them does not change the block, and deleting the block
+changes no service or template. The steps keep the feature names they were saved
+with, so the check names a feature the design already has. Before a detector, a
+block's learned step moves to the counterpart that learns as that detector does,
+as it would when the detector's model changes. A block that cannot be added
+stays listed and says why, for example **Holds a step this version does not
+offer.** **Manage templates** lists the blocks below the templates, where
+**Delete** removes one. A block is not edited: save the changed steps under
+another name and delete the old block.
+
+A click chooses one step and opens its settings. To choose several, hold Shift
+and click each step, or hold Shift and drag a box over them; Ctrl or Cmd with a
+click works as well, and Ctrl/Cmd+A chooses every step. No settings open for
+several steps: **Step settings** names them instead, and each name leads to
+that step. Chosen steps move together when one of them is dragged and are
+removed together by Delete. Ctrl/Cmd+C copies them with their settings, titles
+and the connections among them, Ctrl/Cmd+X cuts them, Ctrl/Cmd+V pastes them
+under the pointer, or in the middle of the view when the pointer is elsewhere,
+and Ctrl/Cmd+D duplicates them below the originals. Copies arrive chosen, on
+the first free rows, and are not connected to the rest of the design. They
+travel through the clipboard, so steps can be pasted into another design or
+another browser window, also from a running service into a new one. A design
+keeps one input, calibration step, detection rule and output and adds detectors
+from a detector's settings, so a paste leaves such a step out and says so.
+Right-click a step, or hold a finger on it, for the same commands with their
+keys; the menu of a step chosen with others answers for all of them, and
+right-clicking empty canvas offers **Paste** after a copy in the same window.
+Text fields keep these keys for their own text.
+
+A step that changes features can be switched off without removing it: choose
+**Switch off** in its menu, or press Ctrl/Cmd+B while it is chosen. The card
+stays in its place with its connections and reads **Switched off**. Features
+pass through it unchanged, so the design runs as if the step were not there,
+and the steps after it no longer receive a feature it added. Its settings are
+kept: **Switch on**, in the menu or in the step's settings, or Ctrl/Cmd+B
+again, brings the step back as it was. With several steps chosen, the key
+switches off those that are on, and switches them on once none of them is. The
+input, detectors, calibration, the detection rule, the output and steps that
+combine features cannot be switched off. A copy of a switched-off step is
+switched off as well.
+
+A note says why a design is built the way it is. Press **N** to start one
+where the pointer is, or choose **Add a note** in the menu of empty canvas.
+Enter starts a new line; Ctrl/Cmd+Enter or a click elsewhere keeps the note,
+and Escape gives it up. A note is as wide as a card and grows with its text.
+Drag it to move it, double-click it to change it, and remove it with Delete
+while it is in focus or from its menu. Notes belong to the design: they are
+saved with it and with a template, they travel in a design file, and
+**Arrange** keeps each beside the card it stood nearest to. They have no
+effect on what the design computes.
+
+The canvas has keys of its own while it is in focus: click it, or move into it
+with Tab. **A** opens the list of steps where the pointer is, and so does a
+double-click on empty canvas; type to search and press Enter to add the first
+match. **1** shows the whole graph, **0** returns to readable size, and **+**
+and **−** zoom. Zooming out stops at a quarter of full size, or further out
+where a large graph needs it to be seen whole. **?** or the keyboard button
+beside the zoom buttons lists every key and gesture.
+
 Every edit is checked shortly after it is made. The status chip beside the
 panel buttons shows the result: **Valid** with the time until the first alarm
 can come, or the number of issues. Open it to list the issues; selecting one
 opens that step. When a check cannot reach the server, the chip shows **Not
 checked** and offers **Check again**.
 
+**Test** opens **Test on history** beside the canvas, for members who may use
+the Dojo. It runs the design as it stands over recorded values in time order,
+with the same alignment, learning and scoring as a live service; nothing
+reaches Monitoring or Reporting. **Values** offers the last 24 hours, 7 days or
+30 days recorded by the readings chosen in the Input step, and every Dojo
+dataset. A window is copied into a new Dojo dataset first, named after the
+entity; later tests run on that copy, so their results compare. On a dataset
+that was not copied from these readings, **Inputs** asks which series feeds
+which input. **Run test** needs a design the check accepts and a reading or a
+series for every input. A test keeps running while you edit a step or close the
+panel: the **Test** button fills a line along its lower edge, and a notice says
+when the test has finished.
+
+The result starts with a strip over the time span of the values: the time the
+design spent learning is hatched, every alarm is a line and every label a band,
+outlined where the design missed it. Under the strip, over the same span, is
+what the design scored: each stretch of time is a bar from its lowest to its
+highest score, the boundary is a line, and a stretch that alarmed is drawn in
+the foreground colour, so it shows how far above the boundary an alarm went and
+how close the rest came. A design that alarms on conformal p-values has no
+boundary; its p-values are drawn rarer upward, and an alarm follows a run of
+rare values, not a single one. The numbers at the left edge are the values at
+the top and the bottom of the chart; a score far above the boundary is cut off
+at the top so the rest stays readable. Below are the alarms and alarms per day,
+how long the design learned and how long it was scored. Alarms that follow one
+another count once. Where the dataset has labels, the result shows how many of
+them the design detected, the median delay and the false alarms outside the
+labels instead. **Test again** after a change puts the figure of the test
+before under each figure that differs, and the result says when the design has
+changed since. A design that was still learning when the values ended has
+nothing scored; test on a longer window or shorten the learning. **Open in the
+Dojo** leads to the dataset, to mark known faults there, and **Compare runs in
+the Dojo** to its comparison once it has labels.
+
+A test also keeps what 12 to 23 of its observations looked like at every step,
+spread from the first result to the last. **Values in the last test**, folded
+under what a step does in **Step settings**, shows one of them: the features
+that went into the step under **In** and the features that came out under
+**Out**, at most the first eight of each. A detector gives one value, and the
+detection rule says whether it alarmed; the calibration step shows the rule's
+values, because the rule runs it. The latest observation comes first, since the
+design has learned the most by then, and the arrows step to earlier and later
+ones. Where a step gave nothing, it says why: it was still collecting values, it
+waited for a step before it, a Gate held the observation back, or the design
+was still learning. The fold and the observation stay as you select another
+step, so one set of readings can be followed from the Input to the detection
+rule. The values are those of the design as it was tested; after a change the
+panel says so, and a step added since has none until the next test.
+
 A design has no strategy to choose. Three settings decide how it detects:
 
 - **Detector model**, in a detector's settings, lists the models by how they
-  learn: **Learns continuously**, **Fitted once** or **Pretrained**. Detectors
-  that learn in different ways can run in one design. Choosing a model that
+  learn: **Learns continuously**, **Fitted once**, **Pretrained** or **No
+  training**. Detectors that learn in different ways can run in one design. Choosing a model that
   learns differently moves the learned steps only that detector reads to their
   counterparts, such as **Standard scaling** to **Online standard scaling**,
   and they keep the settings both versions share.
@@ -215,8 +371,24 @@ A design has no strategy to choose. Three settings decide how it detects:
   once **Exceedances in a row** scores are above the boundary; more than one
   ignores short spikes. Under the fixed split, detectors that are all fitted
   once alarm with the **Conformal alarm policy**, and a design with a detector
-  that learns continuously, or a pretrained one, alarms on the **Calibrated
-  score threshold**.
+  that learns continuously, a pretrained one or a rule detector alarms on the
+  **Calibrated score threshold**.
+
+The **Rule detector** learns nothing: the value of the one feature it reads is
+its score, and a higher value counts as more anomalous. A step before it states
+the rule. A **Formula** such as `if(temperature > 80, 1, 0)` is a hard limit,
+and one such as `abs(power - voltage * current)` scores how far a reading is
+from what it should be. Set the formula's **Result** to **Replace features**,
+or add **Select features**, so that one feature arrives. The score then takes
+the path of a learned detector's: the calibration step ranks it, the detection
+rule alarms on it, and the alarm is recorded and reviewed like any other. Under
+the **Fixed split**, a flag that stays 0 through calibration alarms whenever it
+is 1. A rule detector reads only steps that do not learn, runs beside other
+detectors, and does not run under the **Conformal alarm policy**. A design
+whose detectors are all rule detectors has no learning window: calibration
+starts with its first observation, and **Service settings** ask only for
+**Calibration observations**. The form-based setup has no step to state a rule
+in, so it does not offer the Rule detector.
 
 A pretrained forecaster, such as the **Timestral forecaster**, does not carry
 its model: the weights live in the deployment's forecast service. The step's
@@ -231,6 +403,40 @@ step** with that reason and cannot be chosen as a detector model.
 
 When a change also moves steps or the detection rule, a notice says what
 changed, and **Undo** reverses all of it.
+**Service settings** open with the **Alarm budget**: how many scores may lie
+above the boundary per hour, day or week. The design keeps the budget as the
+**Target alarm rate** of its calibration step or, under the **Fixed split**, as
+the quantile of the **Calibrated score threshold**, so the budget and those
+settings always agree and either can be changed. The count follows from how
+often the chosen readings arrive; until they report that, the budget reads as
+one score in so many. While nothing is wrong, every score above the boundary is
+a false alarm, so the budget is what a healthy machine may raise. With
+**Exceedances in a row** above 1, alarms come less often than the budget. The
+text under the setting repeats what the calibration method holds. A small
+budget needs a long calibration window: where the boundary is a quantile of
+that window, one alarm a week at a reading every 5 seconds needs a week of
+calibration scores, and the setting says so when the window is too short. Under
+the fixed split the threshold cannot lie above the largest calibration score,
+so the budget goes no lower than one score in **Calibration observations** plus
+one. A design that alarms by the **Conformal alarm policy** has no share of
+scores to set and shows no budget.
+
+**Shadow run**, under the budget, starts the service in shadow. A shadow
+service learns, calibrates and scores like any other and raises no alarm. Each
+alarm it would have raised is kept as **muted** evidence, an open dot on the
+monitor's chart, and none is listed or sent. The start button then reads
+**Start in shadow**, the service list shows **Shadow** where a service that
+raises alarms shows **Active**, and the service's page says that it runs in
+shadow. Use it to see how often a new design would alarm on live readings
+before anyone is alerted. To take the service live, choose **Edit service** on
+its **Pipeline** tab, clear **Shadow run** and choose **Update monitoring**;
+the notice above the canvas then reads **Goes live**. Like every update this
+replaces the service, so it learns anew before its first alarm. A shadow
+service holds its readings like any other, and a reading belongs to one
+service, so a shadow run cannot stand beside a live service on the same
+readings. To judge a change to a running service, test the design on recorded
+history instead.
+
 In **Service settings**, **Before the first alarm** shows the observations Prepare steps need first, then
 the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
 shows durations. The slowest reading paces observations, because each
@@ -260,7 +466,11 @@ per observation, in arrival order, and compute the same values however the
 detectors learn; a detector fitted once keeps them running while it trains, so
 their windows never restart.
 
-- **Smooth** averages recent values, exponentially or over a rolling window.
+- **Smooth** averages recent values: exponentially, over a rolling window, or
+  by a **Time constant** in seconds. A time constant weighs values by the time
+  since they were measured, so readings every second and every ten seconds are
+  smoothed alike: a lasting change shows to 63% after one time constant and to
+  95% after three, however many observations arrive meanwhile.
 - **Despike** replaces a value further than **Threshold** robust deviations from
   the median of its window with that median. The detector then sees the median in
   place of the spike; the evidence keeps the raw reading.
@@ -270,21 +480,81 @@ their windows never restart.
   deviation, range, sum, quantile, interquartile range (IQR), median absolute
   deviation (MAD), or fitted slope of the last **Window** values. Quantiles use
   linear interpolation; MAD is unscaled. Slope measures change per observation,
-  not per second.
-- **Accumulate** adds a running total, minimum or maximum. It starts with the
-  first observation reaching the step, continues across checkpoint recovery,
-  and starts over in a new run. A total of a 0/1 feature counts its true values.
-  A total keeps growing, so a detector that learned its early values soon sees
-  only values it never met. Before a total reaches a detector, take its
-  **Change** or a **Rolling statistic**, or compare it in a Condition.
+  not per second. Six more statistics place the latest value in its window or
+  describe the window's shape:
+  - **zscore** is the latest value's distance from the window's mean in
+    standard deviations, and **robust_zscore** its distance from the median in
+    scaled MADs, which a few outliers in the window do not stretch. Where more
+    than half of the window holds one value, the mean absolute deviation
+    stands in for the MAD.
+  - **rank** runs from 0, the lowest value of the window, to 1, the highest;
+    equal values count half.
+  - **rms** is the root mean square, the usual size of a signal that swings
+    around 0.
+  - **skewness** is positive when the window has a tail of high values, and
+    **kurtosis** is positive when it has heavier tails than a normal
+    distribution.
+
+  A window that holds one value throughout has no spread: its scores, skewness
+  and kurtosis are 0 and its rank is 0.5.
+- **Accumulate** adds a running total, minimum, maximum or count. It starts
+  with the first observation reaching the step, continues across checkpoint
+  recovery, and starts over in a new run. A total of a 0/1 feature counts its
+  true values, and **count** numbers the observations themselves from 1.
+  **Reset when** takes a condition over the features that arrive, such as
+  `dc_current < 1`: each observation where it holds starts over and is the
+  first of the new accumulation, so a count reads 1 there. With it, a total
+  becomes the energy of one charging session and a count the observations
+  since the last door opening. Without a reset a total keeps growing, so a
+  detector that learned its early values soon sees only values it never met.
+  Before such a total reaches a detector, take its **Change** or a **Rolling
+  statistic**, or compare it in a Condition.
+- **Hold** keeps each value from the last observation where **Update when**
+  held, such as `valid == 1` to carry the last valid measurement through the
+  observations in between. The first observation is always taken, so the step
+  has a value from the start.
+- **Rolling relation** compares each feature with the one chosen under
+  **Against** over the last **Window** observations, at least 3: their
+  **correlation** from -1 to 1, their **covariance**, the **slope** of the
+  feature per unit of the other one, or the **residual**, how far the latest
+  value lies from the line fitted through the window. The correlation of a
+  current with the power it should drive stays near 1 until something comes
+  loose. **Applies to** starts with every other feature. A window where either
+  feature keeps one value has no direction: correlation, covariance and slope
+  are 0, and the residual is the latest value's distance from the window's
+  mean.
 - **Math** takes a logarithm, square root, absolute value or square, or computes
   scale × x + offset.
 - **Range check** clips values to **Low** and **High**, or skips observations
   outside them.
+- **Time features** adds features of the time each observation was measured
+  at, whichever are switched on:
+  - **Seconds since the previous observation** adds `dt`. With it a formula
+    turns a difference into a rate, `dc_current_diff1 / dt`, and a power into
+    energy, `power * dt` under **Accumulate**. `dt` is always above 0, so
+    dividing by it skips nothing. The first observation has none before it,
+    so the step is ready after two.
+  - **Hour of day** adds `hour`, from 0 at midnight up to 24 with minutes as a
+    fraction, and **Day of week** adds `weekday`, 1 for Monday to 7 for Sunday.
+  - **Daily cycle** adds `hour_sin` and `hour_cos`, and **Weekly cycle**
+    `weekday_sin` and `weekday_cos`. They place the time on a circle, where
+    23:59 lies next to 0:00 and Sunday night next to Monday morning, so a
+    detector sees them as neighbours.
+
+  The hour and the weekday follow **Time zone**, such as `Europe/Berlin`, with
+  its daylight saving time, so a pattern that follows working hours stays in
+  place all year. Left empty it is UTC. The step has no **Applies to**: it
+  keeps the features that arrive and adds its own, and a name that already
+  arrives has to be renamed first.
 
 Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
-**Change**, **Rolling statistic** and **Accumulate** add features by default, such as
-`dc_voltage_diff1`, `dc_voltage_mean60` and `dc_voltage_total`; the others replace values.
+**Change**, **Rolling statistic**, **Accumulate**, **Hold** and **Rolling
+relation** add features by default, such as `dc_voltage_diff1`,
+`dc_voltage_mean60`, `dc_voltage_total`, `dc_voltage_held` and
+`dc_voltage_corr60`; the others replace values. A count is named
+`dc_voltage_count`, and a covariance, slope or residual over 60 observations
+ends in `cov60`, `beta60` or `resid60`. A **Smooth** by a time constant of 60
+seconds adds `dc_voltage_smooth60s`.
 A rolling quantile is named after its quantile as a percentage, so the 0.1 and
 0.9 quantiles of 60 values sit side by side as `dc_voltage_q10_60` and
 `dc_voltage_q90_60`. A step
@@ -294,11 +564,22 @@ the 11th observation, and its settings say **Ready after 11 observations**.
 **Before the first alarm** counts those observations as
 **Preparing**; meanwhile the service shows how many observations are prepared,
 and nothing learns. A window holds at most 3,600 values per feature,
-and a design's Prepare windows hold at most 50,000 values in all.
+and a design's Prepare windows hold at most 50,000 values in all. A **Rolling
+relation** keeps two windows per feature, its own and one of the feature it is
+compared with.
+
+**Time features** and **Smooth** by time constant read the observation's time,
+as [Observation time and alignment](#observation-time-and-alignment) defines
+it, never the moment it happened to be processed, so a Dojo replay of recorded
+data computes the same values as the live monitor did. The time between two
+observations counts from the previous observation the step used: one that was
+skipped, or that a **Gate** before the step held back, is not counted, so the
+next `dt` spans it.
 
 An observation a Prepare step cannot use is skipped as a whole: a logarithm or
 root outside its domain, a percent change from zero, a result too large to
-represent, or a value outside a skipping **Range check**. Skipping changes no
+represent, a value outside a skipping **Range check**, or an observation that
+is not later than the previous one at a step that reads time. Skipping changes no
 step's state, nothing learns from the observation, and it counts as a coverage
 gap. The step's diagnostics count skipped observations by reason. Evidence
 always records the raw readings. Learned steps and the detector skip an
@@ -326,6 +607,17 @@ logarithm or a square root on the feature itself, as above: the check follows a
 comparison of the feature with a number, not a flag computed from it, so
 `if(running == 1, power / dc_current, 0)` still warns that a current of 0 is
 skipped.
+
+More functions round, wrap and combine values:
+
+| Function | Result |
+| --- | --- |
+| `round(x)`, `floor(x)`, `ceil(x)` | The nearest, next lower or next higher whole number. A half rounds away from 0, so `round(2.5)` is 3. For two decimals, write `round(x * 100) / 100`. |
+| `sign(x)` | -1, 0 or 1. |
+| `mod(x, divisor)` | The remainder, with the divisor's sign: `mod(hour - 1, 24)` is 23 at hour 0. A divisor of 0 skips the observation. |
+| `mean(a, b, …)`, `sum(a, b, …)` | The mean or the sum of two or more values. |
+| `hypot(a, b, …)` | The length of a vector, `sqrt(a^2 + b^2 + …)`. |
+| `sin(x)`, `cos(x)`, `atan2(y, x)` | Angles in radians. `pi()` is π, so `sin(2 * pi() * hour / 24)` turns an hour of the day into a smooth daily cycle. |
 
 Both keep the features they use and add the result, named by **Name**, or
 `formula` and the function's name, such as `mean`, when it is empty. A second
@@ -357,6 +649,24 @@ computed name. A Set feature that reads the feature it replaces continues it:
 warns about a Condition that is always or never true, and about a Set feature
 that reads no feature. These steps run before learned scaling and projection,
 like Formula.
+
+**Calculate** computes several named features in one step, one per line:
+
+```text
+# Electrical power and how much of the limit it uses
+power = dc_voltage * dc_current
+share = power / 11000
+dc_current = if(dc_current < 0.05, 0, dc_current)
+```
+
+Each line is `name = formula`, and a line reads the features that arrive and
+the names written above it, so `share` can use `power`. A name that already
+arrives is replaced in its place, like **Set feature**; a new name is added
+after the others. Lines that start with `#` are notes, and a step holds up to
+32 formulas. A problem names its line, such as *Line 3: Unknown feature powr
+at character 9*, and **Use** fixes it in that line. Suggestions list the names
+written above the line being typed. The check warns per line about values that
+will be skipped, like it does for a Formula.
 
 **For each feature** runs one Formula once per feature chosen under **For
 each**, with `x` standing for that feature, so `x / i_mean - 1` on `L1`, `L2`
@@ -391,6 +701,21 @@ that is never true is an error, and one that is always true a warning. **Before
 the first alarm** and **Ready after** then say *at least*, because the
 observations a Gate holds back do not count.
 
+A **Mute alarms** step raises no alarm while its condition holds, such as
+`speed < 100` while a machine runs up. Unlike a Gate it lets every observation
+through: the steps after it, the detectors and the calibration learn and score
+as usual, so the charts keep their line and the detector keeps following the
+process. Only the alarm is held back. An alarm that would have been raised is
+kept as **muted**: the monitor's chart shows it as an open dot where a raised
+alarm is a filled one, hover reads **Alarm: muted**, and no alarm is listed for
+it. When the condition stops holding and the alarm still stands, it is raised
+then. The Prepare summary counts the observations scored with alarms muted, and
+the step's diagnostics say when its condition holds. A condition that is always
+true is an error, because no alarm would ever be raised, and one that is never
+true a warning. In a Dojo run a muted observation counts as no alarm. Choose a
+Gate when the detector should not learn from the readings at all, such as a
+standstill, and Mute alarms when it should and only the alarms would be noise.
+
 A step that chooses features, such as **Select features** or **Applies to**,
 lists the features that arrive once the check has worked them out. When an
 earlier step has an error, the check cannot, and the step names the earlier one
@@ -399,8 +724,8 @@ and its problem instead, with **Go to** to open it.
 **Features** beside **Graph** lists the features the detector receives, one row
 each: the reading it comes from, the steps that change it on the way, and the
 name the detector sees. Features made from several, such as a formula's result,
-follow the readings, and the Gates sit above the rows because they decide which
-observations reach every feature. **Raw** means no step changes the feature, and
+follow the readings, and the Gates and Mute alarms steps sit above the rows
+because they decide for every feature at once. **Raw** means no step changes the feature, and
 selecting a step opens its settings. **+** in a row adds a step for that feature
 alone: a Prepare or Combine step goes in before anything learns, and a learned
 step just before the detector. A feature that a learned step makes, such as a
@@ -416,6 +741,24 @@ interquartile range, so occasional spikes shift it less than standard scaling.
 The static step learns them from the training window. **Online robust scaling**
 uses a window of recent observations per feature, 256 by default, and is ready
 after **Min Samples** observations.
+
+**Expected value** compares one feature with what the other features imply.
+Choose the **Target**, such as a pump's current, and under **Expected from** the
+features it follows, such as flow and pressure; left as it is, every other
+feature counts. The step fits the target as a weighted sum of those features and
+a constant and gives the residual, the target minus the expected value. The
+residual is named after the target, such as `current_residual`, unless **Name**
+says otherwise. A detector on the residual reacts to a current that no longer
+fits the flow, also while each reading alone looks normal. **Result** replaces
+the target and the features it is expected from with the residual, or with
+**Keep features** adds it to them. The static step fits once on the training
+window, which has to hold more observations than the fit has weights. **Online
+expected value** updates the fit with every observation and scores each one
+against the fit before it. **Forgetting** below 1 lets earlier observations fade,
+so the fit follows slow drift; keep 1 for readings that rest for long, because a
+fit that forgets while nothing varies becomes unstable. A relation that is not a
+straight line needs its curve as a feature first, such as a **Formula** for the
+square of the flow.
 
 Unchecking readings in **Readings to monitor** changes the input slots and
 bindings together; a service accepts up to 100 readings. Each reading's feature
@@ -449,13 +792,23 @@ policy combines detectors, selecting it lists each detector's score and surprise
 for the sampled observation, and a selected detector shows its surprise beside
 its score. A chart's tooltip lists the same for each evidence row.
 
-**Edit service** opens the running definition, layout and bindings. **Apply
-changes** explains the interruption and fresh learning, then replaces the
-service through the same preflight and handoff. Both sets of readings stay
+**Edit service** opens the running definition, layout and bindings. A note
+above the graph explains the interruption and fresh learning, and **Update
+monitoring** replaces the service through the same preflight and handoff. Both sets of readings stay
 reserved during preflight and handoff, and a failed preflight leaves the
 predecessor running. After retirement, cancellation or failure does not silently
 revive it. History remains inspectable after a service is removed. Older library,
 revision and in-flight activation links still open.
+
+While you change a service, the graph is compared with the design that runs.
+The card of a step the running design lacks is marked **New**, and the card of
+a step it holds differently is marked **Changed**. Step settings say what
+changed, such as "Factor 5, was 3" or "Switched off". The note above the graph
+counts both, names the steps that went, and says what else differs: the inputs
+and how many observations the design learns from. A step that only has a new
+step in front of it is not marked, because the new step is the change. A
+proposal that replaces a service is compared the same way, so a review starts
+at the marked cards.
 
 Static preprocessing fits only the training window and stays frozen. Adaptive
 preprocessing initializes before downstream learning; its warm-up counter counts
@@ -539,6 +892,10 @@ regressing timestamps for the same reading. Rejected inputs are counted as
 coverage gaps and cannot refresh valid-input activity or advance the detector.
 Without a source timestamp or event identity, distinct deliveries cannot be
 deduplicated reliably.
+
+Pipeline steps that read time, **Time features** and **Smooth** by time
+constant, use the latest observation time among the readings of the aligned
+vector.
 
 An aligned vector also requires fresh receipts and observation times within
 5 seconds of one another. Newer compatible readings unblock alignment; a blocked

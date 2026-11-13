@@ -85,6 +85,8 @@ async def test_direct_apply_is_atomic_idempotent_and_separate_from_templates(
         execution = PipelineExecutionConfig.model_validate(run.execution)
         assert execution.definition == template.draft
         assert execution.bindings[0].reading_id == "current"
+        # A start that does not ask for shadow raises its alarms.
+        assert run.launch_config["shadow"] is False
         with pytest.raises(ConflictError, match="Idempotency"):
             await PipelineActivations(session).apply(
                 request.model_copy(update={"display_name": "Other"})
@@ -137,11 +139,13 @@ async def test_library_drafts_concurrency_and_immutable_revisions(pipeline_datab
 async def test_activation_binding_and_persisted_union_claims(pipeline_database):
     async with pipeline_database() as session:
         _, revision = await published_design(session)
+        # A shadow run binds and claims its readings as any other.
         request = PipelineActivationRequest(
             revision_id=revision.id,
             bindings={"value": "current"},
             display_name="Current monitor",
             idempotency_key="binding-claim",
+            shadow=True,
         )
         activations = PipelineActivations(session)
         activation = await activations.submit(request)
@@ -153,7 +157,11 @@ async def test_activation_binding_and_persisted_union_claims(pipeline_database):
         await session.rollback()
         row = await session.get(PipelineActivation, activation.id)
         assert row.launch_config["launch_version"] == 2
+        assert row.launch_config["shadow"] is True
         run = await session.get(PipelineRun, activation.run_id)
+        # Shadow belongs to the start: what the run executes does not name it.
+        assert run.launch_config["shadow"] is True
+        assert "shadow" not in run.execution
         assert run.binding_metadata["readings"][0]["label"] == "Current"
         assert run.binding_metadata["readings"][0]["source_label"] == "Fixture"
         assert run.binding_metadata["collection_revision"] == 1

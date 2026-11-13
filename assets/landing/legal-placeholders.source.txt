@@ -1,0 +1,30 @@
+Landing footer and legal placeholders, prepared 2026-11-11.
+
+The operator's legal identity, jurisdiction, contacts and processing practices
+have not been supplied. Bracketed entries are intentionally incomplete. They
+must be adapted and completed before being presented as final legal notices.
+Terms remain an outline, not an active service agreement. No response times,
+certifications, availability guarantees or working contact addresses are invented.
+
+References checked for the Impressum and privacy/storage field structure:
+- German DDG section 5:
+  https://www.gesetze-im-internet.de/ddg/__5.html
+- EU guidance on privacy information:
+  https://europa.eu/youreurope/business/governance-and-sustainability/digital-and-data-compliance/data-protection-gdpr/index_en.htm
+- German TDDDG section 25:
+  https://www.gesetze-im-internet.de/ttdsg/__25.html
+
+The former EU ODR platform is closed; no obsolete ODR link is included:
+https://consumer-redress.ec.europa.eu/site-relocation_en
+Consumer dispute-resolution obligations, if applicable, still need a statement
+appropriate to the operator. Do not treat the absence of an ODR link as an
+assessment of those separate obligations.
+
+The landing template remains script-free and adds no analytics, advertising,
+forms, embeds or browser storage. Cookie consent requirements depend on the
+actual deployed services, including infrastructure and the signed-in dashboard;
+the privacy template asks for that inventory rather than claiming compliance.
+
+Footer links open the existing script-free hash-target panels. Placeholder
+addresses remain plain text, not fake mailto links. No security.txt is generated
+until a real monitored contact and disclosure process have been established.

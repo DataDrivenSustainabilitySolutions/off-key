@@ -56,8 +56,10 @@ the current worker and include time spent waiting in its ingress queue.
 A managed snapshot with processed observations but no observation history fails
 startup. This revision is unreleased and does not accept an older payload that
 would reopen the replay boundary. An initial snapshot before the first
-observation may have empty history. Changing freshness, age, future-time
-tolerance or alignment-skew policy invalidates the snapshot.
+observation may have empty history. Changing the hold intervals, minimum hold
+or future-time tolerance invalidates the snapshot. A restored worker keeps the
+rejection watermarks and starts over with every reading's latest value and
+learned interval.
 
 The signed snapshot signature also fences overlapping managed workers. An initial
 snapshot has one database winner, and each later checkpoint must replace the

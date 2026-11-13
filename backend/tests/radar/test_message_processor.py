@@ -6,32 +6,28 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_mqtt_radar import state_cache as state_cache_module
+from off_key_core.schemas.radar import MonitorTiming
 from off_key_mqtt_radar.message_processor import MessageProcessor
 from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
-from off_key_mqtt_radar.state_cache import AlignmentUpdate, SensorStateCache
 
 
 def _build_processor(
     required_sensors=None,
-    state_cache=None,
     sensor_key_strategy: str = "full_hierarchy",
+    **alignment,
 ) -> MessageProcessor:
-    detector = MagicMock()
-    feature_validator = MagicMock()
-    memory_manager = MagicMock()
     return MessageProcessor(
-        detector=detector,
-        feature_validator=feature_validator,
-        memory_manager=memory_manager,
-        state_cache=state_cache,
+        detector=MagicMock(),
+        feature_validator=MagicMock(),
+        memory_manager=MagicMock(),
         required_sensors=required_sensors,
         sensor_key_strategy=sensor_key_strategy,
+        **alignment,
     )
 
 
-def test_align_features_normalizes_single_sensor_value_key():
-    processor = _build_processor(required_sensors=set(), state_cache=None)
+def test_align_features_passes_a_single_value_through_without_required_readings():
+    processor = _build_processor(required_sensors=set())
     timestamp = datetime.now(UTC).timestamp()
 
     features, alignment = processor._align_features(
@@ -42,12 +38,13 @@ def test_align_features_normalizes_single_sensor_value_key():
     )
 
     assert features == {"voltage": 230.5}
-    assert alignment["alignment_status"] == "direct_pass_through"
+    assert alignment["alignment_status"] == "aligned"
+    assert alignment["aligned_vector"] is False
     assert alignment["input_timestamps"] == {"voltage": timestamp}
 
 
 def test_align_features_uses_sensor_key_when_present():
-    processor = _build_processor(required_sensors=set(), state_cache=None)
+    processor = _build_processor(required_sensors=set())
 
     features, alignment = processor._align_features(
         charger_id="charger-1",
@@ -59,14 +56,9 @@ def test_align_features_uses_sensor_key_when_present():
     assert alignment["aligned_vector"] is False
 
 
-def test_single_sensor_rejects_queue_delay_using_its_configured_receipt_budget():
-    processor = MessageProcessor(
-        detector=MagicMock(),
-        feature_validator=MagicMock(),
-        memory_manager=MagicMock(),
-        required_sensors={"x"},
-        sensor_freshness_seconds=0.01,
-        observation_max_age_seconds=30,
+def test_single_sensor_rejects_queue_delay_using_its_receipt_limit():
+    processor = _build_processor(
+        required_sensors={"x"}, timing=MonitorTiming(minimum_hold_seconds=0.01)
     )
     features, context = processor._align_features(
         "entity",
@@ -79,98 +71,87 @@ def test_single_sensor_rejects_queue_delay_using_its_configured_receipt_budget()
     assert context["rejection_reason"] == "receipt_too_old"
 
 
-def test_align_features_normalizes_before_state_cache_update():
-    state_cache = MagicMock()
-    state_cache.update_with_status.return_value = AlignmentUpdate(
-        status="aligned_emit",
-        features={"voltage": 230.5, "current": 18.2},
-        sensor_ages={"voltage": 0.4, "current": 0.2},
-        input_timestamps={"voltage": 10.0, "current": 11.0},
-        sample_timestamp=11.0,
+class Clock:
+    def __init__(self, now: float = 100.0):
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _aligning(sensors, clock, **timing):
+    return _build_processor(
+        required_sensors=set(sensors),
+        timing=MonitorTiming(**timing),
+        clock=clock,
+        monotonic=clock,
     )
-    processor = _build_processor(
-        required_sensors={"voltage", "current"},
-        state_cache=state_cache,
-    )
+
+
+def test_align_features_forms_an_observation_from_every_reading():
+    clock = Clock()
+    processor = _aligning({"voltage", "current"}, clock)
 
     features, alignment = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="voltage",
-        data={"value": 230.5},
+        "charger-1", "voltage", {"value": 230.5}, sample_timestamp=100.0
     )
+    assert features is None
+    assert alignment["alignment_status"] == "missing_reading"
+    assert alignment["missing_sensors"] == ["current"]
 
-    state_cache.update_with_status.assert_called_once_with(
-        "charger-1",
-        "voltage",
-        {"voltage": 230.5},
-        sample_timestamp=None,
+    clock.now = 101.0
+    features, alignment = processor._align_features(
+        "charger-1", "current", {"value": 18.2}, sample_timestamp=101.0
     )
     assert features == {"voltage": 230.5, "current": 18.2}
-    assert alignment["alignment_status"] == "aligned_emit"
+    assert alignment["alignment_status"] == "aligned"
     assert alignment["aligned_vector"] is True
-    assert alignment["input_timestamps"] == {"voltage": 10.0, "current": 11.0}
+    assert alignment["input_timestamps"] == {"voltage": 100.0, "current": 101.0}
+    assert alignment["sample_timestamp"] == 101.0
+    assert "held_sensors" not in alignment
 
 
-@pytest.mark.parametrize(
-    ("status", "pending_field", "sensor_ages"),
-    [
-        ("waiting_for_all", "missing_sensors", {"voltage": 0.2}),
-        ("stale_sensor_block", "stale_sensors", {"voltage": 0.4, "current": 45.0}),
-        ("waiting_for_barrier", "pending_sensors", {"voltage": 0.1, "current": 0.0}),
-    ],
-)
-def test_align_features_withholds_incomplete_vectors(
-    status, pending_field, sensor_ages
-):
-    state_cache = MagicMock()
-    state_cache.update_with_status.return_value = AlignmentUpdate(
-        status=status, sensor_ages=sensor_ages, **{pending_field: ("current",)}
-    )
-    processor = _build_processor(
-        required_sensors={"voltage", "current"},
-        state_cache=state_cache,
-    )
-
+def test_a_slow_reading_is_held_and_named_in_the_context():
+    clock = Clock()
+    processor = _aligning({"fast", "slow"}, clock)
+    for at in range(100, 230, 10):
+        clock.now = at
+        processor._align_features("c", "fast", {"value": at}, sample_timestamp=at)
+        if at % 60 == 40:
+            clock.now = at + 1
+            processor._align_features(
+                "c", "slow", {"value": at + 1}, sample_timestamp=at + 1
+            )
+    clock.now = 230
     features, alignment = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="voltage",
-        data={"value": 230.5},
+        "c", "fast", {"value": 230}, sample_timestamp=230
     )
+    assert features == {"fast": 230, "slow": 221}
+    assert alignment["held_sensors"] == ["slow"]
 
+
+def test_a_reading_that_stops_drops_observations_and_counts_them():
+    clock = Clock()
+    processor = _aligning(
+        {"fast", "slow"}, clock, hold_intervals=3, minimum_hold_seconds=1
+    )
+    processor.coverage = MagicMock()
+    for at in range(100, 190, 10):
+        clock.now = at
+        processor._align_features("c", "fast", {"value": at}, sample_timestamp=at)
+        if at in (100, 120):
+            processor._align_features(
+                "c", "slow", {"value": at + 1}, sample_timestamp=at + 1
+            )
+    clock.now = 190
+    features, alignment = processor._align_features(
+        "c", "fast", {"value": 190}, sample_timestamp=190
+    )
     assert features is None
-    assert alignment["alignment_status"] == status
-    assert alignment[pending_field] == ["current"]
-
-
-def test_three_sensor_cadence_blocks_stale_vectors_until_the_slow_sensor_recovers(
-    monkeypatch,
-):
-    now = {"value": 100.0}
-    monkeypatch.setattr(state_cache_module.time, "time", lambda: now["value"])
-    sensors = {"s1", "s2", "s3"}
-    processor = _build_processor(
-        required_sensors=sensors,
-        state_cache=SensorStateCache(
-            required_sensors=sensors, max_sensor_age_seconds=5
-        ),
-    )
-    timeline = [
-        (100.0, "s1", 1.0, "waiting_for_all", None),
-        (101.0, "s2", 2.0, "waiting_for_all", None),
-        (102.0, "s3", 3.0, "aligned_emit", {"s1": 1.0, "s2": 2.0, "s3": 3.0}),
-        # s1 arrives late; s2 and s3 are now stale and must be blocked.
-        (110.0, "s1", 1.1, "stale_sensor_block", None),
-        (111.0, "s2", 2.1, "stale_sensor_block", None),
-        # Once the slow sensor recovers, aligned vectors resume.
-        (112.0, "s3", 3.1, "aligned_emit", {"s1": 1.1, "s2": 2.1, "s3": 3.1}),
-    ]
-
-    for at, sensor, value, status, expected in timeline:
-        now["value"] = at
-        features, alignment = processor._align_features(
-            "charger-1", sensor, {sensor: value}
-        )
-        assert (alignment["alignment_status"], features) == (status, expected)
+    assert alignment["alignment_status"] == "stale_reading"
+    assert alignment["stale_sensors"] == ["slow"]
+    processor.coverage.record_drop.assert_called_with("stale_reading")
+    assert processor.stale_after_seconds() == {"fast": 30.0, "slow": 60.0}
 
 
 @pytest.mark.parametrize(
@@ -191,7 +172,7 @@ def test_three_sensor_cadence_blocks_stale_vectors_until_the_slow_sensor_recover
     ],
 )
 def test_align_features_names_the_feature_by_its_sensor(sensor_type, data, expected):
-    processor = _build_processor(required_sensors=set(), state_cache=None)
+    processor = _build_processor(required_sensors=set())
 
     features, _ = processor._align_features(
         charger_id="charger-1", sensor_type=sensor_type, data=data
@@ -200,35 +181,21 @@ def test_align_features_names_the_feature_by_its_sensor(sensor_type, data, expec
     assert features == expected
 
 
-def test_align_features_handles_empty_data_without_crashing():
-    processor = _build_processor(required_sensors={"voltage"}, state_cache=None)
+def test_align_features_rejects_a_reading_without_a_value():
+    processor = _build_processor(required_sensors={"voltage"})
 
-    features, _ = processor._align_features(
+    features, alignment = processor._align_features(
         charger_id="charger-1",
         sensor_type="voltage",
         data={},
     )
 
-    assert features == {}
+    assert features is None
+    assert alignment["rejection_reason"] == "observation_without_value"
 
 
 def test_normalize_sensor_reading_returns_none_for_none_data():
     assert MessageProcessor._normalize_sensor_reading("voltage", None) is None
-
-
-def test_align_features_skips_state_cache_when_cache_missing():
-    processor = _build_processor(
-        required_sensors={"voltage", "current"},
-        state_cache=None,
-    )
-
-    features, _ = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="voltage",
-        data={"value": 230.5},
-    )
-
-    assert features == {"voltage": 230.5}
 
 
 def test_message_processor_normalizes_sensor_key_strategy():
@@ -274,7 +241,7 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         charger_id="1",
         alignment_context={
             "aligned_vector": True,
-            "alignment_status": "aligned_emit",
+            "alignment_status": "aligned",
             "sample_timestamp": sample_ts - 10,
             "input_timestamps": {
                 "sine": sample_ts - 1,

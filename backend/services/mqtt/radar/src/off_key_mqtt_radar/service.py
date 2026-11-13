@@ -43,7 +43,6 @@ from .runtime_checkpoint import (
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
 )
-from .state_cache import SensorStateCache
 from .topic_parser import TopicParser
 
 
@@ -90,7 +89,6 @@ class RadarService:
         # Extracted components
         self.health_monitor = HealthMonitor(
             health_check_interval=self.config.health_check_interval,
-            sensor_freshness_seconds=self.config.sensor_freshness_seconds,
         )
         self.message_processor: MessageProcessor | None = None
         self.coverage: CoverageTracker | None = None
@@ -113,21 +111,10 @@ class RadarService:
         # Logging context
         self._log_context = {"service": "radar", "component": "main"}
 
-        # Sensor alignment (wait_for_all with latest values)
+        # Every observation uses the latest value of each of these readings.
         self.required_sensors = TopicParser.derive_required_sensors(
             self.config.subscription_topics,
             sensor_key_strategy=self.config.sensor_key_strategy,
-        )
-        self.state_cache = (
-            SensorStateCache(
-                self.required_sensors,
-                max_sensor_age_seconds=self.config.sensor_freshness_seconds,
-                observation_max_age_seconds=self.config.observation_max_age_seconds,
-                observation_future_tolerance_seconds=self.config.observation_future_tolerance_seconds,
-                alignment_max_skew_seconds=self.config.alignment_max_skew_seconds,
-            )
-            if self.required_sensors
-            else None
         )
 
         logger.info("Initialized RADAR service orchestrator")
@@ -168,13 +155,10 @@ class RadarService:
                 detector=self.detector,
                 feature_validator=self.feature_validator,
                 memory_manager=self.memory_manager,
-                state_cache=self.state_cache,
                 required_sensors=self.required_sensors,
+                timing=self.config.timing(),
                 sensor_key_strategy=self.config.sensor_key_strategy,
                 coverage=self.coverage,
-                observation_max_age_seconds=self.config.observation_max_age_seconds,
-                sensor_freshness_seconds=self.config.sensor_freshness_seconds,
-                observation_future_tolerance_seconds=self.config.observation_future_tolerance_seconds,
             )
             if restored.processor is not None:
                 self.message_processor.restore_counters(restored.processor)
@@ -354,27 +338,14 @@ class RadarService:
             f"strategy={anomaly_config.monitoring.strategy}"
         )
 
-        if self.required_sensors and self.state_cache:
-            logger.info(
-                "Sensor alignment enabled (wait_for_all)",
-                extra={
-                    **self._log_context,
-                    "required_sensors": self.required_sensors,
-                    "sensor_freshness_seconds": self.config.sensor_freshness_seconds,
-                },
-            )
-        else:
-            logger.info(
-                (
-                    "Sensor alignment disabled; processing incoming sensor "
-                    "streams independently"
-                ),
-                extra={
-                    **self._log_context,
-                    "subscription_topics": self.config.subscription_topics,
-                    "sensor_key_strategy": self.config.sensor_key_strategy,
-                },
-            )
+        logger.info(
+            "Observations use the latest value of every reading",
+            extra={
+                **self._log_context,
+                "required_sensors": sorted(self.required_sensors),
+                "timing": self.config.timing().model_dump(mode="json"),
+            },
+        )
         return restored
 
     async def _setup_database_writer(self):

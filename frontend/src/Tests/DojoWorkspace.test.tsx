@@ -288,7 +288,7 @@ describe("Dojo workspace", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
     await waitFor(() => expect(dojoApi.createRun).toHaveBeenCalledWith(expect.objectContaining({
       dataset_id: "d1", name: "Isolation forest", bindings: { current: "s2", voltage: "s1" },
-      alignment: { freshness_seconds: 30, max_skew_seconds: 5 } })));
+      alignment: { hold_intervals: 3, minimum_hold_seconds: 30 } })));
   });
 
   it("asks for a comparison of calibration methods only where a design has a score boundary", async () => {

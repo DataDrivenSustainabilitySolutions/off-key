@@ -111,7 +111,8 @@ class RadarActivityStatus(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    freshness_seconds: float = Field(gt=0, allow_inf_nan=False)
+    # Seconds after which each input's last value counts as stale, by input.
+    stale_after_seconds: dict[str, float] = Field(default_factory=dict)
     last_input_at: datetime | None = None
     last_processed_at: datetime | None = None
     last_inference_at: datetime | None = None
@@ -184,18 +185,28 @@ class RadarOperationalStatus(BaseModel):
 
 
 class MonitorTiming(BaseModel):
-    """How fresh and how closely aligned a monitor's readings must be."""
+    """How long each reading's last value stays usable in an observation.
+
+    A monitor learns each reading's usual interval from its own arrivals. The
+    reading's last value counts for ``hold_intervals`` of those intervals, and
+    never for less than ``minimum_hold_seconds``.
+    """
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0, allow_inf_nan=False)
-    observation_max_age_seconds: float = Field(
-        default=30.0, gt=0.0, allow_inf_nan=False
+    hold_intervals: float = Field(default=3.0, ge=1.0, le=1000.0, allow_inf_nan=False)
+    minimum_hold_seconds: float = Field(
+        default=30.0, gt=0.0, le=7 * 86400, allow_inf_nan=False
     )
-    observation_future_tolerance_seconds: float = Field(
-        default=5.0, ge=0.0, allow_inf_nan=False
+    future_tolerance_seconds: float = Field(
+        default=5.0, ge=0.0, le=300.0, allow_inf_nan=False
     )
-    alignment_max_skew_seconds: float = Field(default=5.0, ge=0.0, allow_inf_nan=False)
+
+    def timing(self) -> "MonitorTiming":
+        """These settings alone, also from a configuration that extends them."""
+        return MonitorTiming(
+            **{name: getattr(self, name) for name in MonitorTiming.model_fields}
+        )
 
 
 class PerformanceConfig(MonitorTiming):

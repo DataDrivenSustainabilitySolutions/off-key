@@ -34,7 +34,7 @@ def _input(tracker, sensor, clock):
 
 
 def _health(tracker, *, state="ready", processed_count=10, database_health=None):
-    monitor = HealthMonitor(sensor_freshness_seconds=5.0)
+    monitor = HealthMonitor()
     monitor.started_monotonic = time.monotonic()
     monitor.set_components(
         detector=SimpleNamespace(
@@ -53,7 +53,11 @@ def _health(tracker, *, state="ready", processed_count=10, database_health=None)
                 "message_count": processed_count,
                 "processed_message_count": processed_count,
                 "activity": tracker.snapshot(),
-            }
+            },
+            # Each reading's value counts for five seconds.
+            stale_after_seconds=lambda: dict.fromkeys(
+                tracker.snapshot()["required_sensors"], 5.0
+            ),
         ),
         database_writer=SimpleNamespace(get_health_status=lambda: database_health)
         if database_health
@@ -62,12 +66,27 @@ def _health(tracker, *, state="ready", processed_count=10, database_health=None)
     return monitor.get_health_status()
 
 
+def test_each_reading_is_judged_against_its_own_limit():
+    tracker = ActivityTracker({"fast", "slow"}, clock=lambda: 200.0)
+    _input(tracker, "fast", 160.0)
+    _input(tracker, "slow", 40.0)
+    activity = evaluate_activity(
+        tracker.snapshot(),
+        stale_after_seconds={"fast": 30.0, "slow": 180.0},
+        inference_expected=False,
+        database_health={},
+    )
+    # 40 s is too old for a reading every 10 s; 160 s is fine for one a minute.
+    assert activity.stale_sensors == ["fast"]
+    assert activity.stale_after_seconds == {"fast": 30.0, "slow": 180.0}
+
+
 def test_receipt_clocks_include_time_spent_waiting_in_queue():
     tracker = ActivityTracker({"a"}, clock=lambda: 100.0)
     _input(tracker, "a", 90.0)
     activity = evaluate_activity(
         tracker.snapshot(),
-        freshness_seconds=5.0,
+        stale_after_seconds={"a": 5.0},
         inference_expected=False,
         database_health={},
     )
@@ -150,14 +169,15 @@ def test_observations_a_gate_holds_back_are_progress_not_a_stall():
     def activity():
         return evaluate_activity(
             tracker.snapshot(),
-            freshness_seconds=10.0,
+            stale_after_seconds={},
             inference_expected=True,
             database_health={},
         )
 
     assert not activity().inference_stalled
     assert tracker.snapshot()["last_inference_age_seconds"] == 30.0
-    clock[0] = 145.0
+    # Without any reading's limit the monitor gets the 30 s minimum hold.
+    clock[0] = 161.0
     assert activity().inference_stalled
 
 

@@ -50,7 +50,7 @@ describe("monitoring configuration", () => {
     expect(result.request).toEqual({
       display_name: "radar-adaptive-test",
       reading_ids: ["L1", "L2"],
-      performance_config: { sensor_freshness_seconds: 30 },
+      performance_config: { hold_intervals: 3 },
       monitoring: {
         strategy: "adaptive_stream",
         model_type: "aberrant_gadget_svm",

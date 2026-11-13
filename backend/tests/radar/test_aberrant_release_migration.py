@@ -24,6 +24,14 @@ def test_authentic_1_3_checkpoint_requires_fresh_learning(monkeypatch):
         (Path(__file__).parent / "fixtures/aberrant-1.3-checkpoint.json").read_text()
     )
     assert fixture["runtime_versions"]["aberrant"] == "1.3.0"
+    # Migration 033 removed the strict barrier's timing from every stored launch.
+    for key in (
+        "sensor_freshness_seconds",
+        "observation_max_age_seconds",
+        "observation_future_tolerance_seconds",
+        "alignment_max_skew_seconds",
+    ):
+        fixture["launch"]["performance_config"].pop(key)
     original = deepcopy(fixture["launch"])
     launch = normalize_saved_launch(fixture["launch"])
     assert fixture["launch"] == original

@@ -41,7 +41,6 @@ class HealthMonitor:
         self,
         health_check_interval: float = 30.0,
         max_processing_times: int = 1000,
-        sensor_freshness_seconds: float = 30.0,
     ):
         """
         Initialize health monitor.
@@ -51,7 +50,6 @@ class HealthMonitor:
             max_processing_times: Max processing times to track
         """
         self.health_check_interval = health_check_interval
-        self.sensor_freshness_seconds = sensor_freshness_seconds
         self.processing_times: deque[float] = deque(maxlen=max_processing_times)
 
         # Service state
@@ -375,7 +373,11 @@ class HealthMonitor:
         )
         activity = evaluate_activity(
             processor_metrics.get("activity"),
-            freshness_seconds=self.sensor_freshness_seconds,
+            stale_after_seconds=(
+                self._message_processor.stale_after_seconds()
+                if self._message_processor
+                else {}
+            ),
             inference_expected=inference_expected,
             database_health=components.get("database_writer", {}) or {},
         )
@@ -451,9 +453,9 @@ class HealthMonitor:
         elif processed_count <= 0:
             stage = "waiting_for_data"
             detail = (
-                "Waiting for aligned sensor data"
+                "Waiting for every reading to report"
                 if last_alignment_status
-                and last_alignment_status != "direct_pass_through"
+                in {"missing_reading", "waiting_for_reading", "stale_reading"}
                 else "Waiting for telemetry"
             )
         else:
@@ -508,7 +510,7 @@ class HealthMonitor:
                 return "Monitored inputs are stale"
             return "Monitored inputs are missing"
         if activity.inference_stalled:
-            return "No successful inference within the configured freshness budget"
+            return "No successful inference while every reading was current"
         if activity.persistence_stalled:
             return "Monitoring evidence has not been persisted within its time budget"
         return None

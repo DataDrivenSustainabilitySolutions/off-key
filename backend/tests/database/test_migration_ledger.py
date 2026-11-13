@@ -114,6 +114,9 @@ APPLIED_CHECKSUMS = {
     "032_alarm_deletions.sql": (
         "233c4d6ad60f9b1119d5b5739ee2e5f843602f9390a68e443aa62f20a64df327"
     ),
+    "033_reading_hold_timing.sql": (
+        "dcf7ddc94bab3d1cf0e1660e844d86a5f98e65a9ca05ac4f566575b2d31f5fd0"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new

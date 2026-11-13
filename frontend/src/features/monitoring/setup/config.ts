@@ -11,10 +11,12 @@ import type {
   StaticMonitorSetup,
 } from "@/types/monitoring";
 
-// Deliberate floors, stricter than the server: a smaller reading freshness or
-// betting tolerance is almost certainly a typo.
-export const MIN_READING_FRESHNESS_SECONDS = 1;
+// A deliberate floor, stricter than the server: a smaller betting tolerance is
+// almost certainly a typo.
 export const MIN_BETTING_TOLERANCE = 0.0001;
+// How many of its own intervals a reading's last value stays usable, as the
+// server allows it.
+export const HOLD_INTERVAL_RANGE = { min: 1, max: 1000 } as const;
 
 export type ConfigValue = JsonValue;
 export type FieldErrors = Record<string, string>;
@@ -40,7 +42,7 @@ export interface StaticDraft {
   automaticFalseAlarmProbability: string;
   automaticThresholdHorizon: string;
   automaticThresholdSimulations: string;
-  sensorFreshness: string;
+  holdIntervals: string;
 }
 
 export interface AdaptiveDraft {
@@ -59,7 +61,7 @@ export interface AdaptiveDraft {
   projectionTolerance: string;
   projectionForgettingFactor: string;
   projectionSeed: string;
-  sensorFreshness: string;
+  holdIntervals: string;
 }
 
 const DEFAULT_MODEL_TYPE = "pyod_iforest";
@@ -94,7 +96,7 @@ export const createDefaultStaticDraft = (): StaticDraft => ({
   automaticFalseAlarmProbability: "0.01",
   automaticThresholdHorizon: "1000",
   automaticThresholdSimulations: "5000",
-  sensorFreshness: "30",
+  holdIntervals: "3",
 });
 
 export const createDefaultAdaptiveDraft = (): AdaptiveDraft => ({
@@ -113,7 +115,7 @@ export const createDefaultAdaptiveDraft = (): AdaptiveDraft => ({
   projectionTolerance: "0.0000001",
   projectionForgettingFactor: "",
   projectionSeed: "42",
-  sensorFreshness: "30",
+  holdIntervals: "3",
 });
 
 export const humanize = (value: string): string =>
@@ -210,9 +212,9 @@ export const buildAdaptiveMonitoringRequest = ({
     value: draft.thresholdQuantile, label: "Threshold quantile",
     field: "thresholdQuantile", errors, min: Number.MIN_VALUE, max: 1,
   });
-  const sensorFreshness = parseNumber({
-    value: draft.sensorFreshness, label: "Reading freshness",
-    field: "sensorFreshness", errors, min: MIN_READING_FRESHNESS_SECONDS,
+  const holdIntervals = parseNumber({
+    value: draft.holdIntervals, label: "Hold readings for",
+    field: "holdIntervals", errors, ...HOLD_INTERVAL_RANGE,
   });
   const preprocessingSteps: AdaptivePreprocessingStep[] = [];
   if (draft.scaler === "standard_scaler") {
@@ -291,7 +293,7 @@ export const buildAdaptiveMonitoringRequest = ({
     errors.modelType = "This model requires raw values in [0, 1] or min-max scaling to [0, 1], without a projection.";
   }
   const modelParams = validateModelParameters(draft.modelParams, modelDefinition?.fields ?? [], errors);
-  if (Object.keys(errors).length || trainingWindow === undefined || calibrationWindow === undefined || quantile === undefined || sensorFreshness === undefined) {
+  if (Object.keys(errors).length || trainingWindow === undefined || calibrationWindow === undefined || quantile === undefined || holdIntervals === undefined) {
     return { errors };
   }
   return {
@@ -299,7 +301,7 @@ export const buildAdaptiveMonitoringRequest = ({
     request: {
       display_name: displayName,
       reading_ids: readingIds,
-      performance_config: { sensor_freshness_seconds: sensorFreshness },
+      performance_config: { hold_intervals: holdIntervals },
       monitoring: {
         strategy: "adaptive_stream",
         model_type: draft.modelType,
@@ -547,12 +549,12 @@ export const buildStaticMonitoringRequest = ({
   if (!draft.martingaleTrackers.length) {
     errors.martingales = "Configure at least one martingale tracker.";
   }
-  const sensorFreshness = parseNumber({
-    value: draft.sensorFreshness,
-    label: "Reading freshness",
-    field: "sensorFreshness",
+  const holdIntervals = parseNumber({
+    value: draft.holdIntervals,
+    label: "Hold readings for",
+    field: "holdIntervals",
     errors,
-    min: MIN_READING_FRESHNESS_SECONDS,
+    ...HOLD_INTERVAL_RANGE,
   });
   const modelParams = validateModelParameters(draft.modelParams, modelDefinition?.fields ?? [], errors);
 
@@ -561,7 +563,7 @@ export const buildStaticMonitoringRequest = ({
     trainingWindow === undefined ||
     calibrationWindow === undefined ||
     martingaleTrackers.length !== draft.martingaleTrackers.length ||
-    sensorFreshness === undefined ||
+    holdIntervals === undefined ||
     automaticFalseAlarmProbability === undefined ||
     automaticThresholdHorizon === undefined ||
     automaticThresholdSimulations === undefined
@@ -574,7 +576,7 @@ export const buildStaticMonitoringRequest = ({
     request: {
       display_name: displayName,
       reading_ids: readingIds,
-      performance_config: { sensor_freshness_seconds: sensorFreshness },
+      performance_config: { hold_intervals: holdIntervals },
       monitoring: {
         strategy: "static_baseline",
         model_type: draft.modelType,

@@ -13,6 +13,7 @@ from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
+from off_key_core.utils.arrival_cadence import ArrivalCadence
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer, Observation
@@ -20,7 +21,6 @@ from off_key_mqtt_proxy.config.config import MQTTSettings
 from off_key_mqtt_proxy.telemetry import DatabaseWriter
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.services.catalogue import system_ingress
-from off_key_tactic_middleware.services.catalogue.arrival_cadence import ArrivalCadence
 from off_key_tactic_middleware.services.catalogue.broker_access import (
     BrokerRouteAccess,
 )

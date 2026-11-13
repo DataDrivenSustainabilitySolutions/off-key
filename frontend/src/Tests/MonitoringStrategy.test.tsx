@@ -212,7 +212,7 @@ describe("monitoring setup forms", () => {
     const payload = getSubmittedPayload();
 
     expect(payload.reading_ids).toEqual(["stream-L1", "stream-L2", "stream-L3"]);
-    expect(payload.performance_config).toEqual({ sensor_freshness_seconds: 30 });
+    expect(payload.performance_config).toEqual({ hold_intervals: 3 });
   });
 
   it("submits editable epsilon and alarm threshold", async () => {

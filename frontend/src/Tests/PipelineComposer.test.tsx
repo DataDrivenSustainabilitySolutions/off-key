@@ -184,7 +184,7 @@ describe("graph editing", () => {
   it("says when the first alarm can come and offers another check when one fails", async () => {
     const { PipelineWorkbench } = await import("@/features/pipelines/PipelineWorkbench");
     const valid = { valid: true, definition: pipeline().definition, issues: [], features: {}, provenance_complete: true };
-    const startup = startupEstimate(pipeline().definition, [1, 0.5]);
+    const startup = startupEstimate(pipeline().definition, [1, 2]);
     let retried = 0;
     const props = { catalog, document: pipeline(), onSelect: () => {}, onChange: () => {}, onAdd: () => {}, startup,
       onRetryValidation: () => { retried++; } };

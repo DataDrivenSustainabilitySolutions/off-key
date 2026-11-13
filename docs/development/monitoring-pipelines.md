@@ -181,8 +181,9 @@ input-slot editing is collapsed. `useGraphMetadata` checks every edit after
 strategy to switch: each detector's settings choose its model, and with it how
 it learns (see [The editor without a lane](#the-editor-without-a-lane)). The
 start-up estimate
-(`startup.ts`) takes the slowest bound reading's typical interval, because RADAR
-aligns observations across all readings. Entity selection includes configured
+(`startup.ts`) takes the most frequent bound reading's typical interval, because
+RADAR forms an observation from the latest value of every reading
+(`state_cache.py`). Entity selection includes configured
 entities even when there is no recent traffic; collection and reading ownership
 still gate Apply.
 

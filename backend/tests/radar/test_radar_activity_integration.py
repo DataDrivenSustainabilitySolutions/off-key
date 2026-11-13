@@ -40,7 +40,7 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         broker_port=port,
         db_write_enabled=False,
         memory_limit_mb=2048,
-        sensor_freshness_seconds=0.3,
+        minimum_hold_seconds=0.3,
         health_check_interval=0.05,
     )
     monkeypatch.setenv("SERVICE_ID", "activity-monitor")
@@ -68,7 +68,7 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         await publisher.connect(f"mqtt://127.0.0.1:{port}")
         # Keep supplying fresh observations through cold model initialization.
         # A burst followed by silence can correctly expire in the ingress queue
-        # under this test's deliberately short 300 ms freshness policy.
+        # under this test's deliberately short 300 ms minimum hold.
         deadline = time.monotonic() + 30
         index = 0
         while operational()["stage"] != "operational":
@@ -84,7 +84,14 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
             index += 1
         assert operational()["activity"]["last_inference_at"] is not None
         previous_inference = operational()["activity"]["last_inference_at"]
-        await asyncio.sleep(0.35)
+
+        async def outlast_every_limit():
+            # Each reading's limit is learned from its own arrivals.
+            limits = operational()["activity"]["stale_after_seconds"]
+            assert set(limits) == {"a", "b"}
+            await asyncio.sleep(max(limits.values()) + 0.05)
+
+        await outlast_every_limit()
         received = monitor.message_processor.received_message_count
         await publish("a", 4)
         await wait_until(
@@ -95,14 +102,24 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         assert status["activity"]["stale_sensors"] == ["b"]
         assert status["activity"]["last_inference_at"] == previous_inference
         assert not status["is_stale"]
+        # The observation that would have held b's old value was dropped and
+        # counted, so the monitor shows the gap from now on.
+        assert status["coverage"]["dropped_by_reason"] == {"stale_reading": 1}
         await publish("b", 4)
-        await wait_until(lambda: operational()["stage"] == "operational")
+        # That drop used up a's value too: the next observation needs a again.
+        await publish("a", 5)
+        await wait_until(
+            lambda: (
+                operational()["activity"]["last_inference_at"] != previous_inference
+                and not operational()["activity"]["inputs_stalled"]
+            )
+        )
         # The next snapshot must age inputs even when no more callbacks occur.
-        await asyncio.sleep(0.35)
+        await outlast_every_limit()
         status = operational()
         assert status["activity"]["stale_sensors"] == ["a", "b"]
         assert status["activity"]["inference_stalled"]
-        assert not status["coverage"]["has_gaps"]
+        assert status["coverage"]["dropped_by_reason"] == {"stale_reading": 1}
     finally:
         await monitor.stop()
         await publisher.disconnect()
@@ -132,7 +149,7 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
         None,
         ["telemetry/charger-sim-1/sine"],
         MQTTRadarConfig,
-        sensor_freshness_seconds=0.1,
+        minimum_hold_seconds=0.1,
         db_batch_timeout=0.05,
     )
     writer = DatabaseWriter(
@@ -164,7 +181,7 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
     tracker = ActivityTracker({"a"})
     tracker.record_input("a", MQTTMessage(topic="telemetry/entity/a", payload=b"{}"))
     tracker.record_result(result)
-    health = HealthMonitor(sensor_freshness_seconds=5.0)
+    health = HealthMonitor()
     health.started_monotonic = time.monotonic()
     health.set_components(
         database_writer=writer,
@@ -173,7 +190,8 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
                 "message_count": 1,
                 "processed_message_count": 1,
                 "activity": tracker.snapshot(),
-            }
+            },
+            stale_after_seconds=lambda: {"a": 5.0},
         ),
     )
     try:

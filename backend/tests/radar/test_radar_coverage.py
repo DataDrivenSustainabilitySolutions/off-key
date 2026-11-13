@@ -106,7 +106,8 @@ def test_resumed_traffic_does_not_clear_monitoring_coverage_alert():
             }
         ),
         message_processor=SimpleNamespace(
-            get_metrics=lambda: {"message_count": 100, "processed_message_count": 100}
+            get_metrics=lambda: {"message_count": 100, "processed_message_count": 100},
+            stale_after_seconds=dict,
         ),
     )
     status = monitor.get_health_status()

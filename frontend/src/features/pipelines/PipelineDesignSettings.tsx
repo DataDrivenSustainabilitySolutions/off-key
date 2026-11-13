@@ -28,7 +28,7 @@ function StartupTimeline({ startup }: { startup: Startup }) {
       </dl>
       <p className="pl-help">
         {interval
-          ? `Durations use the slowest reading's typical interval of ${roughDuration(interval)}. `
+          ? `Durations use the most frequent reading's typical interval of ${roughDuration(interval)}. `
           : "Durations appear once the chosen readings report how often they arrive. "}
         {phases.some((phase) => phase.id === "learning") && "Learned steps before the detector can need a few observations of their own first."}
         {gated && " A Gate holds back the observations its condition rejects, and they do not count, so the start can take longer."}

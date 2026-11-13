@@ -52,10 +52,10 @@ NOT_READ_BY_RADAR = {
 # RadarDefaultsConfig fields whose RADAR name is not RADAR_<FIELD>.
 RADAR_NAMES = {"mqtt_qos": "RADAR_SUBSCRIPTION_QOS"}
 GOLDEN_FINGERPRINTS = {
-    "static": "cd363666f4a75b2605b4a63ae716b2a9014d5ec23b353683c67c67e5fbfc1cda",
+    "static": "6849acdd7c8fb6c12e42f891342a2a7f2ef352bdb224c15b7d658123b6ea0201",
     # The explicit library version changes with every Aberrant upgrade.
-    "adaptive": "396721d83acac59de08bc290cb164ee8635aab90516fa34befa38c7a2a0a2d5f",
-    "pipeline": "37c1d6eb6eafa0b78256f464c20f737baaa6f821aa7f72458dec004805c818f8",
+    "adaptive": "b33bfdfd1d61eae49f45f616097e4a53f3be9dd4373caba543a53e406dd440d2",
+    "pipeline": "779edfb396a674c178b60d250f1a4c1161a6f39436fd160645b8cc240b3be84c",
 }
 
 
@@ -69,7 +69,7 @@ def _static_config():
         mqtt_config={"qos": 1, "client_id_prefix": "golden"},
         performance_config={
             "sensor_key_strategy": "leaf",
-            "sensor_freshness_seconds": 20.0,
+            "minimum_hold_seconds": 20.0,
         },
         static_baseline_config={
             "model_params": {"n_estimators": 100},

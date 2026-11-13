@@ -119,7 +119,7 @@ def test_years_old_minute_data_is_scored_like_live_input(strategy):
     scored = [row for row in rows if row.score is not None]
     assert scored and all(math.isfinite(row.score) for row in scored)
     # The two readings that arrive first each minute wait for the third.
-    assert set(run.stats()) <= {"stale_sensor_block", "waiting_for_all"}
+    assert set(run.stats()) <= {"missing_reading", "waiting_for_reading"}
 
 
 @pytest.mark.parametrize("strategy", ["adaptive_stream", "static_baseline"])
@@ -192,15 +192,42 @@ def test_static_baseline_discards_nothing_while_it_fits():
     assert phases[-1] == "ready"
 
 
-def test_readings_further_apart_than_the_skew_never_combine():
-    run = replay(alignment=RunAlignment(freshness_seconds=600, max_skew_seconds=5))
+def test_readings_at_their_own_moments_form_one_observation_a_minute():
+    run = replay()
+    rows = []
     for index in range(50):
         stamp = (START + timedelta(minutes=index)).timestamp()
         for slot in range(3):
             # Each reading is 20 s after the previous one.
-            assert run.step(series_topic(slot), stamp + 20 * slot, 1.0) is None
+            row = run.step(series_topic(slot), stamp + 20 * slot, wave(index, slot))
+            if row is not None:
+                rows.append(row)
     run.close()
-    assert run.stats()["observation_skew_block"] > 0
+    # The last reading of each minute completes it, with nothing dropped. The
+    # first minute spans 40 s, too long before any reading's interval is known.
+    assert [row.timestamp for row in rows] == [
+        START + timedelta(minutes=index, seconds=40) for index in range(1, 50)
+    ]
+    assert set(run.stats()) <= {"missing_reading", "waiting_for_reading"}
+
+
+def test_a_reading_that_stops_drops_observations_once_its_value_is_too_old():
+    run = replay(alignment=RunAlignment(hold_intervals=3))
+    rows = []
+    for index in range(20):
+        stamp = (START + timedelta(minutes=index)).timestamp()
+        for slot in range(3):
+            # The third reading stops after ten minutes.
+            if slot == 2 and index >= 10:
+                continue
+            row = run.step(series_topic(slot), stamp + slot, wave(index, slot))
+            if row is not None:
+                rows.append(row)
+    run.close()
+    # Its last value is held for three of its minutes, then each observation
+    # that would use it is dropped and counted.
+    assert len(rows) == 10 + 2
+    assert run.stats()["stale_reading"] == 20 - 13
 
 
 async def create_tables(engine):
@@ -314,7 +341,7 @@ async def test_worker_replays_a_queued_run_and_stores_its_results(dojo_engine):
     steps = RunSteps(run_id=run.id, samples=run.config["step_samples"])
     assert STEP_SAMPLES <= len(steps.samples) < 2 * STEP_SAMPLES
     assert steps.samples[-1].steps["detector"].state == "ready"
-    assert set(run.stats) <= {"stale_sensor_block", "waiting_for_all"}
+    assert set(run.stats) <= {"missing_reading", "waiting_for_reading"}
 
 
 @pytest.mark.asyncio

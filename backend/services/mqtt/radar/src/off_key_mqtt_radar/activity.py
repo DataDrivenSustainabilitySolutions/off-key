@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 
-from off_key_core.schemas.radar import RadarActivityStatus
+from off_key_core.schemas.radar import MonitorTiming, RadarActivityStatus
 from off_key_core.utils.timestamps import as_utc
 
 from .models import AnomalyResult, MQTTMessage, is_held_back, is_inference
@@ -116,25 +116,33 @@ class ActivityTracker:
 def evaluate_activity(
     snapshot: dict[str, Any] | None,
     *,
-    freshness_seconds: float,
+    stale_after_seconds: dict[str, float],
     inference_expected: bool,
     database_health: dict[str, Any],
 ) -> RadarActivityStatus | None:
-    """Apply the configured freshness budget to one current runtime snapshot."""
+    """Judge one runtime snapshot against each reading's own staleness limit.
+
+    The monitor as a whole is given as long as its slowest reading: no input,
+    observation or inference within that budget means progress has stalled.
+    """
     if snapshot is None:
         return None
+    budget = max(
+        stale_after_seconds.values(), default=MonitorTiming().minimum_hold_seconds
+    )
     required = set(snapshot["required_sensors"])
     sensor_ages = snapshot["sensor_ages_seconds"]
     missing = sorted(required - sensor_ages.keys())
     stale = sorted(
         sensor
         for sensor, age in sensor_ages.items()
-        if (not required or sensor in required) and age > freshness_seconds
+        if (not required or sensor in required)
+        and age > stale_after_seconds.get(sensor, budget)
     )
     runtime_age = snapshot["runtime_age_seconds"]
     missing_after_grace = (
         bool(missing)
-        and runtime_age > freshness_seconds
+        and runtime_age > budget
         and (snapshot.get("last_input_at") is not None or inference_expected)
     )
     inference_age = snapshot.get("last_inference_age_seconds")
@@ -148,11 +156,9 @@ def evaluate_activity(
     if held_back_age is not None:
         inference_age = min(inference_age, held_back_age)
     persistence_age = database_health.get("oldest_pending_age_seconds")
-    persistence_timeout = database_health.get(
-        "persistence_timeout_seconds", freshness_seconds
-    )
+    persistence_timeout = database_health.get("persistence_timeout_seconds", budget)
     return RadarActivityStatus(
-        freshness_seconds=freshness_seconds,
+        stale_after_seconds=stale_after_seconds,
         last_input_at=snapshot.get("last_input_at"),
         last_processed_at=snapshot.get("last_processed_at"),
         last_inference_at=snapshot.get("last_inference_at"),
@@ -160,7 +166,7 @@ def evaluate_activity(
         missing_sensors=missing,
         stale_sensors=stale,
         inputs_stalled=bool(stale) or missing_after_grace,
-        inference_stalled=inference_expected and inference_age > freshness_seconds,
+        inference_stalled=inference_expected and inference_age > budget,
         persistence_stalled=(
             isinstance(persistence_age, int | float)
             and persistence_age > persistence_timeout

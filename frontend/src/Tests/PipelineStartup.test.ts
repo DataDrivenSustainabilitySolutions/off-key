@@ -27,8 +27,8 @@ describe("start-up estimate", () => {
       .toBe("The first alarm can come after at least 439 observations: 79 to prepare and 360 to calibrate.");
   });
 
-  it("is paced by the slowest reading, and unknown while any reading has no interval", () => {
-    expect(observationSeconds([1, 2.5, 0.2])).toBe(2.5);
+  it("is paced by the most frequent reading, and unknown while any reading has no interval", () => {
+    expect(observationSeconds([1, 2.5, 0.2])).toBe(0.2);
     expect(observationSeconds([])).toBeUndefined();
     expect(observationSeconds([1, null])).toBeUndefined();
     expect(observationSeconds([1, 0])).toBeUndefined();
@@ -41,7 +41,7 @@ describe("start-up estimate", () => {
   });
 
   it("summarizes in time when it can, otherwise in observations", () => {
-    const timed = startupEstimate(definition(), [1, 0.5]);
+    const timed = startupEstimate(definition(), [1, 2]);
     expect(startupSummary(timed)).toBe("≈ 26 min");
     expect(startupSentence(timed)).toBe("The first alarm can come after at least 1,560 observations: "
       + "1,200 to learn and 360 to calibrate. At one observation every 1 s, that is about 26 min.");

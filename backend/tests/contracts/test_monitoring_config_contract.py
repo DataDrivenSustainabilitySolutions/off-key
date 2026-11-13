@@ -97,7 +97,7 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
         display_name="radar-test",
         reading_ids=["reading-l1", "reading-l2"],
         monitoring=monitoring,
-        performance_config={"sensor_freshness_seconds": 12.0},
+        performance_config={"hold_intervals": 4.0, "minimum_hold_seconds": 12.0},
     )
     facade = object.__new__(Tactic)
     facade.request = AsyncMock()
@@ -148,10 +148,8 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
     )
     assert runtime.subscription_topics == config.mqtt_topics
     assert runtime.sensor_key_strategy == "full_hierarchy"
-    assert (
-        runtime.sensor_freshness_seconds
-        == config.performance_config.sensor_freshness_seconds
-    )
+    assert runtime.timing() == config.performance_config.timing()
+    assert (runtime.hold_intervals, runtime.minimum_hold_seconds) == (4.0, 12.0)
     assert (
         not {
             "RADAR_MONITORING_STRATEGY",

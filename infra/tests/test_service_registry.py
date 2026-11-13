@@ -9,7 +9,12 @@ import re
 import unittest
 
 import yaml
-from rehearsal_releases import BUILDS, COMPATIBLE_REVISION, MODEL_SERVICES
+from rehearsal_releases import (
+    BUILDS,
+    COMPATIBLE_REVISION,
+    DEPENDENCIES,
+    MODEL_SERVICES,
+)
 from support import ROOT, load_script
 from test_platform_pins import ComposeLoader
 
@@ -88,6 +93,31 @@ class ServiceRegistryTests(unittest.TestCase):
                     self.assertEqual(
                         f"off-key-{local_images[variable]}", image, variable
                     )
+
+    def test_every_build_copies_the_same_workspace_dependencies(self):
+        matrix = {}
+        for entry in workflow("docker-images.yml")["jobs"]["build-images"]["strategy"][
+            "matrix"
+        ]["include"]:
+            args = dict(
+                line.split("=", 1) for line in entry["build_args"].split("\n") if line
+            )
+            if "SERVICE_ROOT" in args:
+                matrix[args["SERVICE_ROOT"]] = args.get("SERVICE_DEPENDENCIES", "")
+        document = yaml.load(
+            (REPOSITORY / "docker-compose.yml").read_text(), Loader=ComposeLoader
+        )
+        compose = {
+            args["SERVICE_ROOT"]: args.get("SERVICE_DEPENDENCIES", "")
+            for service in document["services"].values()
+            if "SERVICE_ROOT"
+            in (args := (service.get("build") or {}).get("args") or {})
+        }
+        expected = {root: DEPENDENCIES.get(root, "") for root in matrix}
+        self.assertEqual(matrix, expected)
+        self.assertEqual(compose, {root: expected[root] for root in compose})
+        dockerfile = (REPOSITORY / "backend/Dockerfile").read_text()
+        self.assertIn('ARG SERVICE_DEPENDENCIES=""', dockerfile)
 
     def test_rollback_revision_is_the_same_everywhere(self):
         steps = workflow("ci.yml")["jobs"]["deployment-smoke"]["steps"]

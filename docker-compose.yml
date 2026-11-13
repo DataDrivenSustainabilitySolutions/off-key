@@ -109,6 +109,7 @@ services:
       args:
         SERVICE_NAME: off-key-api-gateway
         SERVICE_ROOT: services/api/gateway
+        SERVICE_DEPENDENCIES: services/middleware/tactic
     image: "${API_GATEWAY_IMAGE:-off-key-api-gateway:latest}"
     environment:
       <<: [*runtime-env, *logging-env, *database-env, *auth-env, *email-env, *tactic-env]

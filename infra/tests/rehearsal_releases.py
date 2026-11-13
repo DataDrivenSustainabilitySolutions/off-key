@@ -36,6 +36,9 @@ BUILDS = {
     "frontend": ("off-key-frontend", None),
     "docs": ("off-key-docs", "docs"),
 }
+# Other workspace members an image installs; see SERVICE_DEPENDENCIES in
+# backend/Dockerfile. Older source trees ignore the argument.
+DEPENDENCIES = {"services/api/gateway": "services/middleware/tactic"}
 MODEL_SERVICES = {
     "api": "api",
     "tactic": "tactic",
@@ -133,6 +136,8 @@ def build_arguments(service, source, revision, project):
         f"SERVICE_NAME={service}",
         "--build-arg",
         f"SERVICE_ROOT={source}",
+        "--build-arg",
+        f"SERVICE_DEPENDENCIES={DEPENDENCIES.get(source, '')}",
         "--build-arg",
         f"GIT_COMMIT={image_revision}",
         str(Path(project) / "backend"),

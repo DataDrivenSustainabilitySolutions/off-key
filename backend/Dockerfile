@@ -32,6 +32,9 @@ WORKDIR /code
 # Set project-specific variables
 ARG SERVICE_NAME
 ARG SERVICE_ROOT
+# Other workspace members the service installs, space-separated: the API runs
+# the TACTIC package's domain services in process.
+ARG SERVICE_DEPENDENCIES=""
 
 # Synchronize DEPENDENCIES without the application itself.
 # This layer is cached until uv.lock or pyproject.toml change, which are
@@ -54,6 +57,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY pyproject.toml uv.lock /code/
 COPY libs/ /code/libs/
 COPY ${SERVICE_ROOT} /code/${SERVICE_ROOT}
+RUN --mount=type=bind,source=services,target=/tmp/services \
+    for root in ${SERVICE_DEPENDENCIES}; do \
+        mkdir -p "/code/$(dirname "$root")" \
+        && cp -R "/tmp/services/${root#services/}" "/code/$root"; \
+    done
 
 # Install project itself
 RUN --mount=type=cache,target=/root/.cache/uv \

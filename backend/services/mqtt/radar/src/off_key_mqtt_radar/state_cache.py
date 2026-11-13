@@ -301,9 +301,13 @@ class SensorStateCache:
         }
 
     def stale_after_seconds(self) -> dict[str, float]:
-        """Each required reading's current limit, for health reporting."""
+        """Each reading's current limit, for health reporting: the required
+        ones, or without any, every reading seen so far."""
         with self._lock:
             entities = list(self._entities.values())
+            sensors = self.required_sensor_order or tuple(
+                sorted({sensor for entity in entities for sensor in entity.cadences})
+            )
             return {
                 sensor: max(
                     (
@@ -312,7 +316,7 @@ class SensorStateCache:
                     ),
                     default=self._limit(None),
                 )
-                for sensor in self.required_sensor_order
+                for sensor in sensors
             }
 
     def export_watermarks(self) -> dict[str, dict[str, float]]:

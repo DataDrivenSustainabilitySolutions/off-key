@@ -256,3 +256,12 @@ def test_each_reading_reports_its_own_stale_limit():
     for at in (1121, 1122, 1123):
         _send(cache, clock, "fast", at)
     assert cache.stale_after_seconds() == {"fast": 30, "slow": 180}
+
+
+def test_without_required_readings_each_seen_reading_reports_its_limit():
+    clock = Clock()
+    cache = _cache(set(), clock, minimum_hold_seconds=300)
+    assert cache.stale_after_seconds() == {}
+    for at in (1000, 1060, 1120):
+        _send(cache, clock, "x", at, value=1.0)
+    assert cache.stale_after_seconds() == {"x": 300}

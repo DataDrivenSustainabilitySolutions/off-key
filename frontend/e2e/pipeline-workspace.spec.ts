@@ -603,6 +603,9 @@ test.describe("visual pipeline real infrastructure", () => {
           .slice(1)
           .map((target, index) => ({ source: ids[index]!, target, order: 0 })),
       );
+      definition.nodes!.forEach((node, index) => {
+        node.label = `Step ${index + 1}`;
+      });
       const createdResponse = await api.post("/api/v1/pipelines", {
         headers,
         data: {
@@ -612,11 +615,7 @@ test.describe("visual pipeline real infrastructure", () => {
             nodes: Object.fromEntries(
               definition.nodes!.map((node, index) => [
                 node.id,
-                {
-                  x: (index % 8) * 250,
-                  y: Math.floor(index / 8) * 150,
-                  label: `Step ${index + 1}`,
-                },
+                { x: (index % 8) * 250, y: Math.floor(index / 8) * 150 },
               ]),
             ),
           },

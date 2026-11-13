@@ -441,6 +441,7 @@ test("downloads a design as a file and opens the file again", async ({ page }, t
   // A design another tool wrote: its steps have no places, and one carries its title itself.
   const written = testInfo.outputPath("written.design.json");
   await writeFile(written, JSON.stringify({ format: "aberration-design", name: "Written elsewhere", definition: {
+    schema_version: 2,
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [{ id: "input", kind: "source", component: "source.aligned" },
       { id: "despike", kind: "transform", component: "prepare.despike", label: "Drop the spikes" }],
@@ -456,7 +457,7 @@ test("downloads a design as a file and opens the file again", async ({ page }, t
   await open(other);
   await expect(workbench.getByRole("alert")).toHaveText('This file is not a design. A design file says "format": "aberration-design".');
   const malformed = testInfo.outputPath("malformed.design.json");
-  await writeFile(malformed, JSON.stringify({ format: "aberration-design", definition: { nodes: [{ id: "input", kind: "wizard", component: "source.aligned" }] } }));
+  await writeFile(malformed, JSON.stringify({ format: "aberration-design", definition: { schema_version: 2, nodes: [{ id: "input", kind: "wizard", component: "source.aligned" }] } }));
   await open(malformed);
   await expect(workbench.getByRole("alert")).toContainText("The design in this file cannot be read. definition.nodes.0.kind:");
   await expect(cards).toHaveCount(2);

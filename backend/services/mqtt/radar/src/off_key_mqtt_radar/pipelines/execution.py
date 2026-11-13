@@ -17,15 +17,17 @@ class PipelineExecutionMixin:
     plan: ExecutionPlan
     diagnostics: PipelineDiagnostics
     prepare: PrepareStage | None
+    _shadow: bool
     _execution_failed: bool
     _alarm_muted: bool
 
     def _init_pipeline_execution(self, config) -> None:
         self.plan = ExecutionPlan(config.pipeline)
         self.diagnostics = PipelineDiagnostics(config.pipeline)
+        self._shadow = config.shadow
         self._execution_failed = False
-        # The policy fired on the current observation and a Mute alarms step
-        # kept the alarm from being raised.
+        # The policy fired on the current observation and the alarm was kept from
+        # being raised, by a Mute alarms step or because the run is a shadow run.
         self._alarm_muted = False
         stage = self.plan.stage
         self.prepare = PrepareStage(self.plan) if stage is not None else None
@@ -52,15 +54,19 @@ class PipelineExecutionMixin:
 
     @property
     def _muting(self) -> bool:
-        """Whether a Mute alarms step's condition holds on the current observation."""
-        return self.prepare is not None and self.prepare.muting
+        """Whether an alarm is kept back on the current observation.
+
+        A shadow run keeps every alarm back. Any other run does while a Mute
+        alarms step's condition holds.
+        """
+        return self._shadow or (self.prepare is not None and self.prepare.muting)
 
     def _raised(self, fired: bool) -> bool:
         """Whether an alarm the policy fired is raised.
 
-        It is not while a Mute alarms step's condition holds. The policy has
-        counted the observation as any other, and the evidence keeps the alarm
-        as muted.
+        It is not in a shadow run, nor while a Mute alarms step's condition
+        holds. The policy has counted the observation as any other, and the
+        evidence keeps the alarm as muted.
         """
         self._alarm_muted = bool(fired) and self._muting
         return bool(fired) and not self._alarm_muted

@@ -19,6 +19,15 @@ from aberrant.forecast.scores import interval
 from .pipelines.plan import ExecutionPlan
 
 
+def forecast_bounds(forecast, lead, threshold, score):
+    """A complete finite interval, or no interval for this score and lead."""
+    if threshold is not None and math.isfinite(threshold):
+        low, high = interval(forecast, lead, threshold, score)
+        if math.isfinite(low) and math.isfinite(high) and low <= high:
+            return low, high
+    return None, None
+
+
 def _slot(plan: ExecutionPlan, detector_id: str, target: str) -> str | None:
     """The reading the target is, when no step changed its values."""
     for feature in plan.compiled.features[plan.detector_inputs[detector_id]]:
@@ -47,11 +56,7 @@ def forecast_entry(
     if forecast is None:
         return None
     lead = detector.lead
-    lower = upper = None
-    if threshold is not None and math.isfinite(threshold):
-        low, high = interval(forecast, lead, threshold, detector.score)
-        if math.isfinite(low) and math.isfinite(high):
-            lower, upper = low, high
+    lower, upper = forecast_bounds(forecast, lead, threshold, detector.score)
     return {
         "detector_id": detector_id,
         "target": detector.target,

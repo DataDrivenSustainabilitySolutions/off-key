@@ -9,7 +9,7 @@ import {
 import { changeDetector } from "@/features/pipelines/learning";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineApart, PipelineScope } from "@/features/pipelines/PipelineScope";
-import { stepDescription, stepFamily, stepFields } from "@/features/pipelines/steps";
+import { stepFamily, stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
 
@@ -23,11 +23,11 @@ const fields = (extra: Field[] = []): Field[] => [
   { name: "name", label: "Name", type: "string", default: null, has_default: true, nullable: true },
   ...extra,
 ];
-const transform = (id: string, learning: PipelineComponent["learning"], list: Field[]) =>
-  ({ id, kind: "transform", label: id, description: "", learning, input_type: "features",
+const transform = (id: string, learning: PipelineComponent["learning"], counterpart: string, list: Field[]) =>
+  ({ id, kind: "transform", group: "reduce", label: id, description: "", learning, counterpart, input_type: "features",
     output_type: "features", fields: list }) as PipelineComponent;
-const fitted = transform("static.expected_value", "batch", fields());
-const continuous = transform("adaptive.expected_value", "online", fields([
+const fitted = transform("static.expected_value", "batch", "adaptive.expected_value", fields());
+const continuous = transform("adaptive.expected_value", "online", "static.expected_value", fields([
   { name: "forgetting", label: "Forgetting", type: "number", default: 1, has_default: true, maximum: 1, exclusive_minimum: 0 },
 ]));
 const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
@@ -48,13 +48,9 @@ function scope(params: PipelineNode["params"], issues: Issue[] = []) {
 const box = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
 
 describe("an Expected value step", () => {
-  it("sits with the steps that reduce features, in both of its forms", () => {
-    expect(stepFamily("transform", "static.expected_value")).toBe("reduce");
-    expect(stepFamily("transform", "adaptive.expected_value")).toBe("reduce");
-    expect(stepDescription(fitted))
-      .toBe("Give how far one feature is from what the others imply, by a fit on training data.");
-    expect(stepDescription(continuous))
-      .toBe("Give how far one feature is from what the others imply, by a fit updated as data arrives.");
+  it("sits where the catalog files it, in both of its forms", () => {
+    expect(stepFamily(node(fitted), fitted)).toBe("reduce");
+    expect(stepFamily(node(continuous), continuous)).toBe("reduce");
   });
 
   it("lists only the settings without a control of their own", () => {
@@ -72,7 +68,8 @@ describe("an Expected value step", () => {
 
   it("moves to its counterpart with the detector and keeps what it expects", () => {
     const detector = (id: string, learning: PipelineComponent["learning"]) => ({
-      id, kind: "detector", label: id, description: "", learning, fields: [], input_type: "features", output_type: "scores",
+      id, kind: "detector", group: "detector", label: id, description: "", learning, fields: [], input_type: "features",
+      output_type: "scores",
     }) as PipelineComponent;
     const online = detector("detector:continuous", "online");
     const params = { target: "current", apply_to: ["flow"], result: "add", name: "load_gap" };
@@ -179,7 +176,7 @@ describe("an Expected value in the inspector", () => {
     }),
     layout: normalizeLayout(),
   });
-  const source = { id: "source.aligned", kind: "source", label: "Aligned inputs", description: "",
+  const source = { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
     input_type: null, output_type: "features", fields: [] } as PipelineComponent;
   function inspector(component: PipelineComponent, params: PipelineNode["params"], issues: Issue[] = []) {
     const current = document(component, params);

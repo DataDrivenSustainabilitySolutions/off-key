@@ -5,6 +5,10 @@ require the signed-in member or one permission. The gateway authenticates
 members itself; on "monitors" and "alarms" every member reads and changes need
 manage_monitors or manage_alarms. A new route fails these tests until it is
 added to its table, so a change to access is always a deliberate, reviewed edit.
+
+An agent's key is a second kind of caller. It has no permissions: a route is
+closed to keys until it is listed in the tables of what a key reaches, "any"
+for every key and "start" for a key that may start monitoring services.
 """
 
 from collections import defaultdict
@@ -14,6 +18,7 @@ from fastapi.routing import iter_route_contexts
 from off_key_api_gateway.api import access
 from off_key_api_gateway.app import build_app
 from off_key_api_gateway.settings import AppSettings
+from off_key_core.auth.agents import AGENT_ACCESS
 from off_key_core.auth.permissions import Permission
 from off_key_tactic_middleware.api import collection_auth
 from off_key_tactic_middleware.api.service_auth import require_gateway
@@ -33,6 +38,9 @@ TACTIC_ACCESS = {
         "GET /api/v1/data/alarms/count",
         "POST /api/v1/data/alarms/query",
         "DELETE /api/v1/data/alarms/{alarm_id}",
+        "GET /api/v1/data/alarms/{alarm_id}",
+        "POST /api/v1/data/alarms/deletion-preview",
+        "POST /api/v1/data/alarms/delete",
         "POST /api/v1/data/auth/login",
         "GET /api/v1/data/devices",
         "GET /api/v1/data/devices/{device_id}/readings",
@@ -40,6 +48,7 @@ TACTIC_ACCESS = {
         "GET /api/v1/data/evidence/chart",
         "GET /api/v1/data/readings/{stream_id}/measurements",
         "GET /api/v1/data/readings/{stream_id}/measurements/buckets",
+        "GET /api/v1/data/readings/{stream_id}/profile",
         "GET /api/v1/data/users/{user_id}/favorites",
         "POST /api/v1/data/users/{user_id}/favorites",
         "DELETE /api/v1/data/users/{user_id}/favorites",
@@ -58,13 +67,18 @@ TACTIC_ACCESS = {
         "PATCH /api/v1/orchestration/radar/services/{service_id}/label",
     },
     "member": {
+        "GET /api/v1/agents/me",
         "GET /api/v1/members/me",
         "POST /api/v1/members/sessions",
         "GET /api/v1/roles",
         "GET /api/v1/monitors/pipeline-activations/{activation_id}",
         "GET /api/v1/monitors/pipeline-blocks",
+        "GET /api/v1/monitors/pipeline-proposals",
+        "GET /api/v1/monitors/pipeline-proposals/{proposal_id}",
         "GET /api/v1/monitors/pipelines",
         "GET /api/v1/monitors/pipelines/catalog",
+        "GET /api/v1/monitors/pipelines/catalog/components/{component_id}",
+        "GET /api/v1/monitors/pipelines/catalog/search",
         "GET /api/v1/monitors/pipelines/forecast-models",
         "GET /api/v1/monitors/pipelines/{pipeline_id}",
         "GET /api/v1/monitors/pipelines/{pipeline_id}/revisions",
@@ -84,6 +98,10 @@ TACTIC_ACCESS = {
         "GET /api/v1/system/storage",
     },
     "manage_members": {
+        "GET /api/v1/agents",
+        "POST /api/v1/agents",
+        "DELETE /api/v1/agents/{agent_id}",
+        "PATCH /api/v1/agents/{agent_id}",
         "GET /api/v1/members",
         "POST /api/v1/members/invitations",
         "DELETE /api/v1/members/{user_id}",
@@ -115,6 +133,8 @@ TACTIC_ACCESS = {
         "GET /api/v1/dojo/runs/{run_id}/metrics",
         "GET /api/v1/dojo/runs/{run_id}/calibration",
         "GET /api/v1/dojo/runs/{run_id}/results",
+        "GET /api/v1/dojo/runs/{run_id}/outline",
+        "GET /api/v1/dojo/runs/{run_id}/steps",
     },
     "manage_monitors": {
         # Also behind the Dojo router's use_dojo; see test_dojo_promotion.
@@ -123,8 +143,12 @@ TACTIC_ACCESS = {
         "DELETE /api/v1/monitors/pipeline-activations/{activation_id}",
         "POST /api/v1/monitors/pipeline-blocks",
         "DELETE /api/v1/monitors/pipeline-blocks/{block_id}",
+        "POST /api/v1/monitors/pipeline-proposals",
+        "POST /api/v1/monitors/pipeline-proposals/{proposal_id}/decision",
+        "POST /api/v1/monitors/pipeline-proposals/{proposal_id}/withdraw",
         "POST /api/v1/monitors/pipelines",
         "POST /api/v1/monitors/pipelines/apply",
+        "POST /api/v1/monitors/pipelines/edit",
         "POST /api/v1/monitors/pipelines/forecast-models/downloads",
         "POST /api/v1/monitors/pipelines/validate",
         "PATCH /api/v1/monitors/pipelines/{pipeline_id}",
@@ -160,11 +184,14 @@ GATEWAY_ACCESS = {
         "POST /v1/auth/refresh",
     },
     "member": {
+        "GET /v1/agents/me",
         "POST /v1/alarms/query",
         "GET /v1/detectors",
         "GET /v1/evidence",
         "GET /v1/evidence/chart",
         "GET /v1/pipeline-components",
+        "GET /v1/pipeline-components/search",
+        "GET /v1/pipeline-components/{component_id}",
         "GET /v1/devices",
         "GET /v1/devices/{device_id}/readings",
         "DELETE /v1/favorites",
@@ -189,6 +216,7 @@ GATEWAY_ACCESS = {
         "GET /v1/storage",
         "GET /v1/readings/{reading_id}/measurements",
         "GET /v1/readings/{reading_id}/measurements/buckets",
+        "GET /v1/readings/{reading_id}/profile",
     },
     "monitors": {
         "GET /v1/forecast-models",
@@ -212,9 +240,15 @@ GATEWAY_ACCESS = {
         "GET /v1/pipeline-blocks",
         "POST /v1/pipeline-blocks",
         "DELETE /v1/pipeline-blocks/{block_id}",
+        "GET /v1/pipeline-proposals",
+        "POST /v1/pipeline-proposals",
+        "GET /v1/pipeline-proposals/{proposal_id}",
+        "POST /v1/pipeline-proposals/{proposal_id}/decision",
+        "POST /v1/pipeline-proposals/{proposal_id}/withdraw",
         "GET /v1/pipelines",
         "POST /v1/pipelines",
         "POST /v1/pipelines/apply",
+        "POST /v1/pipelines/edit",
         "POST /v1/pipelines/validate",
         "GET /v1/pipelines/{pipeline_id}",
         "PATCH /v1/pipelines/{pipeline_id}",
@@ -234,6 +268,9 @@ GATEWAY_ACCESS = {
         "POST /v1/alarms",
         "GET /v1/alarms/count",
         "DELETE /v1/alarms/{alarm_id}",
+        "GET /v1/alarms/{alarm_id}",
+        "POST /v1/alarms/deletion-preview",
+        "POST /v1/alarms/delete",
     },
     "use_dojo": {
         "GET /v1/dojo/datasets",
@@ -258,8 +295,14 @@ GATEWAY_ACCESS = {
         "GET /v1/dojo/runs/{run_id}/metrics",
         "GET /v1/dojo/runs/{run_id}/calibration",
         "GET /v1/dojo/runs/{run_id}/results",
+        "GET /v1/dojo/runs/{run_id}/outline",
+        "GET /v1/dojo/runs/{run_id}/steps",
     },
     "manage_members": {
+        "GET /v1/agents",
+        "POST /v1/agents",
+        "DELETE /v1/agents/{agent_id}",
+        "PATCH /v1/agents/{agent_id}",
         "POST /v1/invitations",
         "GET /v1/members",
         "DELETE /v1/members/{member_id}",
@@ -271,6 +314,117 @@ GATEWAY_ACCESS = {
 }
 
 
+# What an agent's key reaches. Everything else answers a key with 403.
+TACTIC_AGENT_ACCESS = {
+    "any": {
+        "GET /api/v1/agents/me",
+        "GET /api/v1/dojo/datasets",
+        "POST /api/v1/dojo/datasets/history",
+        "GET /api/v1/dojo/datasets/{dataset_id}",
+        "GET /api/v1/dojo/datasets/{dataset_id}/series/{series_id}/points",
+        "GET /api/v1/dojo/datasets/{dataset_id}/comparison",
+        "GET /api/v1/dojo/datasets/{dataset_id}/labels",
+        "GET /api/v1/dojo/datasets/{dataset_id}/label-suggestions",
+        "GET /api/v1/dojo/runs",
+        "POST /api/v1/dojo/runs",
+        "GET /api/v1/dojo/runs/{run_id}",
+        "GET /api/v1/dojo/runs/{run_id}/metrics",
+        "GET /api/v1/dojo/runs/{run_id}/calibration",
+        "GET /api/v1/dojo/runs/{run_id}/results",
+        "GET /api/v1/dojo/runs/{run_id}/outline",
+        "GET /api/v1/dojo/runs/{run_id}/steps",
+        "GET /api/v1/monitors/pipeline-activations/{activation_id}",
+        "GET /api/v1/monitors/pipeline-blocks",
+        "GET /api/v1/monitors/pipeline-proposals",
+        "POST /api/v1/monitors/pipeline-proposals",
+        "GET /api/v1/monitors/pipeline-proposals/{proposal_id}",
+        "POST /api/v1/monitors/pipeline-proposals/{proposal_id}/withdraw",
+        "GET /api/v1/monitors/pipelines",
+        "GET /api/v1/monitors/pipelines/catalog",
+        "GET /api/v1/monitors/pipelines/catalog/components/{component_id}",
+        "GET /api/v1/monitors/pipelines/catalog/search",
+        "POST /api/v1/monitors/pipelines/edit",
+        "GET /api/v1/monitors/pipelines/forecast-models",
+        "POST /api/v1/monitors/pipelines/validate",
+        "GET /api/v1/monitors/pipelines/{pipeline_id}",
+        "GET /api/v1/monitors/pipelines/{pipeline_id}/revisions",
+        "GET /api/v1/monitors/pipelines/{pipeline_id}/revisions/{revision_id}",
+        "GET /api/v1/monitors/pipelines/{pipeline_id}/revisions/{revision_id}/metadata",
+        "GET /api/v1/monitors/workspace",
+        "GET /api/v1/monitors/{service_id}/pipeline",
+        "GET /api/v1/monitors/{service_id}/pipeline-history",
+        "GET /api/v1/monitors/{service_id}/pipeline-timeline",
+        "GET /api/v1/monitors/{service_id}/pipeline-metadata",
+        "GET /api/v1/monitors/{service_id}/pipeline-state",
+    },
+    "start": {
+        "DELETE /api/v1/monitors/pipeline-activations/{activation_id}",
+        "POST /api/v1/monitors/pipelines/apply",
+    },
+}
+
+GATEWAY_AGENT_ACCESS = {
+    "any": {
+        "GET /v1/agents/me",
+        "GET /v1/alarms",
+        "GET /v1/alarms/count",
+        "POST /v1/alarms/query",
+        "GET /v1/detectors",
+        "GET /v1/devices",
+        "GET /v1/devices/{device_id}/readings",
+        "GET /v1/dojo/datasets",
+        "POST /v1/dojo/datasets/history",
+        "GET /v1/dojo/datasets/{dataset_id}",
+        "GET /v1/dojo/datasets/{dataset_id}/series/{series_id}/points",
+        "GET /v1/dojo/datasets/{dataset_id}/comparison",
+        "GET /v1/dojo/datasets/{dataset_id}/labels",
+        "GET /v1/dojo/datasets/{dataset_id}/label-suggestions",
+        "GET /v1/dojo/runs",
+        "POST /v1/dojo/runs",
+        "GET /v1/dojo/runs/{run_id}",
+        "GET /v1/dojo/runs/{run_id}/metrics",
+        "GET /v1/dojo/runs/{run_id}/calibration",
+        "GET /v1/dojo/runs/{run_id}/results",
+        "GET /v1/dojo/runs/{run_id}/outline",
+        "GET /v1/dojo/runs/{run_id}/steps",
+        "GET /v1/evidence",
+        "GET /v1/evidence/chart",
+        "GET /v1/forecast-models",
+        "GET /v1/monitors",
+        "GET /v1/monitors/overview",
+        "GET /v1/monitors/{monitor_id}",
+        "GET /v1/monitors/{monitor_id}/pipeline",
+        "GET /v1/monitors/{monitor_id}/pipeline/history",
+        "GET /v1/monitors/{monitor_id}/pipeline/metadata",
+        "GET /v1/monitors/{monitor_id}/pipeline/state",
+        "GET /v1/monitors/{monitor_id}/pipeline/timeline",
+        "GET /v1/pipeline-activations/{activation_id}",
+        "GET /v1/pipeline-blocks",
+        "GET /v1/pipeline-proposals",
+        "POST /v1/pipeline-proposals",
+        "GET /v1/pipeline-proposals/{proposal_id}",
+        "POST /v1/pipeline-proposals/{proposal_id}/withdraw",
+        "GET /v1/pipeline-components",
+        "GET /v1/pipeline-components/search",
+        "GET /v1/pipeline-components/{component_id}",
+        "GET /v1/pipelines",
+        "POST /v1/pipelines/edit",
+        "POST /v1/pipelines/validate",
+        "GET /v1/pipelines/{pipeline_id}",
+        "GET /v1/pipelines/{pipeline_id}/revisions",
+        "GET /v1/pipelines/{pipeline_id}/revisions/{revision_id}",
+        "GET /v1/pipelines/{pipeline_id}/revisions/{revision_id}/metadata",
+        "GET /v1/readings/{reading_id}/measurements",
+        "GET /v1/readings/{reading_id}/measurements/buckets",
+        "GET /v1/readings/{reading_id}/profile",
+    },
+    "start": {
+        "POST /v1/pipeline-activations/{activation_id}/cancel",
+        "POST /v1/pipelines/apply",
+    },
+}
+
+
 def _calls(dependant):
     yield dependant.call
     for dependency in dependant.dependencies:
@@ -278,7 +432,8 @@ def _calls(dependant):
 
 
 def _routes(app):
-    """(method, path, dependency callables), router-level dependencies included."""
+    """(method, path, dependency callables, what the route opens to a key),
+    router-level dependencies included."""
     for context in iter_route_contexts(app.routes):
         # Since FastAPI 0.140 an included router's dependencies live on the
         # effective route context rather than on the original APIRoute.
@@ -288,16 +443,33 @@ def _routes(app):
         )
         if dependant is None:
             continue
+        opened = (getattr(context.route, "openapi_extra", None) or {}).get(AGENT_ACCESS)
         for method in context.methods or ():
             if method != "HEAD":
-                yield f"{method} {context.path}", set(_calls(dependant))
+                yield f"{method} {context.path}", set(_calls(dependant)), opened
 
 
 def _classify(app, levels):
     found = defaultdict(set)
-    for route, calls in _routes(app):
+    for route, calls, _ in _routes(app):
         level = next((name for name, call in levels if call in calls), "public")
         found[level].add(route)
+    return dict(found)
+
+
+def _open_to_keys(app, auth):
+    """The routes a key reaches, by what they ask of it.
+
+    A route opens itself to keys and resolves the caller, and nothing it
+    depends on asks for a member, which would refuse the key after all.
+    """
+    found = defaultdict(set)
+    for route, calls, opened in _routes(app):
+        if opened is None:
+            continue
+        assert auth.current_caller in calls, route
+        assert auth.current_member not in calls, route
+        found[opened].add(route)
     return dict(found)
 
 
@@ -310,7 +482,7 @@ def test_tactic_routes_match_the_access_table(monkeypatch):
                 (permission.value, collection_auth.require_permission(permission))
                 for permission in Permission
             ),
-            ("member", collection_auth.current_member),
+            ("member", collection_auth.current_caller),
             ("service", require_gateway),
         ],
     )
@@ -327,10 +499,51 @@ def test_gateway_routes_match_the_access_table():
             ),
             ("monitors", access.writes_require(Permission.manage_monitors)),
             ("alarms", access.writes_require(Permission.manage_alarms)),
-            ("member", access.current_member),
+            ("member", access.current_caller),
         ],
     )
     assert found == GATEWAY_ACCESS
+
+
+def test_a_key_reaches_only_the_listed_tactic_routes(monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
+    assert _open_to_keys(create_app(), collection_auth) == TACTIC_AGENT_ACCESS
+
+
+def test_a_key_reaches_only_the_listed_gateway_routes():
+    app = build_app(AppSettings(APP_NAME="off-key-test"))
+    assert _open_to_keys(app, access) == GATEWAY_AGENT_ACCESS
+
+
+def test_a_key_changes_nothing_it_did_not_make():
+    """Beyond reads, a key validates, edits what it holds, tests, proposes,
+    withdraws its own proposal and, where it may, starts."""
+    writes = {
+        route
+        for table in (GATEWAY_AGENT_ACCESS, TACTIC_AGENT_ACCESS)
+        for routes in table.values()
+        for route in routes
+        if not route.startswith("GET ")
+    }
+    assert writes == {
+        "POST /v1/alarms/query",
+        "POST /v1/dojo/datasets/history",
+        "POST /v1/dojo/runs",
+        "POST /v1/pipelines/edit",
+        "POST /v1/pipelines/validate",
+        "POST /v1/pipelines/apply",
+        "POST /v1/pipeline-activations/{activation_id}/cancel",
+        "POST /v1/pipeline-proposals",
+        "POST /v1/pipeline-proposals/{proposal_id}/withdraw",
+        "POST /api/v1/monitors/pipeline-proposals",
+        "POST /api/v1/monitors/pipeline-proposals/{proposal_id}/withdraw",
+        "POST /api/v1/dojo/datasets/history",
+        "POST /api/v1/dojo/runs",
+        "POST /api/v1/monitors/pipelines/edit",
+        "POST /api/v1/monitors/pipelines/validate",
+        "POST /api/v1/monitors/pipelines/apply",
+        "DELETE /api/v1/monitors/pipeline-activations/{activation_id}",
+    }
 
 
 @pytest.mark.parametrize("route", sorted(GATEWAY_ACCESS["public"]))

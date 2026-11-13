@@ -89,6 +89,14 @@ class PipelineDiagnostics:
                 "passes": {"score": {}, "learn": {}},
             }
 
+    def sample_next(self) -> None:
+        """Sample the next observation, however recent the last sample is.
+
+        A replay reads a week in seconds, so it picks its samples by their
+        place in the run instead of by the wall clock.
+        """
+        self._last_sample = float("-inf")
+
     def select_pass(self, phase: str) -> None:
         if phase not in {"score", "learn"}:
             raise ValueError("Diagnostics pass must be score or learn")

@@ -1,6 +1,10 @@
-.PHONY: check-infra deploy-prod local-init local-up local-status local-logs local-stop local-bootstrap-admin
+.PHONY: check check-infra deploy-prod local-init local-up local-status local-logs local-stop local-bootstrap-admin
 REVISION ?= $(shell git rev-parse HEAD)
 BOOTSTRAP ?= false
+# The fast CI suites this branch needs; run before every push (ARGS=--all for all).
+ARGS ?=
+check:
+	python3 dev/check.py $(ARGS)
 check-infra:
 	$(MAKE) -C infra check-deploy
 # Dispatches the Deploy Production workflow; infra/Makefile deploy-prod runs Ansible directly.

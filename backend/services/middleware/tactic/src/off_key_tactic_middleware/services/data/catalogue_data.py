@@ -82,6 +82,12 @@ class CatalogueDataService:
             charger_id=entity, telemetry_type=key, **window
         )
 
+    async def profile(self, stream_id: str, *, days: int):
+        entity, key = self._ids.recorded(stream_id)
+        return await self._telemetry.get_reading_profile(
+            reading_id=stream_id, charger_id=entity, telemetry_type=key, days=days
+        )
+
     async def evidence(self, stream_id: str, *, limit: int) -> list[dict[str, Any]]:
         rows = await self._evidence.list_by_scope(
             scope=self._ids.scope([stream_id]), limit=limit
@@ -117,7 +123,7 @@ class CatalogueDataService:
             after_sequence_number=after_sequence_number,
             limit=limit,
         )
-        return [self._chart(row) for row in rows]
+        return [self.chart_row(row) for row in rows]
 
     def _readings(self, entity: str, sensor_set, input_timestamps):
         reading_ids = self._ids.stream_ids(entity, sensor_set)
@@ -128,7 +134,7 @@ class CatalogueDataService:
         }
         return reading_ids, timestamps
 
-    def _chart(self, row) -> dict[str, Any]:
+    def chart_row(self, row) -> dict[str, Any]:
         reading_ids, timestamps = self._readings(
             row.charger_id, row.sensor_set, row.input_timestamps
         )

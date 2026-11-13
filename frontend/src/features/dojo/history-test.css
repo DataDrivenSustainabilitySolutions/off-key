@@ -1,0 +1,355 @@
+/* Test on history: one column in the composer's settings dock, in the foreground colour only.
+   Fields, help and notices take the look of the dock they sit in. */
+.dj-test > .pl-help:first-child {
+  margin-top: 0;
+}
+
+.dj-test-inputs {
+  margin: 12px 0;
+}
+.dj-test-inputs legend {
+  padding: 0 4px;
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+.dj-test-inputs .pl-field:first-of-type {
+  margin-top: 4px;
+}
+.dj-test-inputs .pl-field:last-child {
+  margin-bottom: 0;
+}
+
+.dj-test-actions {
+  margin: 16px 0;
+}
+.dj-test-actions > button {
+  width: 100%;
+  min-height: 36px;
+}
+.dj-test-actions .pl-help {
+  margin-bottom: 0;
+}
+.pl-inspector .dj-test-inline,
+.pl-inspector .dj-test-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: var(--text-caption);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dj-test-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 16px 0;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+.dj-test-progress p {
+  margin: 0;
+}
+.dj-test-bar {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  height: 3px;
+  border-radius: 2px;
+  background: hsl(var(--border));
+  overflow: hidden;
+}
+.dj-test-bar span {
+  display: block;
+  height: 100%;
+  background: hsl(var(--foreground));
+  transition: width 400ms linear;
+}
+.dj-test-progress button {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dj-test-result {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--border));
+}
+.dj-test-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.pl-inspector .dj-test-heading h4 {
+  margin: 0;
+  font-weight: 600;
+}
+.dj-test-heading span {
+  min-width: 0;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Time runs left to right over the values: learning is hatched, a label is a band, an alarm a line. */
+.dj-test-strip {
+  position: relative;
+  height: 28px;
+  margin-top: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dj-test-strip > * {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.dj-test-learning,
+.dj-test-legend .is-learning::before {
+  background: repeating-linear-gradient(135deg, hsl(var(--muted-foreground) / 0.5) 0 1px, transparent 1px 5px);
+}
+.dj-test-learning {
+  left: 0;
+  border-right: 1px solid hsl(var(--border));
+}
+.dj-test-label,
+.dj-test-legend .is-label::before {
+  background: hsl(var(--foreground) / 0.16);
+}
+.dj-test-label.is-missed {
+  background: none;
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.45);
+}
+/* An alarm stands lower than a label, so one inside a label still reads as a line of its own. */
+.dj-test-strip i {
+  top: 35%;
+  width: 1px;
+  background: hsl(var(--foreground));
+}
+
+/* Under the strip, on the same span: every stretch of time as a bar from its lowest to its highest
+   score. A stretch that alarmed is drawn in the foreground colour, as the boundary is. */
+.dj-test-rule {
+  position: relative;
+  height: 64px;
+  margin-top: 4px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dj-test-rule svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.dj-test-scores,
+.dj-test-legend .is-score::before {
+  fill: hsl(var(--muted-foreground) / 0.55);
+  background: hsl(var(--muted-foreground) / 0.55);
+}
+.dj-test-alarmed {
+  fill: hsl(var(--foreground));
+}
+.dj-test-boundary {
+  fill: none;
+  stroke: hsl(var(--foreground));
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+/* What the upper and the lower edge stand for, on the side where the design is still learning. */
+.dj-test-rule span {
+  position: absolute;
+  left: 4px;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: hsl(var(--background) / 0.8);
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  pointer-events: none;
+}
+.dj-test-rule span:first-of-type {
+  top: 2px;
+}
+.dj-test-rule span:last-of-type {
+  bottom: 2px;
+}
+
+.dj-test-axis,
+.dj-test-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 4px 0 0;
+  padding: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  list-style: none;
+}
+.dj-test-axis {
+  justify-content: space-between;
+}
+.dj-test-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.dj-test-legend li::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 1px solid hsl(var(--muted-foreground) / 0.4);
+  border-radius: 2px;
+}
+.dj-test-legend .is-alarm::before {
+  width: 1px;
+  border: 0;
+  border-radius: 0;
+  background: hsl(var(--foreground));
+}
+.dj-test-legend .is-score::before {
+  width: 4px;
+  border: 0;
+  border-radius: 0;
+}
+.dj-test-legend .is-boundary::before {
+  height: 1px;
+  border: 0;
+  border-radius: 0;
+  background: hsl(var(--foreground));
+}
+
+.dj-test-figures {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 12px;
+}
+.dj-test-figures > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--text-body);
+}
+.dj-test-figures dt {
+  color: hsl(var(--muted-foreground));
+}
+.dj-test-figures dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.dj-test-figures small {
+  display: block;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+}
+
+/* With a step's settings: the values of one observation of the last test, in and out. Folded, it is
+   one line between what the step does and how it is set. */
+.dj-step-values {
+  margin: 12px 0 16px;
+  padding: 8px 0;
+  border-block: 1px solid hsl(var(--border));
+}
+.dj-step-values summary {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  cursor: pointer;
+}
+.dj-step-values > .pl-help,
+.dj-step-values > .pl-error {
+  margin: 8px 0 0;
+}
+.dj-step-observation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.dj-step-observation .pl-help {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dj-step-move {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+.pl-inspector .dj-step-move button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.dj-step-side {
+  margin-top: 10px;
+}
+.pl-inspector .dj-step-side h5 {
+  margin: 0 0 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+.dj-step-side dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.dj-step-side dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--text-body);
+}
+.dj-step-side dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dj-step-side dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.dj-step-side .pl-help {
+  margin: 0;
+}
+
+/* On the button that opens the panel: how far the test is, along the button's lower edge. */
+.dj-test-meter {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: hsl(var(--foreground));
+  transition: width 400ms linear;
+}
+.dj-test-meter.is-waiting {
+  animation: dj-test-wait 1.4s ease-in-out infinite alternate;
+}
+@keyframes dj-test-wait {
+  from { opacity: 0.15; }
+  to { opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dj-test-bar span,
+  .dj-test-meter {
+    transition: none;
+  }
+  .dj-test-meter.is-waiting {
+    animation: none;
+    opacity: 0.4;
+  }
+}

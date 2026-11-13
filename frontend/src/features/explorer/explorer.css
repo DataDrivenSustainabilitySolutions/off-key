@@ -1,4 +1,4 @@
-.ex-shell,.ex-dialog,.ex-popover,.ex-mobile-sidebar,.app-settings-dialog {
+.ex-shell,.ex-dialog,.ex-popover,.ex-mobile-sidebar,.app-settings-dialog,.ex-history-view {
   --ex-bg: hsl(var(--background)); --ex-side: hsl(var(--muted));
   --ex-ink: hsl(var(--foreground)); --ex-muted: hsl(var(--muted-foreground));
   --ex-line: hsl(var(--border)); --ex-hover: hsl(var(--accent));
@@ -52,7 +52,6 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 .ex-row { display: flex; flex: 1; min-width: 0; height: 100%; padding: 0 6px 0 2px; gap: 8px; align-items: center; text-align: left; border-radius: var(--radius-control); font-size: var(--text-body); line-height: 20px; }
 .ex-row-icon { color: var(--ex-muted); flex-shrink: 0; display: inline-flex; width: 16px; justify-content: center; }
 .ex-row.is-selected .ex-row-icon { color: var(--ex-accent); }
-.ex-reading-activity { color: var(--ex-ink); }
 .ex-row-text { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 6px; }
 .ex-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-row.is-selected .ex-row-label { font-weight: 550; }
@@ -161,6 +160,11 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 .ex-history-ranges { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--ex-line); border-radius: var(--radius-control); background: hsl(var(--card)); }
 .ex-preview-section-heading .ex-history-ranges button { min-height: 26px; min-width: 34px; padding: 0 8px; border-radius: var(--radius-control); justify-content: center; font-variant-numeric: tabular-nums; }
 .ex-preview-section-heading .ex-history-ranges button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-active); font-weight: 550; }
+.ex-preview-section-heading .ex-history-view[aria-pressed="true"] { color: var(--ex-accent); background: var(--ex-active); }
+.ex-history-values { margin-top: 10px; color: var(--ex-muted); font-size: var(--text-caption); }
+.ex-history-values table { width: 100%; margin: 8px 0; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ex-history-values th, .ex-history-values td { padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--ex-line); overflow-wrap: anywhere; }
+.ex-history-values td:last-child, .ex-history-values th:last-child { text-align: right; }
 .ex-history-navigation { min-width: 0; border-radius: var(--radius-control); }
 .ex-history-navigation:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: 2px; }
 .ex-history-monitoring { margin: 10px 0 0; font-size: var(--text-caption); color: var(--ex-muted); }

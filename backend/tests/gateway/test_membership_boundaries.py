@@ -57,7 +57,7 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
 
 @pytest.mark.asyncio
 async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkeypatch):
-    gateway.dependency_overrides[access.current_member] = lambda: PROFILE
+    gateway.dependency_overrides[access.current_caller] = lambda: PROFILE
     device = {"kind": "device", "id": "charger-1"}
     stored = device | {"created_at": "2026-11-05T00:00:00Z"}
     get = AsyncMock(return_value=[stored])
@@ -104,7 +104,7 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
 
 @pytest.mark.asyncio
 async def test_admin_can_manage_monitors(gateway, monkeypatch):
-    gateway.dependency_overrides[access.current_member] = lambda: ADMIN
+    gateway.dependency_overrides[access.current_caller] = lambda: ADMIN
     delete = AsyncMock(return_value={"status": "deleted"})
     monkeypatch.setattr(monitors.tactic, "delete_radar_service", delete)
     async with asgi_client(gateway) as client:
@@ -119,7 +119,7 @@ async def test_a_custom_role_changes_only_what_its_permissions_cover(
 ):
     from off_key_api_gateway.api.v1 import alarms
 
-    gateway.dependency_overrides[access.current_member] = lambda: PROFILE.model_copy(
+    gateway.dependency_overrides[access.current_caller] = lambda: PROFILE.model_copy(
         update={"role": "alarm-desk", "permissions": [Permission.manage_alarms]}
     )
     remove_alarm = AsyncMock(return_value="")
@@ -145,7 +145,7 @@ async def test_a_custom_role_changes_only_what_its_permissions_cover(
 async def test_role_changes_forward_only_the_fields_sent(gateway, monkeypatch):
     from off_key_api_gateway.api.v1 import roles
 
-    gateway.dependency_overrides[access.current_member] = lambda: ADMIN
+    gateway.dependency_overrides[access.current_caller] = lambda: ADMIN
     role = {
         "id": "operator",
         "name": "Operator",
@@ -223,7 +223,7 @@ async def test_admin_member_removal_forwards_identity_and_preserves_status(
 ):
     from off_key_api_gateway.api.v1 import members
 
-    gateway.dependency_overrides[access.current_member] = lambda: ADMIN
+    gateway.dependency_overrides[access.current_caller] = lambda: ADMIN
     remote = AsyncMock(return_value="")
     if status != 204:
         remote.side_effect = TacticError("Cannot remove member", status=status)
@@ -303,7 +303,7 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
 
     monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
     get_service_auth_settings.cache_clear()
-    gateway.dependency_overrides[access.current_member] = lambda: PROFILE
+    gateway.dependency_overrides[access.current_caller] = lambda: PROFILE
     captured = []
 
     @asynccontextmanager

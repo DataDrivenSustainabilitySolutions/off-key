@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -18,6 +18,7 @@ import { useCreationSession, type CreationDraft } from "./creationSession";
 import { pipelinesApi } from "./api";
 import { useGraphMetadata } from "./useGraphMetadata";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { SHORTCUTS } from "./shortcuts";
 import { useGraphEditor } from "./useGraphEditor";
 import { PipelineDesignSettings } from "./PipelineDesignSettings";
 import { PipelineTemplateMenu } from "./PipelineTemplateMenu";
@@ -28,9 +29,13 @@ import { PipelineReadingPicker } from "./PipelineReadingPicker";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
 import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings, suggestedTarget } from "./bindings";
+import { compareDesigns, comparisonSummary } from "./comparison";
 import { selectReadings, targetInputs } from "./slots";
-import { hasFittedDetector, learningSummary, learningWindow } from "./learning";
+import { learningWindow } from "./learning";
+import { starterTemplate, withoutDetector } from "./detectorSlot";
 import { startupEstimate } from "./startup";
+import { DesignTestContext, type DesignEvidence } from "./designTest";
+import { downloadDesign, openDesignFile } from "./designFile";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -39,6 +44,16 @@ export type PipelineSetupProps = {
   /** Readings suggested per slot, for example the ones a Dojo run tested the design on. */
   initialBindings?: Record<string, string>;
   initialDocument?: GraphDocument; replaceService?: ActiveService; predecessor?: PipelineServiceView;
+  /** The name a new service starts with, when the setup opens something that has one. */
+  initialName?: string;
+  /** What the setup was opened from, such as a proposal. It keeps that setup's unsaved changes apart. */
+  origin?: string;
+  /** Said above the canvas for as long as the setup is open, such as who proposed the design. */
+  notice?: ReactNode;
+  /** The test the design came with, such as a proposal's. The setup opens with it beside the design. */
+  tested?: DesignEvidence;
+  /** The start of the service was requested and the server took the request. */
+  onRequested?: () => void;
   revisionId?: string;
   sourceService?: { id: string; replace: boolean };
   activationBlocked?: string; onManage: () => void; onBack: () => void; onStarted: (id: string) => void;
@@ -67,8 +82,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const location = useLocation();
   const replaceId = props.sourceService?.replace ? props.sourceService.id : replaceService?.id;
   const sourceId = props.sourceService?.id ?? replaceId;
-  // A new service starts from the flow that learns from the stream.
-  const startingId = catalog.templates.find((item) => !hasFittedDetector(item.definition, catalog.components))?.id ?? catalog.templates[0]?.id;
+  // A new service starts from the flow that learns from the stream, with its detector left to choose.
+  const startingId = starterTemplate(catalog)?.id;
   const initial = useCallback((): CreationDraft => {
     const suggested = { ...initialBindings, ...previousBindings(predecessor) };
     const targetId = initialTarget ?? predecessorTarget(targets, predecessor) ?? suggestedTarget(targets, suggested);
@@ -76,13 +91,15 @@ export function PipelineCreate(props: PipelineSetupProps) {
     const starting = startingSetup(catalog, startingId, target, initialReading);
     const document = initialDocument ?? (initialDesign
       ? { definition: initialDesign.draft, layout: initialDesign.layout }
-      : starting.document);
-    return { name: replaceService?.display_name ?? initialDesign?.name ?? "", description: initialDesign?.description ?? "",
+      : withoutDetector(starting.document));
+    return { name: replaceService?.display_name ?? initialDesign?.name ?? props.initialName ?? "", description: initialDesign?.description ?? "",
       targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document,
+      // An update keeps a shadow service in shadow until the member takes it live.
+      shadow: !!replaceService?.shadow,
       bindings: initialDesign || initialDocument ? suggestBindings(document.definition.input_slots, target,
         suggested) : starting.bindings };
-  }, [catalog, initialBindings, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
-  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}:${Object.entries(initialBindings ?? {}).join(";")}`;
+  }, [catalog, initialBindings, initialDesign, initialDocument, initialReading, initialTarget, predecessor, props.initialName, replaceService, startingId, targets]);
+  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? props.origin ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}:${Object.entries(initialBindings ?? {}).join(";")}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
     !replaceId && !props.revisionId && initialDesign?.is_template !== false ? initialDesign : undefined);
   const viewTitle = replaceId ? "Update service" : initialDesign ? "Template" : "New service";
@@ -98,7 +115,9 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const nameInput = useRef<HTMLInputElement>(null);
   // A new service starts at its readings; a saved design or a replacement starts at its graph.
   const [opensAtInput] = useState(!initialDesign && !initialDocument && !replaceId);
-  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(opensAtInput ? "component" : null);
+  const designTest = useContext(DesignTestContext);
+  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(
+    opensAtInput ? "component" : props.tested && designTest ? "test" : null);
   const completed = useCallback((id: string) => { session.discard(initial()); onStarted(id); }, [initial, onStarted, session]);
   const apply = usePipelineApply(`${creationKey}:apply`, completed);
   const locked = !!apply.request || !!apply.operation;
@@ -123,6 +142,11 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const recordingIds = !waitingForRecording && unrecorded.length ? unrecorded : inputsForTarget.map(input => input.stream.id);
   const recordingHref = sourceHref(initialReading && recordingIds.includes(initialReading) ? [initialReading] : recordingIds,
     catalogueDocument, `${location.pathname}${location.search}`);
+  // An update is measured against what runs now: the cards say which steps differ from it.
+  const comparison = useMemo(() => replaceId && predecessor ? compareDesigns(predecessor, draft.document, catalog.components,
+    replaceService && { was: !!replaceService.shadow, now: !!draft.shadow }) : undefined,
+  [replaceId, predecessor, replaceService, draft.document, draft.shadow, catalog.components]);
+  const differs = comparison && comparisonSummary(comparison);
   const slots = draft.document.definition.input_slots;
   const bindings = Object.fromEntries(slots.filter((slot) => draft.bindings?.[slot.id]).map((slot) => [slot.id, draft.bindings![slot.id]!]));
   const validateGraph = () => graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected));
@@ -137,6 +161,11 @@ export function PipelineCreate(props: PipelineSetupProps) {
     compiledValidation?.preparation_observations,
     learningWindow(draft.document.definition, catalog.components));
   const openInput = () => { const id = inputNode(draft.document); if (id) select(id); };
+  // Only a design the compiler accepts is tested, so that no values are copied for a run that cannot start.
+  const testBlocked = compiledValidation
+    ? compiledValidation.valid ? undefined : "The design is not ready to run. The status above the canvas lists what is left."
+    : metadata.error ? "The design could not be checked, so it cannot be tested yet."
+      : canAuthor ? "Checking the design…" : undefined;
   useUnsavedChanges(dirty && !locked);
 
   useEffect(() => {
@@ -160,14 +189,25 @@ export function PipelineCreate(props: PipelineSetupProps) {
     const next = selectReadings(target!, slots, draft.bindings ?? {}, [initialReading!]);
     changeInputs(next.slots, next.bindings);
   });
-  const load = (document: GraphDocument, name: string, description: string, bindings?: Record<string, string>) => {
+  const load = (document: GraphDocument, name: string, description: string, bindings?: Record<string, string>, fromFile = false) => {
     commit(document);
     session.detachTemplate();
     setDraft((previous) => ({ ...previous, startingId: undefined, name: previous.name || name, description,
       bindings: bindings ?? suggestBindings(document.definition.input_slots, target, previous.bindings) }));
     // A new service goes on to its readings; a design's own editor returns to the graph.
     select(opensAtInput ? inputNode(document) : undefined); graph.requestFit();
-    toast.success(`Loaded ${name}. Your changes will not affect the original template.`, { id: "pipeline-template-load" });
+    toast.success(fromFile ? `Opened ${name}.` : `Loaded ${name}. Your changes will not affect the original template.`,
+      { id: "pipeline-template-load" });
+  };
+  /** A design saved as a file takes the place of the one on the canvas; Undo brings that one back. */
+  const openFile = async (file: File) => {
+    if (!canAuthor || busy) return;
+    setLoadingTemplate(true); setError("");
+    try {
+      const design = await openDesignFile(file);
+      load(design.document, design.name, design.description, undefined, true);
+    } catch (reason) { setError(getErrorMessage(reason)); }
+    finally { setLoadingTemplate(false); }
   };
   const start = async () => {
     if (!canAuthor || busy) return;
@@ -178,9 +218,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
     setChecking(true);
     try {
       const result = await validateGraph();
-      if (!result?.valid) { setIssuesRequest((value) => value + 1); setError("Resolve the highlighted processing issues before applying."); return; }
+      // What is left to do opens as a list beside the status, where each entry leads to its step.
+      if (!result?.valid) { setIssuesRequest((value) => value + 1); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
-        bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_monitor_id: replaceId ?? null });
+        bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_monitor_id: replaceId ?? null,
+        shadow: !!draft.shadow });
+      if (apply.session.getSnapshot().operationId) props.onRequested?.();
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setChecking(false); }
   };
@@ -219,6 +262,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       {target && props.collectionReady && !unrecorded.length && <Link to={recordingHref}>Review recording in Sources</Link>}
     </div>
   </div>;
+  // One line names the service: where it sits, its name and what it monitors.
   const header = <>
     <header className="pl-header pl-setup-header">
       <div className="pl-setup-identity">
@@ -228,37 +272,35 @@ export function PipelineCreate(props: PipelineSetupProps) {
         <input ref={nameInput} className="pl-name-input" aria-label="Service name" maxLength={120} placeholder="Name this service"
           disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
           value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
+        <button type="button" className="pl-setup-input" aria-label={target ? `Input: ${target.label}, ${readingCount}` : "Input: choose readings"}
+          title="Choose readings" onClick={openInput}>
+          {target ? `${target.label} · ${readingCount}` : "Choose readings"}
+        </button>
         {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
-        <div className="pl-setup-meta">
-          <button type="button" aria-label={target ? `Input: ${target.label}, ${readingCount}` : "Input: choose readings"}
-            title="Choose readings" onClick={openInput}>
-            {target ? `${target.label} · ${readingCount}` : "Choose readings"}
-          </button>
-          <button type="button" aria-label={`Learning: ${learningSummary(draft.document.definition, catalog.components)}`}
-            title="Learning and calibration windows" onClick={() => setInspectorPanel("service")}>
-            {learningSummary(draft.document.definition, catalog.components)}
-          </button>
-        </div>
       </div>
       {(canAuthor || props.menu) && <div className="pl-actions pl-setup-actions">
         {canAuthor && <>
           <PipelineTemplateMenu catalog={catalog} disabled={busy} onLoading={setLoadingTemplate} onManage={props.onManage} onLoad={load}
+            onOpenFile={(file) => void openFile(file)}
             onBuiltIn={(id) => { const item = catalog.templates.find((item) => item.id === id)!;
               const setup = startingSetup(catalog, id, target, initialReading);
               load(setup.document, item.name, "", setup.bindings);
               setDraft((previous) => ({ ...previous, startingId: id })); }} />
           <PipelineSaveTemplate name={template?.name ?? draft.name} description={template?.description ?? draft.description}
             existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
-            onSave={async (details) => !!await session.save(details)} />
+            onSave={async (details) => !!await session.save(details)}
+            onDownload={(details) => toast.success(`Downloaded ${downloadDesign(draft.document, details.name, details.description)}.`,
+              { id: "pipeline-design-download" })} />
         </>}
         {props.menu}
         {canAuthor && <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
-          <Play size={15} />{checking ? "Checking…" : replaceId ? "Update monitoring" : "Start monitoring"}</button>}
+          <Play size={15} />{checking ? "Checking…" : `${replaceId ? "Update" : "Start"} ${draft.shadow ? "in shadow" : "monitoring"}`}</button>}
       </div>}
     </header>
     <div className="pl-setup-notices">
       {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
         : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "Configuring monitoring services needs the Manage monitors permission."}</p>}
+      {props.notice}
       {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
       {error && <p className="pl-error" role="alert">{error}</p>}
       <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
@@ -270,19 +312,21 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <Link to={recordingHref}>Turn on recording in Sources</Link>
         </p>}
       {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
-      {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning restarts. History is kept.</p>}
+      {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning restarts. History is kept.
+        {differs && <span className="pl-compared">Compared with what runs now: {differs}</span>}</p>}
     </div>
   </>;
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
     <PipelineWorkbench stage header={header} catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
       inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
       validationError={metadata.error} onRetryValidation={metadata.retry}
-      selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
+      selected={selected} changes={comparison?.steps} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
       onPlace={graph.place}
       onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}
+      onOpenFile={(file) => void openFile(file)}
       actions={canAuthor && !locked && <>
-        <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title="Undo (Ctrl+Z)" onClick={graph.undo}><Undo2 size={15} /></button>
-        <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title="Redo (Ctrl+Shift+Z)" onClick={graph.redo}><Redo2 size={15} /></button>
+        <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title={`Undo (${SHORTCUTS.undo.label})`} onClick={graph.undo}><Undo2 size={15} /></button>
+        <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title={`Redo (${SHORTCUTS.redo.label})`} onClick={graph.redo}><Redo2 size={15} /></button>
         <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
         {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {
           if (!await confirm({ title: "Discard this setup?", description: "Your changes to this flow are cleared and the setup starts again.",
@@ -291,7 +335,20 @@ export function PipelineCreate(props: PipelineSetupProps) {
           session.discard(fresh); graph.resetHistory(); select(opensAtInput ? inputNode(fresh.document) : undefined); graph.requestFit(); setAttempted(false);
         }}><RotateCcw size={15} />Reset</button>}
       </>}
-      settings={<PipelineDesignSettings document={draft.document} catalog={catalog} startup={startup} readOnly={!canAuthor || locked || checking}
+      test={designTest && <designTest.Panel session={`${creationKey}:test`} definition={draft.document.definition}
+        readings={bindings} name={draft.name} scope={target?.label} blocked={testBlocked} onChooseReadings={openInput} />}
+      testLabel={designTest && <designTest.Status session={`${creationKey}:test`} open={inspectorPanel === "test"}
+        evidence={props.tested} />}
+      stepValues={(comparison || designTest) && (node => <>
+        {comparison?.steps[node] && <p className="pl-help">
+          <strong>{comparison.steps[node].kind === "new" ? "New." : "Changed."}</strong> {comparison.steps[node].detail}</p>}
+        {designTest && <designTest.Values session={`${creationKey}:test`} node={node}
+          definition={draft.document.definition} onOpenTest={() => setInspectorPanel("test")} />}
+      </>)}
+      settings={<PipelineDesignSettings document={draft.document} catalog={catalog} startup={startup}
+        shortfall={compiledValidation?.issues.find((issue) => issue.code === "calibration_window")?.message}
+        shadow={!!draft.shadow} onShadow={(shadow) => setDraft((previous) => ({ ...previous, shadow }))}
+        readOnly={!canAuthor || locked || checking}
         onChange={(document, history) => {
           commit(document, history);
           if (document.definition.input_slots !== slots) setDraft((previous) => ({ ...previous, startingId: undefined }));

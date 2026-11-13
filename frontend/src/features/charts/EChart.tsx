@@ -100,6 +100,20 @@ const getViewport = (
   return startMs <= endMs ? [startMs, endMs] : [endMs, startMs];
 };
 
+/**
+ * zrender 6.1 gives a canvas it first creates while resizing the size from before the
+ * resize, and afterwards finds nothing left to change: a chart whose container grows
+ * before its first paint stays cut off at the old height. Resizing away and back
+ * makes it size the canvas it now has.
+ */
+const resizeChart = (chart: EChartsType, container: HTMLElement) => {
+  chart.resize({ silent: true });
+  const canvas = container.querySelector("canvas");
+  if (!canvas || (canvas.clientWidth === chart.getWidth() && canvas.clientHeight === chart.getHeight())) return;
+  chart.resize({ width: chart.getWidth() + 1, silent: true });
+  chart.resize({ width: "auto", silent: true });
+};
+
 export function EChart({
   option,
   resolvedTheme,
@@ -139,7 +153,7 @@ export function EChart({
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? undefined
-        : new ResizeObserver(() => chart.resize({ silent: true }));
+        : new ResizeObserver(() => resizeChart(chart, container));
     resizeObserver?.observe(container);
 
     return () => {

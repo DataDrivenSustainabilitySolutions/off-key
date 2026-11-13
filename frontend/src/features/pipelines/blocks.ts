@@ -5,7 +5,7 @@ import { pipelinesApi } from "./api";
 import { counterpartBefore } from "./learning";
 import {
   addBlocker, addComponent, connectNodes, connectionIssue, insertBlocker, insertOnEdge, nodeLabel, PIPELINE_LIMITS,
-  setNodeLabel, type GraphDocument, type Link,
+  setNodeLabel, stepTitle, type GraphDocument, type Link,
 } from "./model";
 
 /** The steps a block can hold from a step on: the step and those that follow it one
@@ -22,9 +22,9 @@ export function blockChain(definition: PipelineDefinition, nodeId: string): Pipe
 }
 
 /** A chain's steps as a block keeps them: settings and titles, without ids or positions. */
-export const blockSteps = (document: GraphDocument, chain: PipelineNode[]): BlockStep[] =>
+export const blockSteps = (chain: PipelineNode[]): BlockStep[] =>
   chain.map((node) => {
-    const label = document.layout.nodes[node.id]?.label;
+    const label = stepTitle(node);
     return {
       component: node.component,
       contract_version: node.contract_version ?? 1,

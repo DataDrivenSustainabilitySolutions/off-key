@@ -2,7 +2,7 @@ import type { MonitoringChartEvidence } from "@/types/monitoring";
 import { getPauseLimit } from "./telemetry-data";
 
 /** What a forecaster step expected of a feature at one time, and the interval around it. */
-type ForecastPoint = [time: number, expected: number | null, lower: number | null, upper: number | null];
+export type ForecastPoint = [time: number, expected: number | null, lower: number | null, upper: number | null];
 
 /** One feature a detector scored, over time. A null value breaks the line. */
 export interface DetectorInputSeries {
@@ -11,6 +11,8 @@ export interface DetectorInputSeries {
   data: Array<[time: number, value: number | null]>;
   /** The forecast the feature was compared with, when a forecaster step scored it. */
   forecast?: ForecastPoint[];
+  /** Set when `data` holds interval means: each interval's lowest and highest value. */
+  range?: Array<[time: number, minimum: number | null, maximum: number | null]>;
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);

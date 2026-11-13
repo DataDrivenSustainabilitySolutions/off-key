@@ -51,6 +51,8 @@ class AnomalyDetectionConfig(PerformanceConfig):
     # Derived from the pipeline, which every monitor runs.
     monitoring: MonitoringConfig
     pipeline: PipelineExecutionConfig
+    # A shadow run learns and scores as any other and raises no alarm.
+    shadow: bool = False
     subscription_topics: list[str] = Field(default_factory=list)
     memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
     checkpoint_interval: int = 10000
@@ -186,6 +188,8 @@ class RadarSettings(BaseSettings):
     # The bound pipeline; TACTIC also passes the strategy settings it derives.
     RADAR_MONITORING_CONFIG: MonitoringConfig | None = None
     RADAR_PIPELINE_CONFIG: PipelineExecutionConfig
+    # TACTIC sets it for a shadow run only: every alarm is kept back as muted.
+    RADAR_SHADOW: bool = False
 
     # Performance
     RADAR_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
@@ -290,6 +294,7 @@ class RadarSettings(BaseSettings):
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             monitoring=monitoring,
             pipeline=pipeline,
+            shadow=self.RADAR_SHADOW,
             max_queue_size=self.RADAR_MAX_QUEUE_SIZE,
             max_payload_bytes=self.RADAR_MAX_PAYLOAD_BYTES,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,

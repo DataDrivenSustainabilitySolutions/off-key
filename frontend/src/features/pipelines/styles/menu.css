@@ -126,6 +126,14 @@
   font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
 }
+.pl-context-keys {
+  flex-shrink: 0;
+  margin-left: 12px;
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
 .pl-context-separator {
   height: 1px;
   margin: 5px 8px;
@@ -136,6 +144,25 @@
   padding: 10px 8px;
   color: hsl(var(--muted-foreground));
   font-size: var(--text-caption);
+}
+/* What the entry in focus does, in full, so the list itself stays one line per entry. */
+.pl-context-help {
+  flex-shrink: 0;
+  display: grid;
+  margin-top: 5px;
+  padding: 8px 8px 4px;
+  border-top: 1px solid hsl(var(--border) / 0.8);
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  line-height: 1.4;
+}
+.pl-context-help p {
+  grid-area: 1 / 1;
+  margin: 0;
+  visibility: hidden;
+}
+.pl-context-help p[data-active="true"] {
+  visibility: visible;
 }
 /* A held touch opens the menu; the browser's own callout and text selection stay away. */
 .pl-flow-surface {

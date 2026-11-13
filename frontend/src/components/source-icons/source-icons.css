@@ -1,0 +1,24 @@
+/* Quiet foreground tones with enough contrast for 16 px line icons. */
+.source-icon,.icon-picker-swatch { --source-tone: hsl(var(--muted-foreground)); }
+[data-color="slate"] { --source-tone: #657283; }
+[data-color="sage"] { --source-tone: #647c59; }
+[data-color="teal"] { --source-tone: #447e79; }
+[data-color="blue"] { --source-tone: #557ba1; }
+[data-color="lavender"] { --source-tone: #82739f; }
+[data-color="ochre"] { --source-tone: #9a792f; }
+[data-color="clay"] { --source-tone: #a16d52; }
+[data-color="rose"] { --source-tone: #a46c80; }
+.dark [data-color="slate"] { --source-tone: #9caab9; }
+.dark [data-color="sage"] { --source-tone: #a0b594; }
+.dark [data-color="teal"] { --source-tone: #85b6b0; }
+.dark [data-color="blue"] { --source-tone: #90aed0; }
+.dark [data-color="lavender"] { --source-tone: #b4a3cf; }
+.dark [data-color="ochre"] { --source-tone: #c5aa6d; }
+.dark [data-color="clay"] { --source-tone: #c79a80; }
+.dark [data-color="rose"] { --source-tone: #ce9aad; }
+.source-icon { display: inline-flex; align-items: center; justify-content: center; width: var(--source-icon-size,16px); height: var(--source-icon-size,16px); color: var(--source-tone); flex: 0 0 auto; vertical-align: middle; }
+.app-sidebar-item > .source-icon.source-icon { color: var(--source-tone); }
+.source-identity { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+.ex-row-icon { position: relative; }
+.ex-row-icon .source-activity-dot { position: absolute; bottom: -3px; right: -4px; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--ex-ink); box-shadow: 0 0 0 2px var(--ex-side); background: var(--ex-side); }
+.ex-row-icon .source-activity-dot.is-receiving { background: var(--ex-ink); }

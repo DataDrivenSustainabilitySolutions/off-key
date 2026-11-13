@@ -33,9 +33,29 @@ class SystemModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SourceAppearance(SystemModel):
+    """Presentation metadata only; icon names resolve to trusted client SVGs."""
+
+    icon: str | None = Field(default=None, max_length=40, pattern=r"^[a-z][a-z0-9-]*$")
+    color: (
+        Literal["slate", "sage", "teal", "blue", "lavender", "ochre", "clay", "rose"]
+        | None
+    ) = None
+
+
 class NamedEntity(SystemModel):
     id: EntityId = Field(default_factory=lambda: str(uuid4()))
     label: str = Field(min_length=1, max_length=120)
+    appearance: SourceAppearance | None = None
+
+    @model_serializer(mode="wrap")
+    def _stored_fields(self, handler):
+        """Keep untouched catalogues readable by releases before icon picking."""
+        data = handler(self)
+        appearance = data.get("appearance")
+        if not appearance or not any(appearance.values()):
+            data.pop("appearance", None)
+        return data
 
     @field_validator("id")
     @classmethod
@@ -200,7 +220,7 @@ class SystemStream(NamedEntity):
     def _stored_fields(self, handler):
         """Releases before HTTP sources reject a key they do not know, so the
         source timestamp is written only where one is set."""
-        data = handler(self)
+        data = super()._stored_fields(handler)
         if data.get("timestamp_pointer") is None:
             data.pop("timestamp_pointer", None)
         return data
@@ -213,6 +233,18 @@ DEFAULT_GROUP_COLOR = "#397f74"
 class SystemGroup(NamedEntity):
     color: str = Field(default=DEFAULT_GROUP_COLOR, pattern=r"^#[0-9a-fA-F]{6}$")
     member_ids: list[EntityId] = Field(default_factory=list, max_length=8192)
+
+
+class TopicAppearance(SystemModel):
+    broker_id: EntityId
+    # Empty is the first level of an absolute MQTT path, e.g. /sensors/room.
+    topic: str = Field(max_length=512)
+    appearance: SourceAppearance
+
+    @field_validator("topic")
+    @classmethod
+    def concrete_topic(cls, value: str) -> str:
+        return SystemStream.concrete_topic(value)
 
 
 class SystemDocument(SystemModel):
@@ -229,6 +261,16 @@ class SystemDocument(SystemModel):
         default_factory=list, max_length=4096, **public("readings", "streams")
     )
     groups: list[SystemGroup] = Field(default_factory=list, max_length=128)
+    topic_appearances: list[TopicAppearance] = Field(
+        default_factory=list, max_length=8192
+    )
+
+    @model_serializer(mode="wrap")
+    def _stored_fields(self, handler):
+        data = handler(self)
+        if not data.get("topic_appearances"):
+            data.pop("topic_appearances", None)
+        return data
 
     @field_validator("label")
     @classmethod
@@ -257,6 +299,16 @@ class SystemDocument(SystemModel):
         self._validate_device_parents(devices)
         self._validate_stream_references(connections, set(devices))
         self._validate_request_paths()
+        topic_keys = set()
+        for item in self.topic_appearances:
+            key = (item.broker_id, item.topic)
+            if item.broker_id not in connections:
+                raise ValueError("Topic appearance broker does not exist")
+            if key in topic_keys:
+                raise ValueError(
+                    "Topic appearances must be unique per broker and topic"
+                )
+            topic_keys.add(key)
         if any(f"group:{group.id}" in members for group in self.groups):
             raise ValueError("An entity ID conflicts with a collapsed group identity")
         self._validate_group_members(members)

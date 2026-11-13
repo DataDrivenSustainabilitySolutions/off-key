@@ -100,7 +100,7 @@ def tactic_app(blocks) -> FastAPI:
         {
             get_db_async: session,
             get_pipeline_blocks: lambda: blocks,
-            collection_auth.current_member: lambda: member,
+            collection_auth.current_caller: lambda: member,
             collection_auth.require_permission(Permission.manage_monitors): (
                 lambda: member
             ),

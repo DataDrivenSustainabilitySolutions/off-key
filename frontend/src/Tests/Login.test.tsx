@@ -254,6 +254,7 @@ describe("Login", () => {
 
   it.each([
     ["/sources?reading=air-temperature#history", "/sources?reading=air-temperature#history"],
+    ["/anomalies/event-1?signal=temperature", "/anomalies/event-1?signal=temperature"],
     ["https://outside.example/login", "/"],
   ])("resumes only a valid internal destination after signing in: %s", async (returnTo, expected) => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({

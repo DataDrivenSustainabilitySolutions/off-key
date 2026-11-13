@@ -193,9 +193,8 @@ async def test_member_access_is_checked_on_every_request(monkeypatch):
     }
     remote = AsyncMock(return_value=profile)
     monkeypatch.setattr(access.tactic, "request", remote)
-    request = _request("127.0.0.1")
-    await access.current_member(request, "Bearer member")
+    await access.signed_in_member("Bearer member")
     remote.side_effect = TacticError("Revoked", status=401)
     with pytest.raises(HTTPException):
-        await access.current_member(request, "Bearer member")
+        await access.signed_in_member("Bearer member")
     assert remote.await_count == 2

@@ -72,7 +72,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   return <section className="mn-detail" aria-label="Monitoring service details">
     <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current={name} />
     <div className="mn-detail-header"><div><h1 aria-label={name}><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h1>
-      <small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}</small></div>
+      <small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}{service.shadow ? " · Shadow run" : ""}</small></div>
       <div className="mn-detail-actions"><button className="mn-favourite ex-icon-button" aria-pressed={favourite} aria-label={favourite ? "Remove service from favourites" : "Add service to favourites"} onClick={onFavourite}><Star size={17} /></button>
         <ActionMenu label="Service actions" actions={[{ label: "Copy service ID", icon: Copy, onSelect: () => void copyId() },
           ...(canEdit ? [{ label: removeLabel, icon: Trash2, destructive: true, separated: true, onSelect: () => { setDeleteError(""); setConfirm(true); } }] : [])]} />
@@ -94,6 +94,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     <div className="mn-detail-panel" role="tabpanel" id={`monitor-panel-${tab}`} aria-labelledby={`monitor-tab-${tab}`}>
       {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} canEdit={canEdit} state={pipelineState} /></Suspense>}
       {tab === "overview" && <>
+        {service.shadow && <p className="ex-muted">This service runs in shadow: it records the alarms it would raise and raises none.
+          To take it live, choose Edit service on the Pipeline tab and update it without Shadow run.</p>}
         {service.operational_status.error && <p className="ex-preview-error" role="alert">{service.operational_status.error}</p>}
         {service.operational_status.detail && <p className="ex-muted">{service.operational_status.detail}</p>}
         {activity && <section className="mn-section"><h3>Monitoring activity</h3>

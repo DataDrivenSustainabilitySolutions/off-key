@@ -91,6 +91,19 @@
 .mn-history-empty strong { color: var(--ex-ink); font-size: var(--text-body); font-weight: 500; }
 .mn-history-empty.is-error strong { color: hsl(var(--destructive)); }
 .mn-history-problem { margin: 8px 0 0; font-size: var(--text-caption); color: hsl(var(--destructive)); }
+.mn-forecast-controls { margin: 16px 0 24px; font-size: var(--text-caption); }
+.mn-forecast-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.mn-forecast-toolbar label { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.mn-forecast-toolbar select { background: var(--ex-panel); color: var(--ex-ink); border: 1px solid var(--ex-line); border-radius: var(--radius-control); padding: 6px 10px; }
+.mn-forecast-toolbar input { accent-color: var(--ex-accent); }
+.mn-forecast-summary { margin-top: 12px; }
+.mn-forecast-summary summary { cursor: pointer; padding: 6px 0; }
+.mn-forecast-table { overflow-x: auto; margin-top: 8px; }
+.mn-forecast-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.mn-forecast-table caption { text-align: left; color: var(--ex-muted); padding-bottom: 8px; }
+.mn-forecast-table th,.mn-forecast-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--ex-line); white-space: nowrap; font-weight: 400; }
+.mn-forecast-table thead { color: var(--ex-muted); }
+.mn-forecast-table tr[aria-current="true"] th { color: var(--ex-accent); }
 .ex-shell .mn-target-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; background: hsl(var(--card)); border: 1px solid hsl(var(--input)); border-radius: var(--radius-control); width: 100%; min-width: 0; text-align: left; }
 .mn-target-trigger > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mn-target-trigger svg { flex-shrink: 0; }

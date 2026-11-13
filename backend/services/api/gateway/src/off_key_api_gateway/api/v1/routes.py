@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends
 from off_key_core.auth.permissions import Permission
 
-from ..access import current_member, writes_require
+from ..access import current_caller, writes_require
 from ..demo import router as demo_router
 from . import (
+    agents,
     alarms,
     auth,
     catalogue,
@@ -21,7 +22,8 @@ router = APIRouter()
 router.include_router(demo_router, prefix="/demo", tags=["demo"])
 
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
-protected = APIRouter(dependencies=[Depends(current_member)])
+# A key passes here only on a route that opens itself to keys.
+protected = APIRouter(dependencies=[Depends(current_caller)])
 
 protected.include_router(devices.router, prefix="/devices", tags=["devices"])
 protected.include_router(devices.readings_router, prefix="/readings", tags=["devices"])
@@ -44,6 +46,12 @@ protected.include_router(
 protected.include_router(
     pipelines.blocks_router,
     prefix="/pipeline-blocks",
+    tags=["pipelines"],
+    dependencies=[Depends(manage_monitors)],
+)
+protected.include_router(
+    pipelines.proposals_router,
+    prefix="/pipeline-proposals",
     tags=["pipelines"],
     dependencies=[Depends(manage_monitors)],
 )
@@ -89,5 +97,6 @@ protected.include_router(
     members.invitations_router, prefix="/invitations", tags=["members"]
 )
 protected.include_router(roles.router, tags=["roles"])
+protected.include_router(agents.router, prefix="/agents", tags=["agents"])
 protected.include_router(dojo.router, prefix="/dojo", tags=["dojo"])
 router.include_router(protected)

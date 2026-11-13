@@ -132,6 +132,8 @@ def _describe(
         ),
         options=options,
         description=original.get("description", ""),
+        advanced=bool(original.get("x-advanced", False)),
+        shown_when=original.get("x-shown-when"),
         fields=component_fields(
             schema.get("properties", {}).get("params", {}), definitions
         )

@@ -63,7 +63,7 @@ test("preserves edits made after a real atomic draft save was submitted", async 
     const first = await saved.json() as PipelineView;
     expect(first.version).toBe(design.version + 1);
     expect(first.name).toBe("Submitted name");
-    expect(first.layout.nodes?.input?.label).toBe("Submitted title");
+    expect(first.draft.nodes?.find((node) => node.id === "input")?.label).toBe("Submitted title");
     await page.unroute(routePattern);
     await savePipelineTemplate(page, "Updated template");
     await page.reload();

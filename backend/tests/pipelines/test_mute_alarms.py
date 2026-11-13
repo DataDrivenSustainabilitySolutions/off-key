@@ -1,6 +1,5 @@
 """A Mute alarms step: the run learns and scores as usual and raises no alarm."""
 
-import concurrent.futures
 import math
 import pickle
 
@@ -10,13 +9,11 @@ from off_key_core.models.pipeline_combine import Mute, row_step
 from off_key_core.models.pipeline_prepare import stage_split
 from off_key_core.models.pipelines import compile_pipeline, validate_pipeline
 from off_key_core.schemas.pipelines import PipelineDefinition, PipelineRuntimeState
-from off_key_core.schemas.radar import StaticMartingaleConfig
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
 from off_key_mqtt_radar.boundary_detector import BoundaryDetectionService
 from off_key_mqtt_radar.calibration_comparison import CalibrationComparison
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.detector_services import detector_service_class
-from off_key_mqtt_radar.martingales import MartingaleAlarmController
 from off_key_mqtt_radar.pipelines.diagnostics import (
     DiagnosticLimits,
     PipelineDiagnostics,
@@ -29,6 +26,11 @@ from off_key_mqtt_radar.pipelines.prepare import (
 )
 from off_key_mqtt_radar.result_records import ResultProjector
 
+from tests.support.conformal_run import (
+    ControlledExecutor,
+    FakeConformalDetector,
+    tracker,
+)
 from tests.support.fused_pipeline import KEYS, bound, reading
 from tests.support.rule_pipeline import CALIBRATION, rule_definition
 
@@ -370,44 +372,6 @@ def test_a_muted_observation_alarms_under_no_compared_calibration_method():
     assert [
         item.context["adaptive_stream"].get("method_alarms") for item in results
     ] == [None, None, None, 1, 0, 0]
-
-
-class FakeConformalDetector:
-    """Gives the p-value a test sets for the next observation."""
-
-    last_features = None
-    p_value = 1.0
-
-    def compute_p_values(self, _matrix):
-        return [self.p_value]
-
-
-class ControlledExecutor:
-    def __init__(self):
-        self.future: concurrent.futures.Future = concurrent.futures.Future()
-
-    def submit(self, *_args, **_kwargs):
-        return self.future
-
-    def shutdown(self, *_args, **_kwargs):
-        return None
-
-
-def tracker(threshold: float = 100.0) -> MartingaleAlarmController:
-    """One restarted martingale that a p-value of 1e-6 takes above its threshold."""
-    return MartingaleAlarmController.from_config(
-        StaticMartingaleConfig(
-            trackers=[
-                {
-                    "tracker_id": "primary",
-                    "betting_function": "power",
-                    "alarm_statistic": "restarted_martingale",
-                    "threshold_config": {"mode": "manual", "value": threshold},
-                    "epsilon": 0.5,
-                }
-            ]
-        )
-    )
 
 
 def decisions(controller, steps):

@@ -28,6 +28,8 @@ from ..auth.permissions import (
     role_permissions,
 )
 from .access_sessions import RevokedAccessToken as RevokedAccessToken
+from .agents import Agent as Agent
+from .alarm_deletions import AlarmDeletion as AlarmDeletion
 from .base import Base
 from .dojo import DojoDataset as DojoDataset
 from .dojo import DojoLabel as DojoLabel
@@ -44,6 +46,9 @@ from .pipelines import (
 )
 from .pipelines import (
     PipelineBlock as PipelineBlock,
+)
+from .pipelines import (
+    PipelineProposal as PipelineProposal,
 )
 from .pipelines import (
     PipelineRevision as PipelineRevision,

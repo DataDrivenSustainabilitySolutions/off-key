@@ -1,5 +1,6 @@
 """Reference pages name every env key, table and API route, and nothing else."""
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -7,6 +8,12 @@ from pathlib import Path
 from fastapi import FastAPI
 from off_key_api_gateway.api.v1.routes import router
 from off_key_core.db.models import Base
+from off_key_core.models.pipelines import validate_pipeline
+from off_key_core.schemas.pipelines import (
+    DESIGN_FILE_SCHEMA,
+    PipelineCreate,
+    PipelineDesignFile,
+)
 from off_key_tactic_middleware.main import create_app
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -124,3 +131,23 @@ def test_api_page_documents_every_tactic_route_and_no_other(monkeypatch):
     assert len(rows) == len(documented), "a TACTIC route is listed twice"
     assert sorted(routes - documented) == []
     assert sorted(documented - routes) == []
+
+
+def test_design_file_page_shows_a_design_that_runs_and_publishes_its_schema():
+    text = page("design-file.md")
+    example = json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
+    file = PipelineDesignFile.model_validate(example)
+    assert validate_pipeline(file.definition).issues == []
+    assert example["$schema"] == DESIGN_FILE_SCHEMA
+    # Every key of the document has its row, and the page links the schema it describes.
+    rows = set(re.findall(r"^\| `([$a-z_]+)` \|", text, re.M))
+    assert rows == set(PipelineDesignFile.model_json_schema()["properties"])
+    published = json.loads(page("design-file.schema.json"))
+    assert published["$id"] == DESIGN_FILE_SCHEMA
+    assert DESIGN_FILE_SCHEMA.rsplit("/", 1)[-1] in text
+    # A design file is what creating a template takes, plus its marker.
+    assert set(PipelineCreate.model_fields) == set(PipelineDesignFile.model_fields) - {
+        "schema_",
+        "format",
+        "schema_version",
+    }

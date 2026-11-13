@@ -44,6 +44,7 @@ nav = [
     { "Brand assets" = "reference/brand.md" },
     { "Backend API" = "reference/backend-api.md" },
     { "Data model" = "reference/data-model.md" },
+    { "Design file" = "reference/design-file.md" },
     { "Environment variables" = "reference/environment-variables.md" },
   ] },
 ]

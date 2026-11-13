@@ -136,6 +136,7 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
     onContextMenu={(event) => event.preventDefault()}>
     {levels.map((level, index) => {
       const items = itemsOf(level);
+      const helpId = `${id}-${index}-help`;
       return <div key={`${index}:${level.menu.label}`} ref={(element) => { panels.current[index] = element; }}
         className="pl-context-panel" style={{ left: x, top: y, visibility: "hidden" }}
         onPointerEnter={() => { if (index > 0) window.clearTimeout(intent.current); }}
@@ -168,6 +169,8 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
                   className={`pl-context-item${item.destructive ? " is-destructive" : ""}`}
                   aria-disabled={!!item.blocked || undefined} aria-haspopup={item.submenu ? "menu" : undefined}
                   aria-expanded={item.submenu ? !!opened : undefined} title={item.blocked}
+                  aria-keyshortcuts={item.keys?.aria}
+                  aria-describedby={active && item.help ? helpId : undefined}
                   onPointerMove={() => {
                     window.clearTimeout(intent.current);
                     if (active && (!item.submenu || opened)) return;
@@ -181,6 +184,7 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
                   <span className="pl-context-label">{item.label}
                     {item.blocked ? <small className="is-reason">{item.blocked}</small> : item.detail && !item.submenu && <small>{item.detail}</small>}</span>
                   {item.submenu && <><span className="pl-context-count">{item.detail}</span><ChevronRight size={14} aria-hidden="true" /></>}
+                  {item.keys && <kbd className="pl-context-keys" aria-hidden="true">{item.keys.label}</kbd>}
                 </div>
               </div>;
             })}
@@ -188,6 +192,11 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
               {level.query ? "No matching steps." : level.menu.empty ?? "Nothing to choose here."}</p>}
           </div>
         </ScrollLock>
+        {/* Every entry's text shares one cell, so the panel is as tall as the longest and stays put. */}
+        {items.some((item) => item.help) && <div className="pl-context-help">
+          {items.map((item, position) => item.help && <p key={item.key} data-active={position === level.active}
+            id={position === level.active ? helpId : undefined}>{item.help}</p>)}
+        </div>}
       </div>;
     })}
   </div>, document.body);

@@ -17,6 +17,10 @@ class AuthenticationError(DomainError):
     """Raised for authentication/authorization failures."""
 
 
+class ForbiddenError(DomainError):
+    """Raised when the caller is known but may not do this."""
+
+
 class ValidationError(DomainError):
     """Raised for invalid input or domain invariants."""
 

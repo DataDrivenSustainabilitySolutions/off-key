@@ -24,7 +24,7 @@ from off_key_core.db.system import (
     SystemRevision,
 )
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.services.catalogue import system as system_service
@@ -340,6 +340,20 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
         changed.streams[0].topic = "sensors/office/temperature"
         changed.streams[0].device_id = None
         changed.groups[0].color = "#abcdef"
+        from off_key_core.schemas.system import SourceAppearance, TopicAppearance
+
+        for item in [
+            *changed.connections,
+            *changed.devices,
+            *changed.streams,
+            *changed.groups,
+        ]:
+            item.appearance = SourceAppearance(icon="pump", color="sage")
+        changed.topic_appearances = [
+            TopicAppearance(
+                broker_id="broker-1", topic="sensors", appearance={"icon": "factory"}
+            )
+        ]
         saved = await service.save(
             SystemChange(expected_revision=1, document=changed),
             actor="other-admin@example.com",
@@ -353,6 +367,11 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
         assert restored.document.connections[0].host == "new.example.com"
         assert restored.document.streams[0].topic == "sensors/office/temperature"
         assert restored.document.groups[0].color == "#abcdef"
+        assert restored.document.connections[0].appearance.icon == "pump"
+        assert restored.document.devices[0].appearance.color == "sage"
+        assert restored.document.streams[0].appearance.icon == "pump"
+        assert restored.document.groups[0].appearance.color == "sage"
+        assert restored.document.topic_appearances[0].appearance.icon == "factory"
         unchanged = session.get(CollectionConfiguration, 1)
         assert unchanged.revision == 7 and unchanged.document == legacy
         assert unchanged.collection_status == {"status": "paused"}
@@ -387,7 +406,7 @@ def test_routes_enforce_current_database_admin_role_and_member_reads(monkeypatch
     app = FastAPI()
     app.include_router(system_api.router)
     member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_member] = lambda: member
+    app.dependency_overrides[current_caller] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     read = AsyncMock(return_value={})
     monkeypatch.setattr(system_service.SystemService, "save", read)
@@ -407,7 +426,7 @@ def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypat
     app = FastAPI()
     app.include_router(system_api.router)
     member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_member] = lambda: member
+    app.dependency_overrides[current_caller] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     snapshot = SystemSnapshot(revision=1, document=document(), storage_origin="saved")
     read = AsyncMock(return_value=snapshot)

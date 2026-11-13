@@ -131,6 +131,34 @@ Members whose role can manage members handle invitations, roles and access under
 their access. Once disabled, **Remove** permanently deletes their account and personal
 favorites after confirmation. Shared catalogue data, monitoring services and reports
 are kept. A removed member needs a new invitation to return.
+**Account → Agents** gives a program a key to work with in place of a person.
+The key is shown once, when it is created. Every key can read, design, test on
+history and propose. The choice beside a key says what it may start itself:
+**Proposes only**, **Starts in shadow**, where its services record the alarms
+they would raise and raise none, or **Starts live**. **Revoke** stops a key at
+once. What a key
+proposes waits under **Proposals** on the Monitoring page for a member who
+manages monitors (see
+[Visual monitoring pipelines](monitoring.md#visual-monitoring-pipelines)).
+An agent that speaks the Model Context Protocol (MCP) needs two things: the
+address `https://<dashboard>/api/v1/mcp`, which stands beside a new key, and
+the key, sent as the header `Authorization: Bearer <key>`. It then finds what
+it may do as tools, from reading the devices to proposing a design (see
+[MCP server for agents](../reference/backend-api.md#mcp-server-for-agents)).
+Most clients take both in their configuration:
+
+```json
+{
+  "mcpServers": {
+    "aberration": {
+      "type": "http",
+      "url": "https://<dashboard>/api/v1/mcp",
+      "headers": { "Authorization": "Bearer offkey_…" }
+    }
+  }
+}
+```
+
 Every member can view the shared workspace and edit their own favorites. A role
 adds permissions to manage sources, monitors, alarms or members; Administrator
 holds all of them. Controls a role does not cover stay hidden.
@@ -173,6 +201,35 @@ catalogue settings** in the sidebar.
 Device details at `/details/:deviceId` show a device's recorded readings with
 category and time-range controls. Readings of a broker that have no device open
 at `/details/broker/:brokerId`.
+
+Numeric history automatically shows bucket averages when readings are too dense
+to distinguish, with a faint band for each bucket's minimum and maximum. Zooming
+in restores individual samples when they fit. Hover a point for its interval,
+range and sample count. Boolean states remain unchanged.
+
+Every pane of a chart shares the same intervals, and each kind of series is
+summarised by what it means:
+
+| Series | In each interval | Why |
+| --- | --- | --- |
+| Reading, detector input | Mean, with a band from its lowest to its highest value | The level and how far values strayed from it |
+| Forecast | Mean of the expected value and of each bound | It is compared with the mean of its input |
+| Anomaly score, sequential evidence | The highest recorded result; an alarm wins over a higher quiet result | A mean would average an alarm away |
+| Boolean state | Every change | A state has no average |
+
+A score's interval result is a real recorded observation, so its threshold and
+alarm state stay exact; the tooltip says how many results it is the highest of.
+A reading with long pauses still draws every burst, and a value with no
+neighbour is drawn as a dot. The thresholds and alarm zones are those of every
+result, so they are identical in both modes.
+
+The waveform button beside the zoom controls switches automatic averaging on or
+off without changing the selected time range. It applies to every pane of the
+chart. Its highlight indicates automatic
+mode; hover or focus it for the current averaging interval. In Raw mode, a
+reading's **Values** disclosure also exposes exact timestamps and values. If a
+recorded range contains more than 10,000 samples, Raw shows the newest 10,000 and
+asks you to zoom in to inspect earlier values.
 
 ## Data-source activity
 
@@ -230,9 +287,17 @@ Open **Monitoring** at `/` to inspect monitoring services. The view refreshes se
    readings without a device, and the readings it is about.
 3. Narrow the events by reading, time range and p-value. With several devices in
    scope, each reading is listed with its device's name.
-4. Follow an event to its **Device readings**, or **Broker readings** for readings
-   without a device.
-5. Remove individual anomaly records when they are no longer required.
+4. Open a source or signal to inspect its readings around the event, or open the
+   detection description for the full anomaly. Multivariate events show their
+   involved signals without attributing a cause to an individual sensor.
+5. Use **Copy link** to share an anomaly with another signed-in member. The event
+   ID remains available under **Technical details** for API requests and logs.
+6. Select individual rows, select all matching events across pages, or choose
+   **Delete all** to clear the current scope and filters. Review the exact count
+   before confirming. New arrivals are excluded, and deletion cannot be undone.
+
+The compact **Latest** status shows recency; hover over it for the exact time.
+Detector results describe statistical evidence, not operational severity.
 
 ## Dojo workflow
 
@@ -281,6 +346,11 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    then opens the template in Monitoring with each input set to the recorded
    reading its series was copied from, where that reading is still collected
    and fits. Inputs fed by an uploaded series are chosen there.
+
+A design that is still being built is tested without leaving it: **Test** in
+the monitoring setup copies the recorded values of its readings into a dataset
+and runs the design on them. The dataset and the runs appear here like any
+other. See [Visual monitoring pipelines](monitoring.md#visual-monitoring-pipelines).
 
 ## Expected errors and operator actions
 

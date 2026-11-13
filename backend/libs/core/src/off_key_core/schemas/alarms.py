@@ -8,7 +8,9 @@ behind them.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .devices import ChartEvidence
 
 # How storage marks an alarm a monitor raised over several readings together.
 MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
@@ -68,6 +70,9 @@ class AlarmCursor(BaseModel):
 
 
 class AlarmQuery(BaseModel):
+    # These filters also define destructive selections; a typo must not widen one.
+    model_config = ConfigDict(extra="forbid")
+
     reading_ids: list[str] | None = Field(
         default=None,
         max_length=20000,
@@ -164,3 +169,45 @@ class AlarmCreate(BaseModel):
 
 class AlarmCount(BaseModel):
     count: int
+
+
+class AlarmDetail(BaseModel):
+    alarm: Alarm
+    evidence: ChartEvidence | None = None
+
+
+class AlarmSelection(BaseModel):
+    """Exactly one explicit selection or a filter across all result pages."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    alarm_ids: list[str] | None = Field(default=None, min_length=1, max_length=20000)
+    query: AlarmQuery | None = None
+    exclude_ids: list[str] = Field(default_factory=list, max_length=20000)
+
+    @model_validator(mode="after")
+    def one_selection(self) -> "AlarmSelection":
+        if (self.alarm_ids is None) == (self.query is None):
+            raise ValueError("Name either alarm_ids or query")
+        if self.exclude_ids and self.query is None:
+            raise ValueError("exclude_ids requires a query")
+        if any(
+            not id or len(id) > 128
+            for id in [*(self.alarm_ids or []), *self.exclude_ids]
+        ):
+            raise ValueError("Alarm IDs must contain between 1 and 128 characters")
+        if self.query is not None and self.query.before is not None:
+            raise ValueError("A deletion query selects all matches, not a cursor page")
+        return self
+
+
+class AlarmDeletionPreview(BaseModel):
+    token: str
+    count: int
+    expires_at: datetime
+
+
+class AlarmDeletionCommit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=128)

@@ -109,14 +109,54 @@ Charts draw each selected alarm statistic on a logarithmic secondary axis with
 its threshold, shaded above it from each evaluation to the next. Evidence more
 than four decades above the threshold is marked at the top edge instead of
 stretching the axis. The line joins consecutive evaluations and breaks only
-across a pause, such as one a Gate holds back. A **Detector inputs** pane under
-the readings plots the scored features, so derived values such as phase
-deviations sit beside the raw readings. A feature that a forecaster step scores
-also shows what the step expected: the forecast as a dashed line, and around it
-a band of the values that raise no alarm. A value outside the band is one the
-step scored above its boundary. The band is missing while the boundary is still
-being learned and when the design combines several detectors, because then no
-single step has a boundary of its own. Telemetry and evidence use the same payload
+across a pause, such as one a Gate holds back. The service's **Evidence** tab
+omits detector inputs whose saved provenance identifies them as unchanged raw
+readings. Derived features, such as phase deviations, retain their separate scale.
+Unknown associations stay separate until the pipeline's reading bindings load.
+
+For forecasters, **Forecast and deviations** overlays the dashed forecast and
+its recorded calibrated interval on the original reading, at the exact input
+timestamp the forecast evaluated. A transformed target stays on its feature
+scale. The panel below shows the signed residual (observed minus forecast), with
+the same interval shifted by the forecast around zero. Red dots mark observations
+outside that interval; vertical red lines still mark the service's alarm decision,
+which can also depend on persistence or a combined policy.
+
+The small chart button cycles through **Overlay → Forecast ahead → Data only**.
+Overlay includes evaluated predictions and the newly issued future forecast;
+Forecast ahead keeps the observations but hides historical predictions; Data
+only hides both forecast lines and their intervals. Its icon and tooltip show
+the current view. Switching preserves the selected lead, zoom and pipeline
+smoothing. **Show residuals** independently collapses or restores the lower
+panel; it always uses evaluated observations, never future values.
+
+**Forecast lead** selects a recorded lead in both charts together. Leads count
+updates, not seconds. **Latest forecast results** compares the latest available
+evaluation of each lead, including its timestamp, residual, interval and result;
+select a row to inspect that lead. Different detector/target/lead combinations
+remain separate. **Show detector scores** restores the score or sequential-evidence
+pane when needed. It is hidden initially for a forecast view.
+
+The interval is the pair of lower and upper bounds stored with that forecast,
+not the shaded region above a score threshold. Its label names NexCP or ACI when
+the saved calibration step identifies that method; otherwise it says **Calibrated
+interval**. No nominal confidence percentage is inferred. Missing bounds remain
+unavailable, including configurations where a combined policy has no boundary for
+an individual detector. A point forecast and residual can still be displayed.
+Future values come from the forecast actually issued after the latest evaluated
+observation. Target times are estimates based on recent, consistent observation
+cadence; leads still count updates. After a restart or irregular timestamps,
+the future line waits until timing is available. Old evidence and a forecast
+service outage can also have no future trajectory. The chart never shifts an
+evaluated prediction into the future or revives an older issuance as the latest.
+
+Only the configured lead has a calibrated future interval, shown as a vertical
+interval at that point. Other leads from the model remain point predictions.
+Future bounds use the calibration boundary at issue, which may subsequently
+adapt. Hover shows issue time, origin and estimated target time. A one-update
+forecaster provides one future point, not an invented longer horizon.
+
+Telemetry and evidence use the same payload
 event timestamp and share zoom and crosshair, so observations from one inference
 stay vertically aligned; receive time is used only when a publisher omits its
 event timestamp.
@@ -146,6 +186,42 @@ Loading never changes the source template, and **Undo** restores the previous
 flow. **Save template** stores the current graph and layout under its own
 template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
+
+A design also travels as a file. **Download as a file** in the **Save
+template** dialog saves the graph and layout under the name and description
+entered there, as `<name>.design.json`, without saving a template. **Open a
+file…** under **Load template** opens such a file, and so does dropping it on
+the canvas. The opened design takes the place of the one on the canvas, and
+**Undo** brings that one back. A file that is not a design, or whose design
+cannot be read, is refused with the reason. The file holds no readings, so map
+them at the Input step as after loading a template. Its format is described
+under [Design file](../reference/design-file.md), for keeping designs under
+version control or writing them with other tools.
+
+A design can also arrive as a **proposal**. An agent with a key, or a member
+through the API, hands in a design with a reason instead of starting it. While
+proposals wait, the Monitoring page shows **Proposals** with their number
+beside **Create**. The list names each design, the reason given for it and who
+proposed it; **Show decided proposals** adds those already accepted, declined
+or withdrawn, each with who decided and what they answered. Select a proposal
+to open it in the setup page with its name and readings filled in and a note
+above the graph that says who proposed it and why. It is a design like any
+other, so change it before you start it if you wish. **Start monitoring**, or
+**Start in shadow** with **Shadow run** ticked, starts the service and accepts
+the proposal. **Decline** turns it down, with an
+optional word for its author. A proposal that replaces a running service says
+so in the list and opens as a change to that service, with the steps that
+differ from the running design marked on their cards. Members whose role cannot
+manage monitors can read a proposal and cannot decide on it.
+
+A proposal can name the test on history its author ran. The test is of the
+design as it was proposed: a test that ran an earlier version is refused when
+the proposal is made. For members who may use the Dojo the proposal then opens
+with **Test on history** beside the graph, showing that test and who ran it:
+when the design alarmed over the tested values, what it scored and its
+figures. The values it ran on are chosen, so **Test again**
+runs the design as you have changed it on the same values and puts the author's
+figures under yours.
 
 Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
@@ -210,11 +286,109 @@ offer.** **Manage templates** lists the blocks below the templates, where
 **Delete** removes one. A block is not edited: save the changed steps under
 another name and delete the old block.
 
+A click chooses one step and opens its settings. To choose several, hold Shift
+and click each step, or hold Shift and drag a box over them; Ctrl or Cmd with a
+click works as well, and Ctrl/Cmd+A chooses every step. No settings open for
+several steps: **Step settings** names them instead, and each name leads to
+that step. Chosen steps move together when one of them is dragged and are
+removed together by Delete. Ctrl/Cmd+C copies them with their settings, titles
+and the connections among them, Ctrl/Cmd+X cuts them, Ctrl/Cmd+V pastes them
+under the pointer, or in the middle of the view when the pointer is elsewhere,
+and Ctrl/Cmd+D duplicates them below the originals. Copies arrive chosen, on
+the first free rows, and are not connected to the rest of the design. They
+travel through the clipboard, so steps can be pasted into another design or
+another browser window, also from a running service into a new one. A design
+keeps one input, calibration step, detection rule and output and adds detectors
+from a detector's settings, so a paste leaves such a step out and says so.
+Right-click a step, or hold a finger on it, for the same commands with their
+keys; the menu of a step chosen with others answers for all of them, and
+right-clicking empty canvas offers **Paste** after a copy in the same window.
+Text fields keep these keys for their own text.
+
+A step that changes features can be switched off without removing it: choose
+**Switch off** in its menu, or press Ctrl/Cmd+B while it is chosen. The card
+stays in its place with its connections and reads **Switched off**. Features
+pass through it unchanged, so the design runs as if the step were not there,
+and the steps after it no longer receive a feature it added. Its settings are
+kept: **Switch on**, in the menu or in the step's settings, or Ctrl/Cmd+B
+again, brings the step back as it was. With several steps chosen, the key
+switches off those that are on, and switches them on once none of them is. The
+input, detectors, calibration, the detection rule, the output and steps that
+combine features cannot be switched off. A copy of a switched-off step is
+switched off as well.
+
+A note says why a design is built the way it is. Press **N** to start one
+where the pointer is, or choose **Add a note** in the menu of empty canvas.
+Enter starts a new line; Ctrl/Cmd+Enter or a click elsewhere keeps the note,
+and Escape gives it up. A note is as wide as a card and grows with its text.
+Drag it to move it, double-click it to change it, and remove it with Delete
+while it is in focus or from its menu. Notes belong to the design: they are
+saved with it and with a template, they travel in a design file, and
+**Arrange** keeps each beside the card it stood nearest to. They have no
+effect on what the design computes.
+
+The canvas has keys of its own while it is in focus: click it, or move into it
+with Tab. **A** opens the list of steps where the pointer is, and so does a
+double-click on empty canvas; type to search and press Enter to add the first
+match. **1** shows the whole graph, **0** returns to readable size, and **+**
+and **−** zoom. Zooming out stops at a quarter of full size, or further out
+where a large graph needs it to be seen whole. **?** or the keyboard button
+beside the zoom buttons lists every key and gesture.
+
 Every edit is checked shortly after it is made. The status chip beside the
 panel buttons shows the result: **Valid** with the time until the first alarm
 can come, or the number of issues. Open it to list the issues; selecting one
 opens that step. When a check cannot reach the server, the chip shows **Not
 checked** and offers **Check again**.
+
+**Test** opens **Test on history** beside the canvas, for members who may use
+the Dojo. It runs the design as it stands over recorded values in time order,
+with the same alignment, learning and scoring as a live service; nothing
+reaches Monitoring or Reporting. **Values** offers the last 24 hours, 7 days or
+30 days recorded by the readings chosen in the Input step, and every Dojo
+dataset. A window is copied into a new Dojo dataset first, named after the
+entity; later tests run on that copy, so their results compare. On a dataset
+that was not copied from these readings, **Inputs** asks which series feeds
+which input. **Run test** needs a design the check accepts and a reading or a
+series for every input. A test keeps running while you edit a step or close the
+panel: the **Test** button fills a line along its lower edge, and a notice says
+when the test has finished.
+
+The result starts with a strip over the time span of the values: the time the
+design spent learning is hatched, every alarm is a line and every label a band,
+outlined where the design missed it. Under the strip, over the same span, is
+what the design scored: each stretch of time is a bar from its lowest to its
+highest score, the boundary is a line, and a stretch that alarmed is drawn in
+the foreground colour, so it shows how far above the boundary an alarm went and
+how close the rest came. A design that alarms on conformal p-values has no
+boundary; its p-values are drawn rarer upward, and an alarm follows a run of
+rare values, not a single one. The numbers at the left edge are the values at
+the top and the bottom of the chart; a score far above the boundary is cut off
+at the top so the rest stays readable. Below are the alarms and alarms per day,
+how long the design learned and how long it was scored. Alarms that follow one
+another count once. Where the dataset has labels, the result shows how many of
+them the design detected, the median delay and the false alarms outside the
+labels instead. **Test again** after a change puts the figure of the test
+before under each figure that differs, and the result says when the design has
+changed since. A design that was still learning when the values ended has
+nothing scored; test on a longer window or shorten the learning. **Open in the
+Dojo** leads to the dataset, to mark known faults there, and **Compare runs in
+the Dojo** to its comparison once it has labels.
+
+A test also keeps what 12 to 23 of its observations looked like at every step,
+spread from the first result to the last. **Values in the last test**, folded
+under what a step does in **Step settings**, shows one of them: the features
+that went into the step under **In** and the features that came out under
+**Out**, at most the first eight of each. A detector gives one value, and the
+detection rule says whether it alarmed; the calibration step shows the rule's
+values, because the rule runs it. The latest observation comes first, since the
+design has learned the most by then, and the arrows step to earlier and later
+ones. Where a step gave nothing, it says why: it was still collecting values, it
+waited for a step before it, a Gate held the observation back, or the design
+was still learning. The fold and the observation stay as you select another
+step, so one set of readings can be followed from the Input to the detection
+rule. The values are those of the design as it was tested; after a change the
+panel says so, and a step added since has none until the next test.
 
 A design has no strategy to choose. Three settings decide how it detects:
 
@@ -269,6 +443,40 @@ step** with that reason and cannot be chosen as a detector model.
 
 When a change also moves steps or the detection rule, a notice says what
 changed, and **Undo** reverses all of it.
+**Service settings** open with the **Alarm budget**: how many scores may lie
+above the boundary per hour, day or week. The design keeps the budget as the
+**Target alarm rate** of its calibration step or, under the **Fixed split**, as
+the quantile of the **Calibrated score threshold**, so the budget and those
+settings always agree and either can be changed. The count follows from how
+often the chosen readings arrive; until they report that, the budget reads as
+one score in so many. While nothing is wrong, every score above the boundary is
+a false alarm, so the budget is what a healthy machine may raise. With
+**Exceedances in a row** above 1, alarms come less often than the budget. The
+text under the setting repeats what the calibration method holds. A small
+budget needs a long calibration window: where the boundary is a quantile of
+that window, one alarm a week at a reading every 5 seconds needs a week of
+calibration scores, and the setting says so when the window is too short. Under
+the fixed split the threshold cannot lie above the largest calibration score,
+so the budget goes no lower than one score in **Calibration observations** plus
+one. A design that alarms by the **Conformal alarm policy** has no share of
+scores to set and shows no budget.
+
+**Shadow run**, under the budget, starts the service in shadow. A shadow
+service learns, calibrates and scores like any other and raises no alarm. Each
+alarm it would have raised is kept as **muted** evidence, an open dot on the
+monitor's chart, and none is listed or sent. The start button then reads
+**Start in shadow**, the service list shows **Shadow** where a service that
+raises alarms shows **Active**, and the service's page says that it runs in
+shadow. Use it to see how often a new design would alarm on live readings
+before anyone is alerted. To take the service live, choose **Edit service** on
+its **Pipeline** tab, clear **Shadow run** and choose **Update monitoring**;
+the notice above the canvas then reads **Goes live**. Like every update this
+replaces the service, so it learns anew before its first alarm. A shadow
+service holds its readings like any other, and a reading belongs to one
+service, so a shadow run cannot stand beside a live service on the same
+readings. To judge a change to a running service, test the design on recorded
+history instead.
+
 In **Service settings**, **Before the first alarm** shows the observations Prepare steps need first, then
 the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
 shows durations. The slowest reading paces observations, because each
@@ -624,13 +832,23 @@ policy combines detectors, selecting it lists each detector's score and surprise
 for the sampled observation, and a selected detector shows its surprise beside
 its score. A chart's tooltip lists the same for each evidence row.
 
-**Edit service** opens the running definition, layout and bindings. **Apply
-changes** explains the interruption and fresh learning, then replaces the
-service through the same preflight and handoff. Both sets of readings stay
+**Edit service** opens the running definition, layout and bindings. A note
+above the graph explains the interruption and fresh learning, and **Update
+monitoring** replaces the service through the same preflight and handoff. Both sets of readings stay
 reserved during preflight and handoff, and a failed preflight leaves the
 predecessor running. After retirement, cancellation or failure does not silently
 revive it. History remains inspectable after a service is removed. Older library,
 revision and in-flight activation links still open.
+
+While you change a service, the graph is compared with the design that runs.
+The card of a step the running design lacks is marked **New**, and the card of
+a step it holds differently is marked **Changed**. Step settings say what
+changed, such as "Factor 5, was 3" or "Switched off". The note above the graph
+counts both, names the steps that went, and says what else differs: the inputs
+and how many observations the design learns from. A step that only has a new
+step in front of it is not marked, because the new step is the change. A
+proposal that replaces a service is compared the same way, so a review starts
+at the marked cards.
 
 Static preprocessing fits only the training window and stays frozen. Adaptive
 preprocessing initializes before downstream learning; its warm-up counter counts

@@ -76,6 +76,55 @@ class PipelineBlock(Base):
     __table_args__ = (UniqueConstraint("name", name="uq_pipeline_block_name"),)
 
 
+PROPOSAL_STATUSES = ("open", "accepted", "declined", "withdrawn")
+
+
+class PipelineProposal(Base):
+    """A design an agent or a member hands to a member to decide on.
+
+    It holds the design itself, so it reads the same after the library or the
+    agent's key has changed.
+    """
+
+    __tablename__ = "monitoring_pipeline_proposals"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    definition: Mapped[Any] = mapped_column(document(), nullable=False)
+    layout: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)
+    bindings: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)
+    # Neither is a foreign key: runs and services are deleted, a proposal stays.
+    test_run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    replace_service_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The agent's name or the member's email, kept as text so it outlives both.
+    author: Mapped[str] = mapped_column(Text, nullable=False)
+    author_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    # Tells an agent's own proposals apart; not a foreign key, a key is revoked.
+    agent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="open", server_default="open"
+    )
+    decided_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint(
+            f"status IN ({', '.join(repr(item) for item in PROPOSAL_STATUSES)})",
+            name="ck_pipeline_proposal_status",
+        ),
+        CheckConstraint(
+            "author_kind IN ('agent', 'member')",
+            name="ck_pipeline_proposal_author_kind",
+        ),
+        Index("ix_pipeline_proposals_status_created", "status", "created_at"),
+    )
+
+
 class PipelineRevision(Base):
     __tablename__ = "monitoring_pipeline_revisions"
     id: Mapped[str] = mapped_column(Text, primary_key=True)

@@ -1,29 +1,40 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { CircleCheck, Plus, TriangleAlert, X } from "lucide-react";
-import type { PipelineCatalog } from "./contracts";
+import toast from "react-hot-toast";
+import { CircleCheck, CircleDashed, Plus, TriangleAlert, X } from "lucide-react";
+import type { PipelineCatalog, PipelineComponent } from "./contracts";
 import { blockChoices, placeBlock, useBlocks } from "./blocks";
+import { detectorMenu, fillDetectorSlot, suggestedDetector } from "./detectorSlot";
 import { useForecastModels, usesForecastService, withForecastService } from "./forecastModels";
 import type { GraphDocument } from "./model";
 import PipelineCanvas from "./PipelineCanvas";
+import { PipelineContextMenu } from "./PipelineContextMenu";
 import { PipelineFeatures } from "./PipelineFeatures";
 import { PipelineInspector } from "./PipelineInspector";
 import { PipelineToolbox } from "./PipelineToolbox";
-import { isWarning } from "./scope";
+import { openSummary, showIssues } from "./issues";
 import { startupSentence, startupSummary, type Startup } from "./startup";
 import type { CoveredEdges } from "./viewport";
 import { useUndoShortcuts } from "./useGraphEditor";
 import { usePlaceToasts } from "@/hooks/use-toast-position";
-import { useAnchoredPanel, useSettingsSheet } from "./anchoredPanel";
 
-export type InspectorPanel = "service" | "component" | null;
+export type InspectorPanel = "service" | "component" | "test" | null;
 type Props = Omit<ComponentProps<typeof PipelineCanvas>,
-  "components" | "issues" | "features" | "featuresStale" | "insets" | "blocks" | "onSaveBlock"> & {
+  "components" | "issues" | "features" | "featuresStale" | "insets" | "selection" | "onSelectionChange" | "onSelect"
+  | "blocks" | "onSaveBlock"> & {
+  /** Put a step in focus, or none. A quiet change leaves the panels as they are. */
+  onSelect: (id?: string, quiet?: boolean) => void;
   catalog: PipelineCatalog;
   /** Takes steps the Add step menu placed, such as a block's, so the editor records and shows them. */
   onPlace?: (placed: { document: GraphDocument; id: string }) => void;
   validation?: ComponentProps<typeof PipelineInspector>["validation"];
   settings?: ReactNode;
+  /** A panel that tries the design before it monitors anything, where the screen provides one. */
+  test?: ReactNode;
+  /** What the button that opens that panel shows, such as how far a test has come. */
+  testLabel?: ReactNode;
+  /** Shown with a step's settings, such as the values the step had in the last test. */
+  stepValues?: (node: string) => ReactNode;
   actions?: ReactNode;
   inspectorPanel?: InspectorPanel;
   onInspectorPanelChange?: (panel: InspectorPanel) => void;
@@ -39,13 +50,13 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>,
   /** Why the latest automatic check failed; the status chip offers to check again. */
   validationError?: string;
   onRetryValidation?: () => void;
-  /** Fills its container: the header, toolbar and settings float over the canvas. */
+  /** Fills its container: a header bar, the canvas below it and settings docked at its right edge. */
   stage?: boolean;
-  /** Floats above the toolbar on a stage, such as the service name and its actions. */
+  /** Sits above the toolbar on a stage, such as the service name and its actions. */
   header?: ReactNode;
 };
 
-/** How far a stage's floating header and settings reach over its canvas, in pixels. */
+/** How far a stage's header and settings reach over its canvas, in pixels. */
 function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, top: RefObject<HTMLElement | null>,
   panel: RefObject<HTMLElement | null>, open: boolean) {
   const [covered, setCovered] = useState<CoveredEdges>();
@@ -77,7 +88,7 @@ function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, 
 
 /** One canvas-first workspace for creation, saved designs and running graphs. */
 export function PipelineWorkbench({
-  catalog: offered, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
+  catalog: offered, validation, settings, test, testLabel, stepValues, actions, inspectorPanel, onInspectorPanelChange,
   onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, stage = false, header, onPlace, ...props
 }: Props) {
   // A step whose model lives in the forecast service is offered only where the deployment
@@ -100,15 +111,21 @@ export function PipelineWorkbench({
   const checking = !validation && !failed && !!lastValidation;
   const status = failed ? undefined : validation ?? lastValidation;
   const estimate = startup && startupSummary(startup);
-  // Errors block applying the graph; warnings are listed and do not.
-  const errors = status?.issues.filter((issue) => !isWarning(issue)).length ?? 0;
-  const warnings = (status?.issues.length ?? 0) - errors;
+  // Errors block applying the design and warnings do not. Steps still to choose or
+  // connect block it too, and read as the work that is left rather than as faults.
+  const shown = useMemo(() => showIssues(props.document, catalog.components, status?.issues),
+    [props.document, catalog.components, status]);
+  const errors = shown.filter((issue) => issue.tone === "error").length;
+  const open = shown.filter((issue) => issue.tone === "open");
+  const warnings = shown.filter((issue) => issue.tone === "warning").length;
   const issueCount = status && `${errors}${status.issues_truncated ? "+" : ""}`;
   const warningCount = warnings ? `${warnings} ${warnings === 1 ? "warning" : "warnings"}` : "";
-  const statusLabel = failed ? "Graph not checked" : errors
-    ? `${issueCount} graph ${errors === 1 ? "issue" : "issues"}`
-    : `Graph is valid${warningCount ? `, ${warningCount}` : ""}${
-      estimate ? `, first alarm after ${estimate.replace("≈", "about").replace("≥", "at least")}` : ""}`;
+  const openText = open.length ? openSummary(open) : "";
+  const statusLabel = failed ? "Design not checked" : errors
+    ? `${issueCount} design ${errors === 1 ? "issue" : "issues"}`
+    : openText ? `Design is not complete: ${openText.charAt(0).toLowerCase()}${openText.slice(1)}`
+      : `Design is complete${warningCount ? `, ${warningCount}` : ""}${
+        estimate ? `, first alarm after ${estimate.replace("≈", "about").replace("≥", "at least")}` : ""}`;
   const [lastIssuesRequest, setLastIssuesRequest] = useState(issuesRequest);
   if (issuesRequest !== lastIssuesRequest) {
     setLastIssuesRequest(issuesRequest);
@@ -124,18 +141,16 @@ export function PipelineWorkbench({
   const panelId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const serviceButton = useRef<HTMLButtonElement>(null);
+  // The status is where the detectors open from when its list asks for one.
+  const [statusButton, setStatusButton] = useState<HTMLButtonElement | null>(null);
   const componentButton = useRef<HTMLButtonElement>(null);
+  const testButton = useRef<HTMLButtonElement>(null);
   const addedFromMenu = useRef(false);
   const menu = useRef<HTMLDivElement>(null);
   const top = useRef<HTMLDivElement>(null);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const stageCanvas = useRef<HTMLDivElement>(null);
-  const stageRoot = useRef<HTMLDivElement>(null);
-  // On a stage, a step's settings sit beside its card instead of covering the canvas edge.
-  const sheet = useSettingsSheet();
-  const anchored = stage && !sheet && view === "graph" && panel === "component" && !!props.selected;
-  const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel && !anchored);
-  useAnchoredPanel(anchored, stageRoot, settingsPanel, props.selected, insets?.top ?? 0);
+  const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel);
   // The stage's own actions sit at the top right, where toasts would cover them.
   usePlaceToasts(stage ? "bottom-center" : undefined);
   useEffect(() => () => { if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current); }, []);
@@ -160,19 +175,66 @@ export function PipelineWorkbench({
   }, [panel]);
   const close = () => {
     setPanel(null);
-    (panel === "service" ? serviceButton : componentButton).current?.focus();
+    (panel === "service" ? serviceButton : panel === "test" ? testButton : componentButton).current?.focus();
   };
+  // Steps chosen together on the canvas. The group stands while the step in focus is one of
+  // them, so focusing another step from anywhere lets it go.
+  const [group, setGroup] = useState<string[]>([]);
+  const focus = props.selected;
+  const nodes = props.document.definition.nodes;
+  const selection = useMemo(() => {
+    const chosen = focus && group.includes(focus) ? group.filter((id) => nodes.some((node) => node.id === id)) : [];
+    return chosen.length > 1 ? chosen : focus ? [focus] : [];
+  }, [group, focus, nodes]);
   const select = (id?: string) => {
+    setGroup([]);
     if (id) setPanel("component");
     props.onSelect(id);
   };
-  const add: Props["onAdd"] = (...args) => {
+  // Letting go of a step on the canvas closes its settings too, instead of leaving them empty.
+  const selectOnCanvas = (id?: string) => {
+    if (!id && panel === "component") setPanel(null);
+    select(id);
+  };
+  // Gathering steps opens no settings; the last one gathered comes into focus when the one that was has left.
+  const choose = (ids: string[]) => {
+    if (!ids.length) return selectOnCanvas();
+    setGroup(ids);
+    if (!focus || !ids.includes(focus)) props.onSelect(ids[ids.length - 1], true);
+  };
+  // The detectors to choose from, opened at the place the design keeps for one or at the
+  // status that asks for one. The choice belongs to the design it was opened on.
+  const [choosing, setChoosing] = useState<{ x: number; y: number; from: Element;
+    definition: Props["document"]["definition"] }>();
+  const choice = choosing?.definition === props.document.definition ? choosing : undefined;
+  const chooseDetector = (anchor: Element) => {
+    const box = anchor.getBoundingClientRect();
+    setChoosing({ x: box.left, y: box.bottom + 6, from: anchor, definition: props.document.definition });
+  };
+  const chooseFromStatus = () => {
+    setIssuesOpen(false);
+    if (statusButton) chooseDetector(statusButton);
+  };
+  /** Put a detector where the design expects one, connected on both sides. */
+  const placeDetector = (component: PipelineComponent) => {
+    const filled = fillDetectorSlot(props.document, component, catalog.components);
+    if (!filled) return false;
+    props.onChange(filled.document);
+    setView("graph");
+    select(filled.id);
+    if (filled.notice) toast(filled.notice, { id: "pipeline-detector" });
+    return true;
+  };
+  const add: Props["onAdd"] = (componentId, position) => {
     addedFromMenu.current = adding;
     setMenu(false);
     setPanel("component");
     // A new step is placed and wired on the graph.
     setView("graph");
-    props.onAdd(...args);
+    // A detector picked from the menu goes to its place; one dropped on the canvas stays where it was dropped.
+    const component = position ? undefined : catalog.components.find((item) => item.id === componentId);
+    if (component?.kind === "detector" && placeDetector(component)) return;
+    props.onAdd(componentId, position);
   };
   const place = (placed: { document: GraphDocument; id: string }) => {
     addedFromMenu.current = adding;
@@ -230,40 +292,43 @@ export function PipelineWorkbench({
     </div>
     <div className="pl-actions" aria-label="Settings panels">
       {(status || failed) && <Popover.Root open={issuesOpen} onOpenChange={setIssuesOpen}>
-        <Popover.Trigger className={`pl-issue-status${failed || errors ? " has-issues" : warnings ? " has-warnings" : ""}${
+        <Popover.Trigger ref={setStatusButton} className={`pl-issue-status${failed || errors ? " has-issues" : warnings && !open.length ? " has-warnings" : ""}${
           checking ? " is-checking" : ""}`}
           aria-label={`${statusLabel}${checking ? ", checking changes" : ""}`}>
           {failed ? <><TriangleAlert size={15} aria-hidden="true" />Not checked</>
             : errors
               ? <><TriangleAlert size={15} aria-hidden="true" />{issueCount} {errors === 1 ? "issue" : "issues"}</>
-              : <><CircleCheck size={15} aria-hidden="true" />Valid
-                {warningCount && <span className="pl-issue-warnings">· {warningCount}</span>}
-                {estimate && <span className="pl-issue-startup">· first alarm after {estimate}</span>}</>}
+              : openText ? <><CircleDashed size={15} aria-hidden="true" />{openText}</>
+                : <><CircleCheck size={15} aria-hidden="true" />Complete
+                  {warningCount && <span className="pl-issue-warnings">· {warningCount}</span>}
+                  {estimate && <span className="pl-issue-startup">· first alarm after {estimate}</span>}</>}
         </Popover.Trigger>
         <Popover.Portal><Popover.Content className="pl-library pl-issue-popover" align="end" sideOffset={8} collisionPadding={12}
-          aria-label="Graph validation">
+          aria-label="Design check">
           <div className="pl-component-menu-heading">
-            <h3>{failed ? "Graph not checked" : status?.valid && !errors ? "Valid processing graph" : "Validation errors"}</h3>
-            <Popover.Close aria-label="Close validation"><X size={16} aria-hidden="true" /></Popover.Close>
+            <h3>{failed ? "Design not checked" : errors ? "Needs attention" : open.length ? "Left to do" : "Design is complete"}</h3>
+            <Popover.Close aria-label="Close design check"><X size={16} aria-hidden="true" /></Popover.Close>
           </div>
           {failed ? <>
             <p className="pl-help" role="alert">The latest changes could not be checked. {validationError}</p>
             {onRetryValidation && <button type="button" onClick={onRetryValidation}>Check again</button>}
           </> : status && <>
             {checking && <p className="pl-help" role="status">Checking the latest changes…</p>}
-            {status.issues_truncated && <p className="pl-help">Additional validation messages were omitted.
-              Resolve the listed issues to see the rest.</p>}
-            {status.issues.length > 0 && <ul>{status.issues.map((issue, index) => {
+            {status.issues_truncated && <p className="pl-help">Some messages were left out.
+              Resolve the listed ones to see the rest.</p>}
+            {shown.length > 0 && <ul>{shown.map((issue, index) => {
               // Warnings are marked by name too, not only by their colour.
-              const label = isWarning(issue) ? `Warning: ${issue.message}` : undefined;
-              return <li key={index} className={isWarning(issue) ? "is-warning" : undefined}>
-                {issue.node_id
-                  ? <button type="button" aria-label={label} onClick={() => { setIssuesOpen(false); select(issue.node_id!); }}>{issue.message}</button>
+              const label = issue.tone === "warning" ? `Warning: ${issue.message}` : undefined;
+              const act = issue.detector && !props.readOnly
+                ? chooseFromStatus
+                : issue.node_id ? () => { setIssuesOpen(false); select(issue.node_id); } : undefined;
+              return <li key={index} className={issue.tone === "error" ? undefined : `is-${issue.tone}`}>
+                {act ? <button type="button" aria-label={label} onClick={act}>{issue.message}</button>
                   : <span aria-label={label}>{issue.message}</span>}
               </li>;
             })}</ul>}
-            {!errors && <>
-              {!warnings && <p className="pl-help">The compiler accepts this graph.</p>}
+            {!errors && !open.length && <>
+              {!warnings && <p className="pl-help">Every step is connected and set up.</p>}
               {startup && <p className="pl-help">{startupSentence(startup)}</p>}
             </>}
           </>}
@@ -275,6 +340,9 @@ export function PipelineWorkbench({
       <button type="button" ref={componentButton} aria-label="Step settings"
         aria-expanded={panel === "component"} aria-controls={panelId}
         onClick={() => panel === "component" ? close() : setPanel("component")}>Step</button>
+      {test && <button type="button" ref={testButton} className="pl-test-button"
+        aria-expanded={panel === "test"} aria-controls={panelId}
+        onClick={() => panel === "test" ? close() : setPanel("test")}>{testLabel ?? "Test"}</button>}
     </div>
   </div>;
   const canvas = view === "features"
@@ -282,29 +350,41 @@ export function PipelineWorkbench({
       stale={checking || failed} selected={props.selected} readOnly={props.readOnly} onSelect={select}
       onChange={(document) => props.onChange(document)} />
     : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
-      features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} insets={insets}
-      onConfigure={select} blocks={library.blocks} onSaveBlock={props.readOnly ? undefined : library.save} />;
+      features={(validation ?? lastValidation)?.features} featuresStale={checking || failed}
+      selection={selection} onSelect={selectOnCanvas} onSelectionChange={choose} onAdd={add} insets={insets}
+      onConfigure={select} onChooseDetector={chooseDetector}
+      blocks={library.blocks} onSaveBlock={props.readOnly ? undefined : library.save} />;
   const settingsContent = panel && <div className="pl-settings-panel" id={panelId} ref={settingsPanel} onKeyDown={(event) => {
     if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
       event.stopPropagation(); close();
     }
   }}>
-    <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
+    <PipelineInspector document={props.document} catalog={catalog} selected={props.selected} selection={selection}
       validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
-      onChange={props.onChange} input={input} forecast={forecast}
+      onChange={props.onChange} input={input} forecast={forecast} values={stepValues}
       header={<div className="pl-inspector-heading">
-        <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h3>
-        <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">
+        <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings"
+          : panel === "test" ? "Test on history" : "Step settings"}</h3>
+        <button type="button" onClick={close} aria-label={panel === "test" ? "Close test" : "Close settings"}
+          title={panel === "test" ? "Collapse test" : "Collapse settings"}>
           <X size={16} aria-hidden="true" />
         </button>
       </div>}
-      content={panel === "service" ? settings : undefined} />
+      content={panel === "service" ? settings : panel === "test" ? test : undefined} />
   </div>;
-  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}${dragging ? " is-adding-step" : ""}`} ref={stageRoot}
+  const detectorChoice = choice && <PipelineContextMenu x={choice.x} y={choice.y}
+    menu={detectorMenu(catalog.components, suggestedDetector(catalog), placeDetector)}
+    onClose={(restore) => {
+      setChoosing(undefined);
+      if (restore && choice.from instanceof HTMLElement) choice.from.focus({ preventScroll: true });
+    }} />;
+  // The header comes first in the page, as it does on screen, so Tab reaches it before the canvas.
+  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}`}
     style={{ "--pl-covered-right": `${insets?.right ?? 0}px` } as CSSProperties}>
-    <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-top" ref={top}>{header}{toolbar}</div>
+    <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-body">{settingsContent}</div>
+    {detectorChoice}
   </div>;
   return <div className="pl-workbench">
     {toolbar}
@@ -312,5 +392,6 @@ export function PipelineWorkbench({
       {canvas}
       {settingsContent}
     </div>
+    {detectorChoice}
   </div>;
 }

@@ -3,14 +3,19 @@
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Response
+from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.config.logs import logger
 from off_key_core.schemas.alarms import (
     MAX_ALARM_READINGS,
     Alarm,
     AlarmCount,
     AlarmCreate,
+    AlarmDeletionCommit,
+    AlarmDeletionPreview,
+    AlarmDetail,
     AlarmPage,
     AlarmQuery,
+    AlarmSelection,
 )
 from off_key_core.utils.mail import send_alarm_email
 
@@ -23,7 +28,7 @@ router = APIRouter(route_class=TacticErrorRoute)
 query_router = APIRouter(route_class=TacticErrorRoute)
 
 
-@query_router.post("/query", response_model=AlarmPage)
+@query_router.post("/query", response_model=AlarmPage, openapi_extra=OPEN_TO_AGENTS)
 async def query_alarms(query: AlarmQuery):
     """Alarms of catalogue readings, newest first, with catalogue names.
 
@@ -40,13 +45,13 @@ async def query_alarms(query: AlarmQuery):
     )
 
 
-@router.get("/count", response_model=AlarmCount)
+@router.get("/count", response_model=AlarmCount, openapi_extra=OPEN_TO_AGENTS)
 async def count_alarms(since: datetime | None = None):
     """Number of alarms, all of them or those since a time."""
     return await data_request("/alarms/count", present({"since": query_time(since)}))
 
 
-@router.get("", response_model=list[Alarm])
+@router.get("", response_model=list[Alarm], openapi_extra=OPEN_TO_AGENTS)
 async def list_alarms(
     device_id: str | None = Query(
         default=None, description="Alarms of every reading of this device."
@@ -127,3 +132,31 @@ async def delete_alarm(alarm_id: str):
     )
     logger.info("event=gateway.alarm_deleted alarm_id=%s", alarm_id)
     return Response(status_code=204)
+
+
+@router.get("/{alarm_id}", response_model=AlarmDetail)
+async def alarm_detail(alarm_id: str):
+    """One anomaly and its exact recorded detector evidence, when retained."""
+    return await tactic.request(
+        method="GET", endpoint=f"/api/v1/data/alarms/{path_segment(alarm_id)}"
+    )
+
+
+@router.post("/deletion-preview", response_model=AlarmDeletionPreview)
+async def preview_deletion(selection: AlarmSelection):
+    """Freeze selected IDs or all filter matches. Requires manage_alarms."""
+    return await tactic.request(
+        method="POST",
+        endpoint="/api/v1/data/alarms/deletion-preview",
+        json_data=selection.model_dump(mode="json"),
+    )
+
+
+@router.post("/delete", response_model=AlarmCount)
+async def delete_selection(selection: AlarmDeletionCommit):
+    """Atomically delete a frozen selection, with an idempotent retry token."""
+    return await tactic.request(
+        method="POST",
+        endpoint="/api/v1/data/alarms/delete",
+        json_data=selection.model_dump(mode="json"),
+    )

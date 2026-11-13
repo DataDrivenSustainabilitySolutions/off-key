@@ -128,7 +128,12 @@ export function InlineName({
             setDraft(event.target.value);
             setError("");
           }}
-          onBlur={() => void commit(false)}
+          onBlur={(event) => {
+            // The field is disabled while it saves, so nobody can leave it then: the browser takes
+            // focus from it. That can happen after a save has failed and before the field is
+            // enabled again, and must not save a second time.
+            if (!event.currentTarget.disabled) void commit(false);
+          }}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) return;
             if (event.key === "Enter") {

@@ -111,6 +111,9 @@ APPLIED_CHECKSUMS = {
     "031_pipeline_blocks.sql": (
         "151980597246083b6617dd3557b6e84f44340f57cebfc87516ebcdf06681f596"
     ),
+    "032_alarm_deletions.sql": (
+        "233c4d6ad60f9b1119d5b5739ee2e5f843602f9390a68e443aa62f20a64df327"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -138,7 +141,11 @@ LEDGER_TABLES = {
     "025_evidence_cursor.sql": {"monitoring_evidence_clock"},
     "028_access_token_revocation.sql": {"revoked_access_tokens"},
     "031_pipeline_blocks.sql": {"monitoring_pipeline_blocks"},
+    "032_alarm_deletions.sql": {"alarm_deletions"},
 }
+# Tables no migration introduces. The schema bootstrap creates them on every
+# database, and they hold nothing an earlier release wrote.
+BOOTSTRAP_TABLES = {"agents", "monitoring_pipeline_proposals"}
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {
     "014_drop_unread_schema.sql": {"model_registry"},
@@ -168,7 +175,11 @@ def test_every_orm_table_is_pre_ledger_or_owned_by_a_migration():
     owned = set().union(*LEDGER_TABLES.values())
 
     assert not PRE_LEDGER_TABLES & owned
+    assert not BOOTSTRAP_TABLES & (PRE_LEDGER_TABLES | owned)
     retired = set().union(*RETIRED_TABLES.values())
     assert retired <= PRE_LEDGER_TABLES
-    assert set(Base.metadata.tables) == (PRE_LEDGER_TABLES | owned) - retired
+    assert (
+        set(Base.metadata.tables)
+        == (PRE_LEDGER_TABLES | owned | BOOTSTRAP_TABLES) - retired
+    )
     assert PRE_LEDGER_TABLES - {"deployment_maintenance"} == BASELINE_TABLES

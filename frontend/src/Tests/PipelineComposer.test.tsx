@@ -10,6 +10,7 @@ import { placeBlock } from "@/features/pipelines/blocks";
 import {
   addBlocker,
   freePosition,
+  setNodeLabel,
   type GraphDocument,
 } from "@/features/pipelines/model";
 import { PipelineDesignSettings } from "@/features/pipelines/PipelineDesignSettings";
@@ -25,13 +26,13 @@ vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme
 
 const catalog = normalizeCatalog({
   catalog_id: "test", authoring_enabled: true, templates: [], components: [
-    { id: "source.aligned", kind: "source", label: "Aligned inputs", description: "",
+    { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
       input_type: null, output_type: "features" },
-    { id: "features.passthrough", kind: "transform", label: "Pass through", description: "",
+    { id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
       input_type: "features", output_type: "features" },
-    { id: "detector:a", kind: "detector", label: "Detector A", description: "",
+    { id: "detector:a", kind: "detector", group: "detector", label: "Detector A", description: "",
       input_type: "features", output_type: "scores" },
-    { id: "detector:static", kind: "detector", label: "Static detector", description: "",
+    { id: "detector:static", kind: "detector", group: "detector", label: "Static detector", description: "",
       input_type: "features", output_type: "p_values" },
   ],
 });
@@ -97,21 +98,16 @@ function useEditor() {
 describe("graph editing", () => {
   it("merges consecutive edits of one field into a single undo step", () => {
     const { result } = renderHook(() => useEditor());
-    const title = (label: string) => ({
-      ...result.current.document,
-      layout: { ...result.current.document.layout, nodes: {
-        ...result.current.document.layout.nodes,
-        input: { ...result.current.document.layout.nodes.input!, label },
-      } },
-    });
+    const title = (label: string) => setNodeLabel(result.current.document, "input", label);
+    const titled = () => result.current.document.definition.nodes.find((node) => node.id === "input")?.label;
     for (const label of ["P", "Pu", "Pump"]) act(() => result.current.commit(title(label), "title:input"));
     act(() => result.current.commit({ ...result.current.document,
       layout: { ...result.current.document.layout, nodes: { ...result.current.document.layout.nodes,
         detector: { x: 400, y: 0 } } } }));
     act(() => result.current.undo());
-    expect(result.current.document.layout.nodes.input?.label).toBe("Pump");
+    expect(titled()).toBe("Pump");
     act(() => result.current.undo());
-    expect(result.current.document.layout.nodes.input?.label).toBeUndefined();
+    expect(titled()).toBeUndefined();
     expect(result.current.canUndo).toBe(false);
   });
 
@@ -162,7 +158,7 @@ describe("graph editing", () => {
     fireEvent.click(await steps.findByRole("button", { name: "Add block Pass twice" }));
     expect(onPlace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "features_passthrough_1" }));
     const placed = onPlace.mock.calls[0]![0].document as GraphDocument;
-    expect(placed.layout.nodes.features_passthrough_1?.label).toBe("First pass");
+    expect(placed.definition.nodes.find((item) => item.id === "features_passthrough_1")?.label).toBe("First pass");
     expect(placed.definition.edges).toContainEqual({ source: "features_passthrough_1", target: "features_passthrough_2", order: 0 });
     expect(screen.queryByRole("dialog", { name: "Add a step" })).toBeNull();
     // A design that is only shown offers no steps and reads no library.
@@ -193,11 +189,11 @@ describe("graph editing", () => {
     const props = { catalog, document: pipeline(), onSelect: () => {}, onChange: () => {}, onAdd: () => {}, startup,
       onRetryValidation: () => { retried++; } };
     const view = render(<PipelineWorkbench {...props} validation={valid} />);
-    const chip = screen.getByRole("button", { name: "Graph is valid, first alarm after about 26 min" });
+    const chip = screen.getByRole("button", { name: "Design is complete, first alarm after about 26 min" });
     fireEvent.click(chip);
     expect(screen.getByText(/1,200 to learn and 360 to calibrate\. At one observation every 1 s, that is about 26 min\./)).toBeTruthy();
     view.rerender(<PipelineWorkbench {...props} validationError="Validation service unavailable" />);
-    expect(screen.getByRole("button", { name: "Graph not checked" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Design not checked" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Validation service unavailable");
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     expect(retried).toBe(1);
@@ -285,9 +281,16 @@ describe("component menu", () => {
 
   it("groups steps by what they do, with one line each, and adds from the keyboard", () => {
     const added: string[] = [];
-    const steps = [...components, ...normalizeCatalog({ catalog_id: "steps", authoring_enabled: true, templates: [], components:
-      ["adaptive.standard_scaler", "adaptive.uncentered_pca", "features.select"].map((id) => ({
-        id, kind: "transform" as const, label: id, description: "Catalog text",        input_type: "features" as const, output_type: "features" as const })),
+    // Group and description are the catalog's own.
+    const listed = [
+      ["adaptive.standard_scaler", "normalize", "Center and scale with running statistics."],
+      ["adaptive.uncentered_pca", "reduce", "Keep the main directions, updated as data arrives."],
+      ["features.select", "route", "Keep only the chosen features."],
+    ] as const;
+    const steps = [...components, ...normalizeCatalog({ catalog_id: "steps", authoring_enabled: true, templates: [],
+      components: listed.map(([id, group, description]) => ({
+        id, kind: "transform" as const, group, label: id, description,
+        input_type: "features" as const, output_type: "features" as const })),
     }).components];
     render(<PipelineToolbox components={steps} document={pipeline()} onAdd={(id) => added.push(id)} />);
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["Normalize", "Reduce", "Route"]);

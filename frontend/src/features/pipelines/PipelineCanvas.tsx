@@ -4,29 +4,45 @@ import {
   ControlButton,
   ReactFlow,
   ConnectionLineType,
+  SelectionMode,
   applyNodeChanges,
   type OnConnectStartParams,
   type OnConnectEnd,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { Copy, LocateFixed, Magnet, Pencil, Plus, Save, SlidersHorizontal, Trash2, Unlink } from "lucide-react";
+import {
+  ClipboardPaste, Copy, CopyPlus, LocateFixed, Magnet, Pencil, Plus, Power, PowerOff, Save, Scissors, SlidersHorizontal, StickyNote,
+  Trash2, Unlink,
+} from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { PipelineBlockCreate } from "@/types/pipelines.generated";
+import type { StepChange } from "./comparison";
 import type { PipelineBlock, PipelineComponent, PipelineValidation } from "./contracts";
 import { addBlockAfter, blockChain, blockChoices, blockedBy, insertBlock, placeBlock, type BlockOutcome } from "./blocks";
 import {
+  copySteps, duplicateSteps, fragmentSize, heldSteps, holdSteps, pastedNote, pasteSteps, type Pasted, type StepFragment,
+} from "./clipboard";
+import {
   addAfter, addBlocker, afterBlocker, connectNodes, connectionIssue, disconnectEdge, disconnectNode, duplicateBlocker,
-  duplicateNode, insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel,
+  insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel, stepTitle,
   type GraphDocument, type Link,
 } from "./model";
 import { PipelineContextMenu } from "./PipelineContextMenu";
+import { PipelineDetectorSlot } from "./PipelineDetectorSlot";
+import { PipelineShortcuts } from "./PipelineShortcuts";
+import { detectorSlot } from "./detectorSlot";
 import { stepMenu, type Menu, type MenuItem } from "./contextMenu";
 import { PipelineSaveBlock } from "./PipelineSaveBlock";
-import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
+import { SHORTCUTS } from "./shortcuts";
+import { useStepShortcuts } from "./useStepShortcuts";
+import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID, switchedOff } from "./semantics";
+import { switchOffBlocker, switchSteps } from "./stepSwitch";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard } from "./PipelineNodeCard";
+import { PipelineNotes, type NoteWriting } from "./PipelineNotes";
+import { addNote, moveNote, noteBlocker, notesOf, removeNote, setNoteText } from "./notes";
 import { PipelineGrid } from "./PipelineGrid";
-import { fitReadableView, revealNode, VIEW_MARGIN, type CoveredEdges } from "./viewport";
+import { FIT_ROOM, fitReadableView, revealNode, smallestZoom, VIEW_MARGIN, type CoveredEdges } from "./viewport";
 import type { CanvasNode, HistoryMode, PlacementRequest } from "./types";
 import { PipelineEdge, type RoutedEdge } from "./PipelineEdge";
 import { PipelineToolbox } from "./PipelineToolbox";
@@ -56,10 +72,15 @@ function fitPadding(covered: CoveredEdges | undefined, room: number, fallback: n
 type Props = {
   document: GraphDocument;
   components: PipelineComponent[];
+  /** The step in focus: the one whose settings show. */
   selected?: string;
+  /** Every chosen step, the one in focus among them. They move, copy and are removed together. */
+  selection: string[];
   readOnly?: boolean;
   layoutEditable?: boolean;
   states?: Record<string, string>;
+  /** How steps differ from the design a service runs now; each such card says so. */
+  changes?: Record<string, StepChange>;
   issues?: PipelineValidation["issues"];
   /** Feature columns per component; output ports show how many leave them. */
   features?: PipelineValidation["features"];
@@ -69,14 +90,21 @@ type Props = {
   fitRequest?: number;
   /** Pan just enough to show a newly placed component. */
   reveal?: PlacementRequest;
+  /** One step was chosen for its settings, or the choice was let go. */
   onSelect: (id?: string) => void;
+  /** Steps were chosen together, with Shift or a box; no settings open for them. */
+  onSelectionChange: (ids: string[]) => void;
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
   onAdd: (componentId: string, position?: { x: number; y: number }) => void;
   onBeginMove?: () => void;
-  /** Edges that floating controls cover; fitting and revealing keep cards out from under them. */
+  /** Edges that the settings cover; fitting and revealing keep cards out from under them. */
   insets?: CoveredEdges;
   /** A card's menu asks for that step's settings. */
   onConfigure?: (id: string) => void;
+  /** Offers the place a design without a detector keeps for one; called with the element to open a choice at. */
+  onChooseDetector?: (anchor: Element) => void;
+  /** A file was dropped on the canvas, such as a design saved as one. */
+  onOpenFile?: (file: File) => void;
   /** Saved chains of steps, offered beside the steps wherever a step can be added. */
   blocks?: PipelineBlock[];
   /** Keeps a chain of steps as a block; a card's menu offers it where this is given. */
@@ -87,7 +115,9 @@ type Props = {
 type MenuTarget =
   | { kind: "pane"; position: { x: number; y: number } }
   | { kind: "node"; id: string }
+  | { kind: "note"; id: string }
   | { kind: "edge"; link: Link };
+const steps = (count: number) => `${count} step${count === 1 ? "" : "s"}`;
 /** A touch held this long without moving opens the menu, as a right-click does. */
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP = 10;
@@ -96,20 +126,25 @@ export default function PipelineCanvas({
   document,
   components,
   selected,
+  selection,
   readOnly,
   layoutEditable,
   states,
+  changes,
   issues,
   features,
   featuresStale,
   fitRequest = 0,
   reveal,
   onSelect,
+  onSelectionChange,
   onChange,
   onAdd,
   onBeginMove,
   insets,
   onConfigure,
+  onChooseDetector,
+  onOpenFile,
   blocks = [],
   onSaveBlock,
 }: Props) {
@@ -118,6 +153,7 @@ export default function PipelineCanvas({
   // The card whose title is being typed on the card itself.
   const [renaming, setRenaming] = useState<string>();
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
   const [zoom, setZoom] = useState(1);
   const [connecting, setConnecting] = useState<OnConnectStartParams>();
@@ -150,23 +186,25 @@ export default function PipelineCanvas({
     });
     return () => cancelAnimationFrame(frame);
   }, [flow, reveal]);
-  // A step inserted on a wire may land beside the view, or push the cards right of it.
-  // Its menu closed with the wire it was opened on, so keyboard focus moves to the new card.
-  const [inserted, setInserted] = useState<string>();
+  const [measurements, setMeasurements] = useState<Record<string, { width: number; height: number }>>({});
+  // Steps inserted on a wire, pasted or duplicated may land beside the view, or push the cards right of it.
+  // A menu closed with the graph it was opened on, so keyboard focus moves to the first new card.
+  // Their place in the view is known once the cards have been measured.
+  const [inserted, setInserted] = useState<string[]>();
   useEffect(() => {
-    if (!flow || !inserted) return;
+    if (!flow || !inserted?.every((id) => measurements[id])) return;
     const frame = requestAnimationFrame(() => {
       setInserted(undefined);
       const element = surface.current;
       if (!element) return;
       void revealNode(flow, element, inserted, VIEW_MARGIN, covered.current);
       const focused = element.ownerDocument.activeElement;
-      if (!focused || focused === element.ownerDocument.body)
-        element.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(inserted)}"]`)
+      if (!focused || focused === element.ownerDocument.body || focused === element)
+        element.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(inserted[0]!)}"]`)
           ?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [flow, inserted]);
+  }, [flow, inserted, measurements]);
   // The settings panel narrows the canvas; keep the component being edited in view.
   const selectedRef = useRef(selected);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
@@ -198,8 +236,9 @@ export default function PipelineCanvas({
       setSelectedEdges([]);
     };
   });
+  const anyChosen = selection.length > 0;
   useEffect(() => {
-    if (!selected) return;
+    if (!anyChosen) return;
     const keydown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (event.target instanceof Element && event.target.closest("input, textarea, select, [role='dialog']")) return;
@@ -207,13 +246,15 @@ export default function PipelineCanvas({
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [selected]);
-  const [measurements, setMeasurements] = useState<Record<string, { width: number; height: number }>>({});
+  }, [anyChosen]);
+  // A step chosen with Shift, Ctrl or Cmd held, or with a box, joins the others without opening its settings.
+  const additive = useRef(false);
+  const boxing = useRef(false);
   const moving = useRef(false);
   const [dragged, setDragged] = useState<{ previous: Map<string, ConnectionRoute>; changed: Set<string> }>();
   const graph = useMemo(
-    () => presentGraph(document, components, states, issues),
-    [document, components, states, issues],
+    () => presentGraph(document, components, states, issues, changes),
+    [document, components, states, issues, changes],
   );
   const routingBoxes = useMemo(() => document.definition.nodes.map((node, index) => ({
     id: node.id, ...nodePosition(document.layout, node.id, index), ...NODE_SIZE,
@@ -222,6 +263,24 @@ export default function PipelineCanvas({
   const routes = useMemo(() => routeConnections(routingBoxes, document.definition.edges, dragged),
     [routingBoxes, document.definition.edges, dragged]);
   const blocked = [...routes.values()].some((route) => route.blocked);
+  // A design that can be edited keeps a place for the detector it does not have yet.
+  const slot = useMemo(() => (readOnly || !onChooseDetector ? undefined : detectorSlot(document, components)),
+    [readOnly, onChooseDetector, document, components]);
+  // Zooming out stops at a quarter of full size, where cards can still be told apart, or
+  // further out where a large graph needs it to be seen whole.
+  const [room, setRoom] = useState<{ width: number; height: number }>();
+  useEffect(() => {
+    const element = surface.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const { width, height } = element.getBoundingClientRect();
+      setRoom((previous) => previous?.width === width && previous.height === height ? previous : { width, height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const minZoom = useMemo(() => smallestZoom(routingBoxes, room, insets), [room, routingBoxes, insets]);
+  const corner = (id?: string) => routingBoxes.find((box) => box.id === id);
   const handles = useMemo(() => routeHandles(routes), [routes]);
   // A wire offers "+" only where some step fits; the menu lists exactly those.
   const insertable = useMemo(() => new Set(readOnly ? [] : document.definition.edges
@@ -250,12 +309,12 @@ export default function PipelineCanvas({
     };
     return graph.nodes.map((node) => ({
       ...node,
-      selected: node.id === selected,
+      selected: selection.includes(node.id),
       measured: measurements[node.id],
       data: { ...node.data, ...emitted(node.id, node.data.outputType), ...hints(node.id),
         ...(node.id === renaming ? { renaming: true } : {}) },
     }));
-  }, [graph.nodes, selected, connecting, document, components, measurements, features, featuresStale, renaming]);
+  }, [graph.nodes, selection, connecting, document, components, measurements, features, featuresStale, renaming]);
   const connectingNode = graph.nodes.find((node) => node.id === connecting?.nodeId);
   const connectingType = connecting?.handleType === "source"
     ? connectingNode?.data.outputType : connectingNode?.data.inputType;
@@ -303,7 +362,7 @@ export default function PipelineCanvas({
     setSelectedEdges([]);
     onChange(result.document);
     onSelect(result.id);
-    setInserted(result.id);
+    setInserted([result.id]);
   };
   const cardElement = (id: string) =>
     surface.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
@@ -317,7 +376,7 @@ export default function PipelineCanvas({
       const operation = node && components.find((item) => item.id === node.component)?.label;
       // A title equal to the step's own name, or none, shows that name again.
       const next = title.trim() === operation ? "" : title.trim();
-      if (next !== (document.layout.nodes[id]?.label ?? "")) onChange(setNodeLabel(document, id, next), true);
+      if (next !== stepTitle(node)) onChange(setNodeLabel(document, id, next), true);
     },
   };
   const wireActions: WireActions = {
@@ -337,6 +396,108 @@ export default function PipelineCanvas({
       ? { x: Math.round(position.x / SNAP_GRID[0]) * SNAP_GRID[0], y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1] }
       : position;
   };
+  // Where the pointer is over the canvas; steps pasted by key land there.
+  const pointer = useRef<{ x: number; y: number }>(undefined);
+  /** The pointer over the canvas, or the middle of the part of it that nothing covers, on the screen. */
+  const aimOnScreen = () => {
+    const box = surface.current?.getBoundingClientRect();
+    return pointer.current ?? (box ? {
+      x: (box.left + box.right - (insets?.right ?? 0)) / 2,
+      y: (box.top + (insets?.top ?? 0) + box.bottom - (insets?.bottom ?? 0)) / 2,
+    } : { x: 0, y: 0 });
+  };
+  /** The same place on the graph. */
+  const aim = () => {
+    const point = aimOnScreen();
+    return flow?.screenToFlowPosition(point, { snapToGrid: false }) ?? point;
+  };
+  /** Show what a paste or a duplicate added: the settings of one step, or the steps as a group. */
+  const placed = (verb: string, result: Pasted | undefined) => {
+    if (!result) return false;
+    setFeedback(pastedNote(verb, result));
+    const [first, ...others] = result.ids;
+    if (!first) return true;
+    onChange(result.document);
+    setSelectedEdges([]);
+    if (others.length) onSelectionChange(result.ids);
+    else onSelect(first);
+    setInserted(result.ids);
+    return true;
+  };
+  /** Steps as text for the clipboard, the chosen ones unless others are named; a cut takes them out of the design. */
+  const copy = (cut = false, ids = selection) => {
+    const fragment = cut && readOnly ? undefined : copySteps(document, ids);
+    if (!fragment) return undefined;
+    const text = holdSteps(fragment);
+    if (cut) {
+      onChange(removeElements(document, { nodeIds: ids }));
+      onSelect(undefined);
+    }
+    setFeedback(`${cut ? "Cut" : "Copied"} ${steps(fragment.steps.length)}.`);
+    return text;
+  };
+  /** A menu has no clipboard event to write to, so it asks the browser; Paste in the menu works without it. */
+  const copyFromMenu = (cut = false, ids = selection) => {
+    const text = copy(cut, ids);
+    if (text) void navigator.clipboard?.writeText(text).catch(() => {});
+  };
+  /** Add steps centred on a place of the graph. */
+  const paste = (fragment: StepFragment, centre: { x: number; y: number }) => {
+    if (readOnly) return;
+    const size = fragmentSize(fragment);
+    placed("Pasted", pasteSteps(document, fragment, components, { x: centre.x - size.width / 2, y: centre.y - size.height / 2 }));
+  };
+  const duplicate = (ids = selection) => !readOnly && placed("Duplicated", duplicateSteps(document, ids, components));
+  /** Switch steps off, or on again when none of them is on. Steps that cannot stand aside stay as they are. */
+  const switchChosen = (ids = selection) => {
+    if (readOnly || !ids.length) return false;
+    const turned = switchSteps(document, ids, components);
+    if (turned) onChange(turned.document);
+    setFeedback(turned ? `Switched ${turned.off ? "off" : "on"} ${steps(turned.ids.length)}.`
+      : "Only a step that changes features can be switched off.");
+    return true;
+  };
+  useStepShortcuts(surface, {
+    copy: (cut) => copy(cut),
+    paste: (fragment) => paste(fragment, aim()),
+    duplicate,
+    switch: switchChosen,
+    selectAll: () => {
+      const ids = document.definition.nodes.map((node) => node.id);
+      if (ids.length) onSelectionChange(ids);
+      return ids.length > 0;
+    },
+  });
+  // The note being written on the canvas: one of the design's, or a new one that joins it once it says something.
+  const [noteWriting, setNoteWriting] = useState<NoteWriting>();
+  const notes = notesOf(document);
+  /** Start a note at the place a card would take there: as wide as the card, its first line where the card's middle would be. */
+  const writeNote = (card: { x: number; y: number }) => {
+    if (readOnly) return;
+    const blocker = noteBlocker(document);
+    setFeedback(blocker ?? "");
+    const top = card.y + NODE_SIZE.height / 2 - SNAP_GRID[1];
+    if (!blocker) setNoteWriting({ at: { x: card.x, y: snapToGrid ? Math.round(top / SNAP_GRID[1]) * SNAP_GRID[1] : top } });
+  };
+  const keepNote = (text: string | undefined, byKey: boolean) => {
+    const writing = noteWriting;
+    setNoteWriting(undefined);
+    if (!writing) return;
+    let id = "id" in writing ? writing.id : undefined;
+    if (text !== undefined && "id" in writing) {
+      const next = setNoteText(document, writing.id, text);
+      if (next !== document) onChange(next);
+    } else if (text !== undefined && "at" in writing) {
+      const added = addNote(document, writing.at, text);
+      if (added) onChange(added.document);
+      id = added?.id;
+    }
+    // The keys stay with the note that was written, or with the canvas when there is none.
+    if (byKey) requestAnimationFrame(() => {
+      const element = surface.current;
+      ((id && element?.querySelector<HTMLElement>(`[data-note="${CSS.escape(id)}"]`)) || element)?.focus({ preventScroll: true });
+    });
+  };
   // A menu belongs to the graph it was opened on; any edit closes it, as a wire's menu does.
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: MenuTarget;
     definition: GraphDocument["definition"]; returnFocus: Element | null }>();
@@ -351,7 +512,7 @@ export default function PipelineCanvas({
     setFeedback("");
     onChange(result.document);
     onSelect(result.id);
-    setInserted(result.id);
+    setInserted([result.id]);
   };
   // The card whose steps are being saved as a block.
   const [savingFrom, setSavingFrom] = useState<string>();
@@ -363,11 +524,21 @@ export default function PipelineCanvas({
     }));
   const anyFits = (items: MenuItem[]) => items.some((item) => !item.blocked);
   const menuFor = (target: MenuTarget): Menu => {
-    if (target.kind === "pane") return stepMenu("Add a step",
-      components.filter((component) => !addBlocker(document.definition, component)),
-      (component) => onAdd(component.id, target.position),
-      "No step can be added. The design has reached its limit.",
-      blockItems((block) => placeBlock(document, block, components, target.position)));
+    if (target.kind === "pane") {
+      const add = stepMenu("Add a step",
+        components.filter((component) => !addBlocker(document.definition, component)),
+        (component) => onAdd(component.id, target.position),
+        "No step can be added. The design has reached its limit.",
+        blockItems((block) => placeBlock(document, block, components, target.position)));
+      const held = heldSteps();
+      // The card a new step would get stands centred on the place; a note and pasted steps are centred there too.
+      return { ...add, items: [...add.items,
+        { key: "note", label: "Add a note", icon: StickyNote, keys: SHORTCUTS.note, separated: true,
+          blocked: noteBlocker(document), run: () => writeNote(target.position) },
+        ...(held ? [{ key: "paste", label: "Paste", detail: steps(held.steps.length), icon: ClipboardPaste, keys: SHORTCUTS.paste,
+          run: () => paste(held, { x: target.position.x + NODE_SIZE.width / 2, y: target.position.y + NODE_SIZE.height / 2 }) }] : []),
+      ] };
+    }
     if (target.kind === "edge") {
       const between = `${nodeName(document, components, target.link.source)} and ${nodeName(document, components, target.link.target)}`;
       const fitting = components.filter((component) => !insertBlocker(document.definition, target.link, component, components));
@@ -382,27 +553,52 @@ export default function PipelineCanvas({
           run: () => { setSelectedEdges([]); onChange({ ...document, definition: disconnectEdge(document.definition, target.link) }); } },
       ] };
     }
+    if (target.kind === "note") return { label: "Note", items: [
+      { key: "edit", label: "Edit", icon: Pencil, run: () => setNoteWriting({ id: target.id }) },
+      { key: "delete", label: "Delete", icon: Trash2, keys: SHORTCUTS.remove, destructive: true, separated: true,
+        run: () => onChange(removeNote(document, target.id)) },
+    ] };
     const { id } = target;
+    // A step chosen with others answers for all of them.
+    if (selection.length > 1 && selection.includes(id)) {
+      const turn = switchSteps(document, selection, components);
+      return { label: steps(selection.length), items: [
+      { key: "duplicate", label: "Duplicate", icon: CopyPlus, keys: SHORTCUTS.duplicate, run: () => { duplicate(); } },
+      { key: "copy", label: "Copy", icon: Copy, keys: SHORTCUTS.copy, run: () => copyFromMenu() },
+      { key: "cut", label: "Cut", icon: Scissors, keys: SHORTCUTS.cut, run: () => copyFromMenu(true) },
+      { key: "switch", label: turn?.off === false ? "Switch on" : "Switch off", icon: turn?.off === false ? Power : PowerOff,
+        detail: turn && turn.ids.length < selection.length ? steps(turn.ids.length) : undefined, keys: SHORTCUTS.switch,
+        blocked: turn ? undefined : "None of these steps changes features.", run: () => { switchChosen(); } },
+      { key: "delete", label: "Delete", icon: Trash2, keys: SHORTCUTS.remove, destructive: true, separated: true,
+        run: () => { onChange(removeElements(document, { nodeIds: selection })); onSelect(undefined); } },
+      ] };
+    }
     const connected = document.definition.edges.some((edge) => edge.source === id || edge.target === id);
     const after = components.filter((component) => !afterBlocker(document, id, component, components));
     const node = document.definition.nodes.find((item) => item.id === id);
+    const off = !!switchedOff(document.layout, node);
     const blocksAfter = blockItems((block) => addBlockAfter(document, id, block, components));
     return { label: nodeName(document, components, id), items: [
-      { key: "rename", label: "Rename", icon: Pencil, run: () => setRenaming(id) },
+      { key: "rename", label: "Rename", icon: Pencil, keys: SHORTCUTS.rename, run: () => setRenaming(id) },
       { key: "configure", label: "Configure", icon: SlidersHorizontal, run: () => (onConfigure ?? onSelect)(id) },
       { key: "after", label: "Add after", icon: Plus, separated: true,
         blocked: node?.kind === "output" ? "Evidence output is the last step."
           : after.length || anyFits(blocksAfter) ? undefined : "No step takes this step's output.",
         submenu: stepMenu("Add after", after, (component) => applied(addAfter(document, id, component, components)),
           "No step takes this step's output.", blocksAfter) },
-      { key: "duplicate", label: "Duplicate", icon: Copy, blocked: duplicateBlocker(document.definition, id, components),
-        run: () => applied(duplicateNode(document, id, components)) },
+      { key: "duplicate", label: "Duplicate", icon: CopyPlus, keys: SHORTCUTS.duplicate,
+        blocked: duplicateBlocker(document.definition, id, components), run: () => { duplicate([id]); } },
+      { key: "copy", label: "Copy", icon: Copy, keys: SHORTCUTS.copy, run: () => copyFromMenu(false, [id]) },
+      // Listed for the steps it is for; elsewhere it would only say that it cannot be done.
+      ...(node?.kind === "transform" ? [{ key: "switch", label: off ? "Switch on" : "Switch off", icon: off ? Power : PowerOff,
+        keys: SHORTCUTS.switch, blocked: off ? undefined : switchOffBlocker(document, id, components),
+        run: () => { switchChosen([id]); } }] : []),
       ...(onSaveBlock ? [{ key: "block", label: "Save as block", icon: Save,
         blocked: blockChain(document.definition, id).length ? undefined : "A block holds steps between the input and a detector.",
         run: () => setSavingFrom(id) }] : []),
       { key: "disconnect", label: "Disconnect", icon: Unlink, blocked: connected ? undefined : "This step has no connections.",
         run: () => onChange(disconnectNode(document, id)) },
-      { key: "delete", label: "Delete", icon: Trash2, destructive: true, separated: true,
+      { key: "delete", label: "Delete", icon: Trash2, keys: SHORTCUTS.remove, destructive: true, separated: true,
         run: () => { onChange(removeElements(document, { nodeIds: [id] })); onSelect(undefined); } },
     ] };
   };
@@ -411,6 +607,8 @@ export default function PipelineCanvas({
   const targetAt = (element: Element | null, clientX: number, clientY: number): MenuTarget | undefined => {
     const node = element?.closest(".react-flow__node")?.getAttribute("data-id");
     if (node) return { kind: "node", id: node };
+    const note = element?.closest("[data-note]")?.getAttribute("data-note");
+    if (note) return { kind: "note", id: note };
     const edge = element?.closest(".react-flow__edge")?.getAttribute("data-id");
     const link = edge ? document.definition.edges.find((item) => edgeId(item) === edge) : undefined;
     if (link) return { kind: "edge", link: { source: link.source, target: link.target } };
@@ -431,6 +629,8 @@ export default function PipelineCanvas({
   const drop = (event: DragEvent) => {
     event.preventDefault();
     if (readOnly || !flow) return;
+    const file = event.dataTransfer.files[0];
+    if (file) return onOpenFile?.(file);
     onAdd(event.dataTransfer.getData("application/off-key-component"), placeAt(event.clientX, event.clientY));
   };
   return (
@@ -438,6 +638,30 @@ export default function PipelineCanvas({
       className="pl-canvas-wrap"
       aria-label="Pipeline graph"
       onKeyDown={(event) => {
+        // Keys without Ctrl, Cmd or Alt act while the canvas itself is in focus: not in a field
+        // on it, and not in a menu or list that it opened, which React reports here as well.
+        const origin = event.target as Element;
+        if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.defaultPrevented
+          && event.currentTarget.contains(origin) && !origin.closest("input, textarea, select, [contenteditable='true']")) {
+          const act = event.key === "?" ? () => setShortcutsOpen((open) => !open)
+            : event.key === "1" ? () => { void flow?.fitView({ padding: fitPadding(insets, FIT_ROOM, 0.15) }); }
+            : event.key === "0" ? () => { if (flow && surface.current) void fitReadableView(flow, surface.current, selected, insets); }
+            : event.key === "+" || event.key === "=" ? () => { void flow?.zoomIn(); }
+            : event.key === "-" ? () => { void flow?.zoomOut(); }
+            : event.key.toLowerCase() === "a" && !event.shiftKey && !readOnly ? () => {
+              const point = aimOnScreen();
+              openMenu(point.x, point.y, { kind: "pane", position: placeAt(point.x, point.y) });
+            }
+            : event.key.toLowerCase() === "n" && !event.shiftKey && !readOnly ? () => {
+              const point = aimOnScreen();
+              writeNote(placeAt(point.x, point.y));
+            } : undefined;
+          if (act) {
+            event.preventDefault();
+            act();
+            return;
+          }
+        }
         // F2 renames a focused card, as it renames a file.
         const card = (event.target as Element).closest?.(".react-flow__node");
         if (!readOnly && event.key === "F2" && card === event.target) {
@@ -466,7 +690,11 @@ export default function PipelineCanvas({
           openMenu(x, y, aimed);
         }, LONG_PRESS_MS) };
       }}
+      onPointerDownCapture={(event) => { additive.current = event.shiftKey || event.metaKey || event.ctrlKey; }}
+      onKeyDownCapture={(event) => { additive.current = event.shiftKey || event.metaKey || event.ctrlKey; }}
+      onPointerLeave={() => { pointer.current = undefined; }}
       onPointerMove={(event) => {
+        pointer.current = surface.current?.contains(event.target as Node) ? { x: event.clientX, y: event.clientY } : undefined;
         const current = press.current;
         if (current && !current.fired && Math.hypot(event.clientX - current.x, event.clientY - current.y) > LONG_PRESS_SLOP) endPress();
       }}
@@ -477,13 +705,18 @@ export default function PipelineCanvas({
         if (press.current?.fired) { event.stopPropagation(); event.preventDefault(); }
         press.current = undefined;
       }}
+      onDoubleClick={(event) => {
+        // A double-click on empty canvas adds a step there.
+        if (readOnly || !(event.target as Element).classList.contains("react-flow__pane")) return;
+        openMenu(event.clientX, event.clientY, { kind: "pane", position: placeAt(event.clientX, event.clientY) });
+      }}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
       }}
       onDrop={drop}
     >
-      <div className="pl-flow-surface" ref={surface}>
+      <div className="pl-flow-surface" ref={surface} tabIndex={-1}>
         <CardActionsContext.Provider value={cardActions}>
         <WireActionsContext.Provider value={wireActions}>
         <ReactFlow<CanvasNode>
@@ -493,8 +726,10 @@ export default function PipelineCanvas({
           edgeTypes={edgeTypes}
           onInit={setFlow}
           colorMode={resolvedTheme}
-          minZoom={0.01}
+          minZoom={minZoom}
           maxZoom={2}
+          // A double-click on empty canvas adds a step; the wheel, the buttons and the keys zoom.
+          zoomOnDoubleClick={false}
           onMoveStart={() => { setOpenWire(undefined); setContextMenu(undefined); }}
           onNodeDoubleClick={readOnly ? undefined : (event, node) => {
             // A double-click on the title renames the step in place.
@@ -527,10 +762,17 @@ export default function PipelineCanvas({
           elementsSelectable
           onEdgeMouseEnter={(_event, edge) => hover(edge.id)}
           onEdgeMouseLeave={() => hover()}
-          onNodeClick={(_event, node) => onSelect(node.id)}
+          onNodeClick={(event, node) => {
+            // A plain click chooses this step alone and opens its settings.
+            if (!(event.shiftKey || event.metaKey || event.ctrlKey)) onSelect(node.id);
+          }}
+          onSelectionStart={() => { boxing.current = true; }}
+          onSelectionEnd={() => { boxing.current = false; }}
           onPaneClick={() => {
             onSelect(undefined);
             setSelectedEdges([]);
+            // Empty canvas cannot hold focus itself; the canvas takes it, so that its keys work after a click.
+            surface.current?.focus({ preventScroll: true });
           }}
           onNodeDragStart={(_event, _node, moved) => {
             moving.current = true;
@@ -554,10 +796,20 @@ export default function PipelineCanvas({
                 return next;
               });
             }
-            const selection = changes.find(
-              (change) => change.type === "select" && change.selected,
-            );
-            if (selection?.type === "select") onSelect(selection.id);
+            const choices = changes.filter((change) => change.type === "select");
+            if (choices.length) {
+              const next = new Set(selection);
+              for (const change of choices) {
+                if (change.selected) next.add(change.id);
+                else next.delete(change.id);
+              }
+              const ids = [...next];
+              // One step chosen by itself shows its settings; steps gathered one by one or with a box do not.
+              if (ids.length === 1 && choices.some((change) => change.selected) && !additive.current && !boxing.current)
+                onSelect(ids[0]);
+              else if (ids.length !== selection.length || ids.some((id, index) => id !== selection[index]))
+                onSelectionChange(ids);
+            }
             const positions = changes.filter(
               (change) => change.type === "position",
             );
@@ -627,14 +879,27 @@ export default function PipelineCanvas({
             return false;
           }}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+          // Shift draws a box around steps; a click with Shift, Ctrl or Cmd adds a step or takes it out.
+          selectionKeyCode="Shift"
+          // A step is taken as soon as the box touches it.
+          selectionMode={SelectionMode.Partial}
+          multiSelectionKeyCode={["Shift", "Meta", "Control"]}
           ariaLabelConfig={{
             "controls.fitView.ariaLabel": "Fit entire graph",
             "node.a11yDescription.default":
-              "Press Enter to select a component. Use the inspector to edit parameters and connections.",
+              "Press Enter to select a step, or Shift+Enter to select it with others. Use the inspector to edit parameters and connections.",
           }}
         >
           <PipelineGrid />
-          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: fitPadding(insets, 48, 0.15) }}>
+          {(notes.length > 0 || noteWriting) && <PipelineNotes notes={notes} writing={noteWriting} editable={!readOnly}
+            movable={layoutEditable || !readOnly} snapToGrid={snapToGrid}
+            onWrite={(id) => setNoteWriting({ id })} onKeep={keepNote}
+            onMoveStart={() => onBeginMove?.()} onMove={(id, to) => onChange(moveNote(document, id, to), false)}
+            onRemove={(id) => { onChange(removeNote(document, id)); surface.current?.focus({ preventScroll: true }); }}
+            onMenu={(event, id) => contextMenuAt(event, { kind: "note", id })} />}
+          {slot && onChooseDetector && <PipelineDetectorSlot slot={slot} after={corner(slot.after)} before={corner(slot.before)}
+            onChoose={onChooseDetector} />}
+          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: fitPadding(insets, FIT_ROOM, 0.15) }}>
             <ControlButton
               className="pl-canvas-scale"
               aria-label="Readable size"
@@ -654,19 +919,20 @@ export default function PipelineCanvas({
             <ControlButton
               aria-label="Locate selected component"
               title="Locate selected component"
-              disabled={!selected || !flow}
+              disabled={!selection.length || !flow}
               onClick={() => {
-                if (selected)
-                  void flow?.fitView({
-                    nodes: [{ id: selected }],
-                    minZoom: 1,
-                    maxZoom: 1,
-                    padding: fitPadding(insets, 0, 0.5),
-                  });
+                // One step at its readable size; several as large as shows them all.
+                void flow?.fitView({
+                  nodes: selection.map((id) => ({ id })),
+                  minZoom: selection.length > 1 ? undefined : 1,
+                  maxZoom: 1,
+                  padding: fitPadding(insets, 0, selection.length > 1 ? 0.15 : 0.5),
+                });
               }}
             >
               <LocateFixed size={16} />
             </ControlButton>
+            <PipelineShortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} readOnly={readOnly} />
           </Controls>
         </ReactFlow>
         </WireActionsContext.Provider>
@@ -677,6 +943,8 @@ export default function PipelineCanvas({
           setContextMenu(undefined);
           if (restore && shownMenu.returnFocus instanceof HTMLElement) shownMenu.returnFocus.focus({ preventScroll: true });
         }} />}
+      {/* The rings on the cards show a group; this says it to those who cannot see them. */}
+      <span className="ex-sr-only" aria-live="polite">{selection.length > 1 ? `${steps(selection.length)} chosen` : ""}</span>
       {onSaveBlock && savingFrom && blockChain(document.definition, savingFrom).length > 0
         && <PipelineSaveBlock document={document} components={components} from={savingFrom} onSave={onSaveBlock}
           onClose={() => setSavingFrom(undefined)} />}

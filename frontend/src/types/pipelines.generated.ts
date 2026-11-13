@@ -44,16 +44,21 @@ export type CalculateParameters = {
   formulas: string;
 };
 
+export type CanvasNote = {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+};
+
 export type CanvasPosition = {
   x: number;
   y: number;
-  label?: string | null;
 };
 
 export type CanvasViewport = {
   x: number;
   y: number;
-  label?: string | null;
   zoom?: number;
 };
 
@@ -84,6 +89,8 @@ export type ComponentField = {
   options?: Array<string> | null;
   nullable?: boolean;
   description?: string;
+  advanced?: boolean;
+  shown_when?: FieldCondition | null;
   fields?: Array<ComponentField>;
   discriminator?: string | null;
   variants?: Record<string, Array<ComponentField>> | null;
@@ -128,6 +135,12 @@ export type FeatureDescription = {
   raw?: boolean;
   previous?: string | null;
   steps?: Array<string>;
+};
+
+export type FieldCondition = {
+  field: string;
+  equals?: Array<string | number | number | boolean | null> | null;
+  not_equals?: Array<string | number | number | boolean | null> | null;
 };
 
 export type ForecastModelCatalog = {
@@ -212,6 +225,7 @@ export type MonitorDetail = {
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
+  shadow?: boolean;
   created_at?: string | null;
   configuration?: Record<string, unknown>;
 };
@@ -224,6 +238,7 @@ export type MonitorSummary = {
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
+  shadow?: boolean;
   created_at?: string | null;
 };
 
@@ -260,6 +275,7 @@ export type PipelineActivationRequest = {
   display_name: string;
   idempotency_key: string;
   replace_monitor_id?: string | null;
+  shadow?: boolean;
 };
 
 export type PipelineActivationView = {
@@ -282,6 +298,7 @@ export type PipelineApplyRequest = {
   display_name: string;
   idempotency_key: string;
   replace_monitor_id?: string | null;
+  shadow?: boolean;
 };
 
 export type PipelineBindingMetadata = {
@@ -331,9 +348,13 @@ export type PipelineComponent = {
   id: string;
   contract_version?: 1;
   kind: "source" | "transform" | "merge" | "detector" | "calibration" | "policy" | "output";
+  group: "input" | "prepare" | "combine" | "normalize" | "reduce" | "route" | "forecaster" | "detector" | "calibration" | "policy" | "output";
   label: string;
   description: string;
+  details?: string;
+  library?: string | null;
   learning?: "none" | "batch" | "online" | "pretrained";
+  counterpart?: string | null;
   parameter_schema?: Record<string, unknown>;
   fields?: Array<ComponentField>;
   input_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence" | null;
@@ -357,6 +378,16 @@ export type PipelineDefinition = {
   nodes?: Array<PipelineNode>;
   edges?: Array<PipelineEdge>;
   settings?: PipelineSettings;
+};
+
+export type PipelineDesignFile = {
+  $schema?: string | null;
+  format: "aberration-design";
+  schema_version?: 1;
+  name?: string;
+  description?: string;
+  definition: PipelineDefinition;
+  layout?: PipelineLayout;
 };
 
 export type PipelineDraftSave = {
@@ -405,6 +436,8 @@ export type PipelineLayout = {
   version?: number;
   nodes?: Record<string, CanvasPosition>;
   viewport?: CanvasViewport | null;
+  switched_off?: Record<string, SwitchedOffStep>;
+  notes?: Array<CanvasNote>;
 };
 
 export type PipelineListPage = {
@@ -472,6 +505,58 @@ export type PipelineObservation = {
 export type PipelineObservationPasses = {
   score: Record<string, PipelineNodePreview>;
   learn: Record<string, PipelineNodePreview>;
+};
+
+export type PipelineProposalCreate = {
+  name: string;
+  reason: string;
+  definition: PipelineDefinition;
+  layout?: PipelineLayout;
+  bindings?: Record<string, string>;
+  test_run_id?: string | null;
+  replace_monitor_id?: string | null;
+};
+
+export type PipelineProposalDecision = {
+  status: "accepted" | "declined";
+  note?: string | null;
+};
+
+export type PipelineProposalList = {
+  items: Array<PipelineProposalSummary>;
+};
+
+export type PipelineProposalSummary = {
+  id: string;
+  name: string;
+  reason: string;
+  author: string;
+  author_kind: "agent" | "member";
+  status: "open" | "accepted" | "declined" | "withdrawn";
+  test_run_id: string | null;
+  replace_monitor_id: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+};
+
+export type PipelineProposalView = {
+  id: string;
+  name: string;
+  reason: string;
+  author: string;
+  author_kind: "agent" | "member";
+  status: "open" | "accepted" | "declined" | "withdrawn";
+  test_run_id: string | null;
+  replace_monitor_id: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+  definition: PipelineDefinition;
+  layout: PipelineLayout;
+  bindings: Record<string, string>;
 };
 
 export type PipelinePublish = {
@@ -800,6 +885,12 @@ export type StandardScalerParameters = {
   with_std?: boolean;
 };
 
+export type SwitchedOffStep = {
+  component: string;
+  contract_version?: number;
+  params?: Record<string, unknown>;
+};
+
 export type TimeParameters = {
   elapsed?: boolean;
   hour?: boolean;
@@ -810,3 +901,5 @@ export type TimeParameters = {
 };
 
 export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4, blockSteps: 16 } as const;
+
+export const DESIGN_FILE = { format: "aberration-design", version: 1, schema: "https://docs.aberration.app/reference/design-file.schema.json" } as const;

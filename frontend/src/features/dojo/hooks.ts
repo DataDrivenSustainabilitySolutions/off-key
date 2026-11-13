@@ -1,7 +1,7 @@
 import { epochMilliseconds } from "@/lib/timestamps";
 import { useEffect, useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
-import type { DatasetPoint, DatasetSeriesView, RunResult } from "@/types/dojo.generated";
+import type { DatasetPoint, DatasetSeriesView, RunOutline, RunResult } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
 import { readPages, type ChartPoint } from "./model";
@@ -52,4 +52,20 @@ export function useRunAlarms(runIds: string[]) {
     return () => controller.abort();
   }, [missing]);
   return { loaded, error, loading: !!missing && !error };
+}
+
+/** A finished run summed up over equal stretches of time, read once per run. */
+export function useRunOutline(runId: string | undefined, buckets: number) {
+  const [read, setRead] = useState<{ id: string; outline?: RunOutline; error?: string }>();
+  const settled = read?.id === runId ? read : undefined;
+  const missing = settled ? undefined : runId;
+  useEffect(() => {
+    if (!missing) return;
+    const controller = new AbortController();
+    dojoApi.outline(missing, { buckets }, controller.signal)
+      .then(outline => { if (!controller.signal.aborted) setRead({ id: missing, outline }); })
+      .catch(reason => { if (!controller.signal.aborted) setRead({ id: missing, error: getErrorMessage(reason) }); });
+    return () => controller.abort();
+  }, [missing, buckets]);
+  return { outline: settled?.outline, error: settled?.error ?? "" };
 }

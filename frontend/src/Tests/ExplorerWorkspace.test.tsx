@@ -128,6 +128,29 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("says how many proposals wait and opens them, and says nothing when none does", async () => {
+    const view = mount();
+    await loaded();
+    expect(screen.queryByRole("button", { name: /^Proposals/ })).toBeNull();
+    view.unmount();
+    const proposal = { id: "p1", name: "Pump vibration", reason: "The bearing ran hot.", author: "Night shift agent", author_kind: "agent",
+      status: "open", test_run_id: null, replace_monitor_id: null, decided_by: null, decided_at: null, decision_note: null,
+      created_at: "2026-11-12T08:00:00Z" };
+    const get = vi.mocked(apiUtils.get).getMockImplementation()!;
+    vi.mocked(apiUtils.get).mockImplementation(async (endpoint, options) => endpoint === "/v1/pipeline-proposals"
+      ? { items: [proposal] } : endpoint === "/v1/pipeline-components" ? { catalog_id: "c", authoring_enabled: true, templates: [], components: [] }
+        : get(endpoint, options));
+    const { router } = mount();
+    const waiting = await screen.findByRole("button", { name: "Proposals 1" });
+    expect(vi.mocked(apiUtils.get).mock.calls.find(([endpoint]) => endpoint === "/v1/pipeline-proposals")?.[1])
+      .toMatchObject({ params: { status: "open" } });
+    fireEvent.click(waiting);
+    expect(router.state.location.search).toBe("?view=proposals");
+    expect(await screen.findByRole("heading", { name: "Proposals" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Review Pump vibration" })).toBeTruthy();
+    expect(document.title).toContain("Proposals");
+  });
+
   it("waits for the catalogue before initializing a visual creation draft", async () => {
     let acceptSystem!: (value: SystemSnapshot) => void;
     let acceptWorkspace!: (value: { monitors: ActiveService[]; authoring_enabled: boolean }) => void;
@@ -369,7 +392,9 @@ describe("service-centred monitoring workspace", () => {
     const saved = snapshot();
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
     saved.runtime.ingress = { sources: { broker: { state: "connected" } } };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? saved : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? saved
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false }
+      : endpoint.includes("/measurements/buckets?") ? { representation: "raw", points: [], interval_ms: 0, sample_count: 0, extent: null, truncated: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).getByRole("status").textContent).toContain("Recording");
@@ -805,7 +830,9 @@ describe("reporting", () => {
   function withReports(items = reports(), document = fixture()) {
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot(document) : []);
     vi.mocked(apiUtils.post).mockImplementation(async (endpoint, query) =>
-      endpoint === "/v1/alarms/query" ? answer(items, query as AlarmQuery) : {});
+      endpoint === "/v1/alarms/query" ? answer(items, query as AlarmQuery)
+        : endpoint === "/v1/alarms/deletion-preview" ? { token: 'reviewed', count: 1, expires_at: new Date(Date.now() + 600_000).toISOString() }
+        : { count: 1 });
   }
 
   it("groups events by day under catalogue labels and narrows them with filters", async () => {
@@ -820,18 +847,19 @@ describe("reporting", () => {
     expect(days).toEqual(items.map(item => formatDay(item.timestamp)));
     // Alarms read under catalogue names, newest first.
     const rows = events.querySelectorAll(".rp-row");
-    expect([...rows].map(row => row.querySelector(".rp-type")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);
-    expect(rows[0]?.querySelector(".rp-entity")?.textContent).toBe("Room station");
-    expect(rows[0]?.querySelector(".rp-reading")?.textContent).toBe("Air temperature");
+    expect([...rows].map(row => row.querySelector(".rp-type > a")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);
+    expect(rows[0]?.querySelector(".rp-source-link")?.textContent).toBe("Room station");
+    expect(rows[0]?.querySelector(".rp-reading-links")?.textContent).toBe("Air temperature");
     expect(rows[0]?.querySelector(".rp-signal")?.textContent).toBe("p 0.0005");
-    expect(screen.getByText("Last anomaly").parentElement?.textContent).toContain("just now");
-    expect(screen.getByText("Affected devices").parentElement?.textContent).toContain("1");
+    expect(screen.getByText(/^Latest ·/).textContent).toBe("Latest · now");
+    expect(screen.getByText("1 device")).toBeTruthy();
+    expect(screen.getByText(/^Latest ·/).querySelector('time')?.title).toBeTruthy();
     fireEvent.change(within(events).getByRole("combobox", { name: "p-value" }), { target: { value: "0.001" } });
     await waitFor(() => expect(within(events).getByRole("status").textContent).toBe("1 event"));
     expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({ limit: 500, max_p_value: 0.001 });
     expect(within(events).queryByText("Humidity drift")).toBeNull();
     fireEvent.change(within(events).getByRole("combobox", { name: "Reading" }), { target: { value: "humidity" } });
-    expect(await within(events).findByText("No events match these filters.", { exact: false })).toBeTruthy();
+    expect(await within(events).findByText("No events match this scope and these filters.")).toBeTruthy();
     expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({
       limit: 500, max_p_value: 0.001, reading_id: "humidity" });
     fireEvent.click(within(events).getByRole("button", { name: "Clear filters" }));
@@ -864,7 +892,9 @@ describe("reporting", () => {
     await screen.findByText("Temperature spike");
     const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
     fireEvent.keyDown(menu!, { key: "Enter" });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Device readings", "Copy event ID"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Investigate anomaly", "Copy anomaly link", "Filter to Room station"]);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete all matching' })).toBeNull();
   });
 
   it("names devices and brokers, labels readings by device, and opens each one's details", async () => {
@@ -881,13 +911,15 @@ describe("reporting", () => {
     const options = within(within(events).getByRole("combobox", { name: "Reading" })).getAllByRole("option").map(item => item.textContent);
     expect(options).toContain("Wind · Building broker");
     expect(options).toContain("Air temperature · Room station");
-    const gust = [...events.querySelectorAll(".rp-row")].find(row => row.querySelector(".rp-type")?.textContent === "Gust")!;
-    expect(gust.querySelector(".rp-entity")?.textContent).toBe("Building broker");
-    expect(gust.querySelector(".rp-reading")?.textContent).toBe("multivariate");
-    expect(gust.querySelector(".rp-sensors")?.textContent).toBe("Wind, Rain");
-    fireEvent.keyDown(screen.getByRole("button", { name: /^Actions for Building broker at / }), { key: "Enter" });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Broker readings" }));
+    const gust = [...events.querySelectorAll(".rp-row")].find(row => row.querySelector(".rp-type > a")?.textContent === "Gust")!;
+    expect(gust.querySelector(".rp-source-link")?.textContent).toBe("Building broker");
+    expect(gust.querySelector(".rp-context")?.textContent).toBe("2 signals · joint result");
+    expect(gust.querySelector(".rp-reading-links")?.textContent).toBe("WindRain");
+    expect(within(gust as HTMLElement).getByRole('link', { name: 'Wind' }).getAttribute('href'))
+      .toBe('/details/broker/broker?event=gust&signal=wind');
+    fireEvent.click(within(gust as HTMLElement).getByRole('link', { name: 'Building broker' }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/details/broker/broker"));
+    expect(router.state.location.search).toBe('?event=gust');
   });
 
   it("keeps row actions in a menu and asks in the application dialog before deleting", async () => {
@@ -898,11 +930,12 @@ describe("reporting", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
     const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
     fireEvent.keyDown(menu!, { key: "Enter" });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Device readings", "Copy event ID", "Delete anomaly"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Investigate anomaly", "Copy anomaly link", "Filter to Room station", "Delete anomaly"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete anomaly" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this anomaly?" });
+    expect(apiUtils.post).toHaveBeenCalledWith('/v1/alarms/deletion-preview', { alarm_ids: ['new'] });
     expect(apiUtils.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete anomaly" }));
-    await waitFor(() => expect(apiUtils.delete).toHaveBeenCalledExactlyOnceWith("/v1/alarms/new"));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith('/v1/alarms/delete', { token: 'reviewed' }));
   });
 });

@@ -14,6 +14,7 @@ import {
   removeNode,
   replaceComponent,
   setNodeLabel,
+  stepTitle,
   type GraphDocument,
 } from "@/features/pipelines/model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "@/features/pipelines/slots";
@@ -22,6 +23,7 @@ import {
   normalizeLayout,
   type PipelineComponent,
 } from "@/features/pipelines/contracts";
+import { groupOf } from "./support/fixtures/pipelines";
 
 const definition = () =>
   normalizeDefinition({
@@ -45,6 +47,7 @@ const definition = () =>
 const components: PipelineComponent[] = definition().nodes.map((node) => ({
   id: node.component,
   kind: node.kind,
+  group: groupOf(node.kind),
   label: node.component,
   description: "",
   fields: [],
@@ -101,6 +104,7 @@ describe("visual pipeline documents", () => {
     const component: PipelineComponent = {
       id: "adaptive.standard_scaler",
       kind: "transform",
+      group: "normalize",
       label: "Scale",
       description: "",
       fields: [
@@ -128,7 +132,7 @@ describe("visual pipeline documents", () => {
 
   it("names a second Formula or Aggregate so the features they compute do not clash", () => {
     const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
-      id, kind: "transform", label: id, description: "", fields,
+      id, kind: "transform", group: "combine", label: id, description: "", fields,
     });
     const name = { name: "name", label: "Name", type: "string", has_default: true, nullable: true } as const;
     const formula = step("prepare.formula", [name]);
@@ -149,6 +153,7 @@ describe("visual pipeline documents", () => {
     const component: PipelineComponent = {
       id: "features.passthrough",
       kind: "transform",
+      group: "route",
       label: "Raw",
       description: "",
       fields: [],
@@ -206,11 +211,17 @@ describe("graph document helpers", () => {
     expect(next.edges).toHaveLength(4);
   });
 
-  it("titles a node at its default position when it has none", () => {
-    const next = setNodeLabel(graph(), "model", "Detector");
-    expect(next.layout.nodes.model).toMatchObject({ label: "Detector" });
-    expect(typeof next.layout.nodes.model?.x).toBe("number");
-    expect(setNodeLabel(graph(), "raw", "Raw").layout.nodes.raw).toMatchObject({ x: 0, y: 100, label: "Raw" });
+  it("keeps a step's title in the design", () => {
+    const titled = setNodeLabel(graph(), "model", "Detector");
+    const model = (document: GraphDocument) => document.definition.nodes.find((node) => node.id === "model")!;
+    expect(model(titled).label).toBe("Detector");
+    expect(stepTitle(model(titled))).toBe("Detector");
+    // The drawing is as it was: a title is not where a card stands.
+    expect(titled.layout).toEqual(graph().layout);
+    // Without a title the step goes by the name of its component again.
+    const untitled = setNodeLabel(titled, "model", "");
+    expect(model(untitled)).not.toHaveProperty("label");
+    expect(stepTitle(model(untitled))).toBe("");
   });
 
   it("adds the first free input slot and edits slots by id", () => {

@@ -40,17 +40,17 @@ Shared steps live in `.github/actions/setup-backend` (Python, the pinned uv rele
 and the locked backend sync). Test lanes select their tests by pytest marker; see
 [Testing and debugging](testing-debugging.md#radar-production-integration).
 
-### Pull requests and the merge queue
+### Pull requests and main
 
 Every push to a pull request runs only the fast suites of its plan: `lint`,
 `backend`, `frontend`, `frontend browser` and `contracts`. The heavy suites
 (`images`, both `deployment-smoke` lanes, `radar`, `collection`, `infrastructure`
-and `worker observability`) run once in the merge queue, on exactly the commit
-that lands on `main`, and again on the `main` push that releases it. A pull
-request is merged by adding it to the queue; the queue may test several pull
-requests together and removes one that fails.
+and `worker observability`) run on the `main` push after merging; a release
+deploys only when they pass. A green pull request merges directly: the branch
+rule does not require it to be up to date with `main`, so merging another pull
+request does not re-run its tests.
 
-To run the heavy suites on a pull request before queueing it, for example for a
+To run the heavy suites on a pull request before merging it, for example for a
 deployment or broker change, add the `full-ci` label and re-run CI (or push). The
 planner reads the labels when the run starts, and runs the whole plan if it
 cannot read them. Run `make check` before pushing; see

@@ -15,8 +15,7 @@ error selects the full plan.
 
 Pull requests run only the fast suites of their plan. The heavy suites (image
 builds, Swarm rehearsals, RADAR, collection, infrastructure, observability)
-run once in the merge queue, which tests exactly what lands on main, and on
-the main push. A pull request labelled `full-ci` runs its whole plan; the
+run on the main push after merging, which deployment requires to pass. A pull request labelled `full-ci` runs its whole plan; the
 label is read when the run starts, so re-running CI after adding it is enough.
 If the labels cannot be read, the pull request runs its whole plan. Manual runs are always full. A main push compares
 against the newest ancestor whose main CI run kept full release evidence, so a
@@ -67,7 +66,7 @@ SELECTED = {
     "published-docs": {"static", "static-release"},
     "static": {"static", "static-release"},
 }
-# Suites a pull request leaves to the merge queue unless it carries FULL_CI_LABEL.
+# Suites a pull request leaves to the main push unless it carries FULL_CI_LABEL.
 HEAVY = {
     "infrastructure",
     "collection",
@@ -231,13 +230,13 @@ def wants_full_ci(event, api=None):
 
 
 def defer_heavy(event_name, event, mode, jobs, reason, api=None):
-    """Leave a pull request's heavy suites to the merge queue."""
+    """Leave a pull request's heavy suites to the main push."""
     if event_name != "pull_request" or not any(jobs[job] for job in HEAVY):
         return mode, jobs, reason
     if wants_full_ci(event, api):
         return mode, jobs, f"{reason}; {FULL_CI_LABEL} label runs the whole plan"
     jobs = {job: run and job not in HEAVY for job, run in jobs.items()}
-    return mode, jobs, f"{reason}; heavy suites run in the merge queue"
+    return mode, jobs, f"{reason}; heavy suites run on the main push"
 
 
 def plan(event_name, event, head, repository, api=None, ancestor=None):

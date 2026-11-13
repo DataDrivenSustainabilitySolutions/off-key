@@ -456,7 +456,7 @@ PULL_REQUEST_7 = {"pull_request": {"number": 7}}
 
 
 class PullRequestDeferralTests(unittest.TestCase):
-    """Pull requests leave the heavy suites to the merge queue unless asked."""
+    """Pull requests leave the heavy suites to the main push unless asked."""
 
     @staticmethod
     def labels(*names):
@@ -478,7 +478,7 @@ class PullRequestDeferralTests(unittest.TestCase):
         self.assertEqual(
             selected(jobs), {"lint", "backend", "frontend", "frontend-browser"}
         )
-        self.assertIn("merge queue", reason)
+        self.assertIn("main push", reason)
         frontend = plan.plan_for("frontend", "pull_request")
         _, jobs, _ = self.defer("pull_request", frontend, self.labels())
         self.assertEqual(

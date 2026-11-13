@@ -9,8 +9,8 @@ name: CI
 # static content and frontend-only changes skip suites whose inputs did not change; everything
 # else, and anything uncertain, runs every job. Pull requests run only the fast
 # suites; the heavy ones (images, Swarm rehearsals, RADAR, collection,
-# infrastructure, observability) run in the merge queue and on the main push,
-# or on a pull request labelled full-ci. Cheap checks run first, so a lint
+# infrastructure, observability) run on the main push, which deploys only if
+# they pass, or on a pull request labelled full-ci. Cheap checks run first, so a lint
 # failure stops the image builds and disposable Swarms before they start.
 on:
   pull_request:

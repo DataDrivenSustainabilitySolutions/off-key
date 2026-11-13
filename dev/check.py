@@ -150,7 +150,7 @@ def main():
         if subprocess.run(step, check=False, **env_dir).returncode:
             print("Fix this before pushing; CI would fail on it too.")
             return 1
-    print("Fast checks passed. The merge queue runs the heavy suites.")
+    print("Fast checks passed. The heavy suites run on main after merging.")
     return 0
 
 

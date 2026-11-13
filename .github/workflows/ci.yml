@@ -7,8 +7,11 @@ name: CI
 #
 # The changes job plans the run (.github/scripts/ci_plan.py): root-Markdown-only
 # static content and frontend-only changes skip suites whose inputs did not change; everything
-# else, and anything uncertain, runs every job. Cheap checks run first, so a
-# lint failure stops the image builds and disposable Swarms before they start.
+# else, and anything uncertain, runs every job. Pull requests run only the fast
+# suites; the heavy ones (images, Swarm rehearsals, RADAR, collection,
+# infrastructure, observability) run in the merge queue and on the main push,
+# or on a pull request labelled full-ci. Cheap checks run first, so a lint
+# failure stops the image builds and disposable Swarms before they start.
 on:
   pull_request:
   push:
@@ -35,6 +38,8 @@ jobs:
       contents: read
       # A main push compares against the newest run that kept release evidence.
       actions: read
+      # A pull request reads its labels to see whether it asked for full-ci.
+      pull-requests: read
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       plan: ${{ steps.plan.outputs.plan }}

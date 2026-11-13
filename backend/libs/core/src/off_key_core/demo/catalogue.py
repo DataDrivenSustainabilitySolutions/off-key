@@ -24,12 +24,11 @@ Identifier = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,60}$")]
 class FeedSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    hsl_vehicle: str = Field(default="0040/00639", pattern=r"^\d{4}/\d{5}$")
+    weather_station: int = Field(default=4057, gt=0, lt=1_000_000)
+    traffic_station: int = Field(default=23438, gt=0, lt=1_000_000)
     hamburg_detectors: list[Annotated[int, Field(gt=0)]] = Field(
         default_factory=lambda: [13, 30], min_length=1, max_length=3
     )
-    marine_mmsi: str = Field(default="372777000", pattern=r"^\d{9}$")
-    rail_train: str = Field(default="38", pattern=r"^\d{1,6}$")
     solar_inverter: Identifier = "INV_001_001"
 
     @field_validator("hamburg_detectors")
@@ -40,21 +39,36 @@ class FeedSelection(BaseModel):
         return values
 
 
+# Digitraffic road sensor ids by normalized field. Both networks report every
+# station around the clock, about once a minute.
+WEATHER_SENSORS = {
+    "air_temperature": 1,
+    "road_temperature": 3,
+    "wind_speed": 16,
+    "humidity": 21,
+}
+TRAFFIC_SENSORS = {
+    "volume_1": 5116,
+    "volume_2": 5119,
+    "speed_1": 5122,
+    "speed_2": 5125,
+}
+
 # (field in normalized message, visible label, unit)
 FIELDS = {
-    "hsl": [
-        ("speed", "Speed", "m/s"),
-        ("acceleration", "Acceleration", "m/s²"),
-        ("delay", "Schedule offset", "s"),
-        ("doors", "Doors open", None),
+    "weather": [
+        ("air_temperature", "Air temperature", "°C"),
+        ("road_temperature", "Road surface temperature", "°C"),
+        ("wind_speed", "Mean wind speed", "m/s"),
+        ("humidity", "Relative humidity", "%"),
+    ],
+    "traffic": [
+        ("volume_1", "Vehicles per hour, direction 1", "1/h"),
+        ("volume_2", "Vehicles per hour, direction 2", "1/h"),
+        ("speed_1", "Average speed, direction 1", "km/h"),
+        ("speed_2", "Average speed, direction 2", "km/h"),
     ],
     "hamburg": [("occupancy", "Occupancy", "%")],
-    "marine": [
-        ("speed", "Speed over ground", "kn"),
-        ("course", "Course", "°"),
-        ("heading", "Heading", "°"),
-    ],
-    "rail": [("speed", "Speed", "km/h")],
     "solar": [
         ("power", "AC power", "kW"),
         ("voltage", "DC voltage", "V"),
@@ -66,10 +80,9 @@ FIELDS = {
 
 def entities(selection: FeedSelection) -> dict[str, list[str]]:
     return {
-        "hsl": [selection.hsl_vehicle],
+        "weather": [str(selection.weather_station)],
+        "traffic": [str(selection.traffic_station)],
         "hamburg": [str(value) for value in selection.hamburg_detectors],
-        "marine": [selection.marine_mmsi],
-        "rail": [selection.rail_train],
         "solar": [selection.solar_inverter],
     }
 

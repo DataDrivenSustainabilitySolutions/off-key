@@ -58,6 +58,16 @@ class PublicDemoTests(unittest.TestCase):
             compiled = load_script("compile_stack").compile_stack(model)
             run("docker", "stack", "config", "-c", "-", input=json.dumps(compiled))
             services = model["services"]
+            # One labelled worker runs the demo; only the socket proxy needs a manager.
+            placed = {
+                name: service["deploy"]["placement"]["constraints"]
+                for name, service in services.items()
+                if service.get("deploy", {}).get("placement")
+            }
+            self.assertEqual(placed.pop("socket-proxy"), ["node.role == manager"])
+            self.assertTrue(placed)
+            for name, constraints in placed.items():
+                self.assertEqual(constraints, ["node.labels.offkey-demo == true"], name)
             self.assertTrue({"demo-relay", "demo-broker"} <= services.keys())
             self.assertTrue(
                 {

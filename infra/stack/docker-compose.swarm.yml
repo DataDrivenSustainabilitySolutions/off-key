@@ -14,7 +14,7 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: [node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 
@@ -40,7 +40,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 
@@ -64,7 +64,7 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: [node.labels.frontend == true ]
+        constraints: ["${FRONTEND_CONSTRAINT:-node.labels.frontend == true}"]
       restart_policy:
         condition: any
 
@@ -123,7 +123,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [ node.labels.frontend == true ]
+        constraints: ["${FRONTEND_CONSTRAINT:-node.labels.frontend == true}"]
       restart_policy:
         condition: any
 
@@ -142,7 +142,7 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: [ node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 
@@ -164,7 +164,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [ node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 
@@ -191,7 +191,7 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: [ node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       resources:
         limits:
           memory: ${FORECAST_MEMORY_LIMIT:-4G}
@@ -214,7 +214,7 @@ services:
     deploy:
       replicas: 2
       placement:
-        constraints: [ node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 
@@ -229,7 +229,7 @@ services:
     deploy:
       replicas: 0
       placement:
-        constraints: [ node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 
@@ -257,7 +257,7 @@ services:
     deploy:
       replicas: 1
       placement:
-        constraints: [ node.labels.backend == true ]
+        constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
 

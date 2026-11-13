@@ -7,7 +7,7 @@ import pytest
 from off_key_core.demo.catalogue import FeedSelection, catalogue
 from off_key_core.demo.sources import public_sources
 from off_key_core.schemas.system import SystemDocument
-from off_key_mqtt_proxy.demo.normalize import Normalizer
+from off_key_mqtt_proxy.demo.normalize import DEFAULT_MAX_AGE, MAX_AGE, Normalizer
 from off_key_mqtt_proxy.demo.relay import feeds
 
 NOW = 1_794_475_800.0
@@ -15,37 +15,21 @@ ISO = datetime.fromtimestamp(NOW, UTC).isoformat()
 SELECTION = FeedSelection()
 MESSAGES = [
     (
-        "hsl",
-        "/hfp/v2/journey/ongoing/vp/tram/0040/00639/route/location",
-        {
-            "VP": {
-                "oper": 40,
-                "veh": 639,
-                "tst": ISO,
-                "spd": 7.5,
-                "acc": -0.2,
-                "dl": -30,
-                "drst": 0,
-            }
-        },
-        4,
+        "weather",
+        "weather-v2/4057/3",
+        {"value": -1.4, "time": int(NOW)},
+        1,
+    ),
+    (
+        "traffic",
+        "tms-v2/23438/5122",
+        {"value": 87, "time": int(NOW), "start": int(NOW) - 300, "end": int(NOW)},
+        1,
     ),
     (
         "hamburg",
         "v1.1/Datastreams(13)/Observations",
         {"phenomenonTime": ISO, "result": 35},
-        1,
-    ),
-    (
-        "marine",
-        "vessels-v2/372777000/location",
-        {"time": NOW * 1000, "sog": 12.1, "cog": 42, "heading": 41},
-        3,
-    ),
-    (
-        "rail",
-        "train-locations/2026-11-12/38",
-        {"timestamp": ISO, "trainNumber": 38, "speed": 130},
         1,
     ),
     (
@@ -93,38 +77,40 @@ def test_retained_old_and_future_observations_never_appear_live(
     assert (
         normalizer.messages(source, topic, wire, received_at=NOW, retained=True) == []
     )
-    assert normalizer.messages(source, topic, wire, received_at=NOW + 121) == []
+    max_age = MAX_AGE.get(source, DEFAULT_MAX_AGE)
+    assert normalizer.messages(source, topic, wire, received_at=NOW + max_age + 1) == []
     assert normalizer.messages(source, topic, wire, received_at=NOW - 11) == []
 
 
-def test_moving_hsl_topics_do_not_duplicate_or_change_entity():
+def test_road_feeds_take_only_the_selected_station_and_known_sensors():
     normalizer = Normalizer(SELECTION)
-    source, topic, payload, _ = MESSAGES[0]
-    wire = json.dumps(payload).encode()
-    assert len(normalizer.messages(source, topic, wire, received_at=NOW)) == 4
-    assert normalizer.messages(source, topic + "/moved", wire, received_at=NOW) == []
-    payload = {"VP": payload["VP"] | {"veh": 640}}
+    reading = json.dumps({"value": 3.0, "time": int(NOW)}).encode()
+    for topic in (
+        "weather-v2/9999/3",
+        "weather-v2/4057/999",
+        "weather-v2/status",
+        "tms-v2/23438",
+    ):
+        source = topic.split("-")[0].replace("tms", "traffic")
+        assert normalizer.messages(source, topic, reading, received_at=NOW) == []
+    status = json.dumps({"updated": int(NOW)}).encode()
     assert (
-        normalizer.messages(
-            source, topic, json.dumps(payload).encode(), received_at=NOW
-        )
+        normalizer.messages("weather", "weather-v2/status", status, received_at=NOW)
         == []
     )
+    assert normalizer.latest == {}
+    [(destination, _)] = normalizer.messages(
+        "traffic", "tms-v2/23438/5116", reading, received_at=NOW + 300
+    )
+    assert destination == "demo/traffic/23438/volume_1"
 
 
-def test_multiplexed_assets_and_ais_unavailable_values_are_not_scored():
+def test_multiplexed_assets_are_not_scored():
     normalizer = Normalizer(SELECTION)
-    payload = MESSAGES[4][2] | {"Inverter_ID": "another-inverter"}
+    payload = MESSAGES[3][2] | {"Inverter_ID": "another-inverter"}
     assert (
         normalizer.messages(
             "solar", "inverters", json.dumps(payload).encode(), received_at=NOW
-        )
-        == []
-    )
-    payload = MESSAGES[2][2] | {"sog": 102.3, "cog": 360, "heading": 511}
-    assert (
-        normalizer.messages(
-            "marine", MESSAGES[2][1], json.dumps(payload).encode(), received_at=NOW
         )
         == []
     )
@@ -135,7 +121,7 @@ def test_multiplexed_assets_and_ais_unavailable_values_are_not_scored():
 )
 def test_malformed_messages_are_ignored_without_growing_state(wire):
     normalizer = Normalizer(SELECTION)
-    assert normalizer.messages("hsl", "unexpected", wire, received_at=NOW) == []
+    assert normalizer.messages("weather", "unexpected", wire, received_at=NOW) == []
     assert normalizer.latest == {}
 
 
@@ -146,24 +132,25 @@ def test_catalogue_roundtrips_and_changed_entities_get_new_reading_ids():
         == document
     )
     assert (
-        len(document.connections) == len(public_sources()) == len(feeds(SELECTION)) == 5
+        len(document.connections) == len(public_sources()) == len(feeds(SELECTION)) == 4
     )
     assert len(document.streams) == 14
     assert {source["id"] for source in public_sources()} == {
-        "hsl",
+        "weather",
+        "traffic",
         "hamburg",
-        "marine",
-        "rail",
         "solar",
     }
     before = {
         reading.id
         for reading in document.streams
-        if reading.connection_id == "demo-hsl"
+        if reading.connection_id == "demo-weather"
     }
-    changed = catalogue(SELECTION.model_copy(update={"hsl_vehicle": "0040/00640"}))
+    changed = catalogue(SELECTION.model_copy(update={"weather_station": 1012}))
     after = {
-        reading.id for reading in changed.streams if reading.connection_id == "demo-hsl"
+        reading.id
+        for reading in changed.streams
+        if reading.connection_id == "demo-weather"
     }
     assert before.isdisjoint(after)
 

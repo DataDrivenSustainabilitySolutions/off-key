@@ -20,13 +20,8 @@ from .relay import feeds, subscriber
 
 
 def candidate(source: str, mqtt_topic: str, data: dict) -> dict:
-    if source == "hsl":
-        record = data["VP"]
-        return {"hsl_vehicle": f"{int(record['oper']):04d}/{int(record['veh']):05d}"}
-    if source == "marine":
-        return {"marine_mmsi": mqtt_topic.split("/")[1]}
-    if source == "rail":
-        return {"rail_train": str(data["trainNumber"])}
+    if source in ("weather", "traffic"):
+        return {f"{source}_station": int(mqtt_topic.split("/")[1])}
     if source == "solar":
         return {"solar_inverter": data["Inverter_ID"]}
     return {}
@@ -74,9 +69,9 @@ def probe(selection: FeedSelection, seconds: int, discover: bool) -> FeedSelecti
     counts: dict[str, int] = {}
     clients = []
     discovery = {
-        "hsl": ("/hfp/v2/journey/ongoing/vp/tram/#",),
-        "marine": ("vessels-v2/+/location",),
-        "rail": ("train-locations/#",),
+        # One sensor per network, so the first station heard is one that reports.
+        "weather": ("weather-v2/+/1",),
+        "traffic": ("tms-v2/+/5122",),
         "solar": ("inverters",),
     }
 

@@ -1,6 +1,9 @@
 ---
 # Replace the fake addresses, users and inventory names with the existing Swarm nodes.
 # Names MUST match docker node ls. Do not add local SSH key paths or proxy commands.
+# The demo runs on ONE worker (labelled offkey-demo=true, see vars.yml), so list that
+# worker as both the backend and the frontend node. The manager only deploys the stack
+# and hosts the demo's socket proxy.
 all:
   children:
     swarm_manager:
@@ -13,13 +16,10 @@ all:
       children:
         swarm_backend:
           hosts:
-            backend:
+            demo-worker:
               ansible_host: 100.100.10.2
               ansible_user: deploy
               ansible_port: 2222
         swarm_frontend:
           hosts:
-            frontend:
-              ansible_host: 100.100.10.3
-              ansible_user: deploy
-              ansible_port: 2222
+            demo-worker:

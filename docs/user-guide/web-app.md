@@ -202,6 +202,35 @@ Device details at `/details/:deviceId` show a device's recorded readings with
 category and time-range controls. Readings of a broker that have no device open
 at `/details/broker/:brokerId`.
 
+Numeric history automatically shows bucket averages when readings are too dense
+to distinguish, with a faint band for each bucket's minimum and maximum. Zooming
+in restores individual samples when they fit. Hover a point for its interval,
+range and sample count. Boolean states remain unchanged.
+
+Every pane of a chart shares the same intervals, and each kind of series is
+summarised by what it means:
+
+| Series | In each interval | Why |
+| --- | --- | --- |
+| Reading, detector input | Mean, with a band from its lowest to its highest value | The level and how far values strayed from it |
+| Forecast | Mean of the expected value and of each bound | It is compared with the mean of its input |
+| Anomaly score, sequential evidence | The highest recorded result; an alarm wins over a higher quiet result | A mean would average an alarm away |
+| Boolean state | Every change | A state has no average |
+
+A score's interval result is a real recorded observation, so its threshold and
+alarm state stay exact; the tooltip says how many results it is the highest of.
+A reading with long pauses still draws every burst, and a value with no
+neighbour is drawn as a dot. The thresholds and alarm zones are those of every
+result, so they are identical in both modes.
+
+The waveform button beside the zoom controls switches automatic averaging on or
+off without changing the selected time range. It applies to every pane of the
+chart. Its highlight indicates automatic
+mode; hover or focus it for the current averaging interval. In Raw mode, a
+reading's **Values** disclosure also exposes exact timestamps and values. If a
+recorded range contains more than 10,000 samples, Raw shows the newest 10,000 and
+asks you to zoom in to inspect earlier values.
+
 ## Data-source activity
 
 Topic and reading circles in the catalogue show activity from a live preview or

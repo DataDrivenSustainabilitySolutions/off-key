@@ -9,6 +9,8 @@ const echartsMock = vi.hoisted(() => {
     setOption: ReturnType<typeof vi.fn>;
     setTheme: ReturnType<typeof vi.fn>;
     resize: ReturnType<typeof vi.fn>;
+    getWidth: ReturnType<typeof vi.fn>;
+    getHeight: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
@@ -21,6 +23,8 @@ const echartsMock = vi.hoisted(() => {
       setOption: vi.fn(),
       setTheme: vi.fn(),
       resize: vi.fn(),
+      getWidth: vi.fn(() => 800),
+      getHeight: vi.fn(() => 356),
       dispose: vi.fn(),
       on: vi.fn((event: string, handler: (payload: unknown) => void) => {
         handlers.set(event, handler);
@@ -149,6 +153,23 @@ describe("EChart lifecycle", () => {
       silent: true,
     });
     expect(echartsMock.init).toHaveBeenCalledTimes(1);
+  });
+
+  it("resizes again when the canvas kept the size from before the resize", () => {
+    const { getByTestId } = render(<EChart option={option("telemetry")} resolvedTheme="light" accessibleDescription="Voltage telemetry" />);
+    const instance = echartsMock.instances[0]!;
+    // The canvas zrender creates while a chart grows before its first paint: still the old height.
+    const canvas = document.createElement("canvas");
+    Object.defineProperties(canvas, { clientWidth: { value: 800 }, clientHeight: { value: 208, writable: true } });
+    getByTestId("telemetry-echart").append(canvas);
+
+    act(() => resizeCallbacks[0]?.([], {} as ResizeObserver));
+    expect(instance.resize.mock.calls).toEqual([[{ silent: true }], [{ width: 801, silent: true }], [{ width: "auto", silent: true }]]);
+
+    instance.resize.mockClear();
+    (canvas as { clientHeight: number }).clientHeight = 356;
+    act(() => resizeCallbacks[0]?.([], {} as ResizeObserver));
+    expect(instance.resize.mock.calls).toEqual([[{ silent: true }]]);
   });
 
   it("rebuilds axis indices when readings change while retaining the chart and explicit viewport", () => {

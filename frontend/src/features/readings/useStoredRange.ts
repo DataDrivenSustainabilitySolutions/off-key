@@ -1,9 +1,9 @@
-import { epochMilliseconds } from "@/lib/timestamps";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePollingLoop } from "@/hooks/use-polling";
-import { getTelemetryRange } from "@/lib/charger-api";
+import { getTelemetryHistory } from "@/lib/charger-api";
 import type { ReadingMonitoringBinding } from "@/domain/readings/readingMonitoring";
-import type { TelemetryDataPoint } from "@/types/charger";
+import type { HistoryPreference, TelemetryHistory } from "@/types/telemetry-history";
+import { historyInterval } from "@/features/charts/history-presentation";
 
 export const RANGE_PRESETS = [
   { id: "1h", label: "1h", title: "Last hour", spanMs: 3_600_000 },
@@ -14,59 +14,80 @@ export const RANGE_PRESETS = [
 export type RangePresetId = (typeof RANGE_PRESETS)[number]["id"];
 export const rangePreset = (id: string) => RANGE_PRESETS.find((preset) => preset.id === id) ?? RANGE_PRESETS[0];
 
-/** Points per request: each bucket returns its lowest and highest value, so at most twice this. */
-const RANGE_BUCKETS = 600;
-const OVERVIEW_REFRESH_MS = 60_000;
-const DETAIL_DELAY_MS = 250;
-
 type Window = { startMs: number; endMs: number };
-type Loaded = { key: string; points: TelemetryDataPoint[] };
+type Loaded = { scope: string; key: string; data?: TelemetryHistory; error?: string };
+const DEFAULT_VIEW: HistoryPreference = { mode: "auto" };
+const RETRY_MS = 5000, SLOWEST_REFRESH_MS = 60_000;
+/** A failed request is asked again soon. A hidden page pauses that, and showing it again resumes it. */
+const RETRY = { intervalMs: RETRY_MS, schedule: "after-completion", pauseWhenHidden: true, resumeOnVisible: true,
+  initialRun: false } as const;
 
 /**
- * Stored history for a recorded reading: a downsampled overview of the chosen
- * span, refreshed each minute, and a finer fetch of the window being inspected,
- * so zooming in recovers detail the overview's buckets summarised.
+ * A mean only changes as its interval fills, so the overview is asked again twice per
+ * interval: every few seconds for the last hour, once a minute for a week. Original
+ * samples and the whole history refresh each minute; the chart appends live values itself.
  */
-export function useStoredRange(binding: ReadingMonitoringBinding | undefined, spanMs: number | undefined, inspected?: Window) {
+export const overviewRefreshMs = (spanMs: number | undefined, { mode, windowMs }: HistoryPreference, buckets: number): number =>
+  mode === "raw" || spanMs === undefined ? SLOWEST_REFRESH_MS
+    : Math.min(SLOWEST_REFRESH_MS, Math.max(RETRY_MS, historyInterval(spanMs, buckets, windowMs) / 2));
+
+/** Fetch original samples or real bucket statistics. Inspection freezes the overview. */
+export function useStoredRange(binding: ReadingMonitoringBinding | undefined, spanMs: number | undefined,
+  inspected?: Window, preference = DEFAULT_VIEW, buckets = 100) {
   const readingId = binding?.readingId;
-  const overviewKey = readingId ? JSON.stringify([readingId, spanMs ?? "all"]) : undefined;
+  const scope = readingId ? JSON.stringify([readingId, spanMs ?? "all"]) : "";
+  const { mode: view, windowMs } = preference;
+  const key = JSON.stringify([scope, view, windowMs, buckets]);
+  const startMs = inspected?.startMs, endMs = inspected?.endMs;
+  const inspecting = inspected !== undefined;
+  const detailKey = JSON.stringify([key, startMs, endMs]);
   const [overview, setOverview] = useState<Loaded>();
-  const [detail, setDetail] = useState<Loaded & Window>();
+  const [detail, setDetail] = useState<Loaded>();
 
   const loadOverview = useCallback(async (signal: AbortSignal) => {
-    if (!overviewKey || !readingId) return;
+    if (!readingId) return;
     try {
-      const points = await getTelemetryRange(readingId,
-        { startMs: spanMs === undefined ? undefined : Date.now() - spanMs, buckets: RANGE_BUCKETS }, signal);
-      if (!signal.aborted) setOverview({ key: overviewKey, points });
+      const data = await getTelemetryHistory(readingId, {
+        startMs: spanMs === undefined ? undefined : Date.now() - spanMs,
+        buckets, view, windowMs,
+      }, signal);
+      if (!signal.aborted) setOverview({ scope, key, data });
     } catch {
-      // Live and recently collected values still draw; the next refresh retries.
+      if (!signal.aborted) setOverview(previous => ({ scope, key,
+        data: previous?.key === key ? previous.data : undefined,
+        error: "History could not be updated. Retrying automatically." }));
     }
-  }, [overviewKey, readingId, spanMs]);
-  usePollingLoop(loadOverview, { enabled: !!overviewKey, intervalMs: OVERVIEW_REFRESH_MS, schedule: "after-completion",
-    pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
+  }, [readingId, spanMs, buckets, view, windowMs, scope, key]);
+  const live = !!readingId && !inspected;
+  usePollingLoop(loadOverview, { enabled: live, intervalMs: overviewRefreshMs(spanMs, preference, buckets),
+    schedule: "after-completion", pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
+  // A failure does not wait for the next refresh.
+  usePollingLoop(loadOverview, { ...RETRY, enabled: live && overview?.key === key && !!overview.error });
 
-  const startMs = inspected?.startMs, endMs = inspected?.endMs;
+  const loadDetail = useCallback(async (signal: AbortSignal) => {
+    if (!readingId || startMs === undefined || endMs === undefined) return;
+    try {
+      const data = await getTelemetryHistory(readingId, { startMs, endMs, buckets, view, windowMs }, signal);
+      if (!signal.aborted) setDetail({ scope, key: detailKey, data });
+    } catch {
+      if (!signal.aborted) setDetail(previous => ({ scope, key: detailKey,
+        data: previous?.key === detailKey ? previous.data : undefined,
+        error: "This interval could not be loaded. Retrying automatically." }));
+    }
+  }, [readingId, startMs, endMs, buckets, view, windowMs, scope, detailKey]);
+  // Debounce drag events. An inspected window is fixed, so it loads once and is only
+  // asked for again after a failed request.
   useEffect(() => {
-    if (!overviewKey || !readingId || startMs === undefined || endMs === undefined) return;
+    if (!readingId || !inspecting) return;
     const controller = new AbortController();
-    const timer = setTimeout(() => {
-      getTelemetryRange(readingId, { startMs, endMs, buckets: RANGE_BUCKETS }, controller.signal)
-        .then((points) => { if (!controller.signal.aborted) setDetail({ key: overviewKey, startMs, endMs, points }); })
-        .catch(() => {});
-    }, DETAIL_DELAY_MS);
+    const timer = setTimeout(() => { void loadDetail(controller.signal); }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [overviewKey, readingId, startMs, endMs]);
+  }, [readingId, inspecting, loadDetail]);
+  usePollingLoop(loadDetail, { ...RETRY, enabled: !!readingId && inspecting && detail?.key === detailKey && !!detail.error });
 
   return useMemo(() => {
-    const base = overview && overview.key === overviewKey ? overview.points : [];
-    if (!detail || detail.key !== overviewKey || startMs === undefined) return base;
-    // The finer points replace the overview only across the window they cover.
-    const inside = (point: TelemetryDataPoint) => {
-      const time = epochMilliseconds(point.timestamp);
-      return time >= detail.startMs && time <= detail.endMs;
-    };
-    return [...base.filter((point) => !inside(point)), ...detail.points]
-      .sort((left, right) => epochMilliseconds(left.timestamp) - epochMilliseconds(right.timestamp));
-  }, [overview, detail, overviewKey, startMs]);
+    const selected = inspected ? detail?.key === detailKey ? detail : undefined : overview?.key === key ? overview : undefined;
+    return { history: selected?.data, overview: overview?.scope === scope ? overview.data : undefined,
+      loading: !!readingId && !selected, error: selected?.error ?? "" };
+  }, [readingId, inspected, detail, detailKey, overview, key, scope]);
 }

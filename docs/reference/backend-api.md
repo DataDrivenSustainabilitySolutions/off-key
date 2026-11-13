@@ -139,8 +139,19 @@ values are stored.
 | `GET` | `/devices` | Catalogue devices with their `reading_ids`, `online` and `last_seen` | Query: optional `active` |
 | `GET` | `/devices/{device_id}/readings` | The catalogue readings of one device | Path: `device_id` |
 | `GET` | `/readings/{reading_id}/measurements` | Recorded values of one reading | Query: `limit`, cursor fields, `paginated` |
-| `GET` | `/readings/{reading_id}/measurements/buckets` | A downsampled range: each time bucket's lowest and highest value | Query: `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
+| `GET` | `/readings/{reading_id}/measurements/buckets` | Recorded history as original samples, averages with ranges, or legacy extrema | Query: `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600), optional `view` (`auto` or `raw`), `window_ms` |
 | `GET` | `/readings/{reading_id}/profile` | What the reading looks like: interval, range, gaps, daily and weekly rhythm, flat spells | Query: `days` (1–90, default 14) |
+
+With `view=auto`, dense ranges return epoch-aligned bucket means calculated from
+the original measurements, plus `minimum`, `maximum`, `count`, `start` and `end`.
+Sparse ranges return original samples. `window_ms` optionally sets a minimum
+averaging interval (1–86,400,000 ms); wider ranges may require a larger interval.
+`view=raw` always returns original samples, capped at the newest 10,000. Both
+views use an envelope with `representation` (`raw` or `mean`), `points`,
+`interval_ms`, `sample_count`, `extent` and `truncated`. Counts and extent describe
+the whole requested range, including samples omitted by the raw cap. Empty
+buckets are omitted. Without `view`, the response remains the legacy list of
+bucket extrema.
 
 A profile says what a reading looks like, so a design can be fitted to it
 without reading its history:

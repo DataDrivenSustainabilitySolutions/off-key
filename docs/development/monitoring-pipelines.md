@@ -481,15 +481,24 @@ calibration step that runs inside it, and a sentence where a step gave nothing.
 The service Evidence tab presents one timeline for its recorded inputs and joint
 detector result. Readings retain independent scales and units; the raw anomaly
 score (or logarithmic static evidence) appears once below them. A dashed line
-shows the threshold, red input lines mark service alarms, and score dots mark
-alarms from the selected detector. An alarm a Mute alarms step held back is an
+shows the threshold. On the inputs, a red line marks where a service alarm began
+and red shading how long it lasted: consecutive alarm results are one episode,
+which the next quiet result ends, and episodes the chart is too narrow to
+separate are drawn as one. A dot on the score marks where the selected detector's
+alarm begins. An alarm a Mute alarms step held back is an
 open dot, and the key names open dots only when the chart shows one. The view works with multivariate models such
 as online isolation forest and does not infer per-sensor attribution or a baseline.
+
+Dense history is summarised per interval, with one interval for every pane:
+inputs and detector inputs by their mean and range, the score by its highest
+recorded result (`detection-summary.ts`). The waveform button switches to the
+original samples and results. See the web app guide for the rule per series.
 
 Up to six input tracks may be displayed simultaneously. Changing that selection
 only changes the view: results still describe the service's complete input set.
 Shared hover uses each result's original input timestamps to retrieve its exact
-recorded readings. Missing input history is labelled unavailable, never replaced
+recorded readings; over summarised history it names the interval, each mean and
+range, and the highest result instead. Missing input history is labelled unavailable, never replaced
 with a nearby observation or a synthetic zero. Zoom and keyboard navigation apply
 to every track and remain fixed during inspection as new data arrives.
 

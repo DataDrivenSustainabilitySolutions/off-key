@@ -5,6 +5,7 @@
 
 import { EVIDENCE_PAGE_SIZE } from "./forward-pages";
 import { isoTimestamp } from "./timestamps";
+import type { HistoryRequest } from "@/types/telemetry-history";
 
 export const API_CONFIG = {
   // Same-origin in every mode: Vite's dev proxy and the production nginx
@@ -42,12 +43,14 @@ export const API_CONFIG = {
       },
       BUCKETS: (
         readingId: string,
-        { startMs, endMs, buckets }: { startMs?: number; endMs?: number; buckets?: number },
+        { startMs, endMs, buckets, view, windowMs }: HistoryRequest,
       ) => {
         const params = new URLSearchParams();
         if (startMs !== undefined) params.append('start', isoTimestamp(startMs));
         if (endMs !== undefined) params.append('end', isoTimestamp(endMs));
         if (buckets) params.append('buckets', buckets.toString());
+        if (view) params.append('view', view);
+        if (windowMs !== undefined) params.append('window_ms', windowMs.toString());
         const query = params.toString();
         return `/v1/readings/${encodeURIComponent(readingId)}/measurements/buckets${query ? `?${query}` : ''}`;
       },

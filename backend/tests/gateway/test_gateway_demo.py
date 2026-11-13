@@ -23,6 +23,22 @@ SETTINGS = DemoSettings(
 )
 
 
+PROPOSAL = dict(
+    id="p1",
+    name="Tram speed",
+    reason="Flags stops between stations",
+    author="private-admin@example.com",
+    author_kind="member",
+    status="accepted",
+    test_run_id=None,
+    replace_monitor_id=None,
+    decided_by="private-admin@example.com",
+    decided_at="2026-11-13T12:00:00Z",
+    decision_note="Looks right",
+    created_at="2026-11-13T11:00:00Z",
+)
+
+
 def app(settings=SETTINGS):
     return build_app(AppSettings(APP_NAME="test"), settings)
 
@@ -57,6 +73,8 @@ async def answer(method, path, **kwargs):
         )
     if path == "/api/v1/dojo/datasets":
         return dict(items=[], next_offset=None)
+    if path == "/api/v1/monitors/pipeline-proposals":
+        return dict(items=[PROPOSAL, PROPOSAL | dict(id="p2", author_kind="agent", author="Scout")])
     return {}
 
 
@@ -78,6 +96,8 @@ def test_allowlist_tracks_real_routes_and_excludes_sensitive_reads():
     assert {
         path for method, path in routes() - demo.GUEST_ROUTES if method == "GET"
     } == {
+        "/v1/agents",
+        "/v1/agents/me",
         "/v1/me",
         "/v1/members",
         "/v1/roles",
@@ -174,3 +194,14 @@ async def test_guest_budgets_are_per_address(remote):
         ]
     async with asgi_client(demo_app, client=("203.0.113.8", 1)) as client:
         assert (await client.get("/v1/catalogue")).status_code == 200
+
+
+async def test_guests_read_proposals_with_agents_named_and_members_hidden(remote):
+    async with asgi_client(app()) as client:
+        response = await client.get("/v1/pipeline-proposals")
+    assert response.status_code == 200
+    assert "private-admin@example.com" not in response.text
+    member, agent = response.json()["items"]
+    assert (member["author"], member["decided_by"]) == ("A member", "A member")
+    assert (agent["author"], agent["decided_by"]) == ("Scout", "A member")
+    assert member["reason"] == "Flags stops between stations"

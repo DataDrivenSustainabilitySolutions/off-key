@@ -223,6 +223,15 @@ async def download_forecast_model(request: Request, change: ForecastModelDownloa
     )
 
 
+def _without_members(proposal: dict) -> dict:
+    """What a public demo guest sees of a proposal: an agent by its name, a
+    member only as a member. A member's email never leaves the installation."""
+    hidden: dict = {"decided_by": "A member" if proposal.get("decided_by") else None}
+    if proposal.get("author_kind") == "member":
+        hidden["author"] = "A member"
+    return {**proposal, **hidden}
+
+
 @proposals_router.get(
     "", response_model=PipelineProposalList, openapi_extra=OPEN_TO_AGENTS
 )
@@ -239,12 +248,15 @@ async def list_pipeline_proposals(
     A proposal is a design handed to a member to decide on. `decision_note`
     carries what the member answered.
     """
-    return await forward(
+    result = await forward(
         request,
         "GET",
         "/pipeline-proposals",
         params=None if status is None else {"status": status},
     )
+    if getattr(request.state, "demo_guest", False):
+        result = {**result, "items": [_without_members(item) for item in result["items"]]}
+    return result
 
 
 @proposals_router.post(
@@ -276,9 +288,12 @@ async def create_pipeline_proposal(request: Request, change: PipelineProposalCre
 @read_limit
 async def get_pipeline_proposal(request: Request, proposal_id: str):
     """One proposal with its design, layout and bindings."""
-    return await forward(
+    result = await forward(
         request, "GET", f"/pipeline-proposals/{path_segment(proposal_id)}"
     )
+    if getattr(request.state, "demo_guest", False):
+        result = _without_members(result)
+    return result
 
 
 @proposals_router.post("/{proposal_id}/decision", response_model=PipelineProposalView)

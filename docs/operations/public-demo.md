@@ -113,9 +113,12 @@ browser. Every request also checks that the member is active, verified and still
 has exactly that role and permission set. Disabling or changing it stops public
 access. Administrator tokens continue through normal authorization.
 
-The catalogue revision log and membership endpoints are private. Per-IP guest
+The catalogue revision log and membership endpoints are private. Proposals are
+public, because they show what agents designed and why: a guest sees an agent
+by its name and a member only as "A member", never by email. Per-IP guest
 limits apply per gateway process; edge rate limits can add a deployment-wide
-budget. The initial retention is seven days with a two-GB telemetry ceiling.
+budget. The initial retention is fourteen days with a two-GB telemetry ceiling: long
+enough for a week of calibration and for a test on the last days of history.
 
 ## Local rehearsal
 

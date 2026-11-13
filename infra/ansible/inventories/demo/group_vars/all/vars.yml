@@ -23,7 +23,7 @@ demo_viewer_email: demo-viewer@aberration.app
 anomaly_alert_recipients: "{{ superuser_mail }}"
 system_live_enabled: true
 system_live_allowed_hosts: [demo-broker]
-telemetry_retention_days: 7
+telemetry_retention_days: 14
 telemetry_storage_cap_gb: 2
 # Pin chosen assets. Review the probe's --discover output after a bounded live check;
 # never silently switch entities underneath an existing monitor.

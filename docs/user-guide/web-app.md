@@ -131,6 +131,32 @@ Members whose role can manage members handle invitations, roles and access under
 their access. Once disabled, **Remove** permanently deletes their account and personal
 favorites after confirmation. Shared catalogue data, monitoring services and reports
 are kept. A removed member needs a new invitation to return.
+**Account → Agents** gives a program a key to work with in place of a person.
+The key is shown once, when it is created. Every key can read, design, test on
+history and propose. Tick **May start monitors** to let one key start
+monitoring services itself, and **Revoke** to stop a key at once. What a key
+proposes waits under **Proposals** on the Monitoring page for a member who
+manages monitors (see
+[Visual monitoring pipelines](monitoring.md#visual-monitoring-pipelines)).
+An agent that speaks the Model Context Protocol (MCP) needs two things: the
+address `https://<dashboard>/api/v1/mcp`, which stands beside a new key, and
+the key, sent as the header `Authorization: Bearer <key>`. It then finds what
+it may do as tools, from reading the devices to proposing a design (see
+[MCP server for agents](../reference/backend-api.md#mcp-server-for-agents)).
+Most clients take both in their configuration:
+
+```json
+{
+  "mcpServers": {
+    "aberration": {
+      "type": "http",
+      "url": "https://<dashboard>/api/v1/mcp",
+      "headers": { "Authorization": "Bearer offkey_…" }
+    }
+  }
+}
+```
+
 Every member can view the shared workspace and edit their own favorites. A role
 adds permissions to manage sources, monitors, alarms or members; Administrator
 holds all of them. Controls a role does not cover stay hidden.

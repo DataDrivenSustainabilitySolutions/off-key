@@ -15,6 +15,7 @@ import { SourceScope } from "../workspace/SourceScope";
 import { CopyToDojo } from "../dojo/CopyToDojo";
 import { useDesignTest } from "../dojo/designTest";
 import { DesignTestContext } from "../pipelines/designTest";
+import { useOpenProposals } from "../pipelines/proposals";
 import { catalogueSelectionLabel, withCatalogueSource } from "../workspace/catalogue-navigation";
 import "../monitoring/monitoring.css";
 import { setSourceAppearance } from "@/domain/system/sourceAppearance";
@@ -38,7 +39,10 @@ export function ExplorerWorkspace() {
   const initialTarget = params.get("target") ?? (requestedStream && readingTargetId(requestedStream));
   const creating = params.get("create") === "monitoring";
   const monitoring = useMonitoringServices(isAuthenticated, requestedService ? 5_000 : 20_000, requestedService ?? params.get("replace") ?? undefined);
-  const pipelineView = !!params.get("pipeline") || params.get("view") === "pipelines" || creating && monitoring.authoringEnabled;
+  const pipelineView = !!params.get("pipeline") || ["pipelines", "proposals"].includes(params.get("view") ?? "") || params.has("proposal")
+    || creating && monitoring.authoringEnabled;
+  // Counted where the button shows, so the number is fresh on the way back from a decision.
+  const openProposals = useOpenProposals(isAuthenticated && !creating && !pipelineView);
   const loadingCreation = creating && !params.get("pipeline") && params.get("view") !== "pipelines" && isAuthenticated
     && (!monitoring.ready || !system.document || system.status === "loading");
   const creationError = monitoring.error || system.error;
@@ -64,7 +68,8 @@ export function ExplorerWorkspace() {
   else if (selectionMissing && !pipelineView) title = "Source not found";
   else if (pipelineView) {
     title = params.get("pipeline") ? (params.has("activation") ? "Starting service" : "Template")
-      : params.get("view") === "pipelines" ? "Templates" : params.has("replace") ? "Update service" : "New service";
+      : params.get("view") === "pipelines" ? "Templates" : params.get("view") === "proposals" ? "Proposals"
+        : params.has("replace") ? "Update service" : "New service";
   } else if (creating) title = "New service";
   else if (selectedService) title = serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? []);
   else if (requestedService) title = params.get("tab") === "pipeline" ? "Retained pipeline"
@@ -149,6 +154,9 @@ export function ExplorerWorkspace() {
           {preview && selected.entityKind !== "stream" && <button className="ex-collection-action" onClick={closeView}><Info size={15} aria-hidden="true" />Hide source details</button>}
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         </>}
+        {openProposals > 0 && <button className="ex-collection-action" onClick={() => changeView({ view: "proposals" })}>
+          Proposals <span className="mn-filter-count">{openProposals}</span>
+        </button>}
         {manageMonitors && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>
           <Plus size={15} />Create
         </button>}

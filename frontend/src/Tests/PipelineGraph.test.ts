@@ -14,6 +14,7 @@ import {
   removeNode,
   replaceComponent,
   setNodeLabel,
+  stepTitle,
   type GraphDocument,
 } from "@/features/pipelines/model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "@/features/pipelines/slots";
@@ -210,11 +211,17 @@ describe("graph document helpers", () => {
     expect(next.edges).toHaveLength(4);
   });
 
-  it("titles a node at its default position when it has none", () => {
-    const next = setNodeLabel(graph(), "model", "Detector");
-    expect(next.layout.nodes.model).toMatchObject({ label: "Detector" });
-    expect(typeof next.layout.nodes.model?.x).toBe("number");
-    expect(setNodeLabel(graph(), "raw", "Raw").layout.nodes.raw).toMatchObject({ x: 0, y: 100, label: "Raw" });
+  it("keeps a step's title in the design", () => {
+    const titled = setNodeLabel(graph(), "model", "Detector");
+    const model = (document: GraphDocument) => document.definition.nodes.find((node) => node.id === "model")!;
+    expect(model(titled).label).toBe("Detector");
+    expect(stepTitle(model(titled))).toBe("Detector");
+    // The drawing is as it was: a title is not where a card stands.
+    expect(titled.layout).toEqual(graph().layout);
+    // Without a title the step goes by the name of its component again.
+    const untitled = setNodeLabel(titled, "model", "");
+    expect(model(untitled)).not.toHaveProperty("label");
+    expect(stepTitle(model(untitled))).toBe("");
   });
 
   it("adds the first free input slot and edits slots by id", () => {

@@ -143,6 +143,9 @@ LEDGER_TABLES = {
     "031_pipeline_blocks.sql": {"monitoring_pipeline_blocks"},
     "032_alarm_deletions.sql": {"alarm_deletions"},
 }
+# Tables no migration introduces. The schema bootstrap creates them on every
+# database, and they hold nothing an earlier release wrote.
+BOOTSTRAP_TABLES = {"agents", "monitoring_pipeline_proposals"}
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {
     "014_drop_unread_schema.sql": {"model_registry"},
@@ -172,7 +175,11 @@ def test_every_orm_table_is_pre_ledger_or_owned_by_a_migration():
     owned = set().union(*LEDGER_TABLES.values())
 
     assert not PRE_LEDGER_TABLES & owned
+    assert not BOOTSTRAP_TABLES & (PRE_LEDGER_TABLES | owned)
     retired = set().union(*RETIRED_TABLES.values())
     assert retired <= PRE_LEDGER_TABLES
-    assert set(Base.metadata.tables) == (PRE_LEDGER_TABLES | owned) - retired
+    assert (
+        set(Base.metadata.tables)
+        == (PRE_LEDGER_TABLES | owned | BOOTSTRAP_TABLES) - retired
+    )
     assert PRE_LEDGER_TABLES - {"deployment_maintenance"} == BASELINE_TABLES

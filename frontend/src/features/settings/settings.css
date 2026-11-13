@@ -203,3 +203,6 @@ dl.app-settings-list .app-settings-row { min-height: 40px; padding-block: 8px; }
 .app-settings-permission { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .app-settings-permission input { width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0; accent-color: hsl(var(--primary)); }
 .app-settings-permission-name { display: block; font-size: var(--text-body); }
+/* One allowance beside a row's actions. */
+.app-settings-check { display: inline-flex; align-items: center; gap: 8px; color: hsl(var(--foreground)); cursor: pointer; }
+.app-settings-check input { width: 16px; height: 16px; flex-shrink: 0; accent-color: hsl(var(--primary)); }

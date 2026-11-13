@@ -19,6 +19,7 @@ CALL_SHAPES = {
     "forward": (1, 2, "path", None, "/api/v1/monitors"),
     "member_request": (0, 1, "path", None, "/api/v1/members"),
     "role_request": (0, 1, "path", None, "/api/v1/roles"),
+    "agent_request": (0, 1, "path", None, "/api/v1/agents"),
     "system_request": (0, 2, "path", "", "/api/v1/system"),
     "data_request": ("GET", 0, "path", None, "/api/v1/data"),
 }

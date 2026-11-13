@@ -82,6 +82,12 @@ class CatalogueDataService:
             charger_id=entity, telemetry_type=key, **window
         )
 
+    async def profile(self, stream_id: str, *, days: int):
+        entity, key = self._ids.recorded(stream_id)
+        return await self._telemetry.get_reading_profile(
+            reading_id=stream_id, charger_id=entity, telemetry_type=key, days=days
+        )
+
     async def evidence(self, stream_id: str, *, limit: int) -> list[dict[str, Any]]:
         rows = await self._evidence.list_by_scope(
             scope=self._ids.scope([stream_id]), limit=limit

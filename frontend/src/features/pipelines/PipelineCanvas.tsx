@@ -23,7 +23,7 @@ import {
 } from "./clipboard";
 import {
   addAfter, addBlocker, afterBlocker, connectNodes, connectionIssue, disconnectEdge, disconnectNode, duplicateBlocker,
-  insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel,
+  insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel, stepTitle,
   type GraphDocument, type Link,
 } from "./model";
 import { PipelineContextMenu } from "./PipelineContextMenu";
@@ -372,7 +372,7 @@ export default function PipelineCanvas({
       const operation = node && components.find((item) => item.id === node.component)?.label;
       // A title equal to the step's own name, or none, shows that name again.
       const next = title.trim() === operation ? "" : title.trim();
-      if (next !== (document.layout.nodes[id]?.label ?? "")) onChange(setNodeLabel(document, id, next), true);
+      if (next !== stepTitle(node)) onChange(setNodeLabel(document, id, next), true);
     },
   };
   const wireActions: WireActions = {

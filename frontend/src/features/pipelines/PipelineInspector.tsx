@@ -15,6 +15,7 @@ import {
   removeNode,
   replaceComponent,
   setNodeLabel,
+  stepTitle,
   setNodeParams,
   type GraphDocument,
 } from "./model";
@@ -202,7 +203,7 @@ export function PipelineInspector({
       <span>Step title</span>
       <input
         maxLength={120}
-        value={document.layout.nodes[node.id]?.label ?? ""}
+        value={stepTitle(node)}
         placeholder={was ? standsFor?.label ?? was.component : component?.label ?? node.component}
         disabled={readOnly}
         onChange={(event) =>
@@ -287,7 +288,7 @@ export function PipelineInspector({
         </>
       ) : node && was ? (
         <>
-          {document.layout.nodes[node.id]?.label && <h3>{standsFor?.label ?? was.component}</h3>}
+          {stepTitle(node) && <h3>{standsFor?.label ?? was.component}</h3>}
           <p className="pl-help">
             This step is switched off. Features pass through it unchanged, and its settings are kept.
             {!standsFor && " This deployment no longer offers the step, so it cannot run when it is switched on."}
@@ -301,7 +302,7 @@ export function PipelineInspector({
       ) : node ? (
         <>
           {/* The step picker above names the step; its kind is named again only under a title of its own. */}
-          {!["detector", "calibration", "policy"].includes(node.kind) && document.layout.nodes[node.id]?.label
+          {!["detector", "calibration", "policy"].includes(node.kind) && stepTitle(node)
             && <h3>{component?.label ?? node.component}</h3>}
           {component?.description && (
             <p className="pl-help">{component.description}</p>

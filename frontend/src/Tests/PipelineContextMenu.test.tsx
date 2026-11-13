@@ -34,12 +34,12 @@ const document = (): GraphDocument => ({
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
-      { id: "smooth", kind: "transform", component: "prepare.smooth", params: { window: 7 } },
+      { id: "smooth", kind: "transform", component: "prepare.smooth", label: "Calm", params: { window: 7 } },
       { id: "model", kind: "detector", component: "detector:aberrant_knn" },
     ],
     edges: [{ source: "input", target: "smooth" }, { source: "smooth", target: "model" }],
   }),
-  layout: normalizeLayout({ nodes: { input: { x: 0, y: 0 }, smooth: { x: 320, y: 0, label: "Calm" }, model: { x: 640, y: 0 } } }),
+  layout: normalizeLayout({ nodes: { input: { x: 0, y: 0 }, smooth: { x: 320, y: 0 }, model: { x: 640, y: 0 } } }),
 });
 
 describe("card menu operations", () => {
@@ -48,7 +48,8 @@ describe("card menu operations", () => {
     const id = result.ids[0]!;
     const copy = result.document.definition.nodes.find((node) => node.id === id)!;
     expect(copy.params).toEqual({ window: 7 });
-    expect(result.document.layout.nodes[id]).toMatchObject({ x: 320, label: "Calm copy" });
+    expect(copy.label).toBe("Calm copy");
+    expect(result.document.layout.nodes[id]).toMatchObject({ x: 320 });
     expect(result.document.layout.nodes[id]!.y).toBeGreaterThan(0);
     expect(result.document.definition.edges.some((edge) => edge.source === id || edge.target === id)).toBe(false);
   });

@@ -40,6 +40,80 @@ without fields that hold their empty default, which keeps the listing near
 100 KB. `GET /v1/pipeline-components/{id}` returns one component with its
 `parameter_schema`.
 
+A caller that builds a design in steps, such as an agent, reads less at a time.
+`GET /v1/pipeline-components/search` answers a purpose with a few lines per
+component (`models/pipeline_search.py`): it ranks by where a word of the query
+is found, the name before the description before the help of a setting, and
+counts a word few components answer for more than a common one. It reads only
+what the catalog already says, so a better description is also a better search
+result. `POST /v1/pipelines/edit` makes small edits to a design the caller holds
+and returns it with its check (`models/pipeline_edits.py`,
+`schemas/pipeline_tools.py`). It stores nothing and mirrors the editor's rules
+in `model.ts`: ids made from the component, a title for the second step of a
+kind, a single input that takes a new connection in place of the old one, and
+the place of a new card (`freePosition`, `roomOnLink`). A new kind of edit is
+one class in `pipeline_tools.py` and one function in `pipeline_edits.py`.
+`GET /v1/readings/{id}/profile` says what a reading looks like
+(`models/reading_profile.py`). It adds no query of its own: the window comes
+from the bucketed range the charts use and `recent` from the newest values, so
+it costs two bounded reads whatever the reading's rate.
+
+An agent calls these with a key (`core/auth/agents.py`). A key is told from a
+member's token by its prefix, and `current_caller` in the gateway
+(`api/access.py`) and in TACTIC (`api/collection_auth.py`) resolves either. A
+route is closed to keys unless its decorator carries
+`openapi_extra=OPEN_TO_AGENTS`, or `STARTS_SERVICES` for a route only a key with
+`may_start` may call, so the same mark decides access and shows in the OpenAPI
+document as `x-agent-access`. A key has no permissions: on a marked route it
+passes the permission checks, and `current_member` refuses it wherever a handler
+needs a person. To open a route, mark it in both services and add it to
+`GATEWAY_AGENT_ACCESS` and `TACTIC_AGENT_ACCESS` in
+`backend/tests/contracts/test_access_matrix.py`, which fail until the tables and
+the marks agree.
+
+A caller that may not start a service, or would rather ask, hands its design in
+as a proposal (`services/pipelines/proposals.py`, table
+`monitoring_pipeline_proposals`). A proposal holds the design itself with its
+layout and bindings and points at nothing, so it reads the same after a run, a
+service or the author's key is gone. It must check without errors when it is
+handed in, and at most 50 wait at a time. Deciding is a member's, never a
+key's, and a decision starts nothing: it records who decided and what they
+answered. The table comes from the ORM model alone; no migration introduces it
+(`BOOTSTRAP_TABLES` in `backend/tests/database/test_migration_ledger.py`).
+
+In the app a proposal is a design opened in the setup, not a second editor.
+`useOpenProposals` (`proposals.ts`) counts the waiting ones once a minute for
+the **Proposals** button on the Monitoring page, which shows only while one
+waits. It counts only where the button shows, so the number is read again on
+the way back from a decision. `?view=proposals` lists them (`PipelineProposals.tsx`), and
+`?create=monitoring&proposal=<id>` opens one, with `&replace=<service>` when it
+replaces a running service (`showProposals`, `reviewProposal` in
+`monitoringView.ts`). `PipelineWorkspace` reads the proposal and gives
+`PipelineCreate` its design, name and bindings and the notice above the canvas.
+The setup knows nothing of proposals: it takes a `notice` and calls
+`onRequested` once the server has taken a start request, and the workspace
+answers that with the accepting decision. The proposal is therefore accepted
+when its start is requested, not when the service runs, so leaving the page
+during the start loses nothing; a start the server refuses decides nothing.
+
+The gateway serves the same operations to an agent as MCP tools at `/v1/mcp`
+(`api/mcp_server.py`, `api/mcp_tools.py` in the gateway). A tool is a function
+in `mcp_tools.py` under `@tool`: the function's name is the tool's, its
+docstring the description the agent reads, and a pydantic model its arguments.
+It calls the gateway's own routes in-process with the key of the request
+(`Api`) and holds no rule of its own, so the mark of a route decides access,
+the limit of a route counts, and a refusal reaches the agent in the route's
+words. `starts=True` keeps a tool from a key without `may_start`, and
+`changes=True` tells the client that the tool leaves something others see.
+The server is part of the gateway and keeps no session. Nothing new is
+deployed, every request carries its key and gets one JSON answer, and any
+replica can give it. A design passes through the tools as an opaque object;
+only `edit_design` carries the schema of the edits. That keeps the list an
+agent reads with every session near 18 KB, and
+`backend/tests/gateway/test_mcp.py` fails above 24 KB. To add a tool, write
+the function, let it call only routes that are marked for keys, and add its
+name to the list in that test.
+
 Each design has an optimistic-concurrency draft and immutable published revisions.
 A draft save commits its definition, layout, name and description under one
 expected version. The editor acknowledges the submitted snapshot while retaining
@@ -48,6 +122,11 @@ snapshot; later local edits remain in the draft session.
 A run retains its executable definition, resolved input bindings, initial layout,
 service identity and predecessor independently of the live service record. Layout
 updates have their own version and do not change numerical compatibility.
+A step's title is its node's `label` in the definition, so the compiler's
+messages and any reader of the design can name the step by it. The fingerprint
+leaves titles out, as it leaves out the labels of inputs, so a renamed step is
+the same design to a running service. `stepTitle()` reads the title and
+`setNodeLabel()` sets it; a layout holds places and no titles.
 Runs also retain the resolved reading, entity and source labels, collection policy,
 catalogue revision and collection fingerprint. These presentation records do not
 change execution fingerprints. Historical legacy launches retain their original
@@ -229,11 +308,11 @@ the model. `writeDesign()` writes the cards of the design's own steps only.
 `POST /pipelines/validate`: the server reads it as it reads one sent through
 the API, so a malformed one is refused with the issues FastAPI names, of which
 the first three are shown. A file holds the design as schema 2
-(`PipelineDesignFile.schema_2`), and `openDesign()` opens no other form. Positions
-are read leniently; a step may carry its title in its own `label`, and a file
-that does not place every step is arranged. The setup opens a file from **Load
-template** or from a drop on the canvas (`onOpenFile`), through the same
-`load()` a template takes, so it is one undoable change.
+(`PipelineDesignFile.schema_2`), and `openDesign()` opens no other form.
+Positions are read leniently, and a file that does not place every step is
+arranged. The setup opens a file from **Load template** or from a drop on the
+canvas (`onOpenFile`), through the same `load()` a template takes, so it is one
+undoable change.
 
 Detectors are the one step kind a design may repeat outside the add-step menu.
 `addDetector()` copies the selected detector, model and settings, as

@@ -4,14 +4,25 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
+from off_key_core.auth.agents import OPEN_TO_AGENTS, STARTS_SERVICES
 from off_key_core.auth.permissions import Permission
+from off_key_core.config.logs import log_security_event
+from off_key_core.db.models import Agent, User
+from off_key_core.models.pipeline_edits import edit_design
 from off_key_core.models.pipeline_reports import bounded_validation_report
+from off_key_core.models.pipeline_search import search_components
 from off_key_core.models.pipelines import (
     pipeline_catalog,
     pipeline_component,
     validate_pipeline,
 )
 from off_key_core.schemas.forecast import ForecastModelInfo
+from off_key_core.schemas.pipeline_tools import (
+    ComponentSearchPage,
+    ComponentSearchQuery,
+    DesignEditRequest,
+    DesignEditResult,
+)
 from off_key_core.schemas.pipelines import (
     ForecastModelCatalog,
     ForecastModelDownload,
@@ -31,6 +42,10 @@ from off_key_core.schemas.pipelines import (
     PipelineListPage,
     PipelineListQuery,
     PipelineMetadataChange,
+    PipelineProposalCreate,
+    PipelineProposalDecision,
+    PipelineProposalList,
+    PipelineProposalView,
     PipelinePublish,
     PipelineRevisionPage,
     PipelineRevisionQuery,
@@ -41,6 +56,7 @@ from off_key_core.schemas.pipelines import (
     PipelineValidationReport,
     PipelineView,
     PipelineWorkspace,
+    ProposalStatus,
 )
 
 from ...config.config import get_tactic_settings
@@ -48,18 +64,20 @@ from ...provider import (
     get_pipeline_activations,
     get_pipeline_blocks,
     get_pipeline_library,
+    get_pipeline_proposals,
 )
 from ...services.pipelines import forecast_models
 from ...services.pipelines.activation import PipelineActivations
 from ...services.pipelines.blocks import PipelineBlocks
 from ...services.pipelines.library import PipelineLibrary
-from ..collection_auth import current_member, require_permission
+from ...services.pipelines.proposals import PipelineProposals
+from ..collection_auth import current_caller, current_member, require_permission
 from ..errors import DomainErrorRoute
 
 manage_monitors = require_permission(Permission.manage_monitors)
 router = APIRouter(
     prefix="/monitors",
-    dependencies=[Depends(current_member)],
+    dependencies=[Depends(current_caller)],
     route_class=DomainErrorRoute,
 )
 
@@ -68,12 +86,24 @@ router = APIRouter(
     "/pipelines/apply",
     response_model=PipelineActivationView,
     status_code=202,
-    dependencies=[Depends(manage_monitors)],
+    openapi_extra=STARTS_SERVICES,
 )
 async def apply_pipeline(
     change: PipelineApplyRequest,
+    caller: User | Agent = Depends(manage_monitors),
     activations: PipelineActivations = Depends(get_pipeline_activations),
 ):
+    if isinstance(caller, Agent):
+        # A key adds a service. Taking a running one away stays with a member.
+        if change.replace_service_id is not None:
+            raise HTTPException(
+                403, "Replacing a running service needs a member, not a key"
+            )
+        log_security_event(
+            "agent_service_start",
+            caller.name,
+            {"agent_id": caller.id, "service": change.display_name},
+        )
     return await invoke(activations.apply(change))
 
 
@@ -84,14 +114,27 @@ async def invoke(operation):
         raise HTTPException(422, str(exc)) from exc
 
 
-@router.get("/pipelines/catalog", response_model=PipelineCatalog)
+@router.get(
+    "/pipelines/catalog", response_model=PipelineCatalog, openapi_extra=OPEN_TO_AGENTS
+)
 async def catalog():
     return pipeline_catalog(get_tactic_settings().config.pipeline_authoring_enabled)
 
 
 @router.get(
+    "/pipelines/catalog/search",
+    response_model=ComponentSearchPage,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+async def search_catalog(query: Annotated[ComponentSearchQuery, Query()]):
+    """The components that fit a purpose, a few lines each."""
+    return search_components(query)
+
+
+@router.get(
     "/pipelines/catalog/components/{component_id}",
     response_model=PipelineComponent,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def catalog_component(component_id: str):
     """One component with its parameter schema, which the listing leaves out."""
@@ -101,7 +144,11 @@ async def catalog_component(component_id: str):
     return component
 
 
-@router.get("/pipelines/forecast-models", response_model=ForecastModelCatalog)
+@router.get(
+    "/pipelines/forecast-models",
+    response_model=ForecastModelCatalog,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def list_forecast_models():
     """The forecast service's checkpoints and whether each is downloaded."""
     return await run_in_threadpool(forecast_models.forecast_models)
@@ -123,7 +170,7 @@ async def download_forecast_model(change: ForecastModelDownload):
         ) from exc
 
 
-@router.get("/pipelines", response_model=PipelineListPage)
+@router.get("/pipelines", response_model=PipelineListPage, openapi_extra=OPEN_TO_AGENTS)
 async def list_pipelines(
     query: Annotated[PipelineListQuery, Query()],
     library: PipelineLibrary = Depends(get_pipeline_library),
@@ -147,6 +194,7 @@ async def create_pipeline(
     "/pipelines/validate",
     response_model=PipelineValidationReport,
     dependencies=[Depends(manage_monitors)],
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def validate_unsaved_design(change: PipelineValidateRequest):
     """Infer an unsaved workbench's features without creating a library record."""
@@ -155,7 +203,25 @@ async def validate_unsaved_design(change: PipelineValidateRequest):
     )
 
 
-@router.get("/pipelines/{pipeline_id}", response_model=PipelineView)
+@router.post(
+    "/pipelines/edit",
+    response_model=DesignEditResult,
+    dependencies=[Depends(manage_monitors)],
+    openapi_extra=OPEN_TO_AGENTS,
+)
+async def edit_unsaved_design(change: DesignEditRequest):
+    """Make small edits to a design the caller holds; nothing is stored."""
+    try:
+        return edit_design(change)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.get(
+    "/pipelines/{pipeline_id}",
+    response_model=PipelineView,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def get_pipeline(
     pipeline_id: str, library: PipelineLibrary = Depends(get_pipeline_library)
 ):
@@ -203,7 +269,11 @@ async def validate_draft(
     )
 
 
-@router.get("/pipelines/{pipeline_id}/revisions", response_model=PipelineRevisionPage)
+@router.get(
+    "/pipelines/{pipeline_id}/revisions",
+    response_model=PipelineRevisionPage,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def list_revisions(
     pipeline_id: str,
     query: Annotated[PipelineRevisionQuery, Query()],
@@ -229,6 +299,7 @@ async def publish_revision(
 @router.get(
     "/pipelines/{pipeline_id}/revisions/{revision_id}",
     response_model=PipelineRevisionView,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def get_revision(
     pipeline_id: str,
@@ -241,6 +312,7 @@ async def get_revision(
 @router.get(
     "/pipelines/{pipeline_id}/revisions/{revision_id}/metadata",
     response_model=PipelineValidationReport,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def revision_metadata(
     pipeline_id: str,
@@ -267,7 +339,9 @@ async def activate_pipeline(
 
 
 @router.get(
-    "/pipeline-activations/{activation_id}", response_model=PipelineActivationView
+    "/pipeline-activations/{activation_id}",
+    response_model=PipelineActivationView,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def get_activation(
     activation_id: str,
@@ -280,6 +354,7 @@ async def get_activation(
     "/pipeline-activations/{activation_id}",
     response_model=PipelineActivationView,
     dependencies=[Depends(manage_monitors)],
+    openapi_extra=STARTS_SERVICES,
 )
 async def cancel_activation(
     activation_id: str,
@@ -288,7 +363,9 @@ async def cancel_activation(
     return await invoke(activations.cancel(activation_id))
 
 
-@router.get("/pipeline-blocks", response_model=PipelineBlockList)
+@router.get(
+    "/pipeline-blocks", response_model=PipelineBlockList, openapi_extra=OPEN_TO_AGENTS
+)
 async def list_blocks(blocks: PipelineBlocks = Depends(get_pipeline_blocks)):
     return await blocks.list()
 
@@ -316,7 +393,74 @@ async def delete_block(
     await blocks.remove(block_id)
 
 
-@router.get("/workspace", response_model=PipelineWorkspace)
+@router.get(
+    "/pipeline-proposals",
+    response_model=PipelineProposalList,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+async def list_proposals(
+    status: ProposalStatus | None = None,
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
+    return await proposals.list(status)
+
+
+@router.post(
+    "/pipeline-proposals",
+    response_model=PipelineProposalView,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+async def create_proposal(
+    change: PipelineProposalCreate,
+    caller: User | Agent = Depends(manage_monitors),
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
+    return await proposals.create(change, caller)
+
+
+@router.get(
+    "/pipeline-proposals/{proposal_id}",
+    response_model=PipelineProposalView,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+async def get_proposal(
+    proposal_id: str, proposals: PipelineProposals = Depends(get_pipeline_proposals)
+):
+    return await proposals.get(proposal_id)
+
+
+@router.post(
+    "/pipeline-proposals/{proposal_id}/decision",
+    response_model=PipelineProposalView,
+    dependencies=[Depends(manage_monitors)],
+)
+async def decide_proposal(
+    proposal_id: str,
+    decision: PipelineProposalDecision,
+    member: User = Depends(current_member),
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
+    """A member's answer. A key cannot decide, its own proposals included."""
+    return await proposals.decide(proposal_id, decision, member)
+
+
+@router.post(
+    "/pipeline-proposals/{proposal_id}/withdraw",
+    response_model=PipelineProposalView,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+async def withdraw_proposal(
+    proposal_id: str,
+    caller: User | Agent = Depends(manage_monitors),
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
+    return await proposals.withdraw(proposal_id, caller)
+
+
+@router.get(
+    "/workspace", response_model=PipelineWorkspace, openapi_extra=OPEN_TO_AGENTS
+)
 async def monitoring_workspace(
     selected_service_id: str | None = Query(default=None, max_length=100),
     library: PipelineLibrary = Depends(get_pipeline_library),
@@ -324,7 +468,11 @@ async def monitoring_workspace(
     return await library.workspace(selected_service_id)
 
 
-@router.get("/{service_id}/pipeline", response_model=PipelineServiceView)
+@router.get(
+    "/{service_id}/pipeline",
+    response_model=PipelineServiceView,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def service_pipeline(
     service_id: str,
     selected_node_id: str | None = Query(default=None, min_length=1, max_length=100),
@@ -333,7 +481,11 @@ async def service_pipeline(
     return await invoke(library.service(service_id, selected_node_id))
 
 
-@router.get("/{service_id}/pipeline-history", response_model=PipelineHistoryPage)
+@router.get(
+    "/{service_id}/pipeline-history",
+    response_model=PipelineHistoryPage,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def service_history(
     service_id: str,
     query: Annotated[PipelineHistoryQuery, Query()],
@@ -342,14 +494,22 @@ async def service_history(
     return await invoke(library.history(service_id, query))
 
 
-@router.get("/{service_id}/pipeline-timeline", response_model=PipelineRunTimeline)
+@router.get(
+    "/{service_id}/pipeline-timeline",
+    response_model=PipelineRunTimeline,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def service_timeline(
     service_id: str, library: PipelineLibrary = Depends(get_pipeline_library)
 ):
     return await invoke(library.timeline(service_id))
 
 
-@router.get("/{service_id}/pipeline-metadata", response_model=PipelineValidationReport)
+@router.get(
+    "/{service_id}/pipeline-metadata",
+    response_model=PipelineValidationReport,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def service_metadata(
     service_id: str,
     selected_node_id: str = Query(min_length=1, max_length=100),
@@ -358,7 +518,7 @@ async def service_metadata(
     return await invoke(library.service_metadata(service_id, selected_node_id))
 
 
-@router.get("/{service_id}/pipeline-state")
+@router.get("/{service_id}/pipeline-state", openapi_extra=OPEN_TO_AGENTS)
 async def service_pipeline_state(
     service_id: str, library: PipelineLibrary = Depends(get_pipeline_library)
 ):

@@ -77,7 +77,7 @@ const fixture = () => ({
     input_slots: [{ id: "x", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
-      { id: "left", kind: "transform", component: "features.passthrough" },
+      { id: "left", kind: "transform", component: "features.passthrough", label: "Unmodified temperature" },
       { id: "right", kind: "transform", component: "features.passthrough" },
       { id: "merge", kind: "merge", component: "features.merge" },
       { id: "model", kind: "detector", component: "detector:test" },
@@ -95,7 +95,7 @@ const fixture = () => ({
     ],
   }),
   layout: normalizeLayout({
-    nodes: { left: { x: 10, y: 20, label: "Unmodified temperature" } },
+    nodes: { left: { x: 10, y: 20 } },
   }),
 });
 

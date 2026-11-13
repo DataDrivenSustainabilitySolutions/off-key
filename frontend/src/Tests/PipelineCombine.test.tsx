@@ -55,7 +55,7 @@ describe("Combine and Gate steps in the composer", () => {
     expect(stepFamily(node(aggregate), aggregate)).toBe("combine");
     expect(stepFamily(node(gate), gate)).toBe("route");
     expect(stepFamily(node(mute), mute)).toBe("route");
-    // A step the catalog no longer lists is still a transform.
+    // A step the catalog does not list is still a transform.
     expect(stepFamily(node(formula), undefined)).toBe("transform");
   });
 

@@ -1,8 +1,9 @@
 import type { PipelineComponent, PipelineNode } from "./contracts";
 import {
-  addBlocker, addComponent, collides, connectionIssue, connectNodes, lastNode, PLACEMENT_GAP, setNodeLabel, snap,
+  addBlocker, addComponent, collides, connectionIssue, connectNodes, lastNode, PLACEMENT_GAP, setNodeLabel, snap, stepTitle,
   type GraphDocument,
 } from "./model";
+import { combinedName, formulaName } from "./scope";
 import { NODE_SIZE, nodePosition, switchedOff } from "./semantics";
 import { switchOff } from "./stepSwitch";
 
@@ -32,7 +33,7 @@ export function copySteps(document: GraphDocument, ids: Iterable<string>): StepF
   return {
     format: "aberration-steps", schema_version: 1,
     steps: picked.map(({ node, at }) => {
-      const label = document.layout.nodes[node.id]?.label;
+      const label = stepTitle(node);
       // A step that is switched off travels as what it was.
       const was = switchedOff(document.layout, node);
       return { component: was?.component ?? node.component,
@@ -78,7 +79,7 @@ export function pasteSteps(document: GraphDocument, fragment: StepFragment, comp
   const at = freePlace(document, fragment, near);
   let next = document;
   const skipped = new Set<string>();
-  const titles = new Set(Object.values(document.layout.nodes).flatMap((node) => node.label ?? []));
+  const titles = new Set(document.definition.nodes.map((node) => stepTitle(node)).filter(Boolean));
   const added = fragment.steps.map((step) => {
     const component = components.find((item) => item.id === step.component);
     const blocker = component ? addBlocker(next.definition, component) : "This design does not offer one of the steps.";
@@ -95,7 +96,55 @@ export function pasteSteps(document: GraphDocument, fragment: StepFragment, comp
     if (source && target && !connectionIssue(next.definition, source, target, components))
       next = { ...next, definition: connectNodes(next.definition, source, target, components) };
   }
+  next = followRenames(next, fragment, added, components);
   return { document: next, ids: added.flatMap((id) => id ?? []), skipped: [...skipped] };
+}
+
+/** A copied step that names a feature the design has already gets a name of its own; the copied steps
+ * after it read the feature by that name, so the copy computes what the original does. */
+function followRenames(document: GraphDocument, fragment: StepFragment, added: Array<string | undefined>,
+  components: PipelineComponent[]): GraphDocument {
+  const nodes = new Map(document.definition.nodes.map((node) => [node.id, node]));
+  const component = (id: string) => components.find((item) => item.id === id);
+  const renames = fragment.steps.flatMap((step, index) => {
+    const node = added[index] ? nodes.get(added[index]!) : undefined;
+    if (!node) return [];
+    const was = combinedName({ ...node, params: step.params }, component(step.component));
+    const now = combinedName(node, component(node.component));
+    return was && now && was !== now ? [{ index, was, now }] : [];
+  });
+  if (!renames.length) return document;
+  const after = (start: number) => {
+    const reached = new Set<number>();
+    const visit = (from: number) => fragment.links.forEach(([source, target]) => {
+      if (source === from && !reached.has(target)) { reached.add(target); visit(target); }
+    });
+    visit(start);
+    return reached;
+  };
+  const params = new Map<string, PipelineNode["params"]>();
+  for (const { index, was, now } of renames) for (const target of after(index)) {
+    const id = added[target];
+    if (id) params.set(id, renameFeature(params.get(id) ?? nodes.get(id)!.params, was, now) as PipelineNode["params"]);
+  }
+  return { ...document, definition: { ...document.definition,
+    nodes: document.definition.nodes.map((node) => params.has(node.id) ? { ...node, params: params.get(node.id)! } : node) } };
+}
+
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Settings with a feature read by another name: where a setting names it, where a mapping keys it,
+ * and where an expression uses it, bare or between backticks. */
+export function renameFeature(value: unknown, was: string, now: string, key?: string): unknown {
+  if (typeof value === "string") {
+    if (value === was) return now;
+    if (key !== "expression") return value;
+    return value.replace(new RegExp(`\`${escaped(was)}\`|(?<![\\w\`])${escaped(was)}(?![\\w\`])`, "g"), formulaName(now));
+  }
+  if (Array.isArray(value)) return value.map((item) => renameFeature(item, was, now, key));
+  if (value && typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([name, item]) => [name === was ? now : name, renameFeature(item, was, now, name)]));
+  return value;
 }
 
 /** Copies of the chosen steps under the group, on the first rows where they cover no other step. */

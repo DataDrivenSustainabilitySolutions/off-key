@@ -6,7 +6,7 @@
 
 /** Keys that describe the open view; a reset clears them all. */
 const VIEW_KEYS = ["entity", "reading", "broker", "topic", "service", "create", "target", "tab", "stream",
-  "inspect", "pipeline", "view", "revision", "activation", "replace", "from", "bind"] as const;
+  "inspect", "pipeline", "view", "revision", "activation", "replace", "from", "bind", "proposal"] as const;
 
 /** Remembered monitoring URL, restored when navigating back to the workspace. */
 export const monitoringNavigationKey = (userId: string | number | null | undefined) => `monitoring:${userId}:url`;
@@ -38,14 +38,30 @@ export const openPipeline = (params: URLSearchParams, pipelineId: string, target
 
 export const createPipeline = (params: URLSearchParams) =>
   edit(params, next => {
+    drop(next, ["pipeline", "revision", "activation", "view", "replace", "from", "bind", "proposal"]);
+    next.set("create", "monitoring");
+  });
+
+/** The proposals that wait for a decision, and those already decided. */
+export const showProposals = (params: URLSearchParams) =>
+  edit(params, next => {
+    drop(next, ["pipeline", "revision", "activation", "replace", "from", "bind", "proposal", "create"]);
+    next.set("view", "proposals");
+  });
+
+/** Open a proposal in the setup. One that replaces a service opens as an update of it. */
+export const reviewProposal = (params: URLSearchParams, proposalId: string, replaceId?: string | null) =>
+  edit(params, next => {
     drop(next, ["pipeline", "revision", "activation", "view", "replace", "from", "bind"]);
     next.set("create", "monitoring");
+    next.set("proposal", proposalId);
+    if (replaceId) next.set("replace", replaceId);
   });
 
 /** The template library keeps `from` and `create` so setup can resume. */
 export const showLibrary = (params: URLSearchParams) =>
   edit(params, next => {
-    drop(next, ["pipeline", "revision", "activation", "replace", "bind"]);
+    drop(next, ["pipeline", "revision", "activation", "replace", "bind", "proposal"]);
     next.set("view", "pipelines");
   });
 

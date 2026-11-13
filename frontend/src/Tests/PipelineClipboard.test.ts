@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  copySteps, duplicateSteps, fragmentSize, heldSteps, holdSteps, pastedNote, pasteSteps, readSteps,
+  copySteps, duplicateSteps, fragmentSize, heldSteps, holdSteps, pastedNote, pasteSteps, readSteps, renameFeature,
 } from "@/features/pipelines/clipboard";
 import { normalizeCatalog, normalizeDefinition, normalizeLayout } from "@/features/pipelines/contracts";
 import type { GraphDocument } from "@/features/pipelines/model";
@@ -28,7 +28,7 @@ const design = (): GraphDocument => ({
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
-      { id: "scale", kind: "transform", component: "features.scale", params: { factor: 3 } },
+      { id: "scale", kind: "transform", component: "features.scale", label: "Triple", params: { factor: 3 } },
       { id: "plain", kind: "transform", component: "features.passthrough" },
       { id: "join", kind: "merge", component: "features.merge" },
       { id: "detector", kind: "detector", component: "detector:a" },
@@ -43,7 +43,7 @@ const design = (): GraphDocument => ({
     ],
   }),
   layout: normalizeLayout({ nodes: {
-    input: { x: 0, y: 96 }, scale: { x: 288, y: 0, label: "Triple" }, plain: { x: 288, y: 192 },
+    input: { x: 0, y: 96 }, scale: { x: 288, y: 0 }, plain: { x: 288, y: 192 },
     join: { x: 576, y: 96 }, detector: { x: 864, y: 96 },
   } }),
 });
@@ -94,7 +94,7 @@ describe("pasting steps", () => {
     expect(place(result.document, join)).toEqual({ x: 288, y: 576 });
     expect(result.document.definition.nodes.find((node) => node.id === scale)!.params).toEqual({ factor: 3 });
     // The design has a step called Triple, so the copy says that it is one.
-    expect(result.document.layout.nodes[scale]!.label).toBe("Triple copy");
+    expect(result.document.definition.nodes.find((node) => node.id === scale)!.label).toBe("Triple copy");
     expect(links(result.document).slice(5)).toEqual([`${plain}>${join}#0`, `${scale}>${join}#1`]);
     // The original is as it was.
     expect(links(result.document).slice(0, 5)).toEqual(links(document));
@@ -126,7 +126,7 @@ describe("pasting steps", () => {
     expect(result.skipped).toEqual([]);
     expect(result.document.definition.nodes.map((node) => node.component)).toEqual(document.definition.nodes.map((node) => node.component));
     expect(result.document.definition.edges).toHaveLength(5);
-    expect(result.document.layout.nodes[result.ids[1]!]!.label).toBe("Triple");
+    expect(result.document.definition.nodes[1]!.label).toBe("Triple");
     expect(place(result.document, result.ids[4]!)).toEqual({ x: 864, y: 96 });
   });
 
@@ -155,6 +155,61 @@ describe("duplicating steps", () => {
   });
 });
 
+describe("duplicating steps that name a feature", () => {
+  const formulas = normalizeCatalog({
+    catalog_id: "test", authoring_enabled: true, templates: [], components: [
+      { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
+        input_type: null, output_type: "features" },
+      { id: "prepare.formula", kind: "transform", group: "prepare", label: "Formula", description: "",
+        input_type: "features", output_type: "features", fields: [
+          { name: "name", label: "Name", type: "string", default: "formula" },
+          { name: "expression", label: "Expression", type: "string", default: "" }] },
+      { id: "features.keep", kind: "transform", group: "route", label: "Keep", description: "",
+        input_type: "features", output_type: "features", fields: [{ name: "features", label: "Features", type: "features", default: [] }] },
+    ],
+  }).components;
+  const chain = (): GraphDocument => ({
+    definition: normalizeDefinition({
+      input_slots: [{ id: "voltage", label: "Voltage" }, { id: "current", label: "Current" }],
+      nodes: [
+        { id: "input", kind: "source", component: "source.aligned" },
+        { id: "power", kind: "transform", component: "prepare.formula", params: { name: "power", expression: "voltage * current" } },
+        { id: "double", kind: "transform", component: "prepare.formula", params: { name: "double", expression: "power * 2 + power_peak" } },
+        { id: "keep", kind: "transform", component: "features.keep", params: { features: ["power", "double"] } },
+      ],
+      edges: [
+        { source: "input", target: "power", order: 0 },
+        { source: "power", target: "double", order: 0 },
+        { source: "double", target: "keep", order: 0 },
+      ],
+    }),
+    layout: normalizeLayout({ nodes: { input: { x: 0, y: 0 }, power: { x: 288, y: 0 }, double: { x: 576, y: 0 }, keep: { x: 864, y: 0 } } }),
+  });
+
+  it("reads a renamed feature by its new name in the copied steps after it", () => {
+    const result = duplicateSteps(chain(), ["power", "double", "keep"], formulas)!;
+    const params = result.ids.map((id) => result.document.definition.nodes.find((node) => node.id === id)!.params);
+    expect(params).toEqual([
+      { name: "power_2", expression: "voltage * current" },
+      { name: "double_2", expression: "power_2 * 2 + power_peak" },
+      { features: ["power_2", "double_2"] },
+    ]);
+    // The originals read what they read before.
+    expect(result.document.definition.nodes.find((node) => node.id === "double")!.params.expression).toBe("power * 2 + power_peak");
+  });
+
+  it("keeps a feature a copied step reads from outside the copy", () => {
+    const result = duplicateSteps(chain(), ["double", "keep"], formulas)!;
+    const keep = result.document.definition.nodes.find((node) => node.id === result.ids[1])!;
+    expect(keep.params.features).toEqual(["power", "double_2"]);
+  });
+
+  it("renames where a setting names the feature, a mapping keys it or an expression uses it", () => {
+    expect(renameFeature({ target: "a", mapping: { a: "b" }, expression: "`a` + a + ab" }, "a", "a 2"))
+      .toEqual({ target: "a 2", mapping: { "a 2": "b" }, expression: "`a 2` + `a 2` + ab" });
+  });
+});
+
 describe("copying a step that is switched off", () => {
   it("travels as what it was, and arrives switched off", () => {
     const document = switchOff(design(), ["scale"], components);
@@ -173,7 +228,7 @@ describe("copying a step that is switched off", () => {
     const [scale, plain] = result.document.definition.nodes;
     expect(scale).toMatchObject({ component: "features.passthrough", params: {} });
     expect(switchedOff(result.document.layout, scale)).toEqual({ component: "features.scale", contract_version: 1, params: { factor: 3 } });
-    expect(result.document.layout.nodes[scale!.id]!.label).toBe("Triple");
+    expect(scale!.label).toBe("Triple");
     expect(switchedOff(result.document.layout, plain)).toBeUndefined();
   });
 

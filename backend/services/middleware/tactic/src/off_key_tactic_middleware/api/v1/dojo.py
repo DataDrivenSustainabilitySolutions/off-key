@@ -6,8 +6,9 @@ Open to members whose role grants the Dojo permission.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.auth.permissions import Permission
-from off_key_core.db.models import User
+from off_key_core.db.models import Agent, User
 from off_key_core.schemas.dojo import (
     MAX_UPLOAD_BYTES,
     Comparison,
@@ -52,7 +53,7 @@ from ...services.dojo.datasets import DojoDatasets
 from ...services.dojo.labels import DojoLabels
 from ...services.dojo.metrics import DojoMetrics
 from ...services.dojo.runs import DojoRuns
-from ..collection_auth import require_permission
+from ..collection_auth import member_id, require_permission
 from ..errors import DomainErrorRoute
 
 use_dojo = require_permission(Permission.use_dojo)
@@ -66,7 +67,7 @@ router = APIRouter(
 )
 
 
-@router.get("/datasets", response_model=DatasetListPage)
+@router.get("/datasets", response_model=DatasetListPage, openapi_extra=OPEN_TO_AGENTS)
 async def list_datasets(
     query: Annotated[DatasetListQuery, Query()],
     datasets: DojoDatasets = Depends(get_dojo_datasets),
@@ -87,16 +88,23 @@ async def import_csv_dataset(
     return await datasets.import_csv(body, query, created_by=user.id)
 
 
-@router.post("/datasets/history", response_model=DatasetView, status_code=201)
+@router.post(
+    "/datasets/history",
+    response_model=DatasetView,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def import_history_dataset(
     change: DatasetFromHistory,
-    user: User = Depends(use_dojo),
+    caller: User | Agent = Depends(use_dojo),
     datasets: DojoDatasets = Depends(get_dojo_datasets),
 ):
-    return await datasets.import_history(change, created_by=user.id)
+    return await datasets.import_history(change, created_by=member_id(caller))
 
 
-@router.get("/datasets/{dataset_id}", response_model=DatasetView)
+@router.get(
+    "/datasets/{dataset_id}", response_model=DatasetView, openapi_extra=OPEN_TO_AGENTS
+)
 async def get_dataset(
     dataset_id: str, datasets: DojoDatasets = Depends(get_dojo_datasets)
 ):
@@ -122,6 +130,7 @@ async def delete_dataset(
 @router.get(
     "/datasets/{dataset_id}/series/{series_id}/points",
     response_model=DatasetPointsPage,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def list_dataset_points(
     dataset_id: str,
@@ -132,7 +141,11 @@ async def list_dataset_points(
     return await datasets.points(dataset_id, series_id, query)
 
 
-@router.get("/datasets/{dataset_id}/labels", response_model=LabelList)
+@router.get(
+    "/datasets/{dataset_id}/labels",
+    response_model=LabelList,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def list_dataset_labels(
     dataset_id: str, labels: DojoLabels = Depends(get_dojo_labels)
 ):
@@ -140,7 +153,9 @@ async def list_dataset_labels(
 
 
 @router.get(
-    "/datasets/{dataset_id}/label-suggestions", response_model=LabelSuggestionList
+    "/datasets/{dataset_id}/label-suggestions",
+    response_model=LabelSuggestionList,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def suggest_dataset_labels(
     dataset_id: str,
@@ -190,7 +205,11 @@ async def delete_dataset_label(
     await labels.remove(dataset_id, label_id)
 
 
-@router.get("/datasets/{dataset_id}/comparison", response_model=Comparison)
+@router.get(
+    "/datasets/{dataset_id}/comparison",
+    response_model=Comparison,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def compare_dataset_runs(
     dataset_id: str,
     query: Annotated[ComparisonQuery, Query()],
@@ -199,7 +218,7 @@ async def compare_dataset_runs(
     return await metrics.compare(dataset_id, query)
 
 
-@router.get("/runs", response_model=RunListPage)
+@router.get("/runs", response_model=RunListPage, openapi_extra=OPEN_TO_AGENTS)
 async def list_runs(
     query: Annotated[RunListQuery, Query()],
     runs: DojoRuns = Depends(get_dojo_runs),
@@ -207,16 +226,18 @@ async def list_runs(
     return await runs.list(query)
 
 
-@router.post("/runs", response_model=RunView, status_code=201)
+@router.post(
+    "/runs", response_model=RunView, status_code=201, openapi_extra=OPEN_TO_AGENTS
+)
 async def create_run(
     request: RunCreate,
-    user: User = Depends(use_dojo),
+    caller: User | Agent = Depends(use_dojo),
     runs: DojoRuns = Depends(get_dojo_runs),
 ):
-    return await runs.create(request, created_by=user.id)
+    return await runs.create(request, created_by=member_id(caller))
 
 
-@router.get("/runs/{run_id}", response_model=RunView)
+@router.get("/runs/{run_id}", response_model=RunView, openapi_extra=OPEN_TO_AGENTS)
 async def get_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
     return await runs.get(run_id)
 
@@ -243,21 +264,31 @@ async def delete_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
     await runs.remove(run_id)
 
 
-@router.get("/runs/{run_id}/metrics", response_model=RunMetrics)
+@router.get(
+    "/runs/{run_id}/metrics", response_model=RunMetrics, openapi_extra=OPEN_TO_AGENTS
+)
 async def get_run_metrics(
     run_id: str, metrics: DojoMetrics = Depends(get_dojo_metrics)
 ):
     return await metrics.run(run_id)
 
 
-@router.get("/runs/{run_id}/calibration", response_model=MethodComparison)
+@router.get(
+    "/runs/{run_id}/calibration",
+    response_model=MethodComparison,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def compare_run_calibration(
     run_id: str, metrics: DojoMetrics = Depends(get_dojo_metrics)
 ):
     return await metrics.calibration(run_id)
 
 
-@router.get("/runs/{run_id}/results", response_model=RunResultsPage)
+@router.get(
+    "/runs/{run_id}/results",
+    response_model=RunResultsPage,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def list_run_results(
     run_id: str,
     query: Annotated[RunResultsQuery, Query()],
@@ -266,7 +297,9 @@ async def list_run_results(
     return await runs.results(run_id, query)
 
 
-@router.get("/runs/{run_id}/outline", response_model=RunOutline)
+@router.get(
+    "/runs/{run_id}/outline", response_model=RunOutline, openapi_extra=OPEN_TO_AGENTS
+)
 async def outline_run_results(
     run_id: str,
     query: Annotated[RunOutlineQuery, Query()],
@@ -275,6 +308,8 @@ async def outline_run_results(
     return await runs.outline(run_id, query)
 
 
-@router.get("/runs/{run_id}/steps", response_model=RunSteps)
+@router.get(
+    "/runs/{run_id}/steps", response_model=RunSteps, openapi_extra=OPEN_TO_AGENTS
+)
 async def sample_run_steps(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
     return await runs.steps(run_id)

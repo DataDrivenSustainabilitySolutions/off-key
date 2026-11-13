@@ -31,7 +31,7 @@ export function PipelineSaveBlock({ document, components, from, onSave, onClose 
     setSaving(true);
     setError("");
     try {
-      await onSave({ name: name.trim(), description, steps: blockSteps(document, steps) });
+      await onSave({ name: name.trim(), description, steps: blockSteps(steps) });
       onClose();
     } catch (reason) {
       setError(getErrorMessage(reason));

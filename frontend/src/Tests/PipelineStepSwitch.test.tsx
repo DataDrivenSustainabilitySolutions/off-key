@@ -136,7 +136,8 @@ describe("a step that is switched off, on the canvas", () => {
   it("keeps its name and family, and says that it is off", () => {
     const off = switchOff(design(), ["scale"], components);
     expect(nodeLabel(step(off, "scale"), components, off.layout)).toBe("Scale");
-    expect(nodeLabel(step(off, "scale"), components, setNodeLabel(off, "scale", "Triple").layout)).toBe("Triple");
+    const titled = setNodeLabel(off, "scale", "Triple");
+    expect(nodeLabel(step(titled, "scale"), components, titled.layout)).toBe("Triple");
     const [, scale, plain] = presentGraph(off, components).nodes;
     const on = presentGraph(design(), components).nodes[1]!;
     expect(scale!.data).toMatchObject({ label: "Scale", operation: "Scale", family: on.data.family, off: true,
@@ -152,10 +153,10 @@ describe("a step that is switched off, on the canvas", () => {
     const scale = components.find((component) => component.id === "features.scale")!;
     const pass = components.find((component) => component.id === "features.passthrough")!;
     const added = addComponent(off, scale);
-    expect(added.layout.nodes[lastNode(added)]!.label).toBe("Scale 2");
+    expect(step(added, lastNode(added)).label).toBe("Scale 2");
     // And not as the step that stands in for it.
     const passed = addComponent(off, pass);
-    expect(passed.layout.nodes[lastNode(passed)]!.label).toBe("Pass through 2");
+    expect(step(passed, lastNode(passed)).label).toBe("Pass through 2");
   });
 
   it("is named by its id when the deployment no longer offers what it was", () => {

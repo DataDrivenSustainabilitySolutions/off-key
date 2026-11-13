@@ -165,6 +165,14 @@ export function normalizeView(view: Wire.PipelineView): PipelineView {
     revisions: view.revisions ?? [],
   };
 }
+/** A proposal as the setup opens it: the design, where its cards stand and the readings it names. */
+export type PipelineProposal = Omit<Wire.PipelineProposalView, "definition" | "layout"> & {
+  definition: PipelineDefinition;
+  layout: PipelineLayout;
+};
+export function normalizeProposal(view: Wire.PipelineProposalView): PipelineProposal {
+  return { ...view, definition: normalizeDefinition(view.definition), layout: normalizeLayout(view.layout) };
+}
 export function normalizeCatalog(
   catalog: Wire.PipelineCatalog,
 ): PipelineCatalog {

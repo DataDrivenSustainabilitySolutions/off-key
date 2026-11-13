@@ -63,7 +63,7 @@ function parseDesign(contents: string) {
     definition: value.definition as WireDefinition, layout: value.layout };
 }
 
-/** Where the file puts each card and what it calls it; whether every card has a place. */
+/** Where the file puts each card; whether every card has a place. */
 function drawn(definition: PipelineDefinition, layout: unknown): { layout: PipelineLayout; complete: boolean } {
   const given = isRecord(layout) && isRecord(layout.nodes) ? layout.nodes : {};
   let complete = true;
@@ -72,9 +72,7 @@ function drawn(definition: PipelineDefinition, layout: unknown): { layout: Pipel
     const placed = isRecord(at) && typeof at.x === "number" && typeof at.y === "number"
       && Number.isFinite(at.x) && Number.isFinite(at.y) ? { x: at.x, y: at.y } : undefined;
     if (!placed) complete = false;
-    // A step may carry its title itself, so a file can name a step without placing it.
-    const title = text(isRecord(at) ? at.label : undefined, 120) || text(node.label, 120);
-    return [node.id, { x: 0, y: 0, ...placed, ...(title ? { label: title } : {}) }];
+    return [node.id, { x: 0, y: 0, ...placed }];
   }));
   // What a switched-off step was, for the steps that stand aside in this design.
   const remembered = isRecord(layout) && isRecord(layout.switched_off) ? layout.switched_off : {};

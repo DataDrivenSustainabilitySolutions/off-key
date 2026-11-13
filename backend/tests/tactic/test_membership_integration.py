@@ -20,7 +20,7 @@ from off_key_core.schemas.members import (
 )
 from off_key_core.utils import mail
 from off_key_tactic_middleware import bootstrap_admin
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import signed_in_member
 from off_key_tactic_middleware.api.v1.members import member_service
 from off_key_tactic_middleware.api.v1.members import router as members_router
 from off_key_tactic_middleware.domain import (
@@ -388,7 +388,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
         ),
     )
     async with sessions() as session:
-        assert (await current_member(credential, session)).id == claims["id"]
+        assert (await signed_in_member(credential, session)).id == claims["id"]
         reset = await MemberService(session).issue_reset_token("member@example.com")
         await MemberService(session).reset_password(reset["token"], PASSWORD)
         with pytest.raises(ValidationError):
@@ -396,7 +396,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
         await session.rollback()
     async with sessions() as session:
         with pytest.raises(HTTPException) as denied:
-            await current_member(credential, session)
+            await signed_in_member(credential, session)
         assert denied.value.status_code == 401
 
     claims = await login()
@@ -417,7 +417,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
         )
     async with sessions() as session:
         with pytest.raises(HTTPException) as denied:
-            await current_member(credential, session)
+            await signed_in_member(credential, session)
         assert denied.value.status_code == 401
         assert (
             await MemberService(session).issue_reset_token("member@example.com") is None
@@ -431,7 +431,7 @@ async def test_invitation_reset_and_immediate_session_revocation(
         )
     async with sessions() as session:
         with pytest.raises(HTTPException):
-            await current_member(credential, session)
+            await signed_in_member(credential, session)
     assert (await login())["id"] == claims["id"]
 
 
@@ -574,7 +574,7 @@ async def test_reset_between_actor_read_and_self_update_revokes_new_session(
     )
     async with sessions() as session:
         with pytest.raises(HTTPException) as denied:
-            await current_member(credential, session)
+            await signed_in_member(credential, session)
         assert denied.value.status_code == 401
 
 

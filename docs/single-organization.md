@@ -28,6 +28,25 @@ after reinvitation. The server rejects removal of active accounts and prevents
 any change that would leave no active, verified member who can manage members. Concurrent access changes and
 removal are serialized within the same membership transaction lock.
 
+### Agents
+
+An agent is a program that works through the API in place of a person, for
+example an assistant that designs monitors. It signs in with a key instead of
+an email and a password. **Account → Agents**, for members who can manage
+members, creates a key under a name, shows it once and revokes it. Only a digest
+of the key is stored, so a lost key is replaced, not recovered.
+
+A key holds no role. Every key can read what a member reads about devices,
+readings, designs, monitors, evidence and alarms, check and edit a design that
+is not saved, and test a design on recorded history in the Dojo. **May start
+monitors** additionally lets one key start a monitoring service. Without it the
+agent hands its design to a member, who starts it. No key can stop, rename,
+replace or delete a monitor, change the library, sources, labels, members,
+roles or keys, and an operation added later is closed to keys until it is
+opened on purpose. Revoking a key stops it with the next request. Monitors the
+agent started keep running, and creating a key, changing what it may do,
+revoking it and each service a key starts are logged as security events.
+
 ## Installation and upgrade
 
 1. Configure a dedicated random `INTERNAL_API_SECRET` (at least 32 characters)

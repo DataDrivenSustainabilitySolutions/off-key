@@ -10,6 +10,7 @@ import { placeBlock } from "@/features/pipelines/blocks";
 import {
   addBlocker,
   freePosition,
+  setNodeLabel,
   type GraphDocument,
 } from "@/features/pipelines/model";
 import { PipelineDesignSettings } from "@/features/pipelines/PipelineDesignSettings";
@@ -97,21 +98,16 @@ function useEditor() {
 describe("graph editing", () => {
   it("merges consecutive edits of one field into a single undo step", () => {
     const { result } = renderHook(() => useEditor());
-    const title = (label: string) => ({
-      ...result.current.document,
-      layout: { ...result.current.document.layout, nodes: {
-        ...result.current.document.layout.nodes,
-        input: { ...result.current.document.layout.nodes.input!, label },
-      } },
-    });
+    const title = (label: string) => setNodeLabel(result.current.document, "input", label);
+    const titled = () => result.current.document.definition.nodes.find((node) => node.id === "input")?.label;
     for (const label of ["P", "Pu", "Pump"]) act(() => result.current.commit(title(label), "title:input"));
     act(() => result.current.commit({ ...result.current.document,
       layout: { ...result.current.document.layout, nodes: { ...result.current.document.layout.nodes,
         detector: { x: 400, y: 0 } } } }));
     act(() => result.current.undo());
-    expect(result.current.document.layout.nodes.input?.label).toBe("Pump");
+    expect(titled()).toBe("Pump");
     act(() => result.current.undo());
-    expect(result.current.document.layout.nodes.input?.label).toBeUndefined();
+    expect(titled()).toBeUndefined();
     expect(result.current.canUndo).toBe(false);
   });
 
@@ -162,7 +158,7 @@ describe("graph editing", () => {
     fireEvent.click(await steps.findByRole("button", { name: "Add block Pass twice" }));
     expect(onPlace).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "features_passthrough_1" }));
     const placed = onPlace.mock.calls[0]![0].document as GraphDocument;
-    expect(placed.layout.nodes.features_passthrough_1?.label).toBe("First pass");
+    expect(placed.definition.nodes.find((item) => item.id === "features_passthrough_1")?.label).toBe("First pass");
     expect(placed.definition.edges).toContainEqual({ source: "features_passthrough_1", target: "features_passthrough_2", order: 0 });
     expect(screen.queryByRole("dialog", { name: "Add a step" })).toBeNull();
     // A design that is only shown offers no steps and reads no library.

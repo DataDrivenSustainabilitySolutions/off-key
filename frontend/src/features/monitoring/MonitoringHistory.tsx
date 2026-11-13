@@ -116,7 +116,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
       <strong>{model.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>
       <span>Threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · Alarm {alarmText(latest)}</span>
     </output>}
-    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms{anyMuted ? " · Open dots: muted alarms" : ""}. Each reading keeps its own scale.</p>}
+    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms{anyMuted ? ` · Open dots: ${service.shadow ? "alarms recorded in shadow, not raised" : "muted alarms"}` : ""}. Each reading keeps its own scale.</p>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

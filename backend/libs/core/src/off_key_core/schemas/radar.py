@@ -38,6 +38,7 @@ from off_key_core.utils.mqtt_topics import (
 from .pipelines import (
     DEFAULT_CALIBRATION_WINDOW_SIZE,
     DEFAULT_TRAINING_WINDOW_SIZE,
+    SHADOW,
     PipelineExecutionConfig,
     PipelineStrategy,
 )
@@ -873,6 +874,9 @@ class RadarStartConfig(_MonitorLaunch):
 
     launch_version: Literal[2] = 2
     pipeline: PipelineExecutionConfig
+    # A property of the start, not of what is executed: a shadow run and a live
+    # one of the same pipeline learn the same state.
+    shadow: bool = Field(default=False, description=SHADOW)
     runtime_image: str | None = Field(
         default=None, max_length=512, pattern=r"^(?:[^\s]+@)?sha256:[a-f0-9]{64}$"
     )

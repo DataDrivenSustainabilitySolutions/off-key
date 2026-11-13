@@ -1,6 +1,7 @@
 /** Editor types shared by pure modules and components, so neither imports the other. */
 import type { Node } from "@xyflow/react";
 import type { PipelineNode } from "./contracts";
+import type { StepChange } from "./comparison";
 import type { DataKind } from "./semantics";
 
 type CanvasData = {
@@ -39,6 +40,8 @@ type CanvasData = {
   chips?: string[];
   /** The title is being typed on the card. */
   renaming?: boolean;
+  /** How the step differs from the design a service runs now, where the canvas is compared with one. */
+  change?: StepChange;
   [key: string]: unknown;
 };
 export type CanvasNode = Node<CanvasData, "component">;

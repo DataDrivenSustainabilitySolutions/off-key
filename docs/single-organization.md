@@ -38,9 +38,11 @@ of the key is stored, so a lost key is replaced, not recovered.
 
 A key holds no role. Every key can read what a member reads about devices,
 readings, designs, monitors, evidence and alarms, check and edit a design that
-is not saved, and test a design on recorded history in the Dojo. **May start
-monitors** additionally lets one key start a monitoring service. Without it the
-agent hands its design to a member, who starts it. No key can stop, rename,
+is not saved, and test a design on recorded history in the Dojo. What a key
+may start is set per key. A key that starts nothing hands its design to a
+member, who starts it. A key that starts in shadow starts services that record
+the alarms they would raise and raise none, and a member takes them live. A key
+that starts live starts services that raise alarms. No key can stop, rename,
 replace or delete a monitor, change the library, sources, labels, members,
 roles or keys, and an operation added later is closed to keys until it is
 opened on purpose. Revoking a key stops it with the next request. Monitors the

@@ -166,11 +166,22 @@ proposed it; **Show decided proposals** adds those already accepted, declined
 or withdrawn, each with who decided and what they answered. Select a proposal
 to open it in the setup page with its name and readings filled in and a note
 above the graph that says who proposed it and why. It is a design like any
-other, so change it before you start it if you wish. **Start monitoring** starts
-the service and accepts the proposal. **Decline** turns it down, with an
+other, so change it before you start it if you wish. **Start monitoring**, or
+**Start in shadow** with **Shadow run** ticked, starts the service and accepts
+the proposal. **Decline** turns it down, with an
 optional word for its author. A proposal that replaces a running service says
-so in the list and opens as a change to that service. Members whose role cannot
+so in the list and opens as a change to that service, with the steps that
+differ from the running design marked on their cards. Members whose role cannot
 manage monitors can read a proposal and cannot decide on it.
+
+A proposal can name the test on history its author ran. The test is of the
+design as it was proposed: a test that ran an earlier version is refused when
+the proposal is made. For members who may use the Dojo the proposal then opens
+with **Test on history** beside the graph, showing that test and who ran it:
+when the design alarmed over the tested values, what it scored and its
+figures. The values it ran on are chosen, so **Test again**
+runs the design as you have changed it on the same values and puts the author's
+figures under yours.
 
 Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
@@ -392,6 +403,40 @@ step** with that reason and cannot be chosen as a detector model.
 
 When a change also moves steps or the detection rule, a notice says what
 changed, and **Undo** reverses all of it.
+**Service settings** open with the **Alarm budget**: how many scores may lie
+above the boundary per hour, day or week. The design keeps the budget as the
+**Target alarm rate** of its calibration step or, under the **Fixed split**, as
+the quantile of the **Calibrated score threshold**, so the budget and those
+settings always agree and either can be changed. The count follows from how
+often the chosen readings arrive; until they report that, the budget reads as
+one score in so many. While nothing is wrong, every score above the boundary is
+a false alarm, so the budget is what a healthy machine may raise. With
+**Exceedances in a row** above 1, alarms come less often than the budget. The
+text under the setting repeats what the calibration method holds. A small
+budget needs a long calibration window: where the boundary is a quantile of
+that window, one alarm a week at a reading every 5 seconds needs a week of
+calibration scores, and the setting says so when the window is too short. Under
+the fixed split the threshold cannot lie above the largest calibration score,
+so the budget goes no lower than one score in **Calibration observations** plus
+one. A design that alarms by the **Conformal alarm policy** has no share of
+scores to set and shows no budget.
+
+**Shadow run**, under the budget, starts the service in shadow. A shadow
+service learns, calibrates and scores like any other and raises no alarm. Each
+alarm it would have raised is kept as **muted** evidence, an open dot on the
+monitor's chart, and none is listed or sent. The start button then reads
+**Start in shadow**, the service list shows **Shadow** where a service that
+raises alarms shows **Active**, and the service's page says that it runs in
+shadow. Use it to see how often a new design would alarm on live readings
+before anyone is alerted. To take the service live, choose **Edit service** on
+its **Pipeline** tab, clear **Shadow run** and choose **Update monitoring**;
+the notice above the canvas then reads **Goes live**. Like every update this
+replaces the service, so it learns anew before its first alarm. A shadow
+service holds its readings like any other, and a reading belongs to one
+service, so a shadow run cannot stand beside a live service on the same
+readings. To judge a change to a running service, test the design on recorded
+history instead.
+
 In **Service settings**, **Before the first alarm** shows the observations Prepare steps need first, then
 the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
 shows durations. The slowest reading paces observations, because each
@@ -747,13 +792,23 @@ policy combines detectors, selecting it lists each detector's score and surprise
 for the sampled observation, and a selected detector shows its surprise beside
 its score. A chart's tooltip lists the same for each evidence row.
 
-**Edit service** opens the running definition, layout and bindings. **Apply
-changes** explains the interruption and fresh learning, then replaces the
-service through the same preflight and handoff. Both sets of readings stay
+**Edit service** opens the running definition, layout and bindings. A note
+above the graph explains the interruption and fresh learning, and **Update
+monitoring** replaces the service through the same preflight and handoff. Both sets of readings stay
 reserved during preflight and handoff, and a failed preflight leaves the
 predecessor running. After retirement, cancellation or failure does not silently
 revive it. History remains inspectable after a service is removed. Older library,
 revision and in-flight activation links still open.
+
+While you change a service, the graph is compared with the design that runs.
+The card of a step the running design lacks is marked **New**, and the card of
+a step it holds differently is marked **Changed**. Step settings say what
+changed, such as "Factor 5, was 3" or "Switched off". The note above the graph
+counts both, names the steps that went, and says what else differs: the inputs
+and how many observations the design learns from. A step that only has a new
+step in front of it is not marked, because the new step is the change. A
+proposal that replaces a service is compared the same way, so a review starts
+at the marked cards.
 
 Static preprocessing fits only the training window and stays frozen. Adaptive
 preprocessing initializes before downstream learning; its warm-up counter counts

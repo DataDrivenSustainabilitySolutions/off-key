@@ -76,6 +76,7 @@ function Result({ tested, previous, stale }: { tested: TestedRun; previous?: Tes
       <h4>Result</h4>
       <span>{dataset.name}</span>
     </div>
+    {tested.by && <p className="pl-help">Tested by {tested.by}.</p>}
     {stale && <p className="pl-help" role="status">The design has changed since this test.</p>}
     {spans && <AlarmStrip spans={spans} outline={outline} labels={metrics.labels} />}
     {error && <p className="pl-error" role="alert">The alarms and scores could not be drawn. {error}</p>}
@@ -99,18 +100,27 @@ function Result({ tested, previous, stale }: { tested: TestedRun; previous?: Tes
 /** What the composer's button for the test shows. It is mounted for as long as the composer is, so it
  * follows a run while the panel is closed and says when one has ended there. The word stays as it is and
  * a line along the button's lower edge fills, so the toolbar does not move while a test counts. */
-export function HistoryTestStatus({ session, open }: DesignTestStatusProps) {
+export function HistoryTestStatus({ session, open, evidence }: DesignTestStatusProps) {
   const test = useHistoryTest(session);
   useFollowTest(test);
+  const store = test.session;
+  useEffect(() => {
+    if (!evidence) return;
+    const controller = new AbortController();
+    void store.adopt(evidence, controller.signal);
+    return () => controller.abort();
+  }, [store, evidence]);
   const ended = test.current && !isActive(test.current.run) ? test.current.run : undefined;
+  // A test the design came with ended before the composer opened: there is nothing to announce.
+  const silent = open || !!test.current?.by;
   const announced = useRef(ended?.id);
   useEffect(() => {
     if (!ended || announced.current === ended.id) return;
     announced.current = ended.id;
-    if (open) return;
+    if (silent) return;
     if (ended.status === "succeeded") toast.success("The test on history has finished.", { id: "history-test" });
     else if (ended.status === "failed") toast.error("The test on history stopped.", { id: "history-test" });
-  }, [ended, open]);
+  }, [ended, silent]);
   const progress = testProgress(test);
   return <>Test <span className="ex-sr-only">on history{progress ? `, ${testStatus(test)!.toLowerCase()}` : ""}</span>
     {progress && <span className={`dj-test-meter${progress.share === undefined ? " is-waiting" : ""}`} aria-hidden="true"

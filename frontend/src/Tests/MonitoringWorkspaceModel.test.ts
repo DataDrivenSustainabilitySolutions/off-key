@@ -110,4 +110,14 @@ describe("monitoring workspace identity and scale", () => {
     expect(serviceState({ ...service, operational_status: { ...service.operational_status, stage: "failed", is_stale: true } })).toMatchObject({ label: "Failed", tone: "danger" });
     expect(serviceState({ ...service, active: false })).toMatchObject({ label: "Stopped", category: "stopped" });
   });
+
+  it("tells a shadow service from one that raises alarms, also while it learns", () => {
+    const watching = monitor("one", []);
+    expect(serviceState(watching)).toEqual({ label: "Active", tone: "positive", category: "monitoring" });
+    expect(serviceState({ ...watching, shadow: true })).toEqual({ label: "Shadow", tone: "neutral", category: "monitoring" });
+    expect(serviceState({ ...monitor("one", [], "collecting_training"), shadow: true }).label).toBe("Learning · shadow");
+    // What needs attention needs it in shadow too.
+    expect(serviceState({ ...watching, shadow: true, operational_status: { ...watching.operational_status, is_stale: true } }))
+      .toMatchObject({ label: "No recent status", category: "attention" });
+  });
 });

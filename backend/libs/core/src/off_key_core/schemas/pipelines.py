@@ -283,6 +283,12 @@ class BoundInput(PipelineModel):
     unit: str | None = None
 
 
+SHADOW = (
+    "A shadow run records every alarm it would raise as muted evidence and "
+    "raises none, so nobody is alerted."
+)
+
+
 class PipelineExecutionConfig(PipelineModel):
     schema_version: Literal[1] = 1
     definition: PipelineDefinition
@@ -848,7 +854,10 @@ class PipelineProposalCreate(PipelineModel):
         default=None,
         min_length=1,
         max_length=100,
-        description="A Dojo run that tested this design, as evidence.",
+        description=(
+            "A Dojo run that tested this very design to its end, as evidence. "
+            "A run of another design is refused; titles do not count."
+        ),
     )
     replace_service_id: str | None = Field(
         default=None,
@@ -916,6 +925,7 @@ class PipelineActivationRequest(PipelineModel):
     replace_service_id: str | None = Field(
         default=None, **public("replace_monitor_id", "replace_service_id")
     )
+    shadow: bool = Field(default=False, description=SHADOW)
 
 
 class PipelineApplyRequest(PipelineModel):
@@ -929,6 +939,7 @@ class PipelineApplyRequest(PipelineModel):
     replace_service_id: str | None = Field(
         default=None, **public("replace_monitor_id", "replace_service_id")
     )
+    shadow: bool = Field(default=False, description=SHADOW)
 
     @field_validator("display_name")
     @classmethod
@@ -1140,6 +1151,7 @@ class MonitorSummary(BaseModel):
         **public("active", "status"),
     )
     operational_status: dict[str, Any] = Field(default_factory=dict)
+    shadow: bool = Field(default=False, description=SHADOW)
     created_at: datetime | None = None
 
     @field_validator("stream_ids", mode="before")

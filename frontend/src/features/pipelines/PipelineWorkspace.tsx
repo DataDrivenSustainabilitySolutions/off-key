@@ -55,6 +55,9 @@ export default function PipelineWorkspace({
   const proposalId = params.get("proposal");
   const proposal = opened?.id === proposalId ? opened.proposal : undefined;
   const proposalError = opened?.id === proposalId ? opened.error : undefined;
+  // The test a design was proposed with is shown beside it, as the reason to believe the proposal.
+  const tested = useMemo(() => proposal?.test_run_id
+    ? { run: proposal.test_run_id, by: proposal.author, definition: proposal.definition } : undefined, [proposal]);
   const collectionReady = collectionApplied(system.snapshot?.runtime);
   useEffect(() => {
     const controller = new AbortController();
@@ -137,6 +140,7 @@ export default function PipelineWorkspace({
       : sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
     initialBindings={proposal?.bindings} initialName={proposal?.name} origin={proposal && `proposal:${proposal.id}`}
     notice={proposal && <PipelineProposalNotice proposal={proposal} canDecide={canEdit} onDeclined={proposals} />}
+    tested={tested}
     onRequested={proposal?.status === "open" ? () => accept(proposal.id) : undefined}
     replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
     sourceService={sourceId ? { id: sourceId, replace: !!replacementId } : undefined}

@@ -117,8 +117,8 @@ describe("a detector that follows a rule", () => {
     const view = render(<PipelineDesignSettings document={{ definition: ruled(), layout: { nodes: {} } }} catalog={catalog}
       readOnly={false} onChange={() => undefined} />);
     expect(screen.getByText(/follow a rule and learn nothing, so calibration starts with the first observation/)).toBeTruthy();
-    expect(screen.getAllByRole("spinbutton").map((item) => item.getAttribute("aria-label") ?? item.closest("label")?.textContent))
-      .toEqual(["Calibration observations", "Default random seed"]);
+    expect(screen.getAllByRole<HTMLInputElement>("spinbutton").map((item) => item.labels?.[0]?.textContent))
+      .toEqual(["Alarm budget", "Calibration observations", "Default random seed"]);
     expect(screen.queryByText(/Upstream steps initialize first/)).toBeNull();
     const learns = changeDetector(ruled(), "rule", find("detector:aberrant_x_stream"), components).definition;
     view.rerender(<PipelineDesignSettings document={{ definition: learns, layout: { nodes: {} } }} catalog={catalog}

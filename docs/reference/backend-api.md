@@ -81,11 +81,11 @@ Content-Type: application/json
 | `POST` | `/roles` | Create a role; body `name`, `permissions`; the id is derived from the name | `manage_members` |
 | `PATCH` | `/roles/{role_id}` | Rename a role or replace its permissions | `manage_members` |
 | `DELETE` | `/roles/{role_id}` | Delete a role no member holds; 204 | `manage_members` |
-| `GET` | `/agents` | Agents that hold a key, each with the end of its key and whether it may start monitoring services | `manage_members` |
-| `POST` | `/agents` | Create an agent and its key; body `name`, `may_start`. The answer carries `key` this once | `manage_members` |
-| `PATCH` | `/agents/{agent_id}` | Allow or forbid the key to start monitoring services; body `may_start` | `manage_members` |
+| `GET` | `/agents` | Agents that hold a key, each with the end of its key and what it may start | `manage_members` |
+| `POST` | `/agents` | Create an agent and its key; body `name` and `starts` (`nothing`, `shadow` or `live`; `nothing` when left out). The answer carries `key` this once | `manage_members` |
+| `PATCH` | `/agents/{agent_id}` | Set what the key may start; body `starts` | `manage_members` |
 | `DELETE` | `/agents/{agent_id}` | Revoke the key, which stops working at once; 204. Services the agent started keep running | `manage_members` |
-| `GET` | `/agents/me` | The agent a key belongs to and whether it may start monitoring services | A key |
+| `GET` | `/agents/me` | The agent a key belongs to and what it may start | A key |
 
 Every active member can read everything outside the Dojo. A role grants the
 permissions:
@@ -113,9 +113,11 @@ operation with `x-agent-access`:
   design that is not saved, testing a design on history in the Dojo (copying
   history into a dataset, starting a run and reading its results), and
   proposing a design to a member, reading proposals and withdrawing its own.
-- `start`: only a key with `may_start`. These are `POST /pipelines/apply`,
-  which starts a monitoring service, and cancelling an activation. A key cannot
-  replace a running service: `replace_monitor_id` answers 403.
+- `start`: only a key whose `starts` is `shadow` or `live`. These are
+  `POST /pipelines/apply`, which starts a monitoring service, and cancelling an
+  activation. A key with `shadow` starts shadow runs only: a start without
+  `shadow` set answers 403. A key cannot replace a running service:
+  `replace_monitor_id` answers 403.
 
 Every other operation answers a key with 403, among them stopping, renaming
 and deleting monitors, deciding on a proposal, changing the library, labels
@@ -246,7 +248,7 @@ here; changes need `manage_monitors`.
 | `PUT` | `/monitors/{monitor_id}/pipeline/layout` | Store where its nodes sit on the canvas; the graph is unchanged | Body: layout |
 | `GET` | `/pipelines` | Saved designs, paged | `limit`, `offset`, `query`, `archived` |
 | `POST` | `/pipelines` | Save a new design as a draft | Body: `name`, `definition` |
-| `POST` | `/pipelines/apply` | Save, publish and activate a design in one step (HTTP 202) | Body: `definition`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `POST` | `/pipelines/apply` | Save, publish and activate a design in one step (HTTP 202) | Body: `definition`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` and `shadow` |
 | `POST` | `/pipelines/validate` | Check an unsaved design; with `selected_node_id` also its fields | Body: `definition` |
 | `POST` | `/pipelines/edit` | Change a design in small edits without saving it; answers with the changed design and its check | Body: `edits`, optional `definition` and `layout` |
 | `GET` | `/pipelines/{pipeline_id}` | One design with its draft, `version` and revisions | Path: `pipeline_id` |
@@ -264,13 +266,13 @@ here; changes need `manage_monitors`.
 | `POST` | `/pipeline-blocks` | Save a chain of steps as a block (HTTP 201). HTTP 409 when the name is taken or the library holds 100 blocks; 422 for a step a block cannot hold, such as a detector | Body: `name`, optional `description`, `steps` (1 to 16, each with `component` and optional `contract_version`, `params`, `label`) |
 | `DELETE` | `/pipeline-blocks/{block_id}` | Delete a block (HTTP 204); designs keep the steps they copied from it | Path: `block_id` |
 | `GET` | `/pipeline-proposals` | Proposals, the newest first, without their designs: `items`, each with `id`, `name`, `reason`, `author`, `author_kind`, `status`, `test_run_id`, `replace_monitor_id` and the decision | Query: optional `status` (`open`, `accepted`, `declined` or `withdrawn`) |
-| `POST` | `/pipeline-proposals` | Hand a design to a member to decide on (HTTP 201). The design must check without errors. HTTP 409 while 50 proposals wait for a decision | Body: `name`, `reason`, `definition`, optional `layout`, `bindings`, `test_run_id`, `replace_monitor_id` |
+| `POST` | `/pipeline-proposals` | Hand a design to a member to decide on (HTTP 201). The design must check without errors. A `test_run_id` names a Dojo run that succeeded on this very design; a run that is missing, unfinished or of another design answers HTTP 422, and titles do not count as a difference. HTTP 409 while 50 proposals wait for a decision | Body: `name`, `reason`, `definition`, optional `layout`, `bindings`, `test_run_id`, `replace_monitor_id` |
 | `GET` | `/pipeline-proposals/{proposal_id}` | One proposal with its `definition`, `layout` and `bindings` | Path: `proposal_id` |
 | `POST` | `/pipeline-proposals/{proposal_id}/decision` | Accept or decline a proposal. Members only: a key cannot decide. Accepting starts nothing: the web app accepts a proposal once the start of its design has been requested. HTTP 409 once it is decided or withdrawn | Body: `status` (`accepted` or `declined`), optional `note` for the author |
 | `POST` | `/pipeline-proposals/{proposal_id}/withdraw` | Take back a proposal that still waits. HTTP 403 for anyone but its author | Path: `proposal_id` |
 | `GET` | `/forecast-models` | Models of the forecast service that pretrained forecaster steps use, each with its download `status`, `progress` and `error`; `service` is `not_deployed` or `unreachable` when there is none to list | None |
 | `POST` | `/forecast-models/downloads` | Have the forecast service download a model's weights (HTTP 202); poll the list for progress | Body: `model` |
-| `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` and `shadow` |
 | `GET` | `/pipeline-activations/{activation_id}` | Progress of an activation: `phase`, `monitor_id`, issues | Path: `activation_id` |
 | `POST` | `/pipeline-activations/{activation_id}/cancel` | Cancel an activation that has not finished | Path: `activation_id` |
 | `GET` | `/detectors` | Detector models with family, cost and parameter schema | Optional `strategy` |
@@ -288,6 +290,13 @@ reading"; a reading removed from the catalogue drops out. A monitor's
 `operational_status` names its inputs by reading id as well. How a reading is
 recorded (its topic and ingress key) stays inside the backend. `active` is true
 while the monitor should run and false once it is stopped.
+
+`shadow` is true for a monitor started with `shadow` set. A shadow run learns
+and scores as any monitor and raises no alarm: each alarm it would have raised
+is an evidence row with `alarm` false and `muted` true, and no anomaly is
+stored. The flag belongs to the start, not to the design, so the same design
+runs either way. To take a shadow run live, start its design again with
+`replace_monitor_id` and without `shadow`.
 
 A monitor start body contains:
 
@@ -582,10 +591,12 @@ hold open and any replica answers any request.
 | `edit_design`, `validate_design` | Changes a design in small edits and checks it | `POST /pipelines/edit`, `POST /pipelines/validate` |
 | `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised | `POST /dojo/datasets/history`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` |
 | `propose_design`, `list_proposals`, `withdraw_proposal` | Hands a design to a member and learns what they decided | `/pipeline-proposals` |
-| `start_monitor`, `get_start` | Starts a monitor without a member's decision | `POST /pipelines/apply`, `GET /pipeline-activations/{activation_id}` |
+| `start_monitor`, `get_start` | Starts a monitor without a member's decision, in shadow with `shadow` set | `POST /pipelines/apply`, `GET /pipeline-activations/{activation_id}` |
 
-`start_monitor` and `get_start` exist only for a key with `may_start`; another
-key neither sees nor can call them. The grant is read with every request, so
+`start_monitor` and `get_start` exist only for a key whose `starts` is `shadow`
+or `live`; another key neither sees nor can call them. A key with `shadow`
+passes `shadow` to `start_monitor`, and a start without it is refused in the
+route's words. The grant is read with every request, so
 it holds from the next one.
 
 A tool is a call to the operations beside it, made with the agent's key. The

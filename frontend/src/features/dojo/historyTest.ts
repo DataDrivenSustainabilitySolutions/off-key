@@ -5,6 +5,7 @@ import { createDraftStore, navigationDraft } from "@/lib/navigation-draft";
 import type { DatasetSeriesView, DatasetView, RunMetrics, RunOutline, RunView, StepSample } from "@/types/dojo.generated";
 import type { InputSlot, PipelineNodePreview } from "@/types/pipelines.generated";
 import type { PipelineDefinition } from "../pipelines/contracts";
+import type { DesignEvidence } from "../pipelines/designTest";
 import { dojoApi } from "./api";
 import { formatDuration, formatInstant, isActive, suggestBindings } from "./model";
 
@@ -55,6 +56,8 @@ export type TestedRun = {
   bindings: Record<string, string>;
   /** The dataset, spanning only the series the test read. */
   dataset: Pick<DatasetView, "id" | "name" | "start_at" | "end_at">;
+  /** Who ran it, where the design came with its test. */
+  by?: string;
 };
 
 const sameBindings = (one: Record<string, string>, other: Record<string, string>) =>
@@ -164,6 +167,26 @@ export function createHistoryTest() {
           previous: [scored(current), previous].find((item) => item?.dataset.id === dataset.id && sameBindings(item.bindings, bindings)) });
       } catch (reason) {
         update({ ...getSnapshot(), step: undefined, error: getErrorMessage(reason) });
+      }
+    },
+    /** Take the test a design came with as this composer's test. One the member ran here stands over it. */
+    adopt: async ({ run: id, by, definition }: DesignEvidence, signal: AbortSignal) => {
+      const tested = () => !!getSnapshot().step || !!getSnapshot().current;
+      if (!isCurrent() || tested()) return;
+      try {
+        const run = await dojoApi.run(id, signal);
+        const [dataset, metrics] = await Promise.all([dojoApi.dataset(run.dataset_id, signal),
+          run.status === "succeeded" ? dojoApi.metrics(id, signal) : undefined]);
+        if (signal.aborted || tested()) return;
+        // The next test runs on the same values and reads the same series, so the two compare.
+        selection++;
+        const bindings = Object.fromEntries(run.bindings.map((item) => [item.slot_id, item.series_id]));
+        update({ ...getSnapshot(), choice: dataset.id, dataset, error: "", chosen: bindings,
+          current: { run, metrics, definition, by, bindings,
+            dataset: { id: dataset.id, name: dataset.name, ...boundSpan(dataset, bindings) } } });
+      } catch (reason) {
+        if (!signal.aborted && !tested())
+          update({ ...getSnapshot(), error: `The test this design came with could not be opened. ${getErrorMessage(reason)}` });
       }
     },
     /** Follow the run in progress; its metrics are read as soon as it has finished. */

@@ -148,10 +148,14 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, monkeypatch):
         assert client.instructions == mcp_tools.INSTRUCTIONS
         tools = (await client.list_tools()).tools
         # The grant is read with every request, so it holds from the next one.
-        stand_in.profile["may_start"] = True
+        stand_in.profile["starts"] = "shadow"
+        in_shadow = (await client.list_tools()).tools
+        stand_in.profile["starts"] = "live"
         granted = (await client.list_tools()).tools
 
     assert [tool.name for tool in tools] == WITHOUT_THE_GRANT
+    # A key that starts in shadow only has the same tools as one that starts live.
+    assert in_shadow == granted
     assert [tool.name for tool in granted] == [
         *WITHOUT_THE_GRANT,
         "start_monitor",
@@ -594,13 +598,17 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
             asked.endpoint.endswith("/apply") for asked in stand_in.forwarded()
         )
 
-        stand_in.profile["may_start"] = True
+        stand_in.profile["starts"] = "live"
         started = said(await client.call_tool("start_monitor", start))
         assert (started["id"], started["monitor_id"]) == ("activation-1", "service-1")
         applied = stand_in.last("POST", f"{MONITORS}/pipelines/apply").body
         assert applied["display_name"] == "Pump vibration"
         assert applied["bindings"] == {"value": "r-power"}
         assert applied["replace_service_id"] is None
+        assert applied["shadow"] is False
+        # In shadow the monitor records its alarms and raises none.
+        await client.call_tool("start_monitor", start | {"shadow": True})
+        assert stand_in.last("POST", f"{MONITORS}/pipelines/apply").body["shadow"]
         # A start is named even where the agent names none, and by the agent's
         # own word where it repeats a call.
         assert len(applied["idempotency_key"]) == 32

@@ -110,9 +110,13 @@ async def apply_pipeline(request: Request, change: PipelineApplyRequest):
 
     Saves the design, publishes a revision and activates it on the readings in
     `bindings` (input slot id to catalogue reading id). `replace_monitor_id`
-    swaps out a running monitor. Repeating a request with the same
+    swaps out a running monitor. With `shadow` the monitor records each alarm
+    it would raise as muted evidence and raises none; replacing it without
+    `shadow` takes it live. Repeating a request with the same
     `idempotency_key` returns the first activation instead of starting another.
-    Answers 202: poll the activation until its `phase` settles.
+    Answers 202: poll the activation until its `phase` settles. A key for an
+    agent may start, not replace, and one that starts in shadow only gets 403
+    without `shadow`.
     """
     return await forward(request, "POST", "/pipelines/apply", change)
 
@@ -253,8 +257,10 @@ async def create_pipeline_proposal(request: Request, change: PipelineProposalCre
 
     Give the `name` the monitor would carry and the `reason` for it, with the
     `bindings` it would run on and, where there is one, the Dojo run that tested
-    it as `test_run_id`. `replace_monitor_id` names a running monitor the design
-    is meant to take the place of. The design must check without errors.
+    it as `test_run_id`. That run must have succeeded, on this very design:
+    a run of another design answers 422, and titles do not count as a
+    difference. `replace_monitor_id` names a running monitor the design is
+    meant to take the place of. The design must check without errors.
     Answers 409 while 50 proposals wait for a decision.
     """
     return await forward(request, "POST", "/pipeline-proposals", change)

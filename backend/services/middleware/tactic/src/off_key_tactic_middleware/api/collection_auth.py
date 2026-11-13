@@ -73,7 +73,7 @@ async def _agent(request: Request, key: str, session: AsyncSession) -> Agent:
     )
     if agent is None:
         raise HTTPException(401, "This key is not valid")
-    refusal = agent_refusal(request.scope.get("route"), may_start=agent.may_start)
+    refusal = agent_refusal(request.scope.get("route"), starts=agent.starts)
     if refusal:
         raise HTTPException(403, refusal)
     return agent

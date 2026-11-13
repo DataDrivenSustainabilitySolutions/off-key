@@ -4,7 +4,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
-from off_key_core.auth.agents import OPEN_TO_AGENTS, STARTS_SERVICES
+from off_key_core.auth.agents import (
+    OPEN_TO_AGENTS,
+    STARTS_SERVICES,
+    shadow_refusal,
+)
 from off_key_core.auth.permissions import Permission
 from off_key_core.config.logs import log_security_event
 from off_key_core.db.models import Agent, User
@@ -99,10 +103,17 @@ async def apply_pipeline(
             raise HTTPException(
                 403, "Replacing a running service needs a member, not a key"
             )
+        refusal = shadow_refusal(starts=caller.starts, shadow=change.shadow)
+        if refusal:
+            raise HTTPException(403, refusal)
         log_security_event(
             "agent_service_start",
             caller.name,
-            {"agent_id": caller.id, "service": change.display_name},
+            {
+                "agent_id": caller.id,
+                "service": change.display_name,
+                "shadow": change.shadow,
+            },
         )
     return await invoke(activations.apply(change))
 

@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { AlarmBudgetSetting } from "./AlarmBudgetSetting";
 import type { PipelineCatalog } from "./contracts";
 import { hasFittedDetector, hasStreamingDetector, learningWindow } from "./learning";
 import { PIPELINE_LIMITS, type GraphDocument } from "./model";
@@ -91,6 +92,9 @@ export function PipelineDesignSettings({
   document,
   catalog,
   startup,
+  shortfall,
+  shadow,
+  onShadow,
   readOnly,
   onChange,
 }: {
@@ -98,6 +102,11 @@ export function PipelineDesignSettings({
   /** Tells how the design's detectors learn, which names the learning window. */
   catalog?: PipelineCatalog;
   startup?: Startup;
+  /** What the check says when the calibration window is too short for the alarm budget. */
+  shortfall?: string;
+  /** Whether the service starts in shadow, where the page starts a service. */
+  shadow?: boolean;
+  onShadow?: (shadow: boolean) => void;
   readOnly: boolean;
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
 }) {
@@ -117,6 +126,14 @@ export function PipelineDesignSettings({
     onChange({ ...document, definition: { ...definition, input_slots } }, history);
   return (
     <>
+      {(catalog || onShadow) && <section className="pl-alarms">
+        {catalog && <AlarmBudgetSetting document={document} components={catalog.components} interval={startup?.interval}
+          gated={startup?.gated} shortfall={shortfall} readOnly={readOnly} onChange={onChange} />}
+        {onShadow && <label className="pl-check">
+          <input type="checkbox" checked={!!shadow} disabled={readOnly} onChange={(event) => onShadow(event.target.checked)} />
+          <span>Shadow run<small>Records the alarms it would raise and raises none. An update without it takes the service live.</small></span>
+        </label>}
+      </section>}
       {catalog && <p className="pl-help pl-learning-note">
         {untrained
           ? "The detectors follow a rule and learn nothing, so calibration starts with the first observation."

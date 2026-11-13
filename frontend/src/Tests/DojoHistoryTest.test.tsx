@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import toast from "react-hot-toast";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { dojoApi } from "@/features/dojo/api";
@@ -9,11 +10,13 @@ import {
   alarmMarks, bindSeries, createHistoryTest, ruleShape, seriesComplete, stepValue, stepValues, testFigures, testProgress,
   testSpans, testStatus,
 } from "@/features/dojo/historyTest";
+import type { DesignEvidence } from "@/features/pipelines/designTest";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import type {
   DatasetSeriesView, DatasetView, OutlineBucket, RunMetrics, RunOutline, RunView, StepSample,
 } from "@/types/dojo.generated";
 
+vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), importHistory: vi.fn(), createRun: vi.fn(), run: vi.fn(), cancelRun: vi.fn(),
   metrics: vi.fn(), outline: vi.fn(), steps: vi.fn(),
@@ -250,6 +253,47 @@ describe("a test on history", () => {
     expect(dojoApi.metrics).not.toHaveBeenCalled();
   });
 
+  it("takes the test a design came with as its own, unless the member has run one here", async () => {
+    const came = { run: "run-agent", by: "Night shift agent", definition };
+    vi.mocked(dojoApi.run).mockResolvedValue(run("run-agent", "succeeded", { dataset_id: "bench",
+      bindings: [{ slot_id: "voltage", series_id: "b1", series_name: "U" }, { slot_id: "current", series_id: "b3", series_name: "Spare" }] }));
+    vi.mocked(dojoApi.dataset).mockResolvedValue(bench);
+    vi.mocked(dojoApi.metrics).mockResolvedValue(metrics("run-agent"));
+    const test = createHistoryTest();
+    await test.adopt(came, signal());
+    // The values it ran on and the series it read are chosen, so the next test compares with it.
+    expect(test.getSnapshot()).toMatchObject({ choice: "bench", dataset: bench, chosen: { voltage: "b1", current: "b3" }, error: "",
+      current: { run: { id: "run-agent" }, by: "Night shift agent", definition, metrics: { run_id: "run-agent" },
+        dataset: { id: "bench", name: "Bench" } } });
+    vi.mocked(dojoApi.createRun).mockResolvedValue(run("run-2", "queued", { dataset_id: "bench" }));
+    await test.start({ definition, readings, name: "Room monitor" });
+    expect(dojoApi.importHistory).not.toHaveBeenCalled();
+    expect(vi.mocked(dojoApi.createRun).mock.calls[0]![0]).toMatchObject({ dataset_id: "bench", bindings: { voltage: "b1", current: "b3" } });
+    expect(test.getSnapshot()).toMatchObject({ current: { run: { id: "run-2" } }, previous: { run: { id: "run-agent" } } });
+    expect(test.getSnapshot().current?.by).toBeUndefined();
+    // The member's test is not given up for the one the design came with.
+    vi.mocked(dojoApi.run).mockClear();
+    await test.adopt(came, signal());
+    expect(dojoApi.run).not.toHaveBeenCalled();
+    expect(test.getSnapshot().current?.run.id).toBe("run-2");
+  });
+
+  it("says so when the test a design came with is gone", async () => {
+    vi.mocked(dojoApi.run).mockRejectedValue(new Error("Run not found"));
+    const test = createHistoryTest();
+    await test.adopt({ run: "run-gone", by: "Night shift agent", definition }, signal());
+    expect(test.getSnapshot()).toMatchObject({ choice: "window:week",
+      error: "The test this design came with could not be opened. Run not found" });
+    expect(test.getSnapshot().current).toBeUndefined();
+    // A page that was left meanwhile is told nothing.
+    const left = new AbortController();
+    const other = createHistoryTest();
+    const adopting = other.adopt({ run: "run-gone", by: "Night shift agent", definition }, left.signal);
+    left.abort();
+    await adopting;
+    expect(other.getSnapshot().error).toBe("");
+  });
+
   it("reads the metrics again, since labels set in the Dojo change what the same alarms mean", async () => {
     vi.mocked(dojoApi.importHistory).mockResolvedValue(copy);
     vi.mocked(dojoApi.createRun).mockResolvedValue(run("run-1"));
@@ -376,12 +420,13 @@ describe("the values of a step in a test", () => {
 
 describe("the test panel", () => {
   const onChooseReadings = vi.fn();
-  function Panel({ bound = readings, blocked, changed = definition }: {
+  function Panel({ bound = readings, blocked, changed = definition, evidence, open = true }: {
     bound?: Record<string, string | undefined>; blocked?: string; changed?: typeof definition;
+    evidence?: DesignEvidence; open?: boolean;
   }) {
     // The composer's button follows the run; the panel beside it shows the same test.
     return <>
-      <button type="button"><HistoryTestStatus session="panel" open /></button>
+      <button type="button"><HistoryTestStatus session="panel" open={open} evidence={evidence} /></button>
       <HistoryTestPanel session="panel" definition={changed} readings={bound} name="Room monitor" scope="Room"
         blocked={blocked} onChooseReadings={onChooseReadings} />
     </>;
@@ -613,6 +658,26 @@ describe("the test panel", () => {
       expect(await screen.findByText("The last test gave no results, so it has no values to show.")).toBeTruthy();
       expect(dojoApi.steps).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("shows the test a design came with, who ran it, and when the design has changed since", async () => {
+    const came = { run: "run-agent", by: "Night shift agent", definition };
+    vi.mocked(dojoApi.run).mockResolvedValue(run("run-agent", "succeeded", { dataset_id: "bench",
+      bindings: [{ slot_id: "voltage", series_id: "b1", series_name: "U" }, { slot_id: "current", series_id: "b3", series_name: "Spare" }] }));
+    vi.mocked(dojoApi.dataset).mockResolvedValue(bench);
+    vi.mocked(dojoApi.metrics).mockResolvedValue(metrics("run-agent"));
+    // The panel is closed: a test that ended before the composer opened is still not announced.
+    const view = mount({ evidence: came, open: false });
+    const result = within(await screen.findByRole("region", { name: "Test result" }));
+    expect(result.getByText("Tested by Night shift agent.")).toBeTruthy();
+    expect(figure(result, "Alarms")).toBe("4 · 0.73 per day");
+    expect(result.queryByText("The design has changed since this test.")).toBeNull();
+    expect(values().value).toBe("bench");
+    expect((screen.getByRole("combobox", { name: "Series for Current" }) as HTMLSelectElement).value).toBe("b3");
+    expect(screen.getByRole("button", { name: "Test again" })).toBeTruthy();
+    expect(toast.success).not.toHaveBeenCalled();
+    view.rerender(<MemoryRouter><Panel evidence={came} open={false} changed={{ ...definition, nodes: [] }} /></MemoryRouter>);
+    expect(result.getByText("The design has changed since this test.")).toBeTruthy();
   });
 
   it("shows why a run stopped", async () => {

@@ -3,9 +3,12 @@ import React, { createContext, useContext, useEffect, useReducer, useState, useS
 import { endSession, refreshSession, subscribeToSession, tokenManager } from "./session";
 import { getTokenPayload, getUserIdFromToken } from "./token";
 import { getCurrentMember, type Member, type Permission } from "@/lib/member-api";
+import { loadDemoStatus, type DemoStatus } from "./demo";
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  isGuest: boolean;
+  demo: DemoStatus | null;
   userId: number | null;
   isLoading: boolean;
   authError: string | null;
@@ -51,6 +54,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // Remembered access tokens are kept in memory; a new tab restores one from the cookie.
   const remembered = useSyncExternalStore(subscribeToSession, isRememberedSession, notRemembered);
   const restoring = !token && remembered;
+  const [demo, setDemo] = useState<DemoStatus | null>(null);
+  const [demoFailure, setDemoFailure] = useState<{ attempt: number; message: string } | null>(null);
+  useEffect(() => {
+    if (token || restoring) return;
+    const controller = new AbortController();
+    loadDemoStatus(controller.signal).then(setDemo).catch(() => {
+      if (!controller.signal.aborted) setDemoFailure({ attempt, message: "We couldn’t check public access. Retry or sign in to continue." });
+    });
+    return () => controller.abort();
+  }, [token, restoring, attempt]);
 
   useEffect(() => {
     if (!restoring) return;
@@ -151,10 +164,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const member = !expired ? resolved?.member ?? reusableMember(profile, token) : null;
   const restoreError = restoring && restoreFailure === attempt
     ? RENEW_FAILED : null;
-  const authError = member ? null : resolved?.error ?? restoreError;
+  const demoError = !token && !restoring && demoFailure?.attempt === attempt ? demoFailure.message : null;
+  const authError = member ? null : resolved?.error ?? restoreError ?? demoError;
   const isLoading = (restoring && !restoreError)
+    || (!token && !restoring && !demo && !demoError)
     || (!!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError)));
   const isAuthenticated = !!token && !expired;
+  const isGuest = !token && !restoring && demo?.enabled === true;
   const can = (permission: Permission) => !!member?.permissions?.includes(permission);
   const userId = token ? getUserIdFromToken(token) : null;
 
@@ -171,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, userId, member, can, isLoading, authError, retryAuthentication, login, logout }}
+      value={{ isAuthenticated, isGuest, demo, userId, member, can, isLoading, authError, retryAuthentication, login, logout }}
     >
       {children}
     </AuthContext.Provider>

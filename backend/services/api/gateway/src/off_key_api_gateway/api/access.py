@@ -3,6 +3,7 @@ from functools import cache
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from off_key_core.auth.agents import AGENT_KEY_PREFIX, agent_refusal, is_agent_key
+from off_key_core.auth.demo import DEMO_VIEWER_PERMISSIONS, DEMO_VIEWER_ROLE
 from off_key_core.auth.permissions import Permission
 from off_key_core.schemas.agents import AgentProfile
 from off_key_core.schemas.members import MemberProfile
@@ -72,7 +73,17 @@ async def current_caller(
     """The signed-in member, or an agent on a route that is open to keys."""
     if is_agent_key(authorization.removeprefix("Bearer ")):
         return await _agent(request, authorization)
-    return await signed_in_member(authorization)
+    member = await signed_in_member(authorization)
+    if getattr(request.state, "demo_guest", False) and (
+        member.role != DEMO_VIEWER_ROLE
+        or set(member.permissions) != DEMO_VIEWER_PERMISSIONS
+        or not member.is_active
+        or not member.is_verified
+    ):
+        # A guest browses as the demo viewer. Its role and permissions are
+        # checked on every request, even while the viewer's token is cached.
+        raise HTTPException(503, "The public demo is unavailable right now.")
+    return member
 
 
 async def current_member(

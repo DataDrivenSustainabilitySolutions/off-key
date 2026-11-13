@@ -6,7 +6,7 @@ credential and answers with the public field names.
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 from off_key_core.schemas.collection_health import CollectionHealth
 from off_key_core.schemas.collection_rules import (
     CollectionRule,
@@ -140,7 +140,9 @@ def _dump(model: BaseModel, **options) -> dict:
 
 
 @router.get("", response_model=Catalogue)
-async def get_catalogue(authorization: str = Depends(member_authorization)):
+async def get_catalogue(
+    request: Request, authorization: str = Depends(member_authorization)
+):
     """The saved catalogue and how it is recorded now.
 
     `document` holds `brokers`, `devices`, `readings` and `groups`; `revision`
@@ -148,7 +150,10 @@ async def get_catalogue(authorization: str = Depends(member_authorization)):
     `runtime.bindings` says per reading id how it is recorded;
     `can_edit` says whether the caller may change it.
     """
-    return await system_request("GET", authorization)
+    result = await system_request("GET", authorization)
+    if getattr(request.state, "demo_guest", False):
+        result = {**result, "updated_by": None, "can_edit": False}
+    return result
 
 
 @router.put("", response_model=Catalogue)

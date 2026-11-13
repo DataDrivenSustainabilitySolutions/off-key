@@ -1,11 +1,13 @@
-import { useRef, type ReactElement } from "react";
+import { useRef, useState, type ReactElement } from "react";
 import { Activity, Database, LogIn, LogOut, SlidersHorizontal, UserCircle } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { memberInitials } from "@/lib/utils";
 import { useSettingsNavigation, type SettingsSection } from "@/lib/settings-navigation";
+import { loginHref } from "@/auth/login-navigation";
+import { DemoSources } from "./DemoSources";
 
 type Props = {
   trigger?: ReactElement;
@@ -24,20 +26,22 @@ const items = [
 
 /** The account menu; each settings entry opens the settings overlay above the current page. */
 export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSettings }: Props) {
-  const { isAuthenticated, member, logout } = useAuth();
+  const { isAuthenticated, isGuest, member, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const settings = useSettingsNavigation();
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const openingSettings = useRef(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !isGuest) {
     return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Log in</Link></Button>;
   }
 
-  return <DropdownMenu>
+  return <><DropdownMenu>
     <DropdownMenuTrigger asChild ref={menuTrigger}>
-      {trigger ?? <button className="app-menu-trigger app-avatar-trigger" aria-label="Account menu" title={member?.email}>
-        <span className="app-avatar" aria-hidden="true">{memberInitials(member?.email)}</span>
+      {trigger ?? <button className="app-menu-trigger app-avatar-trigger" aria-label={isGuest ? "Demo menu" : "Account menu"} title={member?.email}>
+        <span className="app-avatar" aria-hidden="true">{isGuest ? "Demo" : memberInitials(member?.email)}</span>
       </button>}
     </DropdownMenuTrigger>
     <DropdownMenuContent side={side} align={align} sideOffset={8} className="app-popover app-menu z-[90]"
@@ -49,7 +53,12 @@ export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSet
         }
       }}>
       {member && <p className="app-menu-account" title={member.email}>{member.email}</p>}
-      {items.map(({ section, label, icon: Icon }) => (
+      {isGuest && <p className="app-menu-account">Public demo · Read only</p>}
+      {isGuest && <DropdownMenuItem className="app-menu-item" aria-haspopup="dialog" onSelect={() => {
+        openingSettings.current = true;
+        setSourcesOpen(true);
+      }}><Database className="size-4" />Data sources</DropdownMenuItem>}
+      {items.filter(({ section }) => !isGuest || section === "preferences" || section === "catalogue").map(({ section, label, icon: Icon }) => (
         <DropdownMenuItem key={section} className="app-menu-item" aria-haspopup="dialog" onSelect={() => {
           openingSettings.current = true;
           onSettings?.();
@@ -57,10 +66,11 @@ export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSet
         }}><Icon className="size-4" />{label}</DropdownMenuItem>
       ))}
       <div role="separator" className="app-menu-separator" />
-      <DropdownMenuItem className="app-menu-item" onSelect={() => {
+      {isGuest ? <DropdownMenuItem asChild className="app-menu-item"><Link to={loginHref(location)}><LogIn className="size-4" />Admin sign in</Link></DropdownMenuItem>
+        : <DropdownMenuItem className="app-menu-item" onSelect={() => {
         logout();
         navigate("/login", { replace: true });
-      }}><LogOut className="size-4" />Log out</DropdownMenuItem>
+      }}><LogOut className="size-4" />Log out</DropdownMenuItem>}
     </DropdownMenuContent>
-  </DropdownMenu>;
+  </DropdownMenu><DemoSources open={sourcesOpen} onOpenChange={setSourcesOpen} returnFocus={() => menuTrigger.current?.focus()} /></>;
 }

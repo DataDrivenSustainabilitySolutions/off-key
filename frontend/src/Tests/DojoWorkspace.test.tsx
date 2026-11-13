@@ -8,9 +8,9 @@ import type { Comparison, DatasetView, LabelView, MethodMetrics, RunMetrics, Run
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import { fromLocalInput } from "@/features/dojo/model";
 
-const access = vi.hoisted(() => ({ allowed: true, monitors: false }));
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true,
-  can: (permission: string) => access.allowed && (permission === "use_dojo" || access.monitors && permission === "manage_monitors") }) }));
+const access = vi.hoisted(() => ({ allowed: true, monitors: false, guest: false }));
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: !access.guest, isGuest: access.guest,
+  can: (permission: string) => !access.guest && access.allowed && (permission === "use_dojo" || access.monitors && permission === "manage_monitors") }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/features/charts/EChart", () => ({
   EChart: ({ accessibleDescription, onViewportChange }: { accessibleDescription: string; onViewportChange?: (a: number, b: number) => void }) =>
@@ -70,6 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   access.allowed = true;
   access.monitors = false;
+  access.guest = false;
   vi.mocked(dojoApi.datasets).mockResolvedValue({ items: [dataset], next_offset: null });
   vi.mocked(dojoApi.dataset).mockResolvedValue(dataset);
   vi.mocked(dojoApi.labels).mockResolvedValue({ items: [label] });
@@ -80,6 +81,20 @@ beforeEach(() => {
 });
 
 describe("Dojo workspace", () => {
+  it("lets public visitors inspect datasets and labels without mutation controls", async () => {
+    access.guest = true;
+    mount("/dojo?dataset=d1");
+    expect(await screen.findByRole("heading", { name: "Pump trips" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Rename dataset" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add label" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete label" })).toBeNull();
+    expect(screen.getByText("Bearing")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Runs" }));
+    expect(screen.queryByRole("button", { name: "New run" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  });
   it("names a directly opened dataset, its sections, and the list on return", async () => {
     vi.mocked(dojoApi.compare).mockResolvedValue({ dataset_id: "d1", labels: [label],
       runs: [metrics("r1", "Forest", 1, 0), metrics("r2", "Baseline", 0, 0)] });

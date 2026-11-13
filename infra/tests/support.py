@@ -107,7 +107,7 @@ def render(directory, environment, **overrides):
             "password": "fixture-route-password",
         },
     } | overrides
-    if environment == "prod":
+    if environment in {"prod", "demo"}:
         variables = {
             "emqx_ca_cert": (
                 "-----BEGIN CERTIFICATE-----\n"

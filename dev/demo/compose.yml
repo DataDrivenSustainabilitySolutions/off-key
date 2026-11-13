@@ -1,0 +1,47 @@
+# Use with the base Compose files in a separate project and dedicated .env.
+services:
+  frontend:
+    ports: ["127.0.0.1:${DEMO_FRONTEND_PORT:-5174}:5173"]
+  api-gateway:
+    environment:
+      FRONTEND_BASE_URL: "http://localhost:${DEMO_FRONTEND_PORT:-5174}"
+      CORS_ALLOWED_ORIGINS: '["http://localhost:${DEMO_FRONTEND_PORT:-5174}"]'
+      DEMO_MODE: 'true'
+      DEMO_VIEWER_EMAIL: "${DEMO_VIEWER_EMAIL:?Set a dedicated viewer email}"
+      DEMO_VIEWER_PASSWORD: "${DEMO_VIEWER_PASSWORD:?Set a random viewer password}"
+  tactic-middleware:
+    environment:
+      FRONTEND_BASE_URL: "http://localhost:${DEMO_FRONTEND_PORT:-5174}"
+      TACTIC_RADAR_WORKLOAD_LIFECYCLE: persistent
+      DEMO_MODE: 'true'
+      DEMO_VIEWER_EMAIL: "${DEMO_VIEWER_EMAIL}"
+      DEMO_VIEWER_PASSWORD: "${DEMO_VIEWER_PASSWORD}"
+      DEMO_FEEDS_JSON: "${DEMO_FEEDS_JSON:-}"
+      SYSTEM_LIVE_ENABLED: 'true'
+      SYSTEM_LIVE_ALLOWED_HOSTS: '["demo-broker"]'
+  mailpit:
+    ports: ["127.0.0.1:${DEMO_MAIL_PORT:-8027}:8025"]
+    volumes: !override
+      - demo_mailpit_data:/data
+  demo-broker:
+    image: eclipse-mosquitto:2.0
+    command: [mosquitto, -c, /mosquitto/config/mosquitto.conf]
+    volumes:
+      - ./dev/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks: [app-network]
+    restart: unless-stopped
+  demo-relay:
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: off-key-mqtt-proxy
+        SERVICE_ROOT: services/mqtt/proxy
+    command: [/app/bin/python, -m, off_key_mqtt_proxy.demo.relay]
+    environment:
+      DEMO_FEEDS_JSON: "${DEMO_FEEDS_JSON:-}"
+    networks: [app-network]
+    restart: unless-stopped
+volumes:
+  demo_mailpit_data:

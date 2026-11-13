@@ -1,7 +1,7 @@
 import { useAuth } from "@/auth/AuthContext";
 
-/** Whether the signed-in member's role grants the Dojo permission. */
+/** Members with the Dojo permission and public guests can inspect datasets. */
 export function useDojoAccess() {
-  const { can } = useAuth();
-  return can("use_dojo");
+  const { can, isGuest } = useAuth();
+  return isGuest || can("use_dojo");
 }

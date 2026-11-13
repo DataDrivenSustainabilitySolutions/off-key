@@ -9,6 +9,12 @@ import { endSession, refreshSession, subscribeToSession, tokenManager, waitForLo
 import { apiClient, apiUtils, ApiRequestError } from "@/lib/api-client";
 import { readStoredDraft, storeDraft } from "@/lib/navigation-draft";
 
+// Public-access discovery is covered by DemoGuest; these tests exercise sessions.
+vi.mock("@/auth/demo", () => ({
+  loadDemoStatus: async () => ({ enabled: false }),
+  isPublicDemo: () => false,
+}));
+
 const { getCurrentMember } = vi.hoisted(() => ({ getCurrentMember: vi.fn() }));
 vi.mock("@/lib/member-api", () => ({ getCurrentMember }));
 

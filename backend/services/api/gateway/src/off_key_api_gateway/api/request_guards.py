@@ -26,7 +26,8 @@ CLIENT_WINDOW_SECONDS = 60.0
 MAX_TRACKED_CLIENTS = 10_000
 
 
-def _route_path(scope: Scope) -> str:
+def route_path(scope: Scope) -> str:
+    """The path the routes match: without the ASGI root path the server adds."""
     root = scope.get("root_path", "")
     path = scope.get("path", "")
     return path[len(root) :] if root and path.startswith(root) else path
@@ -82,7 +83,7 @@ class BodySizeLimitMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        limit = self.limits(scope["method"], _route_path(scope))
+        limit = self.limits(scope["method"], route_path(scope))
         if refusal := _declared_length_refusal(scope, limit):
             await _send_json(send, *refusal)
             return

@@ -740,7 +740,7 @@
     @media(max-width:760px) {
       .header-inner { width:calc(100% - 40px); height:72px; }
       .wordmark { font-size:21px; }
-      .header-nav { gap:0; }
+      .header-nav { gap:12px; }
       .header-nav .nav-cta { padding:8px 10px; }
       .hero-photo { height:clamp(340px,48svh,440px); aspect-ratio:auto; }
       .hero-title { padding:16px 22px 36px; }
@@ -750,6 +750,21 @@
       .hero-summary { align-items:flex-start; flex-direction:column; gap:16px; margin-top:25px; padding-top:18px; }
       .hero-summary a { font-size:12px; }
     }
+    {% if demo_base_url | default('') %}
+    @media(max-width:760px) {
+      .header-inner { gap:12px; }
+      .header-nav { gap:8px; }
+      .header-nav .nav-cta { gap:6px; padding-inline:8px; }
+    }
+    @media(max-width:380px) {
+      .header-inner { width:calc(100% - 24px); gap:8px; }
+      .wordmark { font-size:18px; gap:6px; }
+      .brand-mark { width:24px; height:24px; }
+      .header-nav { gap:6px; }
+      .header-nav .nav-cta { gap:4px; padding-inline:6px; }
+      .header-nav .arrow { width:14px; height:14px; }
+    }
+    {% endif %}
     /* Product overview: every selector is scoped below the approved hero. */
     .product-overview { --product-line:hsl(var(--primary) / .55); }
     .product-overview .section-label { color:var(--accent); font-size:12px; }
@@ -868,7 +883,12 @@
 <header class="site-header"><div class="container header-inner">
 <a class="wordmark" href="#main" aria-label="Aberration home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/></svg><span>aberration</span></a>
 <span class="header-statement mono">Real-time decision-making.</span>
-<nav class="header-nav" aria-label="Main navigation"><a class="nav-cta" href="{{ frontend_base_url | e }}/">Dashboard <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+<nav class="header-nav" aria-label="Main navigation">
+{% if demo_base_url | default('') %}
+<a class="nav-cta" href="{{ demo_base_url | e }}/sources">Demo <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+<path d="M7 17 17 7M7 7h10v10"/></svg></a>
+{% endif %}
+<a class="nav-cta" href="{{ frontend_base_url | e }}/">Dashboard <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
 <path d="M7 17 17 7M7 7h10v10"/></svg></a></nav>
 </div></header><main id="main">
 <section class="hero" aria-labelledby="headline">

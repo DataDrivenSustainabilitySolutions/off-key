@@ -29,6 +29,7 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | Endpoint group | Client behaviour | Current enforcement note |
 | --- | --- | --- |
 | Authentication | Public calls without a bearer token | Public by design |
+| Demo status | Public call without a bearer token | Reports whether this installation allows public reads; contains no credentials |
 | Devices and measurements | Send the login bearer token | Active, verified membership required |
 | Monitors and alarms | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
 | Favourites | Send the login bearer token | Server selects the current member as owner |
@@ -39,7 +40,17 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 !!! important
     Always send `Authorization: Bearer <token>` for non-authentication user workflows, and supply the private service credential only for trusted gateway-to-TACTIC calls.
 
+An explicitly enabled [public demo](../operations/public-demo.md) also accepts
+anonymous requests on its read allowlist. Every unlisted anonymous request is
+refused. Administrator tokens continue to use normal membership and permissions.
+
 ## Gateway API — `/v1`
+
+### Public demo status
+
+| Method | Path | Purpose | Access |
+| --- | --- | --- | --- |
+| `GET` | `/demo` | Public-access capability and source attribution; `enabled: false` on ordinary installations | Public |
 
 ### Authentication
 

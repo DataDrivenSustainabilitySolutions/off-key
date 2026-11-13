@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { JSX } from "react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
@@ -7,7 +7,7 @@ import { loginHref } from "./login-navigation";
 
 export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   const location = useLocation();
-  const { isAuthenticated, isLoading, authError, retryAuthentication, logout } = useAuth();
+  const { isAuthenticated, isGuest, isLoading, authError, retryAuthentication, logout } = useAuth();
 
   if (authError) {
     return (
@@ -17,6 +17,7 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
           <div className="flex gap-3">
             <Button onClick={retryAuthentication}>Retry</Button>
             <Button variant="outline" onClick={logout}>Sign out</Button>
+            <Button variant="ghost" asChild><Link to={loginHref(location)}>Admin sign in</Link></Button>
           </div>
         </div>
       </AuthBackdrop>
@@ -34,7 +35,7 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !isGuest) {
     return <Navigate to={loginHref(location)} replace />;
   }
 

@@ -39,6 +39,7 @@
         # This happens after application maintenance is complete and release.json
         # is recorded. An optional logging failure never reopens that release.
         - name: Reconcile observability after the application is independently verified
+          when: not (demo_mode | default(false) | bool)
           block:
             - name: Render the independently deployed observability component
               include_role:

@@ -32,7 +32,7 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
   return <div className="dj-section">
     <div className="dj-section-head">
       <h2>Runs</h2>
-      <button type="button" className="dj-primary" onClick={() => setCreating(true)}><Play size={15} />New run</button>
+      {can("use_dojo") && <button type="button" className="dj-primary" onClick={() => setCreating(true)}><Play size={15} />New run</button>}
     </div>
     {error && <p className="dj-error" role="alert">{error}</p>}
     {runs.length === 0 ? <p className="dj-help">No runs yet. Start one to see how a design does on this data.</p>
@@ -50,11 +50,11 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
             <td><div className="dj-row-actions">
               {run.status === "succeeded" && can("manage_monitors") && <button type="button" className="dj-link"
                 disabled={busy === run.id} onClick={() => setPromoting(run)}>Use as template</button>}
-              {isActive(run)
+              {can("use_dojo") && (isActive(run)
                 ? <button type="button" className="dj-link" disabled={busy === run.id}
                   onClick={() => void act(run, () => dojoApi.cancelRun(run.id))}>Cancel</button>
                 : <button type="button" className="dj-danger" disabled={busy === run.id}
-                  onClick={() => void remove(run)}>Delete</button>}
+                  onClick={() => void remove(run)}>Delete</button>)}
             </div></td>
           </tr>;
         })}</tbody>

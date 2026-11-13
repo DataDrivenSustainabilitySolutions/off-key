@@ -23,10 +23,12 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from off_key_api_gateway.settings import (
     AppSettings,
+    DemoSettings,
     get_app_settings,
     get_service_endpoints_settings,
 )
 
+from .api.demo import DemoGuestMiddleware
 from .api.mcp_server import add_mcp
 from .api.middleware import RequestLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
@@ -76,6 +78,13 @@ its `phase` is `succeeded`, `failed` or `cancelled`. Errors carry a readable
 """
 
 OPENAPI_TAGS = [
+    {
+        "name": "demo",
+        "description": (
+            "Discover whether this isolated installation permits public read-only "
+            "browsing, and its source attribution. Never returns credentials."
+        ),
+    },
     {
         "name": "auth",
         "description": "Sign in, invitations and password resets. "
@@ -167,6 +176,7 @@ VALIDATION_SPECS = [
     ("service_auth", get_service_auth_settings),
     ("email", get_email_settings),
     ("services", get_service_endpoints_settings),
+    ("demo", DemoSettings),
 ]
 
 
@@ -186,7 +196,9 @@ async def health_check():
     return {"status": "healthy", "service": "api-gateway"}
 
 
-def build_app(app_settings: AppSettings) -> FastAPI:
+def build_app(
+    app_settings: AppSettings, demo_settings: DemoSettings | None = None
+) -> FastAPI:
     """Build the gateway from already validated settings."""
     app = FastAPI(
         title=app_settings.APP_NAME,
@@ -200,6 +212,8 @@ def build_app(app_settings: AppSettings) -> FastAPI:
     app.include_router(api_docs_router)
 
     app.state.limiter = limiter
+    demo_settings = demo_settings or DemoSettings()
+    app.state.demo_enabled = demo_settings.DEMO_MODE
     # Only the gateway's own limiter answers with its headers; a 429 forwarded
     # from TACTIC keeps TACTIC's detail through the normal HTTPException path.
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
@@ -210,6 +224,8 @@ def build_app(app_settings: AppSettings) -> FastAPI:
     # also cover anonymous requests that authentication would reject later.
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(SlowAPIMiddleware)
+    if demo_settings.DEMO_MODE:
+        app.add_middleware(DemoGuestMiddleware, settings=demo_settings)
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
     app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(ClientRateLimitMiddleware)

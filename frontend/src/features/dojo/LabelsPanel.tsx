@@ -1,4 +1,5 @@
 import { epochMilliseconds } from "@/lib/timestamps";
+import { useAuth } from "@/auth/AuthContext";
 import { useCallback, useMemo, useState } from "react";
 import { Tag, Trash2 } from "lucide-react";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -20,6 +21,8 @@ const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   dataset: DatasetView; labels: LabelView[]; onLabelsChange: () => Promise<void>;
 }) {
+  const { can } = useAuth();
+  const editable = can("use_dojo");
   const { resolvedTheme, colors } = useChartColors();
   const [shown, setShown] = useState(() => dataset.series.slice(0, SHOWN_SERIES).map(item => item.id));
   const series = useMemo(() => dataset.series.filter(item => shown.includes(item.id)), [dataset.series, shown]);
@@ -78,14 +81,14 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
 
     <div className="dj-section-head dj-section-head--spaced">
       <h2>Labels <span className="dj-muted">{labels.length} of at most {DOJO_LIMITS.labels}</span></h2>
-      <button type="button" className="dj-action" disabled={!viewport || busy} onClick={() => {
+      {editable && <button type="button" className="dj-action" disabled={!viewport || busy} onClick={() => {
         if (!viewport) return;
         setStart(toLocalInput(viewport[0])); setEnd(toLocalInput(viewport[1]));
-      }}><Tag size={15} />Use the zoomed range</button>
+      }}><Tag size={15} />Use the zoomed range</button>}
     </div>
     <p className="dj-help">A label marks a known problem. Runs are scored against the labels when you compare them, so
       editing a label never needs a new run.</p>
-    <form className="dj-label-form" onSubmit={event => { event.preventDefault(); void create(); }}>
+    {editable && <form className="dj-label-form" onSubmit={event => { event.preventDefault(); void create(); }}>
       <label className="dj-field">From<input type="datetime-local" step={1} required value={start} disabled={busy}
         onChange={event => setStart(event.target.value)} /></label>
       <label className="dj-field">To<input type="datetime-local" step={1} required value={end} disabled={busy}
@@ -93,21 +96,21 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
       <label className="dj-field dj-field--grow"><span>Note <small>(optional)</small></span><input maxLength={500}
         value={note} disabled={busy} placeholder="What happened" onChange={event => setNote(event.target.value)} /></label>
       <button type="submit" className="dj-primary" disabled={busy || !startAt || !endAt || endAt <= startAt}>Add label</button>
-    </form>
+    </form>}
     {error && <p className="dj-error" role="alert">{error}</p>}
     {labels.length > 0 && <ul className="dj-labels" aria-label="Labels">{labels.map(label =>
       <li key={label.id}>
         <span>{formatInstant(label.start_at)} – {formatInstant(label.end_at)}</span>
-        <input aria-label="Label note" maxLength={500} defaultValue={label.note} placeholder="Add a note" disabled={busy}
+        {editable ? <input aria-label="Label note" maxLength={500} defaultValue={label.note} placeholder="Add a note" disabled={busy}
           onBlur={event => {
             const value = event.target.value.trim();
             if (value !== label.note) void act(() => dojoApi.changeLabel(dataset.id, label.id, { note: value }));
-          }} />
-        <button type="button" className="dj-danger" disabled={busy} aria-label="Delete label"
-          onClick={() => void remove(label)}><Trash2 size={14} /></button>
+          }} /> : <span>{label.note}</span>}
+        {editable && <button type="button" className="dj-danger" disabled={busy} aria-label="Delete label"
+          onClick={() => void remove(label)}><Trash2 size={14} /></button>}
       </li>)}</ul>}
-    <LabelSuggestions dataset={dataset} labels={labels} busy={busy} load={loadSuggestions} onAdd={addSuggested}
-      onAdjust={adjust} />
+    {editable && <LabelSuggestions dataset={dataset} labels={labels} busy={busy} load={loadSuggestions} onAdd={addSuggested}
+      onAdjust={adjust} />}
     {confirmation}
   </div>;
 }

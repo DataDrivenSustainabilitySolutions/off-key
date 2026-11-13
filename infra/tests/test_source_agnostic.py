@@ -38,6 +38,12 @@ class SourceAgnosticTests(unittest.TestCase):
             file = PROJECT / path
             if not file.is_file():
                 continue
+            # The demo inventory shares production's defaults through a link;
+            # the file it points at is the production inventory itself.
+            if file.is_symlink() and file.resolve().is_relative_to(
+                (PROJECT / INVENTORY).resolve()
+            ):
+                continue
             try:
                 text = file.read_text()
             except UnicodeDecodeError:

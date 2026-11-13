@@ -5,6 +5,7 @@
   gather_facts: false
   become: false
   vars_files:
+    - ../ansible/inventories/prod/group_vars/all/vars.yml
     - "../ansible/inventories/{{ validation_environment }}/group_vars/all/vars.yml"
     - "../ansible/inventories/{{ validation_environment }}/group_vars/all/vault.yml.example"
     - ../ansible/group_vars/all.yml

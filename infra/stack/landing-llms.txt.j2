@@ -31,3 +31,7 @@ One installation serves one organization. The dashboard and its API live at {{ f
 ## Optional
 {% endif %}
 - [Source code](https://github.com/DataDrivenSustainabilitySolutions/off-key): Repository for the platform, its documentation and deployment.
+
+{% if demo_base_url | default('') %}
+[Public demo]({{ demo_base_url }}/sources): Explore the real application with public MQTT data. No sign-in needed; visitors have read-only access.
+{% endif %}

@@ -1,4 +1,4 @@
-.PHONY: setup check-deploy provision-prod deploy-prod update-labels-prod invite-admin-prod backup-stack-prod restore-stack-prod backup-broker-route-prod
+.PHONY: setup check-deploy provision-prod deploy-prod deploy-demo initialize-demo update-labels-prod invite-admin-prod backup-stack-prod restore-stack-prod backup-broker-route-prod
 UV := uv
 ANSIBLE := cd ansible && $(UV) run --frozen ansible-playbook
 VAULT ?= --ask-vault-pass
@@ -18,6 +18,10 @@ provision-prod:
 # Runs Ansible from this machine; the root Makefile deploy-prod dispatches CI instead.
 deploy-prod:
 	$(ANSIBLE) -i $(INVENTORY) deploy.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e persistence_switch_confirm=$(CONFIRM)
+deploy-demo:
+	$(ANSIBLE) -i inventories/demo/hosts.yml deploy.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e persistence_switch_confirm=$(CONFIRM)
+initialize-demo:
+	$(ANSIBLE) -i inventories/demo/hosts.yml bootstrap-demo.yml $(VAULT)
 update-labels-prod:
 	$(ANSIBLE) -i $(INVENTORY) update_labels.yml $(VAULT)
 invite-admin-prod:

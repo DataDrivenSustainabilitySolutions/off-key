@@ -1,0 +1,13 @@
+---
+- name: Locate the demo's TACTIC task
+  include_role:
+    name: swarm_task
+  vars:
+    svc: tactic
+
+- name: Initialize the demo viewer and seed only an empty catalogue
+  command:
+    argv: [docker, exec, "{{ svc_container }}", /app/bin/python, -m, off_key_tactic_middleware.bootstrap_demo]
+  delegate_to: "{{ svc_node }}"
+  register: demo_setup
+  changed_when: (demo_setup.stdout_lines | last | from_json).status == 'loaded'

@@ -81,3 +81,7 @@ Company details and legal notices are draft placeholders. Complete the bracketed
 - [Terms of use](https://{{ ingress_base_domain }}/#terms): Draft outline for the offering, accounts, commercial terms, data, availability and termination. These placeholders are not an active service agreement.
 - [Contact](https://{{ ingress_base_domain }}/#contact): [General enquiries email], [product and access contact], [support email and availability], [postal address].
 - [Report a security issue](https://{{ ingress_base_domain }}/#security): [Monitored private reporting channel], [scope], [handling process] and [encryption key URL, if provided].
+
+{% if demo_base_url | default('') %}
+[Public demo]({{ demo_base_url }}/sources): Explore the real application with public MQTT data. No sign-in needed; visitors have read-only access.
+{% endif %}

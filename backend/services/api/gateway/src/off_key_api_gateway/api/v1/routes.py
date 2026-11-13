@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from off_key_core.auth.permissions import Permission
 
 from ..access import current_caller, writes_require
+from ..demo import router as demo_router
 from . import (
     agents,
     alarms,
@@ -18,6 +19,7 @@ from . import (
 )
 
 router = APIRouter()
+router.include_router(demo_router, prefix="/demo", tags=["demo"])
 
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
 # A key passes here only on a route that opens itself to keys.

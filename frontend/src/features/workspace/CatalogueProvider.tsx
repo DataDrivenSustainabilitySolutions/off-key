@@ -24,11 +24,11 @@ const liveOnly = (stream: SystemStream | undefined, runtime?: SystemRuntime) => 
   && (stream.value_type !== "number" || (runtime?.bindings?.[stream.id]?.policy.mode ?? "off") === "off");
 
 export function CatalogueProvider({ children }: { children: ReactNode }) {
-  const { userId, isAuthenticated } = useAuth();
+  const { userId, isAuthenticated, isGuest } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const system = useSystemDocument({ isAuthenticated, accountKey: userId });
+  const system = useSystemDocument({ isAuthenticated: isAuthenticated || isGuest, accountKey: isGuest ? "demo" : userId });
   const document = system.document ?? empty;
   const index = useMemo(() => buildNavigationIndex(document), [document]);
   const selected = useMemo(() => catalogueSelection(index, params), [index, params]);
@@ -108,8 +108,8 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     return () => { clearTimeout(timer); window.removeEventListener("pagehide", persist); };
   }, [preferences, userId, system.document]);
   useEffect(() => {
-    telemetry.configure(document, system.revision ?? 0, isAuthenticated ? String(userId ?? "signed-in") : "", system.canEdit);
-  }, [telemetry, document, system.revision, isAuthenticated, userId, system.canEdit]);
+    telemetry.configure(document, system.revision ?? 0, isGuest ? "demo" : isAuthenticated ? String(userId ?? "signed-in") : "", system.canEdit);
+  }, [telemetry, document, system.revision, isAuthenticated, isGuest, userId, system.canEdit]);
   useEffect(() => { telemetry.setScope(previewStreamIds); }, [telemetry, previewStreamIds]);
   useEffect(() => { telemetry.setPriority(selected?.objectId ?? null); }, [telemetry, selected?.objectId]);
   useEffect(() => {

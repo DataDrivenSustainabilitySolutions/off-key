@@ -1,0 +1,35 @@
+---
+# 00-platform.yml shares the production's non-secret defaults. This inventory
+# never loads its vault. All data, secrets, networks and workloads are separate.
+offkey_env: demo
+stack_name: off-key-demo
+stack_dir: /opt/stacks/off-key-demo
+demo_mode: true
+frontend_hostname: demo.aberration.app
+frontend_base_url: "https://{{ frontend_hostname }}"
+ingress_base_domain: demo.aberration.app
+cors_allowed_origins: '["https://demo.aberration.app"]'
+public_site_enabled: false
+admin_ingress_enabled: false
+observability_enabled: false
+broker_route_enabled: false
+tactic_docker_default_network: "{{ stack_name }}_emqx-network"
+tactic_docker_additional_networks: "{{ stack_name }}_app-network"
+stack_replaced_services: []
+stack_retired_secret_keys: []
+stack_retired_files: []
+release_public_urls: ["{{ frontend_base_url }}"]
+demo_viewer_email: demo-viewer@aberration.app
+anomaly_alert_recipients: "{{ superuser_mail }}"
+system_live_enabled: true
+system_live_allowed_hosts: [demo-broker]
+telemetry_retention_days: 14
+telemetry_storage_cap_gb: 2
+# Pin chosen assets. Review the probe's --discover output after a bounded live check;
+# never silently switch entities underneath an existing monitor.
+demo_feed_selection:
+  hsl_vehicle: 0040/00639
+  hamburg_detectors: [13, 30]
+  marine_mmsi: '230712000'
+  rail_train: '7'
+  solar_inverter: INV_001_001

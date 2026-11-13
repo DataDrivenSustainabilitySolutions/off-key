@@ -205,13 +205,13 @@ describe("a design arranged before calibration had a card", () => {
       draft: continuous(),
       layout: { nodes: {
         input: { x: 0, y: 100 }, scale: { x: 288, y: 100 }, extra: { x: 576, y: 100 }, model: { x: 864, y: 100 },
-        alarm: { x: 1152, y: 100, label: "Alarm" }, note: { x: 1152, y: 300 },
+        alarm: { x: 1152, y: 100 }, note: { x: 1152, y: 300 },
       } },
       revisions: [],
     } as unknown as Wire.PipelineView);
     expect(view.layout.nodes).toEqual({
       input: { x: 0, y: 100 }, scale: { x: 288, y: 100 }, extra: { x: 576, y: 100 }, model: { x: 864, y: 100 },
-      calibrate: { x: 1152, y: 100 }, alarm: { x: 1440, y: 100, label: "Alarm" }, note: { x: 1440, y: 300 },
+      calibrate: { x: 1152, y: 100 }, alarm: { x: 1440, y: 100 }, note: { x: 1440, y: 300 },
     });
     // A layout that already places the card stays as it is.
     expect(normalizeView({ ...view, layout: view.layout } as unknown as Wire.PipelineView).layout).toEqual(view.layout);

@@ -62,6 +62,10 @@ MAX_DETECTORS = 4
 FusionMode = Literal["max", "mean"]
 # A block is a short chain of steps; the library lists every block at once.
 MAX_BLOCKS = 100
+# Proposals waiting for a decision at one time, and how many a listing holds.
+MAX_OPEN_PROPOSALS = 50
+MAX_PROPOSALS_LISTED = 200
+MAX_PROPOSAL_TEXT = 2000
 MAX_BLOCK_STEPS = 16
 MAX_BLOCK_BYTES = 16 * 1024
 
@@ -202,9 +206,6 @@ class CanvasPosition(PipelineModel):
 
     x: float
     y: float
-    label: str | None = Field(
-        default=None, max_length=120, description="Title of the card, if it has one."
-    )
 
 
 class CanvasViewport(CanvasPosition):
@@ -667,8 +668,8 @@ class PipelineDesignFile(PipelineModel):
     layout: PipelineLayout = Field(
         default_factory=PipelineLayout,
         description=(
-            "Where each card stands on the canvas and the title it carries. "
-            "Steps without a place are arranged when the file is opened."
+            "Where each card stands on the canvas. Steps without a place are "
+            "arranged when the file is opened."
         ),
     )
 
@@ -815,6 +816,96 @@ class PipelineBlockList(PipelineModel):
     """Every block of the library, by name."""
 
     items: list[PipelineBlockView] = Field(max_length=MAX_BLOCKS)
+
+
+ProposalStatus = Literal["open", "accepted", "declined", "withdrawn"]
+
+
+class PipelineProposalCreate(PipelineModel):
+    """A design handed to a member to decide on, with the reason for it."""
+
+    name: str = Field(
+        min_length=1,
+        max_length=120,
+        description="The name the monitoring service would carry.",
+    )
+    reason: str = Field(
+        min_length=1,
+        max_length=MAX_PROPOSAL_TEXT,
+        description=(
+            "Why this is worth running, for the member who decides: what it "
+            "watches, what it would have caught and what it costs in alarms."
+        ),
+    )
+    definition: PipelineDefinition
+    layout: PipelineLayout = Field(default_factory=PipelineLayout)
+    bindings: dict[str, str] = Field(
+        default_factory=dict,
+        max_length=100,
+        description="The reading each input would monitor, by input slot id.",
+    )
+    test_run_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="A Dojo run that tested this design, as evidence.",
+    )
+    replace_service_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="A running monitor this design is meant to take the place of.",
+        **public("replace_monitor_id", "replace_service_id"),
+    )
+
+    @field_validator("name", "reason")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Enter a name and a reason")
+        return value.strip()
+
+
+class PipelineProposalSummary(PipelineModel):
+    id: str
+    name: str
+    reason: str
+    author: str = Field(description="The agent's name, or the member's email.")
+    author_kind: Literal["agent", "member"]
+    status: ProposalStatus
+    test_run_id: str | None
+    replace_service_id: str | None = Field(
+        **public("replace_monitor_id", "replace_service_id")
+    )
+    decided_by: str | None = Field(description="The member who decided.")
+    decided_at: datetime | None
+    decision_note: str | None = Field(
+        description="What the member wrote with the decision, for the author."
+    )
+    created_at: datetime
+
+
+class PipelineProposalView(PipelineProposalSummary):
+    definition: EditorDefinition
+    layout: PipelineLayout
+    bindings: dict[str, str]
+
+
+class PipelineProposalList(PipelineModel):
+    """Proposals, the newest first, without their designs."""
+
+    items: list[PipelineProposalSummary] = Field(max_length=MAX_PROPOSALS_LISTED)
+
+
+class PipelineProposalDecision(PipelineModel):
+    """A member's answer to a proposal."""
+
+    status: Literal["accepted", "declined"]
+    note: str | None = Field(
+        default=None,
+        max_length=MAX_PROPOSAL_TEXT,
+        description="Why, for the author. An agent reads it before it tries again.",
+    )
 
 
 class PipelineActivationRequest(PipelineModel):

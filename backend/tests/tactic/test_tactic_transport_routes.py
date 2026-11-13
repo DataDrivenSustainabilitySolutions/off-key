@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from off_key_core.auth.permissions import MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import MonitoringService
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.api.v1 import pipelines as pipelines_api
 from off_key_tactic_middleware.api.v1 import system as system_api
 
@@ -18,7 +18,7 @@ def client(router, session, overrides=None):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_db_async] = lambda: session
-    app.dependency_overrides[current_member] = lambda: SimpleNamespace(
+    app.dependency_overrides[current_caller] = lambda: SimpleNamespace(
         id=1, email="member@example.com", role=MEMBER_ROLE
     )
     for dependency, value in (overrides or {}).items():

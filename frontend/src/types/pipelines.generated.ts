@@ -54,13 +54,11 @@ export type CanvasNote = {
 export type CanvasPosition = {
   x: number;
   y: number;
-  label?: string | null;
 };
 
 export type CanvasViewport = {
   x: number;
   y: number;
-  label?: string | null;
   zoom?: number;
 };
 
@@ -503,6 +501,58 @@ export type PipelineObservation = {
 export type PipelineObservationPasses = {
   score: Record<string, PipelineNodePreview>;
   learn: Record<string, PipelineNodePreview>;
+};
+
+export type PipelineProposalCreate = {
+  name: string;
+  reason: string;
+  definition: PipelineDefinition;
+  layout?: PipelineLayout;
+  bindings?: Record<string, string>;
+  test_run_id?: string | null;
+  replace_monitor_id?: string | null;
+};
+
+export type PipelineProposalDecision = {
+  status: "accepted" | "declined";
+  note?: string | null;
+};
+
+export type PipelineProposalList = {
+  items: Array<PipelineProposalSummary>;
+};
+
+export type PipelineProposalSummary = {
+  id: string;
+  name: string;
+  reason: string;
+  author: string;
+  author_kind: "agent" | "member";
+  status: "open" | "accepted" | "declined" | "withdrawn";
+  test_run_id: string | null;
+  replace_monitor_id: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+};
+
+export type PipelineProposalView = {
+  id: string;
+  name: string;
+  reason: string;
+  author: string;
+  author_kind: "agent" | "member";
+  status: "open" | "accepted" | "declined" | "withdrawn";
+  test_run_id: string | null;
+  replace_monitor_id: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+  definition: PipelineDefinition;
+  layout: PipelineLayout;
+  bindings: Record<string, string>;
 };
 
 export type PipelinePublish = {

@@ -9,11 +9,13 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.schemas.devices import (
     Device,
     Measurement,
     MeasurementBucket,
     MeasurementPage,
+    ReadingProfile,
 )
 from off_key_core.schemas.system import SystemStream
 from off_key_core.utils.timestamps import as_utc
@@ -39,7 +41,7 @@ def present(params: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in params.items() if value is not None}
 
 
-@router.get("", response_model=list[Device])
+@router.get("", response_model=list[Device], openapi_extra=OPEN_TO_AGENTS)
 async def list_devices(
     active: bool | None = Query(
         None, description="Only devices that are sending data now, or only those not."
@@ -49,7 +51,11 @@ async def list_devices(
     return await data_request("/devices", present({"active": active}))
 
 
-@router.get("/{device_id}/readings", response_model=list[SystemStream])
+@router.get(
+    "/{device_id}/readings",
+    response_model=list[SystemStream],
+    openapi_extra=OPEN_TO_AGENTS,
+)
 async def list_device_readings(device_id: str):
     """The catalogue readings of one device. 404 when the catalogue lacks it."""
     return await data_request(f"/devices/{path_segment(device_id)}/readings")
@@ -58,6 +64,7 @@ async def list_device_readings(device_id: str):
 @readings_router.get(
     "/{reading_id}/measurements",
     response_model=list[Measurement] | MeasurementPage,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def list_measurements(
     reading_id: str,
@@ -105,7 +112,9 @@ async def list_measurements(
 
 
 @readings_router.get(
-    "/{reading_id}/measurements/buckets", response_model=list[MeasurementBucket]
+    "/{reading_id}/measurements/buckets",
+    response_model=list[MeasurementBucket],
+    openapi_extra=OPEN_TO_AGENTS,
 )
 async def list_measurement_buckets(
     reading_id: str,
@@ -130,4 +139,28 @@ async def list_measurement_buckets(
                 "buckets": buckets,
             }
         ),
+    )
+
+
+@readings_router.get(
+    "/{reading_id}/profile", response_model=ReadingProfile, openapi_extra=OPEN_TO_AGENTS
+)
+async def profile_reading(
+    reading_id: str,
+    days: int = Query(14, ge=1, le=90, description="How far back to look."),
+):
+    """What a reading looks like, so a design can be fitted to it.
+
+    Over the last `days`: when it has values (`first`, `last`, `coverage`,
+    `longest_outage_seconds`), how far they reach (`minimum`, `maximum`), how
+    much of its variation the hour of the day and the day of the week explain
+    (`daily_rhythm`, `weekly_rhythm`, from 0 to 1), and how far its level moved
+    (`level_change`). `recent` looks at the newest values, up to 5000 of them:
+    the usual `interval_seconds` and the pauses beyond it, mean, `spread` and
+    percentiles, the `typical_change` from one value to the next, how long the
+    reading stays flat, and its `levels` where it has at most ten. A window
+    without values answers with nulls. 404 when the catalogue lacks the reading.
+    """
+    return await data_request(
+        f"/readings/{path_segment(reading_id)}/profile", {"days": days}
     )

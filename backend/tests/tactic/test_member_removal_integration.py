@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Charger, MemberFavorite, RememberedSession, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import signed_in_member
 from off_key_tactic_middleware.api.v1.members import router
 from off_key_tactic_middleware.domain import (
     AuthenticationError,
@@ -136,7 +136,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
             scheme="Bearer", credentials=old_token
         )
         with pytest.raises(HTTPException) as denied:
-            await current_member(credential, session)
+            await signed_in_member(credential, session)
         assert denied.value.status_code == 401
 
 

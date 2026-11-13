@@ -20,11 +20,11 @@ const design = (): GraphDocument => ({
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
-      { id: "smooth", kind: "transform", component: "prepare.smooth", params: { window: 10 } },
+      { id: "smooth", kind: "transform", component: "prepare.smooth", label: "Calm it down", params: { window: 10 } },
     ],
     edges: [{ source: "input", target: "smooth", order: 0 }],
   }),
-  layout: normalizeLayout({ nodes: { input: { x: 0, y: 96 }, smooth: { x: 288, y: 96, label: "Calm it down" }, gone: { x: 900, y: 0 } } }),
+  layout: normalizeLayout({ nodes: { input: { x: 0, y: 96 }, smooth: { x: 288, y: 96 }, gone: { x: 900, y: 0 } } }),
 });
 
 /** The server's reading of a definition: the same design. */
@@ -44,8 +44,9 @@ describe("a design as a file", () => {
       name: "Charger health", description: "Watches the DC side.",
       definition: document.definition,
       // A place a removed step left behind is not written.
-      layout: { nodes: { input: { x: 0, y: 96 }, smooth: { x: 288, y: 96, label: "Calm it down" } } },
+      layout: { nodes: { input: { x: 0, y: 96 }, smooth: { x: 288, y: 96 } } },
     });
+    expect(written.definition.nodes![1]!.label).toBe("Calm it down");
     expect(writeDesign(document, "", "").endsWith("}\n")).toBe(true);
   });
 
@@ -63,7 +64,7 @@ describe("a design as a file", () => {
     expect(opened).toEqual({
       name: "Charger health", description: "Watches the DC side.",
       document: { definition: document.definition,
-        layout: normalizeLayout({ nodes: { input: { x: 0, y: 96 }, smooth: { x: 288, y: 96, label: "Calm it down" } } }) },
+        layout: normalizeLayout({ nodes: { input: { x: 0, y: 96 }, smooth: { x: 288, y: 96 } } }) },
     });
   });
 
@@ -74,16 +75,10 @@ describe("a design as a file", () => {
     expect(opened.document.definition).toBe(current);
   });
 
-  it("arranges a design whose file does not place every step, and keeps the titles", async () => {
-    const definition = { ...design().definition, nodes: design().definition.nodes.map((node) =>
-      node.id === "input" ? { ...node, label: "Readings" } : node) };
-    const opened = await openDesign(file({ definition,
-      layout: { nodes: { smooth: { x: 12, y: 34, label: " Calm it down " }, input: { x: "0", y: 0, label: 7 } } } }), check);
-    expect(opened.document.layout.nodes).toEqual({
-      // A step may carry its title itself.
-      input: { x: 0, y: 40, label: "Readings" },
-      smooth: { x: 300, y: 40, label: "Calm it down" },
-    });
+  it("arranges a design whose file does not place every step", async () => {
+    const opened = await openDesign(file({ layout: { nodes: { smooth: { x: 12, y: 34 }, input: { x: "0", y: 0 } } } }), check);
+    expect(opened.document.definition.nodes.map((node) => node.label)).toEqual([undefined, "Calm it down"]);
+    expect(opened.document.layout.nodes).toEqual({ input: { x: 0, y: 40 }, smooth: { x: 300, y: 40 } });
     // No layout at all is the same case.
     expect((await openDesign(file(), check)).document.layout.nodes).toEqual({ input: { x: 0, y: 40 }, smooth: { x: 300, y: 40 } });
   });

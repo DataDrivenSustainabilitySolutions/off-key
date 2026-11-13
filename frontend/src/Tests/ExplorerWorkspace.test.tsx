@@ -128,6 +128,29 @@ function withServices(services: ActiveService[]) {
 }
 
 describe("service-centred monitoring workspace", () => {
+  it("says how many proposals wait and opens them, and says nothing when none does", async () => {
+    const view = mount();
+    await loaded();
+    expect(screen.queryByRole("button", { name: /^Proposals/ })).toBeNull();
+    view.unmount();
+    const proposal = { id: "p1", name: "Pump vibration", reason: "The bearing ran hot.", author: "Night shift agent", author_kind: "agent",
+      status: "open", test_run_id: null, replace_monitor_id: null, decided_by: null, decided_at: null, decision_note: null,
+      created_at: "2026-11-12T08:00:00Z" };
+    const get = vi.mocked(apiUtils.get).getMockImplementation()!;
+    vi.mocked(apiUtils.get).mockImplementation(async (endpoint, options) => endpoint === "/v1/pipeline-proposals"
+      ? { items: [proposal] } : endpoint === "/v1/pipeline-components" ? { catalog_id: "c", authoring_enabled: true, templates: [], components: [] }
+        : get(endpoint, options));
+    const { router } = mount();
+    const waiting = await screen.findByRole("button", { name: "Proposals 1" });
+    expect(vi.mocked(apiUtils.get).mock.calls.find(([endpoint]) => endpoint === "/v1/pipeline-proposals")?.[1])
+      .toMatchObject({ params: { status: "open" } });
+    fireEvent.click(waiting);
+    expect(router.state.location.search).toBe("?view=proposals");
+    expect(await screen.findByRole("heading", { name: "Proposals" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Review Pump vibration" })).toBeTruthy();
+    expect(document.title).toContain("Proposals");
+  });
+
   it("waits for the catalogue before initializing a visual creation draft", async () => {
     let acceptSystem!: (value: SystemSnapshot) => void;
     let acceptWorkspace!: (value: { monitors: ActiveService[]; authoring_enabled: boolean }) => void;

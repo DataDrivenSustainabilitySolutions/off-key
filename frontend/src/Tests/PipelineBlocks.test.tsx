@@ -51,7 +51,7 @@ const design = (detector = "detector:aberrant_x_stream"): GraphDocument => ({
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
-      { id: "power", kind: "transform", component: "prepare.formula", params: { expression: "voltage * current", name: "power" } },
+      { id: "power", kind: "transform", component: "prepare.formula", label: "Power", params: { expression: "voltage * current", name: "power" } },
       { id: "scale", kind: "transform", component: detector.includes("pyod") ? "static.standard_scaler" : "adaptive.standard_scaler",
         params: { with_std: false } },
       { id: "model", kind: "detector", component: detector },
@@ -59,7 +59,7 @@ const design = (detector = "detector:aberrant_x_stream"): GraphDocument => ({
     edges: [{ source: "input", target: "power" }, { source: "power", target: "scale" }, { source: "scale", target: "model" }],
   }),
   layout: normalizeLayout({ nodes: {
-    input: { x: 0, y: 0 }, power: { x: 288, y: 0, label: "Power" }, scale: { x: 576, y: 0 }, model: { x: 864, y: 0 },
+    input: { x: 0, y: 0 }, power: { x: 288, y: 0 }, scale: { x: 576, y: 0 }, model: { x: 864, y: 0 },
   } }),
 });
 /** A design of `count` Smooth steps in a row and nothing else. */
@@ -109,10 +109,13 @@ describe("the steps a block can hold", () => {
 
   it("keeps settings and titles, and neither ids nor positions", () => {
     const document = design();
-    const steps = blockSteps(document, blockChain(document.definition, "power"));
+    const steps = blockSteps(blockChain(document.definition, "power"));
     expect(steps).toEqual([POWER, step("adaptive.standard_scaler", { params: { with_std: false } })]);
     steps[0]!.params.name = "changed";
     expect(node(document, "power").params.name).toBe("power");
+    const titled = design();
+    titled.definition.nodes.find((item) => item.id === "scale")!.label = "Scale";
+    expect(blockSteps(blockChain(titled.definition, "power")).map((item) => item.label)).toEqual(["Power", "Scale"]);
   });
 
   it("names up to three of its steps by title", () => {
@@ -130,7 +133,9 @@ describe("adding a block beside the design", () => {
     // The name of the feature stays as saved, although the design already gives one of that name.
     expect(node(result.document, "prepare_formula_1").params).toEqual(POWER.params);
     expect(node(result.document, "static_standard_scaler_1").params).toEqual({ with_mean: false, with_std: false });
-    expect(result.document.layout.nodes.prepare_formula_1).toEqual({ x: 0, y: 400, label: "Power" });
+    // The title is part of the design; the layout holds where the step stands.
+    expect(node(result.document, "prepare_formula_1").label).toBe("Power");
+    expect(result.document.layout.nodes.prepare_formula_1).toEqual({ x: 0, y: 400 });
     expect(result.document.layout.nodes.static_standard_scaler_1!.x).toBeGreaterThan(0);
     expect(wires(result.document)).toEqual([...wires(before), "prepare_formula_1>static_standard_scaler_1"]);
     // The block is not tied to the design: changing the design leaves it as it was.
@@ -159,7 +164,7 @@ describe("inserting a block on a connection", () => {
       "input>prepare_smooth_1", "prepare_smooth_1>prepare_smooth_2", "prepare_smooth_2>power",
     ]));
     expect(wires(result.document)).not.toContain("input>power");
-    expect(result.document.layout.nodes.prepare_smooth_1?.label).toBe("Calm");
+    expect(node(result.document, "prepare_smooth_1").label).toBe("Calm");
   });
 
   it("moves a learned step to the counterpart that learns as the detector there does", () => {
@@ -175,7 +180,7 @@ describe("inserting a block on a connection", () => {
     const fitted = placed(insertBlock(design("detector:pyod_iforest"), { source: "scale", target: "model" }, scaled, components));
     expect(node(fitted.document, "static_standard_scaler_1").params).toEqual({ with_mean: false, with_std: false });
     // A step without a title is told apart from the one of its kind already there.
-    expect(fitted.document.layout.nodes.static_standard_scaler_1?.label).toBe("Standard scaling 2");
+    expect(node(fitted.document, "static_standard_scaler_1").label).toBe("Standard scaling 2");
   });
 
   it("refuses a block with a learned step that has no such counterpart, and leaves the design alone", () => {

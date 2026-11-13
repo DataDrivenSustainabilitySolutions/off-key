@@ -416,7 +416,8 @@ test("downloads a design as a file and opens the file again", async ({ page }, t
   const file = JSON.parse(await readFile(saved, "utf8")) as PipelineDesignFile;
   expect(file).toMatchObject({ format: "aberration-design", schema_version: 1, name: "Charger health" });
   expect(file.definition.nodes).toHaveLength(count);
-  expect(Object.values(file.layout!.nodes!).map((node) => node.label)).toContain("Calm it down");
+  // A title is part of the design, so it travels in the definition.
+  expect(file.definition.nodes?.map((node) => node.label)).toContain("Calm it down");
 
   // Start again, and open the file from the list of templates.
   await workbench.getByRole("button", { name: "Reset", exact: true }).click();
@@ -518,7 +519,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await expect(title).toHaveValue(finalTitle);
       const id = [...createdIds][0]!;
       const first = await page.request.get(`${endpoint}/${id}`, { headers });
-      expect((await first.json() as PipelineView).layout.nodes?.input?.label).toBe("Submitted title");
+      expect((await first.json() as PipelineView).draft.nodes?.find((node) => node.id === "input")?.label).toBe("Submitted title");
       await savePipelineTemplate(page);
       expect(creates).toBe(1);
       await page.reload(); await openPipelineSettings(workbench, "Component");

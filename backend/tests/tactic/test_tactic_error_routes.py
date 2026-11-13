@@ -78,7 +78,7 @@ def _app(error, nested, closed):
     app.dependency_overrides.update(
         {
             get_db_async: session,
-            collection_auth.current_member: lambda: user,
+            collection_auth.current_caller: lambda: user,
             **{
                 collection_auth.require_permission(permission): lambda: user
                 for permission in Permission

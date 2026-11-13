@@ -828,7 +828,7 @@ test.describe("visual pipeline real infrastructure", () => {
       );
       expect(copyResponse.ok(), await copyResponse.text()).toBeTruthy();
       const copy = (await copyResponse.json()) as PipelineView;
-      expect(copy.layout.nodes?.[processingId(60)]?.label).toBe(
+      expect(copy.draft.nodes?.find((node) => node.id === processingId(60))?.label).toBe(
         "Preserved conflicted edit",
       );
       expect(copy.draft.nodes).toHaveLength(65);

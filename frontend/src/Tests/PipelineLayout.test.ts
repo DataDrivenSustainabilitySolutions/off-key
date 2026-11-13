@@ -12,13 +12,12 @@ const definition = (edges: Array<{ source: string; target: string }>) => normali
 });
 
 describe("arranging a design", () => {
-  it("lays the steps out from left to right and keeps their titles", async () => {
-    const layout = normalizeLayout({ nodes: { smooth: { x: 900, y: 900, label: "Calm it down" }, gone: { x: 1, y: 2 } } });
+  it("lays the steps out from left to right", async () => {
+    const layout = normalizeLayout({ nodes: { smooth: { x: 900, y: 900 }, gone: { x: 1, y: 2 } } });
     const arranged = await arrangeGraph(definition([{ source: "input", target: "smooth" }, { source: "smooth", target: "detector" }]), layout);
     expect(Object.keys(arranged.nodes)).toEqual(["input", "smooth", "detector"]);
     expect(arranged.nodes.input!.x).toBeLessThan(arranged.nodes.smooth!.x);
     expect(arranged.nodes.smooth!.x).toBeLessThan(arranged.nodes.detector!.x);
-    expect(arranged.nodes.smooth!.label).toBe("Calm it down");
   });
 
   it("takes a note along with the card it stood beside", async () => {

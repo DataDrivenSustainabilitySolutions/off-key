@@ -12,6 +12,7 @@ from ..domain import (
     AuthenticationError,
     ConflictError,
     DomainError,
+    ForbiddenError,
     InfrastructureError,
     NotFoundError,
     ValidationError,
@@ -22,6 +23,7 @@ _STATUS: tuple[tuple[type[DomainError], int, str | None], ...] = (
     (NotFoundError, 404, None),
     (ConflictError, 409, None),
     (AuthenticationError, 401, None),
+    (ForbiddenError, 403, None),
     (ValidationError, 422, None),
     (InfrastructureError, 500, "Internal infrastructure error"),
 )

@@ -7,7 +7,9 @@ access. Administrators only until members get a dedicated Dojo permission.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.auth.permissions import Permission
+from off_key_core.schemas.agents import AgentProfile
 from off_key_core.schemas.dojo import (
     MAX_UPLOAD_BYTES,
     Comparison,
@@ -44,7 +46,7 @@ from off_key_core.schemas.dojo import (
 from off_key_core.schemas.members import MemberProfile
 
 from ...facades.tactic import path_segment, tactic
-from ..access import member_authorization, require_permission
+from ..access import caller_key, member_authorization, require_permission
 from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
 
@@ -52,8 +54,10 @@ use_dojo = require_permission(Permission.use_dojo)
 manage_monitors = require_permission(Permission.manage_monitors)
 
 
-async def member_scope(request: Request, member: MemberProfile = Depends(use_dojo)):
-    request.state.dojo_member_id = str(member.id)
+async def member_scope(
+    request: Request, caller: MemberProfile | AgentProfile = Depends(use_dojo)
+):
+    request.state.dojo_member_id = caller_key(caller)
 
 
 def member_key(request: Request) -> str:
@@ -74,7 +78,7 @@ def _query(model) -> dict:
     return model.model_dump(mode="json", exclude_none=True)
 
 
-@router.get("/datasets", response_model=DatasetListPage)
+@router.get("/datasets", response_model=DatasetListPage, openapi_extra=OPEN_TO_AGENTS)
 @read_limit
 async def list_dojo_datasets(
     request: Request,
@@ -134,7 +138,12 @@ async def import_dojo_csv(
     )
 
 
-@router.post("/datasets/history", response_model=DatasetView, status_code=201)
+@router.post(
+    "/datasets/history",
+    response_model=DatasetView,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 @write_limit
 async def import_dojo_history(
     request: Request,
@@ -156,7 +165,9 @@ async def import_dojo_history(
     )
 
 
-@router.get("/datasets/{dataset_id}", response_model=DatasetView)
+@router.get(
+    "/datasets/{dataset_id}", response_model=DatasetView, openapi_extra=OPEN_TO_AGENTS
+)
 @read_limit
 async def get_dojo_dataset(
     request: Request,
@@ -207,6 +218,7 @@ async def delete_dojo_dataset(
 @router.get(
     "/datasets/{dataset_id}/series/{series_id}/points",
     response_model=DatasetPointsPage,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 @read_limit
 async def list_dojo_points(
@@ -230,7 +242,11 @@ async def list_dojo_points(
     )
 
 
-@router.get("/datasets/{dataset_id}/labels", response_model=LabelList)
+@router.get(
+    "/datasets/{dataset_id}/labels",
+    response_model=LabelList,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 @read_limit
 async def list_dojo_labels(
     request: Request,
@@ -247,7 +263,9 @@ async def list_dojo_labels(
 
 
 @router.get(
-    "/datasets/{dataset_id}/label-suggestions", response_model=LabelSuggestionList
+    "/datasets/{dataset_id}/label-suggestions",
+    response_model=LabelSuggestionList,
+    openapi_extra=OPEN_TO_AGENTS,
 )
 @read_limit
 async def suggest_dojo_labels(
@@ -354,7 +372,11 @@ async def delete_dojo_label(
     return Response(status_code=204)
 
 
-@router.get("/datasets/{dataset_id}/comparison", response_model=Comparison)
+@router.get(
+    "/datasets/{dataset_id}/comparison",
+    response_model=Comparison,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 @read_limit
 async def compare_dojo_runs(
     request: Request,
@@ -377,7 +399,7 @@ async def compare_dojo_runs(
     )
 
 
-@router.get("/runs", response_model=RunListPage)
+@router.get("/runs", response_model=RunListPage, openapi_extra=OPEN_TO_AGENTS)
 @read_limit
 async def list_dojo_runs(
     request: Request,
@@ -393,7 +415,9 @@ async def list_dojo_runs(
     )
 
 
-@router.post("/runs", response_model=RunView, status_code=201)
+@router.post(
+    "/runs", response_model=RunView, status_code=201, openapi_extra=OPEN_TO_AGENTS
+)
 @write_limit
 async def create_dojo_run(
     request: Request,
@@ -422,7 +446,7 @@ async def create_dojo_run(
     )
 
 
-@router.get("/runs/{run_id}", response_model=RunView)
+@router.get("/runs/{run_id}", response_model=RunView, openapi_extra=OPEN_TO_AGENTS)
 @read_limit
 async def get_dojo_run(
     request: Request,
@@ -501,7 +525,9 @@ async def delete_dojo_run(
     return Response(status_code=204)
 
 
-@router.get("/runs/{run_id}/metrics", response_model=RunMetrics)
+@router.get(
+    "/runs/{run_id}/metrics", response_model=RunMetrics, openapi_extra=OPEN_TO_AGENTS
+)
 @read_limit
 async def get_dojo_run_metrics(
     request: Request,
@@ -525,7 +551,11 @@ async def get_dojo_run_metrics(
     )
 
 
-@router.get("/runs/{run_id}/calibration", response_model=MethodComparison)
+@router.get(
+    "/runs/{run_id}/calibration",
+    response_model=MethodComparison,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 @read_limit
 async def compare_dojo_run_calibration(
     request: Request,
@@ -554,7 +584,11 @@ async def compare_dojo_run_calibration(
     )
 
 
-@router.get("/runs/{run_id}/results", response_model=RunResultsPage)
+@router.get(
+    "/runs/{run_id}/results",
+    response_model=RunResultsPage,
+    openapi_extra=OPEN_TO_AGENTS,
+)
 @read_limit
 async def list_dojo_run_results(
     request: Request,
@@ -576,7 +610,9 @@ async def list_dojo_run_results(
     )
 
 
-@router.get("/runs/{run_id}/outline", response_model=RunOutline)
+@router.get(
+    "/runs/{run_id}/outline", response_model=RunOutline, openapi_extra=OPEN_TO_AGENTS
+)
 @read_limit
 async def outline_dojo_run_results(
     request: Request,
@@ -602,7 +638,9 @@ async def outline_dojo_run_results(
     )
 
 
-@router.get("/runs/{run_id}/steps", response_model=RunSteps)
+@router.get(
+    "/runs/{run_id}/steps", response_model=RunSteps, openapi_extra=OPEN_TO_AGENTS
+)
 @read_limit
 async def sample_dojo_run_steps(
     request: Request,

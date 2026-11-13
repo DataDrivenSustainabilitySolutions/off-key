@@ -158,6 +158,20 @@ them at the Input step as after loading a template. Its format is described
 under [Design file](../reference/design-file.md), for keeping designs under
 version control or writing them with other tools.
 
+A design can also arrive as a **proposal**. An agent with a key, or a member
+through the API, hands in a design with a reason instead of starting it. While
+proposals wait, the Monitoring page shows **Proposals** with their number
+beside **Create**. The list names each design, the reason given for it and who
+proposed it; **Show decided proposals** adds those already accepted, declined
+or withdrawn, each with who decided and what they answered. Select a proposal
+to open it in the setup page with its name and readings filled in and a note
+above the graph that says who proposed it and why. It is a design like any
+other, so change it before you start it if you wish. **Start monitoring** starts
+the service and accepts the proposal. **Decline** turns it down, with an
+optional word for its author. A proposal that replaces a running service says
+so in the list and opens as a change to that service. Members whose role cannot
+manage monitors can read a proposal and cannot decide on it.
+
 Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
 Detection rule or Evidence output), its title and its underlying operation; a

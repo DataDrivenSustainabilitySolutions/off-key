@@ -38,10 +38,10 @@ const STEPS: Record<string, Wire.PipelineNode> = {
 const design = (ids: string[], edges: Array<[string, string]>, labels: Record<string, string> = {}): GraphDocument => ({
   definition: normalizeDefinition({
     schema_version: 2, input_slots: [{ id: "value", label: "Value" }],
-    nodes: ids.map((id) => STEPS[id]!), edges: edges.map(([source, target]) => ({ source, target })),
+    nodes: ids.map((id) => ({ ...STEPS[id]!, ...(labels[id] ? { label: labels[id] } : {}) })),
+    edges: edges.map(([source, target]) => ({ source, target })),
   }),
-  layout: normalizeLayout({ nodes: Object.fromEntries(ids.map((id, index) =>
-    [id, { x: index * 288, y: 100, ...(labels[id] ? { label: labels[id] } : {}) }])) }),
+  layout: normalizeLayout({ nodes: Object.fromEntries(ids.map((id, index) => [id, { x: index * 288, y: 100 }])) }),
 });
 const TAIL: Array<[string, string]> = [["calibrate", "policy"], ["policy", "output"]];
 const complete = () => design(["input", "detector", "calibrate", "policy", "output"],

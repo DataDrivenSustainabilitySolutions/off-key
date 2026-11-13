@@ -43,6 +43,14 @@ export type PipelineSetupProps = {
   /** Readings suggested per slot, for example the ones a Dojo run tested the design on. */
   initialBindings?: Record<string, string>;
   initialDocument?: GraphDocument; replaceService?: ActiveService; predecessor?: PipelineServiceView;
+  /** The name a new service starts with, when the setup opens something that has one. */
+  initialName?: string;
+  /** What the setup was opened from, such as a proposal. It keeps that setup's unsaved changes apart. */
+  origin?: string;
+  /** Said above the canvas for as long as the setup is open, such as who proposed the design. */
+  notice?: ReactNode;
+  /** The start of the service was requested and the server took the request. */
+  onRequested?: () => void;
   revisionId?: string;
   sourceService?: { id: string; replace: boolean };
   activationBlocked?: string; onManage: () => void; onBack: () => void; onStarted: (id: string) => void;
@@ -81,12 +89,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
     const document = initialDocument ?? (initialDesign
       ? { definition: initialDesign.draft, layout: initialDesign.layout }
       : withoutDetector(starting.document));
-    return { name: replaceService?.display_name ?? initialDesign?.name ?? "", description: initialDesign?.description ?? "",
+    return { name: replaceService?.display_name ?? initialDesign?.name ?? props.initialName ?? "", description: initialDesign?.description ?? "",
       targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document,
       bindings: initialDesign || initialDocument ? suggestBindings(document.definition.input_slots, target,
         suggested) : starting.bindings };
-  }, [catalog, initialBindings, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
-  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}:${Object.entries(initialBindings ?? {}).join(";")}`;
+  }, [catalog, initialBindings, initialDesign, initialDocument, initialReading, initialTarget, predecessor, props.initialName, replaceService, startingId, targets]);
+  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? props.origin ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}:${Object.entries(initialBindings ?? {}).join(";")}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
     !replaceId && !props.revisionId && initialDesign?.is_template !== false ? initialDesign : undefined);
   const viewTitle = replaceId ? "Update service" : initialDesign ? "Template" : "New service";
@@ -203,6 +211,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       if (!result?.valid) { setIssuesRequest((value) => value + 1); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
         bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_monitor_id: replaceId ?? null });
+      if (apply.session.getSnapshot().operationId) props.onRequested?.();
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setChecking(false); }
   };
@@ -279,6 +288,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     <div className="pl-setup-notices">
       {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
         : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "Configuring monitoring services needs the Manage monitors permission."}</p>}
+      {props.notice}
       {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
       {error && <p className="pl-error" role="alert">{error}</p>}
       <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />

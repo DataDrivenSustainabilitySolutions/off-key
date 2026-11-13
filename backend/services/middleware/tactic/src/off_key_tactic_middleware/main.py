@@ -25,6 +25,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
 from .api.v1 import (
+    agents,
     catalogue_data,
     data_services,
     dojo,
@@ -244,6 +245,7 @@ def create_app() -> FastAPI:
 
     business.include_router(members.router, prefix="/api/v1")
     business.include_router(members.roles_router, prefix="/api/v1")
+    business.include_router(agents.router, prefix="/api/v1")
     business.include_router(dojo.router, prefix="/api/v1")
     app.include_router(business)
 

@@ -49,20 +49,6 @@
         "y": {
           "title": "Y",
           "type": "number"
-        },
-        "label": {
-          "anyOf": [
-            {
-              "maxLength": 120,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Title of the card, if it has one.",
-          "title": "Label"
         }
       },
       "required": [
@@ -82,20 +68,6 @@
         "y": {
           "title": "Y",
           "type": "number"
-        },
-        "label": {
-          "anyOf": [
-            {
-              "maxLength": 120,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Title of the card, if it has one.",
-          "title": "Label"
         },
         "zoom": {
           "default": 1,
@@ -492,7 +464,7 @@
     },
     "layout": {
       "$ref": "#/$defs/PipelineLayout",
-      "description": "Where each card stands on the canvas and the title it carries. Steps without a place are arranged when the file is opened."
+      "description": "Where each card stands on the canvas. Steps without a place are arranged when the file is opened."
     }
   },
   "required": [

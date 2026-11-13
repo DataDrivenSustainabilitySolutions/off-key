@@ -48,6 +48,12 @@ export type GraphDocument = {
   layout: PipelineLayout;
 };
 
+/**
+ * The title a step was given; empty when it goes by the name of its component. A title is part of
+ * the design, so messages and other readers of the design can name the step by it.
+ */
+export const stepTitle = (node: PipelineNode | undefined): string => node?.label || "";
+
 export function nodeLabel(
   node: PipelineNode | undefined,
   components: PipelineComponent[],
@@ -57,7 +63,7 @@ export function nodeLabel(
   // A step that is switched off keeps the name of what it was.
   const component = switchedOff(layout, node)?.component ?? node.component;
   return (
-    layout?.nodes[node.id]?.label ||
+    stepTitle(node) ||
     components.find((item) => item.id === component)?.label ||
     component
   );
@@ -131,18 +137,14 @@ export function addComponent(
           component: component.id,
           contract_version: component.contract_version ?? 1,
           params,
+          // The second step of a kind is told from the first by its title.
+          ...(instance > 1 ? { label: `${component.label} ${instance}` } : {}),
         },
       ],
     },
     layout: {
       ...document.layout,
-      nodes: {
-        ...document.layout.nodes,
-        [id]: {
-          ...(position ?? freePosition(document, anchor)),
-          ...(instance > 1 ? { label: `${component.label} ${instance}` } : {}),
-        },
-      },
+      nodes: { ...document.layout.nodes, [id]: position ?? freePosition(document, anchor) },
     },
   };
 }
@@ -358,19 +360,14 @@ export const replaceComponent = (document: GraphDocument, nodeId: string, compon
 export const setNodeParams = (document: GraphDocument, nodeId: string, params: PipelineNode["params"]) =>
   updateNode(document, nodeId, (node) => ({ ...node, params }));
 
-/** Title a node; a node without a stored position gets its default one. */
+/** Title a step, or take its title away with an empty one. The title is kept in the design. */
 export function setNodeLabel(document: GraphDocument, nodeId: string, label: string): GraphDocument {
-  const index = document.definition.nodes.findIndex((node) => node.id === nodeId);
-  return {
-    ...document,
-    layout: {
-      ...document.layout,
-      nodes: {
-        ...document.layout.nodes,
-        [nodeId]: { ...nodePosition(document.layout, nodeId, index), ...document.layout.nodes[nodeId], label },
-      },
-    },
-  };
+  return updateNode(document, nodeId, (node) => {
+    const next = { ...node };
+    if (label) next.label = label;
+    else delete next.label;
+    return next;
+  });
 }
 
 /** `replace` lets a new connection take over a single input that is already connected. */

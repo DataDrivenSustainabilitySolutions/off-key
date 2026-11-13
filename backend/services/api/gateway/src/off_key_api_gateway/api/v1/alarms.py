@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Response
+from off_key_core.auth.agents import OPEN_TO_AGENTS
 from off_key_core.config.logs import logger
 from off_key_core.schemas.alarms import (
     MAX_ALARM_READINGS,
@@ -27,7 +28,7 @@ router = APIRouter(route_class=TacticErrorRoute)
 query_router = APIRouter(route_class=TacticErrorRoute)
 
 
-@query_router.post("/query", response_model=AlarmPage)
+@query_router.post("/query", response_model=AlarmPage, openapi_extra=OPEN_TO_AGENTS)
 async def query_alarms(query: AlarmQuery):
     """Alarms of catalogue readings, newest first, with catalogue names.
 
@@ -44,13 +45,13 @@ async def query_alarms(query: AlarmQuery):
     )
 
 
-@router.get("/count", response_model=AlarmCount)
+@router.get("/count", response_model=AlarmCount, openapi_extra=OPEN_TO_AGENTS)
 async def count_alarms(since: datetime | None = None):
     """Number of alarms, all of them or those since a time."""
     return await data_request("/alarms/count", present({"since": query_time(since)}))
 
 
-@router.get("", response_model=list[Alarm])
+@router.get("", response_model=list[Alarm], openapi_extra=OPEN_TO_AGENTS)
 async def list_alarms(
     device_id: str | None = Query(
         default=None, description="Alarms of every reading of this device."

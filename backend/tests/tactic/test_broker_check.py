@@ -18,7 +18,7 @@ from off_key_core.schemas.system import (
     SystemDocument,
     SystemSnapshot,
 )
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.config.system_live import (
     LiveCredential,
@@ -153,7 +153,7 @@ def _api(monkeypatch, *, role=MEMBER_ROLE):
     checker = BrokerCheck(SystemLiveSettings(SYSTEM_LIVE_ALLOWED_HOSTS=["broker"]))
     checker.check = AsyncMock(wraps=checker.check)
     app.state.broker_check = checker
-    app.dependency_overrides[current_member] = lambda: User(
+    app.dependency_overrides[current_caller] = lambda: User(
         id=1, email="member@example.com", role=role
     )
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()

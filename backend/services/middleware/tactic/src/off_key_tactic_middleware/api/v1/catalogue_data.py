@@ -14,6 +14,7 @@ from off_key_core.schemas.devices import (
     Measurement,
     MeasurementBucket,
     MeasurementPage,
+    ReadingProfile,
 )
 from off_key_core.schemas.system import SystemStream
 
@@ -84,6 +85,15 @@ async def list_measurement_buckets(
     return await service.measurement_buckets(
         stream_id, start=start, end=end, buckets=buckets
     )
+
+
+@router.get("/readings/{stream_id}/profile", response_model=ReadingProfile)
+async def profile_reading(
+    stream_id: str,
+    days: int = Query(14, ge=1, le=90),
+    service: CatalogueDataService = Depends(get_catalogue_data_service),
+):
+    return await service.profile(stream_id, days=days)
 
 
 @router.get("/evidence", response_model=list[Evidence])

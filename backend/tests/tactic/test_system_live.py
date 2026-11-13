@@ -15,7 +15,7 @@ from off_key_core.db.models import User
 from off_key_core.schemas.system import SystemStream
 from off_key_core.schemas.system_live import SystemLiveStart
 from off_key_core.utils.payload_decode import decode_value
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.config.system_live import (
     LiveCredential,
@@ -596,7 +596,7 @@ def _api(monkeypatch, *, role=MEMBER_ROLE, authenticated=True):
     service, _ = manager()
     app.state.system_live = service
     if authenticated:
-        app.dependency_overrides[current_member] = lambda: User(
+        app.dependency_overrides[current_caller] = lambda: User(
             id=1, email="member@example.com", role=role
         )
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()

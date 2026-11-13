@@ -24,7 +24,7 @@ from off_key_core.db.system import (
     SystemRevision,
 )
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_tactic_middleware.api.collection_auth import current_member
+from off_key_tactic_middleware.api.collection_auth import current_caller
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.services.catalogue import system as system_service
@@ -406,7 +406,7 @@ def test_routes_enforce_current_database_admin_role_and_member_reads(monkeypatch
     app = FastAPI()
     app.include_router(system_api.router)
     member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_member] = lambda: member
+    app.dependency_overrides[current_caller] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     read = AsyncMock(return_value={})
     monkeypatch.setattr(system_service.SystemService, "save", read)
@@ -426,7 +426,7 @@ def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypat
     app = FastAPI()
     app.include_router(system_api.router)
     member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_member] = lambda: member
+    app.dependency_overrides[current_caller] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     snapshot = SystemSnapshot(revision=1, document=document(), storage_origin="saved")
     read = AsyncMock(return_value=snapshot)

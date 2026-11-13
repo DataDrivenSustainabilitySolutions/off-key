@@ -68,7 +68,12 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
     );
     const slot = definition.input_slots![0]!.id;
     definition.nodes!.push(
-      { id: "raw", kind: "transform", component: "features.passthrough" },
+      {
+        id: "raw",
+        kind: "transform",
+        component: "features.passthrough",
+        label: "Raw reference",
+      },
       {
         id: "renamed",
         kind: "transform",
@@ -95,7 +100,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
         layout: {
           nodes: {
             input: { x: 0, y: 130 },
-            raw: { x: 280, y: 20, label: "Raw reference" },
+            raw: { x: 280, y: 20 },
             renamed: { x: 280, y: 240 },
             merge: { x: 560, y: 130 },
             detector: { x: 840, y: 130 },

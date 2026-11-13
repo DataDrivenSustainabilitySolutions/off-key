@@ -1,3 +1,6 @@
+/* The way back is a link in a line of text, not a boxed button. */
+.pl-library .ex-breadcrumb button { border: 0; background: none; }
+
 .pl-library-tools {
   justify-content: space-between;
   margin: 24px 0 12px;

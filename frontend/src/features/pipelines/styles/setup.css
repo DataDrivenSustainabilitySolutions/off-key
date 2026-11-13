@@ -77,8 +77,19 @@
 .pl-toolbox-present > div { display: flex; flex-wrap: wrap; gap: 6px; }
 .pl-library .pl-toolbox-present button { border-radius: 999px; padding: 4px 10px; }
 .pl-issue-startup { color: hsl(var(--muted-foreground)); font-weight: 400; }
+/* Who proposed the design on the canvas and why. It is neither a warning nor a result, so it has no color. */
+.pl-proposal { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; padding: 8px 12px;
+  border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--card)); font-size: var(--text-caption); line-height: 1.6; }
+.pl-proposal-text { flex: 1 1 280px; min-width: 0; }
+.pl-proposal p { margin: 0; overflow-wrap: anywhere; }
+.pl-proposal :is(time, .pl-proposal-state) { color: hsl(var(--muted-foreground)); }
+.pl-proposal-decline { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.pl-proposal-decline input { flex: 1 1 180px; width: auto; }
+.pl-proposal-list small + small { margin-top: 2px; }
 @media (max-width: 900px) { .pl-issue-startup { display: none; } }
 @media (max-width: 680px) {
+  .pl-proposal button, .pl-proposal-decline input { min-height: 44px; }
+  .pl-proposal-decline input { flex-basis: 100%; }
   .pl-setup-header { margin-top: 16px; gap: 12px; }
   .pl-setup .pl-setup-input { min-height: 36px; padding: 6px 12px; }
   .pl-toolbox-grid { grid-template-columns: minmax(0, 1fr); }

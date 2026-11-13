@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConfirm } from "@/hooks/use-confirm";
+import { AgentSettings } from "@/features/account/AgentSettings";
 import { RemoveMemberDialog } from "@/features/account/RemoveMemberDialog";
 import { RoleSettings } from "@/features/account/RoleSettings";
 import { permissionSummary } from "@/features/account/permissions";
@@ -162,6 +163,7 @@ export default function AccountSettings() {
         </SettingsGroup>
       )}
       {manageMembers && <RoleSettings roles={roles} onChanged={rolesChanged} />}
+      {manageMembers && <AgentSettings />}
       {confirmation}
       {removalTarget && <RemoveMemberDialog member={removalTarget}
         onClose={() => setRemovalTarget(null)}

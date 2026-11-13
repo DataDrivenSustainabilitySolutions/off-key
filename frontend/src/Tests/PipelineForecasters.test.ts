@@ -31,7 +31,7 @@ describe("Forecaster steps in the composer", () => {
     // A pretrained forecaster is one too, whichever service provides it.
     expect(stepFamily(step, timestral)).toBe("forecaster");
     expect(stepFamily(step, knn)).toBe("detector");
-    // A detector the catalog no longer lists stays a detector.
+    // A detector the catalog does not list stays a detector.
     expect(stepFamily(step, undefined)).toBe("detector");
   });
 

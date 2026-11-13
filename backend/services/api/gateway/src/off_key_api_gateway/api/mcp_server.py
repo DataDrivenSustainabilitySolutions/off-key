@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel.server import Server
 from mcp.server.transport_security import TransportSecuritySettings
+from off_key_core.auth.agents import AgentStarts
 from off_key_core.config.logs import correlation_headers
 from off_key_core.schemas.agents import AgentProfile
 from pydantic import ValidationError
@@ -34,7 +35,7 @@ MCP_PATH = "/v1/mcp"
 
 
 def _offered(tool: Tool, agent: AgentProfile) -> bool:
-    return agent.may_start or not tool.starts
+    return agent.starts != AgentStarts.nothing or not tool.starts
 
 
 def _caller(ctx: ServerRequestContext) -> State:

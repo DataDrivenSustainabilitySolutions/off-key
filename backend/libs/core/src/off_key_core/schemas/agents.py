@@ -3,12 +3,15 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from ..auth.agents import AgentStarts
+
 AgentName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)
 ]
-MAY_START = (
-    "Whether the key may start monitoring services. Every key may read, design, "
-    "test and propose."
+STARTS = (
+    "What the key may start without a member: `nothing`, services in `shadow`, "
+    "which record the alarms they would raise and raise none, or `live` "
+    "services as well. Every key may read, design, test and propose."
 )
 
 
@@ -20,7 +23,7 @@ class AgentProfile(BaseModel):
     id: int
     name: str
     key_hint: str = Field(description="The last characters of the key.")
-    may_start: bool = Field(description=MAY_START)
+    starts: AgentStarts = Field(description=STARTS)
     created_by: str | None = Field(description="The member who created the key.")
     created_at: datetime
 
@@ -29,13 +32,13 @@ class AgentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: AgentName
-    may_start: bool = Field(default=False, description=MAY_START)
+    starts: AgentStarts = Field(default=AgentStarts.nothing, description=STARTS)
 
 
 class AgentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    may_start: bool = Field(description=MAY_START)
+    starts: AgentStarts = Field(description=STARTS)
 
 
 class AgentCreated(AgentProfile):

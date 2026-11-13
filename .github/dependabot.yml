@@ -18,11 +18,6 @@ updates:
       prefix: "ci"
       include: "scope"
     groups:
-      # Security fixes for this ecosystem arrive together in one pull request.
-      github-actions-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
       github-actions:
         patterns:
           - "*"
@@ -46,11 +41,6 @@ updates:
       prefix: "docker"
       include: "scope"
     groups:
-      # Security fixes for this ecosystem arrive together in one pull request.
-      docker-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
       container-images:
         patterns:
           - "*"
@@ -73,11 +63,6 @@ updates:
       prefix: "docker"
       include: "scope"
     groups:
-      # Security fixes for this ecosystem arrive together in one pull request.
-      docker-compose-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
       compose-dependencies:
         patterns:
           - "*"
@@ -97,11 +82,6 @@ updates:
       prefix: "deps"
       include: "scope"
     groups:
-      # Security fixes for this ecosystem arrive together in one pull request.
-      uv-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
       backend-python:
         patterns:
           - "*"
@@ -131,11 +111,6 @@ updates:
       prefix: "deps"
       include: "scope"
     groups:
-      # Security fixes for this ecosystem arrive together in one pull request.
-      uv-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
       infra-python:
         patterns:
           - "*"
@@ -158,11 +133,6 @@ updates:
       prefix: "deps"
       include: "scope"
     groups:
-      # Security fixes for this ecosystem arrive together in one pull request.
-      npm-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
       frontend-npm:
         patterns:
           - "*"
@@ -185,11 +155,6 @@ updates:
       prefix: "docs"
       include: "scope"
     groups:
-      # Security fixes for this ecosystem arrive together in one pull request.
-      pip-security:
-        applies-to: security-updates
-        patterns:
-          - "*"
       docs-tooling:
         patterns:
           - "*"

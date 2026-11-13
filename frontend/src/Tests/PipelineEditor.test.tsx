@@ -366,6 +366,32 @@ describe("simple monitoring setup", () => {
     await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
     await waitFor(() => expect(callbacks.onStarted).toHaveBeenCalledWith("service"));
   });
+  it("starts a service in shadow, and an update without it takes the service live", async () => {
+    const view = render(<MemoryRouter><PipelineCreate {...props()} initialDesign={pipeline()} /></MemoryRouter>);
+    await settings();
+    const shadow = () => screen.getByRole("checkbox", { name: /^Shadow run/ }) as HTMLInputElement;
+    expect(shadow().checked).toBe(false);
+    fireEvent.click(shadow());
+    fireEvent.click(screen.getByRole("button", { name: "Start in shadow" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
+    expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0]).toMatchObject({ shadow: true, replace_monitor_id: null });
+    view.unmount();
+    clearNavigationDrafts();
+    // An update of a shadow service stays in shadow until the member takes it live.
+    const old: ActiveService = { id: "old", display_name: "Existing health", reading_ids: [], active: true, shadow: true,
+      operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
+    render(<MemoryRouter><PipelineCreate {...props()} initialDesign={pipeline()} replaceService={old}
+      predecessor={{ run: null, history: [], definition, layout: normalizeLayout() }} /></MemoryRouter>);
+    await settings();
+    expect(shadow().checked).toBe(true);
+    expect(screen.getByRole("button", { name: "Update in shadow" })).toBeTruthy();
+    expect(screen.queryByText(/Compared with what runs now/)).toBeNull();
+    fireEvent.click(shadow());
+    expect(screen.getByText("Compared with what runs now: Goes live.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Update monitoring" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(pipelinesApi.apply).mock.calls[1]![0]).toMatchObject({ shadow: false, replace_monitor_id: "old" });
+  });
   it("keeps a failed service load visible when the catalog arrives afterwards", async () => {
     let finishCatalog!: (value: typeof catalog) => void;
     vi.mocked(pipelinesApi.catalog).mockImplementation(() => new Promise((resolve) => { finishCatalog = resolve; }));

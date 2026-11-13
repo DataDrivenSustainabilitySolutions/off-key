@@ -1,4 +1,5 @@
 import { MarkerType, type Edge } from "@xyflow/react";
+import type { StepChange } from "./comparison";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import type { CanvasNode } from "./types";
 import { incomingEdges, nodeLabel, nodeOptionLabeler, type GraphDocument } from "./model";
@@ -24,6 +25,7 @@ export function presentGraph(
   components: PipelineComponent[],
   states?: Record<string, string>,
   issues: PipelineValidation["issues"] = [],
+  changes?: Record<string, StepChange>,
 ) {
   const optionLabel = nodeOptionLabeler(document, components);
   const shown = showIssues(document, components, issues);
@@ -60,6 +62,7 @@ export function presentGraph(
         open: shown.find((issue) => issue.node_id === node.id && issue.tone === "open")?.short,
         summary: summary.text,
         chips: summary.chips,
+        change: changes?.[node.id],
       },
     };
   });

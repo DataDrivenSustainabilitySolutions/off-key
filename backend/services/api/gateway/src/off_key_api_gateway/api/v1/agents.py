@@ -56,7 +56,8 @@ async def create_agent(
     """Create an agent and its key. Needs `manage_members`.
 
     The answer carries the key this once. Every key may read, design, test and
-    propose; `may_start` allows this one to start monitoring services as well.
+    propose; `starts` allows this one to start monitoring services as well, in
+    `shadow` only or `live`.
     """
     return await agent_request(
         "POST", "", authorization, change.model_dump(mode="json")

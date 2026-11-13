@@ -19,7 +19,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | --- | --- | --- |
 | `users` | `id` | Identity, credentials, role, and verification state |
 | `member_roles` | `id` | Named roles and the permissions each one grants |
-| `agents` | `id` | Agents that sign in with a key: the name, a digest of the key and its last characters, whether the key may start monitoring services, and the member who created it. `name` is unique without regard to case. Deleting the row revokes the key |
+| `agents` | `id` | Agents that sign in with a key: the name, a digest of the key and its last characters, what the key may start (`nothing`, `shadow` or `live`), and the member who created it. `name` is unique without regard to case. Deleting the row revokes the key |
 | `chargers` | `charger_id` | Charger inventory and MQTT/connection metadata |
 | `telemetry` | `(charger_id, timestamp, type)` | Observed time-series values by charger and sensor type |
 | `services` | `id` | Monitoring workload, topics, saved launch configuration, lifecycle, and operational stage |

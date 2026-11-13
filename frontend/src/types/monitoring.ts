@@ -120,6 +120,8 @@ export interface ActiveService {
   /** True while the monitor should run; false once it is stopped. */
   active: boolean;
   operational_status: OperationalStatus;
+  /** A shadow service records the alarms it would raise and raises none. */
+  shadow?: boolean;
   monitoring_strategy?: MonitoringStrategy | null;
   model_type?: string;
   created_at?: string;

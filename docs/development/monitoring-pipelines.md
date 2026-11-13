@@ -62,8 +62,8 @@ An agent calls these with a key (`core/auth/agents.py`). A key is told from a
 member's token by its prefix, and `current_caller` in the gateway
 (`api/access.py`) and in TACTIC (`api/collection_auth.py`) resolves either. A
 route is closed to keys unless its decorator carries
-`openapi_extra=OPEN_TO_AGENTS`, or `STARTS_SERVICES` for a route only a key with
-`may_start` may call, so the same mark decides access and shows in the OpenAPI
+`openapi_extra=OPEN_TO_AGENTS`, or `STARTS_SERVICES` for a route only a key that
+starts services may call, so the same mark decides access and shows in the OpenAPI
 document as `x-agent-access`. A key has no permissions: on a marked route it
 passes the permission checks, and `current_member` refuses it wherever a handler
 needs a person. To open a route, mark it in both services and add it to
@@ -76,9 +76,15 @@ as a proposal (`services/pipelines/proposals.py`, table
 `monitoring_pipeline_proposals`). A proposal holds the design itself with its
 layout and bindings and points at nothing, so it reads the same after a run, a
 service or the author's key is gone. It must check without errors when it is
-handed in, and at most 50 wait at a time. Deciding is a member's, never a
-key's, and a decision starts nothing: it records who decided and what they
-answered. The table comes from the ORM model alone; no migration introduces it
+handed in, and at most 50 wait at a time. A `test_run_id` is checked when the
+proposal is made (`_tested`): the Dojo run must have succeeded, and the design
+it ran must have the fingerprint of the design proposed, which leaves titles
+out. The member who decides reads that test as what this design would have
+reported, so a test of an earlier version is refused in words that say to test
+again. The run is not held: a proposal still reads once its run is deleted,
+and the app then says that the test cannot be opened. Deciding is a member's,
+never a key's, and a decision starts nothing: it records who decided and what
+they answered. The table comes from the ORM model alone; no migration introduces it
 (`BOOTSTRAP_TABLES` in `backend/tests/database/test_migration_ledger.py`).
 
 In the app a proposal is a design opened in the setup, not a second editor.
@@ -96,6 +102,19 @@ answers that with the accepting decision. The proposal is therefore accepted
 when its start is requested, not when the service runs, so leaving the page
 during the start loses nothing; a start the server refuses decides nothing.
 
+A design that replaces a service is compared with the design the service runs
+(`compareDesigns` in `comparison.ts`). The setup has that design already, as
+the `predecessor` it loads for `?replace=<service>`, so the comparison costs no
+request and follows every edit. Steps are matched by id: a step is new, changed
+or the same, and the steps only the running design holds are named. A setting
+left at its default equals the default spelled out, a moved card is the same
+step, and a step whose only difference is a new step in front of it is the
+same step too. The result reaches the cards as `changes` on `PipelineCanvas`
+(`CanvasData.change`), the step settings through `stepValues`, and the update
+notice as one line (`comparisonSummary`). To compare something more, add it to
+`stepChanges` or to the `service` sentences, each with a line in
+`PipelineComparison.test.ts`.
+
 The gateway serves the same operations to an agent as MCP tools at `/v1/mcp`
 (`api/mcp_server.py`, `api/mcp_tools.py` in the gateway). A tool is a function
 in `mcp_tools.py` under `@tool`: the function's name is the tool's, its
@@ -103,7 +122,7 @@ docstring the description the agent reads, and a pydantic model its arguments.
 It calls the gateway's own routes in-process with the key of the request
 (`Api`) and holds no rule of its own, so the mark of a route decides access,
 the limit of a route counts, and a refusal reaches the agent in the route's
-words. `starts=True` keeps a tool from a key without `may_start`, and
+words. `starts=True` keeps a tool from a key that starts nothing, and
 `changes=True` tells the client that the tool leaves something others see.
 The server is part of the gateway and keeps no session. Nothing new is
 deployed, every request carries its key and gets one JSON answer, and any
@@ -166,6 +185,19 @@ start-up estimate
 aligns observations across all readings. Entity selection includes configured
 entities even when there is no recent traffic; collection and reading ownership
 still gate Apply.
+
+The first service setting is the alarm budget (`alarmBudget.ts`,
+`AlarmBudgetSetting.tsx`). It is a view of the design and stores nothing of its
+own. `alarmBudget()` reads the share of scores above the boundary from `alpha`
+of a calibration step that adapts, or under the fixed split from the `quantile`
+of `policy.quantile` as `max(1 - quantile, 1 / (n + 1))`, the way
+`calibration_comparison()` reads it for a run. `withAlarmShare()` writes
+another share back to that setting. The count per hour, day or week is the
+share times the observations in the period, at the interval of the start-up
+estimate; without one the setting reads as one score in so many. A design on
+`policy.martingale` has no budget. The compiler's `calibration_window` warning
+appears under the setting, and the method's promise (`coverage`) is left out
+then, because a window too short for the rate cannot keep it.
 
 Standard setups show a **Readings to monitor** checklist directly below the
 entity: uncheck unwanted readings to monitor any subset, such as AC1 and AC3.
@@ -392,6 +424,17 @@ answer, paused while the tab is hidden); metrics are read once the run has
 succeeded and again whenever the panel opens (`rescore`), because they follow
 the dataset's labels. `PipelineCreate` blocks a test until the compiler has
 accepted the latest edit, so no values are copied for a run that cannot start.
+
+A design can come with a test, as a proposal with a `test_run_id` does.
+`PipelineWorkspace` hands it to `PipelineCreate` as `tested` (`DesignEvidence`
+in `designTest.ts`: the run, who ran it and the design as it came), and the
+setup opens on the test panel and passes it to `Status` as `evidence`.
+`HistoryTestStatus` takes the run as the composer's test (`adopt` in
+`historyTest.ts`): it reads the run, its dataset and its metrics, chooses that
+dataset and the series the run read, and keeps who ran it in `TestedRun.by`.
+A test the member has run in this setup stands over it, and a run that cannot
+be read leaves a sentence in the panel. Nothing is announced for a test that
+ended before the setup opened.
 
 The result is drawn from `GET /v1/dojo/runs/{run_id}/outline`, which sums a
 run's results up over equal stretches of time: per stretch the number of
@@ -801,6 +844,29 @@ and dropped when the statistic falls back first. The tracker's result carries
 false. A Dojo replay that compares calibration methods records no method alarm
 for a muted observation. `tests/pipelines/test_mute_alarms.py` holds each
 service to these rules.
+
+A shadow run is the same switch for a whole service. `shadow` on the apply or
+activation request becomes `RadarStartConfig.shadow`, a property of the launch
+and not of what is executed, and reaches the worker as `RADAR_SHADOW`. `_muting`
+(`PipelineExecutionMixin`) is true for every observation of such a run, so the
+three services keep their alarms back along the path above and the evidence is
+`alarm` false, `muted` true. The execution configuration and its fingerprint do
+not name the flag: a shadow run and a live one of the same design on the same
+readings learn the same state, and what one detector exports loads under the
+other's configuration (`tests/pipelines/test_shadow_runs.py`). TACTIC emits
+`RADAR_SHADOW` for a shadow run only, so the environment of every other monitor
+and its configuration fingerprint stay as they were
+(`tests/radar/test_radar_launch_contract.py`). The monitor summary reads
+`shadow` from the launch configuration (`radar_queries.py`). Going live is an
+update without the flag, which starts a new service as any update does. A
+go-live in place would restart the same service without the flag; its
+checkpoint would still fit, because the checkpoint's compatibility does not
+name the flag either.
+
+What a key may start is `Agent.starts` (`AgentStarts`: `nothing`, `shadow`,
+`live`). `agent_refusal` closes the start routes to a key that starts nothing,
+and `shadow_refusal`, asked where TACTIC applies a design, refuses a start
+without `shadow` from a key that starts in shadow only.
 
 A failure in the learned stage costs one observation too, when no learned state
 changed. Aberrant's `GraphPipeline.score_one` only reads committed state, and

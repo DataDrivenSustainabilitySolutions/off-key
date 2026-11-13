@@ -13,8 +13,8 @@ import { fusionChoice } from "./steps";
 export type NodeSummary = { text?: string; chips?: string[] };
 
 const count = (value: number, noun: string) => `${value.toLocaleString()} ${noun}${value === 1 ? "" : "s"}`;
-const number = (value: number) =>
-  Number.isInteger(value) ? value.toLocaleString() : Number(value.toPrecision(4)).toLocaleString();
+// Four digits that count, so that a small rate does not read as 0.
+const number = (value: number) => value.toLocaleString(undefined, { maximumSignificantDigits: Number.isInteger(value) ? 21 : 4 });
 const strings = (value: JsonValue | undefined) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 const sentence = (label: string) => label.charAt(0) + label.slice(1).toLowerCase();
@@ -22,12 +22,12 @@ const sentence = (label: string) => label.charAt(0) + label.slice(1).toLowerCase
 const isRecord = (value: JsonValue | undefined): value is Record<string, JsonValue> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Whether a setting holds its default, comparing lists and nested settings by value. */
-function same(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
+/** Whether two values of a setting are the same, comparing lists and nested settings by value. */
+export function sameSetting(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
   if (Array.isArray(left) && Array.isArray(right))
-    return left.length === right.length && left.every((item, index) => same(item, right[index]));
+    return left.length === right.length && left.every((item, index) => sameSetting(item, right[index]));
   if (isRecord(left) && isRecord(right))
-    return [...new Set([...Object.keys(left), ...Object.keys(right)])].every((key) => same(left[key], right[key]));
+    return [...new Set([...Object.keys(left), ...Object.keys(right)])].every((key) => sameSetting(left[key], right[key]));
   return (left ?? null) === (right ?? null);
 }
 
@@ -44,7 +44,7 @@ function formatted(field: FieldDescriptor, value: JsonValue): string | undefined
 function changedSettings(node: PipelineNode, component: PipelineComponent) {
   // The calibration step names how it combines detectors on its own, and only when there are several.
   const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name) && field.name !== "fusion"
-    && node.params[field.name] !== undefined && !same(node.params[field.name], field.default));
+    && node.params[field.name] !== undefined && !sameSetting(node.params[field.name], field.default));
   const lines = changed.map((field) => formatted(field, node.params[field.name]!));
   const shown = lines.filter((line): line is string => !!line).slice(0, 2);
   const rest = changed.length - shown.length;
@@ -264,7 +264,10 @@ function settingsSummary(
     case "policy.quantile": {
       // The threshold freezes at this quantile of the calibration scores.
       const quantile = typeof params.quantile === "number" ? params.quantile : 1;
-      return { text: quantile === 1 ? "Above the calibration maximum" : `Above calibration quantile ${number(quantile)}` };
+      if (quantile === 1) return { text: "Above the calibration maximum" };
+      // As many digits as tell the quantile from 1.
+      const digits = quantile > 0 && quantile < 1 ? Math.min(Math.max(Math.ceil(-Math.log10(1 - quantile)) + 1, 3), 12) : 3;
+      return { text: `Above calibration quantile ${quantile.toLocaleString(undefined, { maximumFractionDigits: digits })}` };
     }
   }
   return component ? { text: changedSettings(node, component) } : {};

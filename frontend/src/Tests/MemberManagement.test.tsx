@@ -35,7 +35,7 @@ const roles = [
   { id: "user", name: "Member", permissions: [], editable: true, built_in: true, members: 1 },
   { id: "operator", name: "Operator", permissions: ["manage_monitors"], editable: true, built_in: false, members: 0 },
 ];
-const night = { id: 7, name: "Night shift agent", key_hint: "q7Xk", may_start: false, created_by: "admin@example.com", created_at: "2026-11-10T08:00:00Z" };
+const night = { id: 7, name: "Night shift agent", key_hint: "q7Xk", starts: "nothing", created_by: "admin@example.com", created_at: "2026-11-10T08:00:00Z" };
 beforeEach(() => {
   auth.member = { id: 1, email: "admin@example.com", role: "admin", permissions: everything };
   auth.retryAuthentication.mockClear();
@@ -50,9 +50,9 @@ beforeEach(() => {
   removeMember.mockResolvedValue(undefined);
   post.mockResolvedValue({ message: "Accepted" });
   getAgents.mockReset().mockResolvedValue([night]);
-  createAgent.mockReset().mockImplementation(async (name: string, mayStart: boolean) =>
-    ({ ...night, id: 8, name, key_hint: "Zr4t", may_start: mayStart, key: "offkey_secretZr4t" }));
-  updateAgent.mockReset().mockImplementation(async (_id: number, mayStart: boolean) => ({ ...night, may_start: mayStart }));
+  createAgent.mockReset().mockImplementation(async (name: string, starts: string) =>
+    ({ ...night, id: 8, name, key_hint: "Zr4t", starts, key: "offkey_secretZr4t" }));
+  updateAgent.mockReset().mockImplementation(async (_id: number, starts: string) => ({ ...night, starts }));
   revokeAgent.mockReset().mockResolvedValue(undefined);
 });
 
@@ -230,11 +230,13 @@ it("hands an agent its key once", async () => {
   expect(within(agents).getByText("Key ending in q7Xk · Created by admin@example.com")).toBeTruthy();
   fireEvent.click(within(agents).getByRole("button", { name: "New key" }));
   const form = within(agents).getByRole("form", { name: "New key" });
-  // A key designs, tests and proposes unless the box is ticked.
-  expect((within(form).getByRole("checkbox", { name: /May start monitors/ }) as HTMLInputElement).checked).toBe(false);
+  // A key designs, tests and proposes unless it is allowed more.
+  const starting = within(form).getByLabelText("Starting monitors") as HTMLSelectElement;
+  expect(starting.value).toBe("nothing");
+  expect([...starting.options].map((option) => option.text)).toEqual(["Proposes only", "Starts in shadow", "Starts live"]);
   fireEvent.change(within(form).getByLabelText("Name"), { target: { value: " Line 3 agent " } });
   fireEvent.click(within(form).getByRole("button", { name: "Create key" }));
-  await waitFor(() => expect(createAgent).toHaveBeenCalledExactlyOnceWith("Line 3 agent", false));
+  await waitFor(() => expect(createAgent).toHaveBeenCalledExactlyOnceWith("Line 3 agent", "nothing"));
   const issued = await within(agents).findByRole("group", { name: "Key of Line 3 agent" });
   expect((within(issued).getByLabelText("Key of Line 3 agent") as HTMLInputElement).value).toBe("offkey_secretZr4t");
   expect(issued.textContent).toContain("It is not shown again.");
@@ -255,12 +257,17 @@ it("hands an agent its key once", async () => {
 it("allows a key to start monitors and revokes it after confirmation", async () => {
   render(<MemoryRouter><Account /></MemoryRouter>);
   const agents = await screen.findByRole("region", { name: "Agents" });
-  const allow = await within(agents).findByRole("checkbox", { name: "Night shift agent may start monitors" }) as HTMLInputElement;
-  expect(allow.checked).toBe(false);
-  fireEvent.click(allow);
-  await waitFor(() => expect(updateAgent).toHaveBeenCalledExactlyOnceWith(7, true));
-  expect((await within(agents).findByRole("status")).textContent).toBe("Night shift agent may start monitors.");
-  expect(allow.checked).toBe(true);
+  const allow = await within(agents).findByRole("combobox", { name: "Starting monitors for Night shift agent" }) as HTMLSelectElement;
+  expect(allow.value).toBe("nothing");
+  // Shadow lies between proposing and starting live: the key starts monitors that raise no alarm.
+  fireEvent.change(allow, { target: { value: "shadow" } });
+  await waitFor(() => expect(updateAgent).toHaveBeenCalledExactlyOnceWith(7, "shadow"));
+  expect((await within(agents).findByRole("status")).textContent)
+    .toBe("Night shift agent may start monitors in shadow, which record their alarms and raise none.");
+  expect(allow.value).toBe("shadow");
+  fireEvent.change(allow, { target: { value: "live" } });
+  await waitFor(() => expect(updateAgent).toHaveBeenLastCalledWith(7, "live"));
+  expect((await within(agents).findByRole("status")).textContent).toBe("Night shift agent may start monitors that raise alarms.");
   fireEvent.click(within(agents).getByRole("button", { name: "Revoke" }));
   const dialog = await screen.findByRole("dialog", { name: "Revoke the key of Night shift agent?" });
   expect(dialog.textContent).toContain("Monitors it started keep running.");
@@ -278,8 +285,8 @@ it("keeps a key as it was when the server refuses a change", async () => {
   updateAgent.mockRejectedValue(new Error("Agent not found"));
   render(<MemoryRouter><Account /></MemoryRouter>);
   const agents = await screen.findByRole("region", { name: "Agents" });
-  const allow = await within(agents).findByRole("checkbox", { name: "Night shift agent may start monitors" }) as HTMLInputElement;
-  fireEvent.click(allow);
+  const allow = await within(agents).findByRole("combobox", { name: "Starting monitors for Night shift agent" }) as HTMLSelectElement;
+  fireEvent.change(allow, { target: { value: "live" } });
   expect((await within(agents).findByRole("alert")).textContent).toBe("Agent not found");
-  expect(allow.checked).toBe(false);
+  expect(allow.value).toBe("nothing");
 });

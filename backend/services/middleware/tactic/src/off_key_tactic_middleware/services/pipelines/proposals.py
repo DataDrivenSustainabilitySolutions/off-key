@@ -4,11 +4,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from off_key_core.config.logs import log_security_event
-from off_key_core.db.models import Agent, PipelineProposal, User
+from off_key_core.db.models import Agent, DojoRun, PipelineProposal, User
 from off_key_core.models.pipelines import validate_pipeline
 from off_key_core.schemas.pipelines import (
     MAX_OPEN_PROPOSALS,
     MAX_PROPOSALS_LISTED,
+    PipelineDefinition,
     PipelineProposalCreate,
     PipelineProposalDecision,
     PipelineProposalList,
@@ -78,6 +79,8 @@ class PipelineProposals:
                 f"The design has no input named {unknown[0]}. "
                 "Bind readings to its input slots by their id."
             )
+        if change.test_run_id is not None:
+            await self._tested(change.test_run_id, validation.fingerprint)
         waiting = await self.session.scalar(
             select(func.count())
             .select_from(PipelineProposal)
@@ -107,6 +110,41 @@ class PipelineProposals:
         self.session.add(row)
         await self.session.commit()
         return proposal_view(row)
+
+    async def _tested(self, run_id: str, fingerprint: str | None) -> None:
+        """Refuse a test that is no evidence for the design it is handed in with.
+
+        The member who decides reads the test as what this design would have
+        reported, so it must have run to its end, and on this design. Titles
+        do not count: the fingerprint of a design leaves them out.
+        """
+        run = await self.session.get(DojoRun, run_id)
+        if run is None:
+            raise ValidationError(
+                f"There is no test run {run_id}. Test the design on history, "
+                "then propose it with the id of that run."
+            )
+        if run.status in ("queued", "running"):
+            raise ValidationError(
+                "The test is still running. Propose the design once it has finished."
+            )
+        if run.status != "succeeded":
+            raise ValidationError(
+                "The test did not run to its end. Propose the design with a "
+                "test that finished, or with none."
+            )
+        try:
+            ran = validate_pipeline(
+                PipelineDefinition.model_validate(run.config["execution"]["definition"])
+            ).fingerprint
+        except (KeyError, TypeError, ValueError):
+            # A run this release cannot read tested nothing that can be proposed.
+            ran = None
+        if ran is None or ran != fingerprint:
+            raise ValidationError(
+                "The test ran another design. Test this design, then propose "
+                "it with that test."
+            )
 
     async def decide(
         self, identifier: str, decision: PipelineProposalDecision, member: User

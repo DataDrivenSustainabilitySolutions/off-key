@@ -173,3 +173,21 @@ def test_the_forecast_service_address_is_not_part_of_the_fingerprint(name):
     assert build_radar_config_fingerprint(served) == GOLDEN_FINGERPRINTS[name]
     # The token is a Swarm secret of the worker, never part of its environment.
     assert "FORECAST_API_TOKEN" not in served
+
+
+@pytest.mark.parametrize("name", CONFIGS)
+def test_only_a_shadow_run_carries_its_flag(name, monkeypatch):
+    """Shadow runs arrived without reconfiguring the monitors that raise alarms."""
+    live = _environment(CONFIGS[name]())
+    shadow = _environment(CONFIGS[name]().model_copy(update={"shadow": True}))
+
+    assert "RADAR_SHADOW" not in live
+    assert shadow == live | {"RADAR_SHADOW": "true"}
+    # Taking a monitor live is a change of its configuration.
+    assert build_radar_config_fingerprint(shadow) != GOLDEN_FINGERPRINTS[name]
+    for environment, expected in ((live, False), (shadow, True)):
+        for key in RadarSettings.model_fields:
+            monkeypatch.delenv(key, raising=False)
+        for key, value in environment.items():
+            monkeypatch.setenv(key, value)
+        assert RadarSettings(_env_file=None).config.shadow is expected

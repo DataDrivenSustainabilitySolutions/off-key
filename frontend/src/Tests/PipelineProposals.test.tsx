@@ -5,6 +5,7 @@ import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { normalizeCatalog, normalizeDefinition, normalizeLayout, type PipelineProposal } from "@/features/pipelines/contracts";
+import { DesignTestContext, type DesignTest } from "@/features/pipelines/designTest";
 import { PipelineProposalList, PipelineProposalNotice } from "@/features/pipelines/PipelineProposals";
 import PipelineWorkspace from "@/features/pipelines/PipelineWorkspace";
 import { proposalOutcome, useOpenProposals } from "@/features/pipelines/proposals";
@@ -209,6 +210,47 @@ describe("proposals", () => {
     expect(row.textContent).toContain("Replaces a running service");
     fireEvent.click(row);
     expect(address()).toBe("?create=monitoring&proposal=p1&replace=old");
+  });
+
+  it("compares a proposal that replaces a service with what runs now", async () => {
+    const old: ActiveService = { id: "old", display_name: "Pump watch", reading_ids: ["current"], active: true,
+      operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
+    // The service runs the same steps; its detector goes by the name of its component.
+    const runs = normalizeDefinition({ ...definition,
+      nodes: definition.nodes.map((node) => node.id === "detector" ? { ...node, label: null } : node) });
+    vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ replace_monitor_id: "old" }));
+    vi.mocked(pipelinesApi.service).mockResolvedValue({ run: null, history: [], definition: runs, layout: normalizeLayout() });
+    workspace("/?create=monitoring&proposal=p1&replace=old", [old]);
+    expect(await screen.findByText("Compared with what runs now: 1 changed step.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Update monitoring" })).toBeTruthy();
+    // A proposal for a service of its own has nothing to be compared with.
+    vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal());
+    workspace("/?create=monitoring&proposal=p1");
+    await screen.findByRole("button", { name: "Start monitoring" });
+    expect(screen.getAllByText(/Compared with what runs now/)).toHaveLength(1);
+  });
+
+  it("opens a proposal with the test it came with beside the design", async () => {
+    // The screen that mounts the setup provides the test; here it only says what it is given.
+    const test: DesignTest = {
+      Panel: () => <p>The panel of the test</p>, Values: () => null,
+      Status: ({ open, evidence }) => <>{evidence
+        ? `Test ${evidence.run} by ${evidence.by}, ${evidence.definition.nodes.length} steps, ${open ? "open" : "closed"}` : "Test"}</>,
+    };
+    vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ test_run_id: "run-7" }));
+    const view = render(<DesignTestContext.Provider value={test}><MemoryRouter initialEntries={["/?create=monitoring&proposal=p1"]}>
+      <PipelineWorkspace services={[]} index={index} canEdit onBack={vi.fn()} onStarted={vi.fn()} />
+    </MemoryRouter></DesignTestContext.Provider>);
+    expect(await screen.findByRole("button", { name: "Test run-7 by Night shift agent, 5 steps, open" })).toBeTruthy();
+    expect(screen.getByText("The panel of the test")).toBeTruthy();
+    view.unmount();
+    // A proposal without a test opens at its graph, with nothing beside it.
+    vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal());
+    render(<DesignTestContext.Provider value={test}><MemoryRouter initialEntries={["/?create=monitoring&proposal=p1"]}>
+      <PipelineWorkspace services={[]} index={index} canEdit onBack={vi.fn()} onStarted={vi.fn()} />
+    </MemoryRouter></DesignTestContext.Provider>);
+    expect(await screen.findByRole("button", { name: "Test" })).toBeTruthy();
+    expect(screen.queryByText("The panel of the test")).toBeNull();
   });
 
   it("says when a proposal cannot be opened", async () => {

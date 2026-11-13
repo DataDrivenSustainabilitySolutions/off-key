@@ -132,6 +132,11 @@ export function PipelineNodeCard({
         connectable={isConnectable && data.available} issue={data.outputIssue}
         count={data.outputCount} features={data.outputFeatures} stale={data.outputStale} />}
       <div className="pl-node-status">
+        {data.change && (
+          <span className="pl-node-change" title={data.change.detail}>
+            {data.change.kind === "new" ? "New" : "Changed"}
+          </span>
+        )}
         {!data.available && (
           <span className="pl-node-issue">
             <TriangleAlert size={11} aria-hidden="true" />

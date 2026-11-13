@@ -45,7 +45,7 @@ class AgentService:
             name=change.name,
             key_hash=agent_key_digest(key),
             key_hint=agent_key_hint(key),
-            may_start=change.may_start,
+            starts=change.starts,
             created_by=actor.email,
         )
         self.session.add(agent)
@@ -54,19 +54,19 @@ class AgentService:
         log_security_event(
             "agent_key_created",
             actor.email,
-            {"agent_id": agent.id, "may_start": agent.may_start},
+            {"agent_id": agent.id, "starts": agent.starts},
         )
         return agent, key
 
     async def update(self, agent_id: int, change: AgentUpdate, actor: User) -> Agent:
         agent = await self._get(agent_id)
-        agent.may_start = change.may_start
+        agent.starts = change.starts
         await self.session.commit()
         await self.session.refresh(agent)
         log_security_event(
             "agent_access_changed",
             actor.email,
-            {"agent_id": agent.id, "may_start": agent.may_start},
+            {"agent_id": agent.id, "starts": agent.starts},
         )
         return agent
 

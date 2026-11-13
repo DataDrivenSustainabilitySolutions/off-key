@@ -59,7 +59,7 @@ async def _agent(request: Request, authorization: str) -> AgentProfile:
     except TacticError as exc:
         raise_tactic_http_error(exc)
     agent = AgentProfile.model_validate(result)
-    refusal = agent_refusal(request.scope.get("route"), may_start=agent.may_start)
+    refusal = agent_refusal(request.scope.get("route"), starts=agent.starts)
     if refusal:
         raise HTTPException(403, refusal)
     return agent

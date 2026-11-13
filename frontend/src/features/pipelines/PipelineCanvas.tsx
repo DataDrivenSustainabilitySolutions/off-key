@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { PipelineBlockCreate } from "@/types/pipelines.generated";
+import type { StepChange } from "./comparison";
 import type { PipelineBlock, PipelineComponent, PipelineValidation } from "./contracts";
 import { addBlockAfter, blockChain, blockChoices, blockedBy, insertBlock, placeBlock, type BlockOutcome } from "./blocks";
 import {
@@ -78,6 +79,8 @@ type Props = {
   readOnly?: boolean;
   layoutEditable?: boolean;
   states?: Record<string, string>;
+  /** How steps differ from the design a service runs now; each such card says so. */
+  changes?: Record<string, StepChange>;
   issues?: PipelineValidation["issues"];
   /** Feature columns per component; output ports show how many leave them. */
   features?: PipelineValidation["features"];
@@ -127,6 +130,7 @@ export default function PipelineCanvas({
   readOnly,
   layoutEditable,
   states,
+  changes,
   issues,
   features,
   featuresStale,
@@ -249,8 +253,8 @@ export default function PipelineCanvas({
   const moving = useRef(false);
   const [dragged, setDragged] = useState<{ previous: Map<string, ConnectionRoute>; changed: Set<string> }>();
   const graph = useMemo(
-    () => presentGraph(document, components, states, issues),
-    [document, components, states, issues],
+    () => presentGraph(document, components, states, issues, changes),
+    [document, components, states, issues, changes],
   );
   const routingBoxes = useMemo(() => document.definition.nodes.map((node, index) => ({
     id: node.id, ...nodePosition(document.layout, node.id, index), ...NODE_SIZE,

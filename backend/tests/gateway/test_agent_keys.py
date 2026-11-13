@@ -59,7 +59,7 @@ async def test_a_key_reads_and_checks_a_design_as_itself(gateway, monkeypatch):
 async def test_a_key_is_refused_wherever_a_route_is_not_open_to_it(
     gateway, monkeypatch
 ):
-    tactic = StandInTactic(monkeypatch, agent_profile(may_start=True))
+    tactic = StandInTactic(monkeypatch, agent_profile(starts="live"))
     closed = (
         ("GET", "/me"),
         ("GET", "/favorites"),
@@ -150,13 +150,22 @@ async def test_a_key_starts_a_service_only_when_it_may(gateway, monkeypatch):
             assert "may not start" in refused.json()["detail"]
         assert tactic.forwarded() == []
         # The grant is read with every request, so it holds from the next one.
-        profile["may_start"] = True
+        profile["starts"] = "live"
         started = await client.post("/v1/pipelines/apply", headers=BY_KEY, json=start)
         assert started.status_code == 202
         assert started.json()["monitor_id"] == "service-1"
-    assert [asked[:2] for asked in tactic.forwarded()] == [
+        # A key that starts in shadow only reaches TACTIC, which reads the
+        # request and decides.
+        profile["starts"] = "shadow"
+        shadowed = await client.post(
+            "/v1/pipelines/apply", headers=BY_KEY, json=start | {"shadow": True}
+        )
+        assert shadowed.status_code == 202
+    applied = tactic.forwarded()
+    assert [asked[:2] for asked in applied] == [
         ("POST", "/api/v1/monitors/pipelines/apply")
-    ]
+    ] * 2
+    assert [asked.body["shadow"] for asked in applied] == [False, True]
 
 
 @pytest.mark.asyncio

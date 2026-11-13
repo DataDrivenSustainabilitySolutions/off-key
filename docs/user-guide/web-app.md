@@ -133,8 +133,10 @@ favorites after confirmation. Shared catalogue data, monitoring services and rep
 are kept. A removed member needs a new invitation to return.
 **Account → Agents** gives a program a key to work with in place of a person.
 The key is shown once, when it is created. Every key can read, design, test on
-history and propose. Tick **May start monitors** to let one key start
-monitoring services itself, and **Revoke** to stop a key at once. What a key
+history and propose. The choice beside a key says what it may start itself:
+**Proposes only**, **Starts in shadow**, where its services record the alarms
+they would raise and raise none, or **Starts live**. **Revoke** stops a key at
+once. What a key
 proposes waits under **Proposals** on the Monitoring page for a member who
 manages monitors (see
 [Visual monitoring pipelines](monitoring.md#visual-monitoring-pipelines)).

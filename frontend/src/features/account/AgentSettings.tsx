@@ -4,17 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConfirm } from "@/hooks/use-confirm";
-import { createAgent, getAgents, revokeAgent, updateAgent, type Agent } from "@/lib/agent-api";
+import { createAgent, getAgents, revokeAgent, updateAgent, type Agent, type AgentStarts } from "@/lib/agent-api";
 import { getApiUrl } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 
-type Draft = { name: string; mayStart: boolean };
+type Draft = { name: string; starts: AgentStarts };
 type Issued = { name: string; key: string };
 
 /** Where an agent that speaks MCP finds what its key may do, as tools. */
 const MCP_ADDRESS = new URL(getApiUrl("/v1/mcp"), window.location.origin).href;
-const HELP = `An agent signs in with a key in place of a password. Every key can read organization data, design and test monitors, and propose them to a member. Starting monitors is allowed per key. Revoking a key stops it at once. An MCP client connects to ${MCP_ADDRESS} with a key as its bearer token.`;
-const START = "May start monitors";
+const HELP = `An agent signs in with a key in place of a password. Every key can read organization data, design and test monitors, and propose them to a member. Starting monitors is allowed per key: in shadow, where a monitor records its alarms and raises none, or live. Revoking a key stops it at once. An MCP client connects to ${MCP_ADDRESS} with a key as its bearer token.`;
+/** What a key may start, from the least to the most. */
+const LEVELS: { id: AgentStarts; label: string; means: string }[] = [
+  { id: "nothing", label: "Proposes only", means: "proposes monitors for a member to start" },
+  { id: "shadow", label: "Starts in shadow", means: "may start monitors in shadow, which record their alarms and raise none" },
+  { id: "live", label: "Starts live", means: "may start monitors that raise alarms" },
+];
+const levels = LEVELS.map(level => <option key={level.id} value={level.id}>{level.label}</option>);
+const meaning = (starts: AgentStarts) => LEVELS.find(level => level.id === starts)?.means ?? "";
 
 /** Keys for agents; members who manage members hand them out here. */
 export function AgentSettings() {
@@ -47,8 +54,8 @@ export function AgentSettings() {
     }
   };
 
-  const create = ({ name, mayStart }: Draft) => run(async () => {
-    const { key, ...agent } = await createAgent(name.trim(), mayStart);
+  const create = ({ name, starts }: Draft) => run(async () => {
+    const { key, ...agent } = await createAgent(name.trim(), starts);
     setAgents(current => [...current, agent]);
     setDraft(null);
     setCopied(false);
@@ -56,10 +63,10 @@ export function AgentSettings() {
     return "";
   });
 
-  const allow = (agent: Agent, mayStart: boolean) => run(async () => {
-    const saved = await updateAgent(agent.id, mayStart);
+  const allow = (agent: Agent, starts: AgentStarts) => run(async () => {
+    const saved = await updateAgent(agent.id, starts);
     setAgents(current => current.map(entry => entry.id === saved.id ? saved : entry));
-    return mayStart ? `${saved.name} may start monitors.` : `${saved.name} proposes monitors for a member to start.`;
+    return `${saved.name} ${meaning(saved.starts)}.`;
   });
 
   const revoke = async (agent: Agent) => {
@@ -85,23 +92,23 @@ export function AgentSettings() {
   return <>
     <SettingsGroup title="Agents" help={HELP}
       actions={!draft && !issued && <Button variant="outline" size="sm" disabled={busy}
-        onClick={() => { setError(""); setNotice(""); setDraft({ name: "", mayStart: false }); }}>New key</Button>}
+        onClick={() => { setError(""); setNotice(""); setDraft({ name: "", starts: "nothing" }); }}>New key</Button>}
       footer={<>
         {error && <p role="alert" className="text-destructive">{error}</p>}
         {notice && <p role="status">{notice}</p>}
       </>}>
-      {draft && <form className="app-settings-invite app-settings-role-form" aria-label="New key"
+      {draft && <form className="app-settings-invite" aria-label="New key"
         onSubmit={(event) => { event.preventDefault(); void create(draft); }}>
         <div className="grid min-w-0 flex-1 gap-1.5">
           <Label htmlFor="agent-name">Name</Label>
           <Input id="agent-name" required autoFocus autoComplete="off" maxLength={60} placeholder="Night shift agent" value={draft.name}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
         </div>
-        <label className="app-settings-permission">
-          <input type="checkbox" checked={draft.mayStart} onChange={(event) => setDraft({ ...draft, mayStart: event.target.checked })} />
-          <span><span className="app-settings-permission-name">{START}</span>
-            <span className="app-settings-row-detail">Without this, the agent proposes a monitor and a member starts it.</span></span>
-        </label>
+        <div className="grid gap-1.5">
+          <Label htmlFor="agent-starts">Starting monitors</Label>
+          <select id="agent-starts" className="app-settings-select" value={draft.starts}
+            onChange={(event) => setDraft({ ...draft, starts: event.target.value as AgentStarts })}>{levels}</select>
+        </div>
         <div className="flex gap-2">
           <Button disabled={busy} type="submit">Create key</Button>
           <Button type="button" variant="ghost" disabled={busy} onClick={() => setDraft(null)}>Cancel</Button>
@@ -123,11 +130,8 @@ export function AgentSettings() {
         {agents.map(agent => <li key={agent.id}>
           <SettingsRow className="is-wrapping" label={agent.name}
             detail={`Key ending in ${agent.key_hint}${agent.created_by ? ` · Created by ${agent.created_by}` : ""}`}>
-            <label className="app-settings-check">
-              <input type="checkbox" checked={agent.may_start} disabled={busy} aria-label={`${agent.name} may start monitors`}
-                onChange={(event) => void allow(agent, event.target.checked)} />
-              {START}
-            </label>
+            <select aria-label={`Starting monitors for ${agent.name}`} className="app-settings-select" value={agent.starts} disabled={busy}
+              onChange={(event) => void allow(agent, event.target.value as AgentStarts)}>{levels}</select>
             <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={busy}
               onClick={() => void revoke(agent)}>Revoke</Button>
           </SettingsRow>

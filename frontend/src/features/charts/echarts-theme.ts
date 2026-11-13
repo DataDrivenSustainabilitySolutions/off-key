@@ -72,9 +72,12 @@ export const resolveChartThemeColors = (
   };
 };
 
+/** Canvas text cannot read CSS variables; keep in step with --font-sans in App.css. */
+const CHART_FONT = '"Geist Variable", "Helvetica Neue", Helvetica, Arial, sans-serif';
+
 export const createEChartsTheme = (colors: ChartThemeColors) => ({
   backgroundColor: "transparent",
-  textStyle: { color: colors.foreground },
+  textStyle: { color: colors.foreground, fontFamily: CHART_FONT },
   legend: { textStyle: { color: colors.foreground } },
   timeAxis: {
     axisLine: { lineStyle: { color: colors.border } },

@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "@/App.css";
 import { AuthProvider } from "@/auth/AuthContext";
 import { FullPageLoading } from "@/components/LoadingStates";

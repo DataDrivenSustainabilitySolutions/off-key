@@ -65,7 +65,7 @@
     --radius: 4px;
     --radius-control: 2px;
     --heading-weight: 400;
-    --heading-tracking: -0.04em;
+    --heading-tracking: -0.02em;
     --shadow-ink: 210 22% 19%;
     --shadow-popover: 0 8px 24px hsl(var(--shadow-ink) / .1);
     --shadow-dialog: 0 20px 60px hsl(var(--shadow-ink) / .18);
@@ -77,15 +77,15 @@
        control: buttons, tabs and navigation, a step below body on phones
        title3: dialog and card titles; title2: the object on screen
        title1: page titles; metric: stat tiles; display: one hero value */
-    --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    --text-caption: 12px;  --leading-caption: 16px;
-    --text-body: 13px;     --leading-body: 20px;
-    --text-control: 13px;  /* buttons, tabs, navigation */
+    --font-sans: "Geist Variable", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --text-caption: 12px;  --leading-caption: 18px;
+    --text-body: 14px;     --leading-body: 22px;
+    --text-control: 14px;  /* buttons, tabs, navigation */
     --text-title3: 17px;   --leading-title3: 22px;
     --text-title2: 20px;   --leading-title2: 26px;
     --text-metric: 24px;   --leading-metric: 30px;
-    --text-title1: 28px;   --leading-title1: 34px;
+    --text-title1: 28px;   --leading-title1: 36px;
     --text-display: 34px;  --leading-display: 40px;
   }
 

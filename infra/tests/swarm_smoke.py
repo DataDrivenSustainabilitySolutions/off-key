@@ -80,9 +80,6 @@ def ready(directory):
             ROOT / "scripts/check_swarm.py",
             STACK,
             directory / "stack/deployment-model.json",
-            json.loads((directory / "inputs.json").read_text())["release"]["images"][
-                "mqtt_radar"
-            ],
         ),
         "Swarm convergence",
     )
@@ -343,8 +340,6 @@ def prepare(directory):
         # Cutovers must recover existing graph runs with authoring disabled.
         # The workflow enables authoring separately for creation/browser tests.
         tactic_pipeline_authoring_enabled=False,
-        tactic_docker_default_network=f"{STACK}_emqx-network",
-        tactic_docker_additional_networks=f"{STACK}_app-network",
         # The production route secret, covering only the test broker.
         broker_route_hosts=["source-broker"],
         broker_route_host_suffixes=[],
@@ -440,9 +435,6 @@ def prepare(directory):
         )
         created_secrets.append(definition["name"])
         (directory / "created-secrets.json").write_text(json.dumps(created_secrets))
-    # Production seeds this private image on backend nodes before runtime monitors
-    # start. The single rehearsal node already has the temporary registry login.
-    run("docker", "pull", release["images"]["mqtt_radar"], timeout=300)
     # Services an earlier layout ran that this release's successors replace,
     # such as a node identity that must never run twice. They must be gone
     # before the release starts its own.

@@ -288,6 +288,12 @@ class DeploymentTests(unittest.TestCase):
             config["services"]["tactic"]["environment"]["TACTIC_RADAR_IMAGE"],
             release["images"]["mqtt_radar"],
         )
+        # The pool claims only rows pinned to its own image.
+        pool = config["services"]["mqtt-radar"]
+        self.assertEqual(pool["image"], release["images"]["mqtt_radar"])
+        self.assertEqual(
+            pool["environment"]["RADAR_POOL_RUNTIME"], release["images"]["mqtt_radar"]
+        )
 
     def test_credentials_are_scoped_to_the_services_that_need_them(self):
         allowed = {
@@ -298,6 +304,7 @@ class DeploymentTests(unittest.TestCase):
                 "tactic",
                 "db-sync",
                 "mqtt-proxy",
+                "mqtt-radar",
                 "dojo-worker",
             },
             "EMAIL_PASSWORD": {"api", "tactic"},
@@ -318,8 +325,9 @@ class DeploymentTests(unittest.TestCase):
             for service in services.values():
                 self.assertNotIn("INTERNAL_API_SECRET", service.get("environment", {}))
             self.assertEqual(services["frontend"].get("environment", {}), {})
-            # The secret template never runs; TACTIC copies only its secrets.
-            self.assertEqual(services["mqtt-radar"].get("environment", {}), {})
+            # Nothing in the application stack reaches the Docker engine.
+            self.assertNotIn("socket-proxy", services)
+            self.assertNotIn("docker.sock", json.dumps(services))
 
     def test_production_uses_resend(self):
         expected = {
@@ -994,7 +1002,11 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(
             proxy["environment"]["MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
         )
-        self.assertNotIn("environment", radar)
+        # The pool's MQTT login is a secret file, never an environment value.
+        self.assertNotIn("RADAR_MQTT_API_KEY", radar["environment"])
+        self.assertEqual(
+            radar["command"], ["/app/bin/python", "-m", "off_key_mqtt_radar.pool"]
+        )
         self.assertEqual(
             tactic["environment"]["SYSTEM_COLLECTION_MQTT_USERNAME"], "offkey-proxy"
         )

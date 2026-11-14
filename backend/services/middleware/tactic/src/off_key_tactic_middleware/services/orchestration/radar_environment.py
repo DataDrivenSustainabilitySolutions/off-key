@@ -7,21 +7,16 @@ from datetime import UTC, datetime
 from off_key_core.config.logs import logger
 from off_key_core.models import ADAPTIVE_MODEL_FAMILY, STATIC_MODEL_FAMILY
 from off_key_core.schemas.radar import RadarMqttOverrides, RadarStartConfig
-from sqlalchemy.engine import make_url
 
-from ...config.config import (
-    get_radar_container_runtime_settings,
-    get_tactic_settings,
-)
+from ...config.config import get_radar_runtime_settings, get_tactic_settings
 from ...models.catalog import validate_model_params
 
 # Where the deployment keeps a service is not RADAR behavior: a monitor started
 # before the forecast service existed keeps its fingerprint when it gets the URL.
+# The database and the secrets are the pool's own, never part of a workload.
 _FINGERPRINT_EXCLUDED_KEYS = {
     "SERVICE_ID",
-    "RADAR_DATABASE_URL",
     "RADAR_LIFECYCLE_VERSION",
-    "RADAR_CHECKPOINT_SECRET",
     "FORECAST_API_URL",
 }
 
@@ -41,28 +36,16 @@ def build_radar_config_fingerprint(environment: dict[str, str]) -> str:
     return hashlib.sha256(serialized.encode()).hexdigest()
 
 
-def build_radar_controller_identity(database_url: str) -> str:
-    """Scope automatic Docker reconciliation to one database deployment."""
-    url = make_url(database_url)
-    docker_config = get_tactic_settings().config.docker
-    networks = (
-        docker_config.default_network,
-        *sorted(docker_config.additional_networks),
-    )
-    target = (url.host, url.port or 5432, url.database, url.query.get("host"), networks)
-    return hashlib.sha256(json.dumps(target).encode()).hexdigest()
-
-
 def build_radar_workload_labels(
     environment: dict[str, str], radar_image: str
 ) -> dict[str, str]:
-    """Build the canonical labels shared by Swarm and container workloads."""
+    """The labels a monitor's workload row carries."""
     monitoring = json.loads(environment["RADAR_MONITORING_CONFIG"])
     return {
         "owner": "tactic_middleware",
         "started_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "purpose": "RADAR anomaly detection service",
-        "env": get_radar_container_runtime_settings().ENVIRONMENT,
+        "env": get_radar_runtime_settings().ENVIRONMENT,
         "service_type": "radar",
         "managed_by": "tactic",
         "monitoring_strategy": monitoring["strategy"],
@@ -71,9 +54,6 @@ def build_radar_workload_labels(
         "radar_image": radar_image,
         "radar_service_id": environment["SERVICE_ID"],
         "radar_lifecycle_version": environment.get("RADAR_LIFECYCLE_VERSION", "1"),
-        "radar_controller_id": build_radar_controller_identity(
-            environment["RADAR_DATABASE_URL"]
-        ),
     }
 
 
@@ -97,7 +77,7 @@ def build_radar_environment(
     ).model_dump()
     performance = config.performance_config
     defaults = get_tactic_settings().config.radar_defaults
-    runtime = get_radar_container_runtime_settings()
+    runtime = get_radar_runtime_settings()
     if runtime.ENVIRONMENT == "production":
         forbidden = {
             "host",
@@ -146,7 +126,6 @@ def build_radar_environment(
         "RADAR_DB_WRITE_ENABLED": str(defaults.db_write_enabled).lower(),
         "RADAR_DB_BATCH_SIZE": str(defaults.db_batch_size),
         "RADAR_DB_BATCH_TIMEOUT": str(defaults.db_batch_timeout),
-        "RADAR_DATABASE_URL": runtime.radar_database_url,
         "RADAR_HEALTH_CHECK_INTERVAL": str(defaults.health_check_interval),
         "RADAR_LOG_LEVEL": defaults.log_level,
         "RADAR_RATE_LIMIT_PER_MINUTE": str(defaults.rate_limit_per_minute),
@@ -154,16 +133,12 @@ def build_radar_environment(
     forecast_api_url = get_tactic_settings().config.forecast_api_url
     if forecast_api_url:
         # Pretrained forecaster steps ask this service for their forecasts. Its
-        # token reaches a production worker as a secret (RadarWorkloadManager).
+        # token is a secret of the RADAR pool, which its children inherit.
         environment["FORECAST_API_URL"] = forecast_api_url
     if runtime.ENVIRONMENT == "production":
         environment["RADAR_MQTT_CA_FILE"] = "/run/secrets/EMQX_CA_CERT"
-    else:
-        environment["RADAR_CHECKPOINT_SECRET"] = (
-            runtime.RADAR_CHECKPOINT_SECRET.get_secret_value()
-        )
-        if mqtt_config.get("api_key"):
-            environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
+    elif mqtt_config.get("api_key"):
+        environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
 
     if validate_params:
         try:

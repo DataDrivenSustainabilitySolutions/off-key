@@ -1,9 +1,10 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the first build with one API service, which also has
-per-reading hold timing. It keeps shadow runs, a layout with switched-off steps
-and notes, and titles in the design. It carries migrations through 033 and Aberrant 1.5.0 numerics, and
-proves no compatibility with earlier schemas.
+The reference is the first build that runs RADAR in a leased worker pool,
+with one API service and per-reading hold timing. It keeps shadow runs, a
+layout with switched-off steps and notes, and titles in the design. It carries
+migrations through 034 and Aberrant 1.5.0 numerics, and proves no
+compatibility with earlier schemas.
 """
 
 import argparse
@@ -22,7 +23,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "48b8eb008103d95d541bf19a95fc1deae6ab3e36"
+COMPATIBLE_REVISION = "9954e815b67ff173ba6f5b94daf11a01a04f361b"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

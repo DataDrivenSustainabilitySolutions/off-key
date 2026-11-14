@@ -150,13 +150,38 @@
     release_job_arguments: [apply]
   when: release_migration_status.pending | length == 0 and not ((release_bootstrap | default(false) | bool) and release_monitor_phase == 'complete')
 
-- name: Capture the original active monitor configuration during the controlled cutover
-  include_tasks: monitor_job.yml
-  vars:
-    monitor_action: capture
-  when: (release_bootstrap | default(false) | bool) and release_monitor_phase == 'complete'
+# Release preflights are pinned to the target RADAR image, which the running
+# pool does not run yet; a preflight-only replica of that image claims them.
+- name: Preflight on the target RADAR image, then stop monitors with a durable restart plan
+  block:
+    - name: Assemble the preflight replica environment
+      set_fact:
+        release_preflight_environment_args: []
+      no_log: true
 
-- name: Stop active monitors with a durable restart plan
-  include_tasks: monitor_job.yml
-  vars:
-    monitor_action: begin
+    - name: Add the pool configuration to the preflight replica
+      set_fact:
+        release_preflight_environment_args: "{{ release_preflight_environment_args + ['--env', item.key ~ '=' ~ (item.value | string)] }}"
+      loop: "{{ stack_compose_model.services['mqtt-radar'].environment | combine({'RADAR_POOL_KINDS': 'preflight'}) | dict2items }}"
+      no_log: true
+
+    - name: Start a preflight-only replica of the target RADAR image
+      command:
+        argv: >-
+          {{ ['docker', 'run', '--detach', '--rm', '--name', stack_name ~ '-release-preflight',
+              '--network', stack_name ~ '_app-network']
+             + release_preflight_environment_args
+             + [mqtt_radar_image, '/app/bin/python', '-m', 'off_key_mqtt_radar.pool'] }}
+      no_log: true
+
+    - name: Stop active monitors with a durable restart plan
+      include_tasks: monitor_job.yml
+      vars:
+        monitor_action: begin
+  always:
+    - name: Remove the preflight-only replica
+      command:
+        argv: [docker, rm, --force, "{{ stack_name }}-release-preflight"]
+      register: release_preflight_removed
+      changed_when: release_preflight_removed.rc == 0
+      failed_when: release_preflight_removed.rc != 0 and 'no such container' not in release_preflight_removed.stderr | lower

@@ -79,7 +79,7 @@
       block:
         - name: Wait for the intended backend images without accepting rollbacks
           command:
-            argv: [python3, '-', "{{ stack_name }}", "{{ stack_dir }}/deployment-model.json", "{{ release.images.mqtt_radar }}", --backend-first]
+            argv: [python3, '-', "{{ stack_name }}", "{{ stack_dir }}/deployment-model.json", --backend-first]
             stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_swarm.py') }}"
           register: backend_convergence
           changed_when: false

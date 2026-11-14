@@ -233,7 +233,7 @@ class SystemService:
         self, normalized: SystemDocument, *, actor: str, revision: int
     ) -> SystemSnapshot:
         # Monitor stops may have ended the preparation transaction to wait on
-        # Docker. Re-read under the reacquired catalogue lock before applying.
+        # the RADAR pool. Re-read under the reacquired catalogue lock before applying.
         row = await self._locked_row()
         document = normalized.model_dump(mode="json")
         if row is not None and row.document == document:

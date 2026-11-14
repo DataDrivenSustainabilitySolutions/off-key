@@ -2,44 +2,38 @@
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import DeploymentMaintenance, PipelineActivation
-
-from ...facades.docker import workload_labels
-from ..orchestration.workload_identity import controller_id
+from off_key_core.db.workloads import RadarWorkload
+from sqlalchemy import select
 
 
 class PreflightOrphans:
     def __init__(self, session, workloads):
         self.session = session
         self.workloads = workloads
-        self.docker = workloads.async_docker
 
     async def sweep(self):
-        controller = controller_id()
-        filters = {
-            "label": [
-                "managed_by=tactic",
-                "service_type=radar_preflight",
-                f"radar_controller_id={controller}",
-            ]
-        }
-        candidates = await self.docker.run(
-            self.docker.client.services.list, filters=filters
-        )
-        for workload in candidates:
+        rows = (
+            await self.session.execute(
+                select(RadarWorkload.id, RadarWorkload.labels).where(
+                    RadarWorkload.kind == "preflight"
+                )
+            )
+        ).all()
+        await self.session.commit()
+        for workload_id, labels in rows:
             try:
-                labels = workload_labels(workload)
-                identifier = labels.get("pipeline_activation_id")
-                if not identifier or labels.get("radar_controller_id") != controller:
+                identifier = (labels or {}).get("pipeline_activation_id")
+                if not identifier:
                     continue
                 keep = await self._needed(identifier)
                 await self.session.commit()
                 if not keep:
-                    await self.workloads.remove(workload.id)
+                    await self.workloads.remove(workload_id)
             except Exception:
                 await self.session.rollback()
                 logger.exception(
                     "Pipeline preflight orphan cleanup deferred workload_id=%s",
-                    workload.id,
+                    workload_id,
                 )
 
     async def _needed(self, identifier):

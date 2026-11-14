@@ -654,7 +654,7 @@ serves no business routes; every request goes to the API above.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Worker liveness |
-| `GET` | `/ready` | Docker API readiness |
+| `GET` | `/ready` | Worker startup readiness |
 
 ## Error model
 

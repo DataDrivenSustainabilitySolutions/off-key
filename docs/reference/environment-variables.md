@@ -151,31 +151,35 @@ unknown errors remain eligible for retry.
 | `EMQX_DASHBOARD_PASSWORD` | Not documented | Dashboard credential |
 | `EMQX_NODE_COOKIE` | Not documented | Node/cluster cookie; all nodes in one cluster must agree |
 
-## TACTIC-managed RADAR workloads
+## RADAR worker pool and TACTIC-managed workloads
+
+TACTIC writes each monitor and preflight job as a row of `radar_workloads`; replicas of the `mqtt-radar` pool lease the rows and run them as child processes. TACTIC has no Docker access.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `TACTIC_DOCKER_API_URL` | `http://socket-proxy` | Restricted Docker API proxy URL |
-| `TACTIC_DOCKER_API_PORT` | `2375` | Docker API proxy port |
-| `TACTIC_DOCKER_MAX_CONCURRENT_CALLS` | `5` | Concurrent Docker calls per client: one shared by requests and the activation supervisor, one for the reconciliation sweep |
+| `RADAR_POOL_REPLICAS` | `1` | Pool replicas (Compose `deploy.replicas`); add replicas for more monitors |
+| `RADAR_POOL_CAPACITY` | `8` | Children one replica runs at once, 1–256 |
+| `RADAR_POOL_RUNTIME` | the `mqtt-radar` image | Set by Compose to the replica's own image; a replica claims only rows pinned to it, so it must equal `TACTIC_RADAR_IMAGE` |
+| `TACTIC_RADAR_IMAGE` | `${MQTT_RADAR_IMAGE}` | The runtime TACTIC pins new monitors and preflight jobs to |
+| `TACTIC_POOL_MEMORY_LIMIT` | `512m` | Memory one child may use before the pool kills it (reported as exit 137) |
+| `TACTIC_POOL_RESTART_MONITORS` | `true` | Restart a crashed monitor child, within the crash budget |
 | `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `emqx-main` | Broker supplied to managed RADAR workloads; TACTIC's collection publisher uses it too, so it must be the broker mqtt-proxy subscribes on (`MQTT_BROKER_HOST`) |
 | `TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT` | `1883` | Managed RADAR and collection publisher broker port |
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR and collection publisher TLS |
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR and collection publisher authentication; the publisher falls back to `TACTIC_RADAR_DEFAULT_MQTT_USERNAME` when `SYSTEM_COLLECTION_MQTT_USERNAME` is empty |
 | `TACTIC_RADAR_WORKLOAD_LIFECYCLE` | `ephemeral` | `ephemeral` or `persistent` |
 | `TACTIC_PIPELINE_AUTHORING_ENABLED` | `true` | Enables the visual Create workbench, new designs, publication and activations. Set `false` to hide the workbench; the setup forms still start monitors as pipelines, and existing graph execution, inspection, stopping and release recovery remain available. |
-| `TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS` | `90` | Constructor preflight deadline, 5–300 seconds. Jobs have no broker/database credentials or subscriptions. |
+| `TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS` | `90` | Constructor preflight deadline, 5–300 seconds. Jobs run in the pool with a scrubbed environment: no broker or database credentials and no subscriptions. |
 | `TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS` | `120` | Successor heartbeat deadline after creation, 10–600 seconds. |
 | `TACTIC_PIPELINE_PHASE_TIMEOUT_SECONDS` | `900` | Longest an activation may stay in any other open phase before it ends as failed, 60–7200 seconds. |
 | `TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS`, `TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS` | `2`, `8` | Activation concurrency bounds; see [Monitoring pipelines](../development/monitoring-pipelines.md) |
 | `TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB`, `TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE`, `TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES` | `384`, `256`, `65536` | Managed worker budgets; see [RADAR deployment capacity](../operations/radar-capacity.md) |
 | `TACTIC_RADAR_MAX_ACTIVE_MONITORS` | `20` | Monitor count limit; see [RADAR deployment capacity](../operations/radar-capacity.md) |
-| `TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT`, `TACTIC_DOCKER_DEFAULT_CPU_LIMIT` | `512m`, `0.5` | Swarm service limits for managed workers; see [RADAR deployment capacity](../operations/radar-capacity.md) |
-| `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret in production | Signs runtime checkpoints; see [RADAR recovery](../operations/radar-recovery.md) |
+| `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret of the pool in production | Signs runtime checkpoints; monitor children inherit it from the pool. See [RADAR recovery](../operations/radar-recovery.md) |
 
 ## RADAR workloads
 
-TACTIC sets these on each workload it launches.
+TACTIC sets these on each workload row; the pool adds them to the child's environment.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
@@ -267,7 +271,7 @@ See [Deployment modes](../operations/deployment-modes.md) and [Collection](../op
 | Verification/reset links are wrong | `FRONTEND_BASE_URL` | Set the externally reachable frontend URL |
 | SMTP delivery fails | `SMTP_*`, `EMAIL_*`, TLS and credential toggles | Match the provider transport and authentication requirements |
 | No source telemetry | Catalog selection, `MQTT_BROKER_*`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |
-| Managed workload cannot start | `TACTIC_DOCKER_API_*`, `TACTIC_RADAR_DEFAULT_*` | Check TACTIC readiness, proxy access, broker, and image |
+| Managed workload cannot start | `TACTIC_RADAR_IMAGE`, `RADAR_POOL_*`, `TACTIC_RADAR_DEFAULT_*` | Check that a pool replica runs the pinned image and has free capacity, then the broker |
 | Routed broker has no traffic | `SYSTEM_BROKER_ROUTES` | Verify the route covers the host, the `broker-route` node identity and its network reachability |
 | HTTP source is blocked | `SYSTEM_HTTP_ALLOWED_ORIGINS`, `SYSTEM_HTTP_CREDENTIALS` | List the source's exact scheme, host and port, and define the login its credential reference names |
 

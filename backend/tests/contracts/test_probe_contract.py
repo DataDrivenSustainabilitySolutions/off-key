@@ -153,9 +153,7 @@ def applications(monkeypatch, tmp_path):
     tactic = create_app()
     readiness = {
         "api-gateway": lambda ready: None,
-        "tactic-middleware": lambda ready: setattr(
-            tactic.state, "docker_client", object() if ready else None
-        ),
+        "tactic-middleware": lambda ready: setattr(tactic.state, "ready", ready),
         "mqtt-proxy": lambda ready: setattr(proxy, "ready", ready),
         "db-sync": lambda ready: db_sync_api.set_sync_service(
             SimpleNamespace(schema_ready=ready)

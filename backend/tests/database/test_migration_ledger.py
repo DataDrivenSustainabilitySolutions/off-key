@@ -117,6 +117,9 @@ APPLIED_CHECKSUMS = {
     "033_reading_hold_timing.sql": (
         "dcf7ddc94bab3d1cf0e1660e844d86a5f98e65a9ca05ac4f566575b2d31f5fd0"
     ),
+    "034_radar_workload_pool.sql": (
+        "99a71f0503ecea7472490a884e195bcc13d469004986949faa0d8530f97f2888"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -145,6 +148,7 @@ LEDGER_TABLES = {
     "028_access_token_revocation.sql": {"revoked_access_tokens"},
     "031_pipeline_blocks.sql": {"monitoring_pipeline_blocks"},
     "032_alarm_deletions.sql": {"alarm_deletions"},
+    "034_radar_workload_pool.sql": {"radar_workloads"},
 }
 # Tables no migration introduces. The schema bootstrap creates them on every
 # database, and they hold nothing an earlier release wrote.

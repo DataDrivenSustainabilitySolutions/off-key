@@ -82,17 +82,13 @@ def main():
         }
         for name, service in model["services"].items()
     }
-    # Runtime workers can share the stack namespace, but have a separate lifecycle.
+    # Observability shares the stack namespace but converges separately.
     stack_services = [
         service
         for service in services
         if service["Spec"].get("Labels", {}).get("off-key.component") != "observability"
-        if not (
-            service["Spec"].get("Labels", {}).get("managed_by") == "tactic"
-            and service["Spec"].get("Labels", {}).get("service_type") == "radar"
-        )
     ]
-    backend_first = len(sys.argv) > 4 and sys.argv[4] == "--backend-first"
+    backend_first = sys.argv[3:] == ["--backend-first"]
     if backend_first:
         frontend_name = f"{sys.argv[1]}_frontend"
         frontend = next(
@@ -125,53 +121,6 @@ def main():
             )
         )
         return
-    # TACTIC may create a persistent worker during the stack update. Check again
-    # after convergence instead of relying only on the pre-deployment guard.
-    radar_listing = subprocess.check_output(
-        [
-            "docker",
-            "service",
-            "ls",
-            "--format",
-            "{{json .}}",
-            "--filter",
-            "label=managed_by=tactic",
-            "--filter",
-            "label=service_type=radar",
-        ],
-        text=True,
-        timeout=15,
-    )
-    radar_rows = [json.loads(line) for line in radar_listing.splitlines()]
-    if radar_rows:
-        radars = json.loads(
-            subprocess.check_output(
-                ["docker", "service", "inspect", *[row["ID"] for row in radar_rows]],
-                text=True,
-                timeout=15,
-            )
-        )
-        expected = sys.argv[3].split("@")[-1]
-        for radar in radars:
-            spec = radar["Spec"]
-            if (
-                spec["TaskTemplate"]["ContainerSpec"]["Image"].split("@")[-1]
-                != expected
-            ):
-                raise ValueError(
-                    f"{spec['Name']}: stop and recreate this RADAR worker with the intended release"
-                )
-        check_services(
-            radars,
-            {
-                radar["Spec"]["Name"]: {
-                    "image": radar["Spec"]["TaskTemplate"]["ContainerSpec"]["Image"],
-                    "replicas": 1,
-                }
-                for radar in radars
-            },
-            {row["Name"]: row["Replicas"] for row in radar_rows},
-        )
     print(f"All {len(stack_services)} stack services have converged")
 
 

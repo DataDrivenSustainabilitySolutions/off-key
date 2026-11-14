@@ -37,8 +37,6 @@ def launcher(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "ROOT", checkout)
     monkeypatch.setattr(module, "LOCAL", local)
     monkeypatch.setattr(module, "ENV_FILE", local / ".env")
-    # Never change the developer's or CI's Docker engine from a contract test.
-    monkeypatch.setattr(module, "ensure_swarm", lambda environment: None)
     module.initialize(
         argparse.Namespace(
             project=None,
@@ -284,10 +282,8 @@ def test_public_image_mode_preserves_context_and_private_config(
             launcher.start_stack(command, public_images=True)
     else:
         launcher.start_stack(command, public_images=True)
-        assert len(phases) == 2
-        assert phases[0][1] == phases[1][1]
-        assert phases[0][0][-2:] == ["build", "mqtt-radar"]
-        assert "--profile" not in phases[1][0]
+        assert len(phases) == 1
+        assert "--profile" not in phases[0][0]
     assert inspections[0][0][3] == "desktop-linux"
     assert inspections[0][1]["DOCKER_CONFIG"] == str(saved)
     assert not phases[0][1].exists()
@@ -304,7 +300,7 @@ def test_regular_start_preserves_docker_configuration(launcher, monkeypatch):
         launcher, "execute", lambda command, environment: phases.append(environment)
     )
     launcher.start_stack(launcher.compose_command(), public_images=False)
-    assert len(phases) == 2
+    assert len(phases) == 1
     assert all(phase["DOCKER_CONFIG"] == "/original/docker-config" for phase in phases)
     assert all(phase["DOCKER_CONTEXT"] == "desktop-linux" for phase in phases)
 
@@ -322,7 +318,7 @@ def test_broker_fixture_is_explicit_and_preserves_existing_allowlist(
         public_images=False,
         broker_fixture=True,
     )
-    assert phases[1][phases[1].index("--profile") + 1] == "broker-fixture"
+    assert phases[0][phases[0].index("--profile") + 1] == "broker-fixture"
     assert launcher.ENV_FILE.read_bytes() == original
 
 
@@ -338,14 +334,14 @@ def test_forecast_service_is_explicit_and_tells_the_workers_where_it_is(
         lambda command, environment: phases.append((command, environment)),
     )
     launcher.start_stack(launcher.compose_command(), public_images=False)
-    command, environment = phases[1]
+    command, environment = phases[0]
     assert "--profile" not in command
     # Without the service a pretrained forecaster step fails preflight.
     assert "FORECAST_API_URL" not in environment
     assert launcher.read_environment(launcher.ENV_FILE)["FORECAST_API_URL"] == ""
 
     launcher.start_stack(launcher.compose_command(), public_images=False, forecast=True)
-    command, environment = phases[3]
+    command, environment = phases[1]
     assert command[command.index("--profile") + 1] == "forecast"
     assert environment["FORECAST_API_URL"] == "http://forecast:8020"
     assert launcher.ENV_FILE.read_bytes() == original
@@ -375,9 +371,14 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
     services = deployment["services"]
     project = launcher.read_environment(launcher.ENV_FILE)["COMPOSE_PROJECT_NAME"]
     assert deployment["name"] == project
+    # RADAR runs in the pool; nothing in the stack reaches the Docker engine.
+    assert "socket-proxy" not in services
+    assert not any("docker.sock" in str(service) for service in services.values())
+    pool = services["mqtt-radar"]
+    assert pool["environment"]["RADAR_POOL_RUNTIME"] == pool["image"]
     assert (
-        services["socket-proxy"]["image"]
-        == "ghcr.io/tecnativa/docker-socket-proxy:v0.4.2"
+        services["tactic-middleware"]["environment"]["TACTIC_RADAR_IMAGE"]
+        == pool["image"]
     )
     for service in services.values():
         assert "container_name" not in service
@@ -464,32 +465,3 @@ def test_compose_defaults_follow_the_launcher_and_the_fixture_brokers(launcher):
     (port,) = re.findall(r"^PORT = (\d+)$", api, flags=re.MULTILINE)
     assert [f"http://fixture-api:{port}"] == launcher.LOCAL_HTTP_ORIGINS
     assert f"localhost:{port}/health" in str(services["fixture-api"]["healthcheck"])
-
-
-@pytest.mark.parametrize(
-    ("state", "initialized"),
-    [("active true", False), ("inactive false", True), ("active false", None)],
-)
-def test_local_start_requires_a_swarm_manager(
-    tmp_path, monkeypatch, state, initialized
-):
-    spec = importlib.util.spec_from_file_location(
-        "local_swarm", ROOT / "dev/local/run.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    calls = []
-
-    def run(command, **_kwargs):
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, stdout=f"{state}\n")
-
-    monkeypatch.setattr(module, "ensure_local_docker", lambda environment: None)
-    monkeypatch.setattr(module.subprocess, "run", run)
-    if initialized is None:
-        with pytest.raises(ValueError, match="Swarm manager"):
-            module.ensure_swarm({})
-        return
-    module.ensure_swarm({})
-    init = ["docker", "swarm", "init", "--advertise-addr", "127.0.0.1"]
-    assert (init in calls) is initialized

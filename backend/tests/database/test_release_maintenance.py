@@ -3,9 +3,8 @@
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-import docker
 import pytest
 from off_key_core.db import collection_runtime
 from off_key_core.db.collection import lock_collection_configuration
@@ -36,7 +35,6 @@ from off_key_tactic_middleware.services.accounts.members import MemberService
 from off_key_tactic_middleware.services.catalogue.system_ingress import (
     SYSTEM_INGRESS_LOCK,
 )
-from off_key_tactic_middleware.services.orchestration import radar
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
@@ -603,39 +601,17 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
         model_type="pyod_iforest",
     )
     config2 = config.model_copy(update={"container_name": "stopping"})
-    states = {"old-task": "running", "stopping-task": "running"}
+    stopped = []
 
-    class Docker:
-        client = SimpleNamespace(
-            services=SimpleNamespace(
-                get=lambda identifier: SimpleNamespace(
-                    attrs={"Spec": {"Mode": {"Replicated": {"Replicas": 0}}}},
-                    scale=lambda replicas: states.update(
-                        {identifier + "-task": "shutdown"}
-                    ),
-                )
-            ),
-            api=SimpleNamespace(
-                tasks=lambda **kw: [
-                    {
-                        "ID": kw["filters"]["service"] + "-task",
-                        "Status": {"State": states[kw["filters"]["service"] + "-task"]},
-                    }
-                ],
-                inspect_task=lambda task: {"Status": {"State": states[task]}},
-            ),
-        )
+    async def request_stop(identifier):
+        stopped.append(identifier)
 
-        async def run(self, function, *args, **kwargs):
-            return function(*args, **kwargs)
-
-    workloads = SimpleNamespace(async_docker=Docker())
+    workloads = SimpleNamespace(request_stop=request_stop, wait_stopped=AsyncMock())
     removed = []
     created = []
 
     async def remove(identifier):
         removed.append(identifier)
-        states[identifier + "-task"] = "shutdown"
         return True
 
     async def create(identifier, environment):
@@ -663,7 +639,6 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     monkeypatch.setattr(
         collection_runtime, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
-    monkeypatch.setattr(radar, "get_async_docker", Docker)
     monkeypatch.setattr(
         "off_key_tactic_middleware.services.orchestration.radar_environment."
         "validate_model_params",
@@ -712,6 +687,8 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
             orchestration.workloads = workloads
             await deployment.begin(session, orchestration, revision)
             assert sorted(removed) == ["old", "stopping"]
+            # The pool ended both children before their rows were removed.
+            assert sorted(stopped) == ["old", "stopping"]
             operation = await session.get(DeploymentMaintenance, 1)
             assert operation.phase == "stopped"
             async with AsyncSession(engine) as competitor:
@@ -809,9 +786,8 @@ async def test_release_retains_pending_monitor_claim_until_confirmed_removal(
     )
     workloads = SimpleNamespace(
         remove_intent=AsyncMock(
-            side_effect=[RuntimeError("Docker unavailable"), False]
+            side_effect=[RuntimeError("RADAR workload has not stopped"), False]
         ),
-        async_docker=SimpleNamespace(),
     )
     try:
         async with AsyncSession(engine, expire_on_commit=False) as session:
@@ -854,47 +830,6 @@ async def test_release_retains_pending_monitor_claim_until_confirmed_removal(
             assert workloads.remove_intent.await_count == 2
     finally:
         await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_task_removal_requires_actual_shutdown(monkeypatch):
-    monkeypatch.setattr(deployment.asyncio, "sleep", AsyncMock())
-    service = SimpleNamespace(attrs={"Spec": {"Mode": {"Replicated": {"Replicas": 0}}}})
-    get = MagicMock(return_value=service)
-    tasks = MagicMock(return_value=[{"Status": {"State": "running"}}])
-    workloads = SimpleNamespace(
-        async_docker=SimpleNamespace(
-            client=SimpleNamespace(
-                services=SimpleNamespace(get=get),
-                api=SimpleNamespace(tasks=tasks),
-            ),
-            run=AsyncMock(
-                side_effect=lambda function, *args, **kwargs: function(*args, **kwargs)
-            ),
-        )
-    )
-    with pytest.raises(ValueError, match="did not stop"):
-        await deployment.wait_stopped(workloads, "service", attempts=1)
-    tasks.return_value = [{"Status": {"State": "shutdown"}}]
-    await deployment.wait_stopped(workloads, "service", attempts=1)
-    # Cancelled tasks can disappear without being retained in Swarm history.
-    tasks.return_value = []
-    await deployment.wait_stopped(workloads, "service", attempts=1)
-    service.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] = 1
-    with pytest.raises(ValueError, match="zero replicas"):
-        await deployment.wait_stopped(workloads, "service", attempts=1)
-    get.side_effect = docker.errors.NotFound("missing service")
-    with pytest.raises(ValueError, match="recovery is required"):
-        await deployment.wait_stopped(workloads, "service", attempts=1)
-
-
-def test_maintenance_docker_socket_url_has_no_tcp_port():
-    from off_key_tactic_middleware.config.config import DockerConfig
-
-    assert (
-        DockerConfig(api_url="unix:///var/run/docker.sock").base_url
-        == "unix:///var/run/docker.sock"
-    )
 
 
 @pytest.mark.asyncio

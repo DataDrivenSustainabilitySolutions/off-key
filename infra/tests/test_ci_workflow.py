@@ -440,7 +440,7 @@ class CiWorkflowTests(unittest.TestCase):
                     (tmp / "github_env").read_text().splitlines(),
                     [
                         "TEST_RADAR_DATABASE_IMAGE=ghcr.io/example/postgres:release",
-                        f"TEST_RADAR_SWARM_IMAGE={radar}",
+                        f"TEST_RADAR_IMAGE={radar}",
                     ],
                 )
                 pulls = (tmp / "docker.log").read_text().splitlines()

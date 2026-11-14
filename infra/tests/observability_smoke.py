@@ -276,7 +276,6 @@ def run_rehearsal(evidence_path):
                         str(ROOT / "scripts/check_swarm.py"),
                         stack,
                         str(app_path),
-                        fixture_image,
                         "--backend-first",
                     ],
                     capture_output=True,

@@ -29,7 +29,6 @@ Requires Docker with the Compose plugin.
 
 ```bash
 cp .env.example .env                          # development-only defaults
-docker swarm init --advertise-addr 127.0.0.1  # once per Docker engine
 docker compose up -d --build
 ```
 

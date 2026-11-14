@@ -66,7 +66,7 @@ from ..orchestration.radar_status import (
     PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS,
     heartbeat_age_seconds,
 )
-from ..orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
+from ..orchestration.radar_workloads import RadarWorkloadManager
 from .library import require_authoring
 from .preflight import PipelinePreflight, PreflightRejected
 from .runs import ensure_predecessor_run
@@ -129,7 +129,7 @@ class PipelineActivations:
     @property
     def workloads(self):
         if self._workloads is None:
-            self._workloads = RadarWorkloadManager(get_async_docker())
+            self._workloads = RadarWorkloadManager()
         return self._workloads
 
     def _orchestration(self):

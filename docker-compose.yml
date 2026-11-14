@@ -48,8 +48,6 @@ x-tactic-env: &tactic-env
   SYSTEM_HTTP_ALLOWED_ORIGINS: "${SYSTEM_HTTP_ALLOWED_ORIGINS:-[]}"
   SYSTEM_HTTP_CREDENTIALS: "${SYSTEM_HTTP_CREDENTIALS:-}"
   SYSTEM_HTTP_MIN_POLL_SECONDS: "${SYSTEM_HTTP_MIN_POLL_SECONDS:-1}"
-  TACTIC_DOCKER_API_URL: "${TACTIC_DOCKER_API_URL}"
-  TACTIC_DOCKER_API_PORT: "${TACTIC_DOCKER_API_PORT}"
   TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: "${TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST}"
   TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: "${TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT}"
   TACTIC_RADAR_DEFAULT_MQTT_USE_TLS: "${TACTIC_RADAR_DEFAULT_MQTT_USE_TLS}"
@@ -65,15 +63,12 @@ x-tactic-env: &tactic-env
   TACTIC_PIPELINE_PHASE_TIMEOUT_SECONDS: "${TACTIC_PIPELINE_PHASE_TIMEOUT_SECONDS:-900}"
   TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS: "${TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS:-2}"
   TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: "${TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS:-8}"
-  TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT: "${TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT:-512m}"
-  TACTIC_DOCKER_DEFAULT_CPU_LIMIT: "${TACTIC_DOCKER_DEFAULT_CPU_LIMIT:-0.5}"
-  TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION: "${TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION:-}"
-  TACTIC_DOCKER_DEFAULT_CPU_RESERVATION: "${TACTIC_DOCKER_DEFAULT_CPU_RESERVATION:-}"
-  TACTIC_DOCKER_DEFAULT_NETWORK: "${COMPOSE_PROJECT_NAME:-off-key}_app-network"
+  TACTIC_POOL_MEMORY_LIMIT: "${TACTIC_POOL_MEMORY_LIMIT:-512m}"
+  # The RADAR pool's runtime: monitors are pinned to it and only a pool replica
+  # running the same image claims them.
   TACTIC_RADAR_IMAGE: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
   # Handed to RADAR workers and preflight jobs; empty without the forecast profile.
   TACTIC_FORECAST_API_URL: "${FORECAST_API_URL:-}"
-  RADAR_CHECKPOINT_SECRET: "${RADAR_CHECKPOINT_SECRET:-off-key-development-checkpoints-change-before-production}"
 x-backend-healthcheck: &backend-healthcheck
   interval: 5s
   timeout: 5s
@@ -120,14 +115,11 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
-      socket-proxy:
-        condition: service_started
       db-sync:
         condition: service_healthy
-    # Monitor stops reach Docker; live views and broker checks reach brokers.
+    # Live views and broker checks reach brokers.
     networks:
       - app-network
-      - socket-network
       - emqx-network
     restart: always
     healthcheck:
@@ -152,13 +144,10 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
-      socket-proxy:
-        condition: service_started
       db-sync:
         condition: service_healthy
     networks:
       - app-network
-      - socket-network
       - emqx-network
     environment:
       <<: [*runtime-env, *logging-env, *database-env, *auth-env, *email-env, *tactic-env]
@@ -173,15 +162,40 @@ services:
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   mqtt-radar:
-    # Build-only: TACTIC launches every RADAR workload from this image.
+    # The RADAR pool: each replica leases monitors and preflight jobs from the
+    # database and runs each as a child process. Children inherit this
+    # environment, so the database and the checkpoint secret stay here.
     build:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-mqtt-radar
         SERVICE_ROOT: services/mqtt/radar
     image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-    profiles:
-      - radar-image
+    environment:
+      <<: [*runtime-env, *logging-env, *database-env]
+      RADAR_POOL_RUNTIME: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+      RADAR_POOL_CAPACITY: "${RADAR_POOL_CAPACITY:-8}"
+      RADAR_CHECKPOINT_SECRET: "${RADAR_CHECKPOINT_SECRET:-off-key-development-checkpoints-change-before-production}"
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.pool" ]
+    depends_on:
+      db-sync:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    # Monitors subscribe to the brokers and preflight jobs reach the forecast service.
+    networks:
+      - app-network
+      - emqx-network
+    restart: always
+    healthcheck:
+      <<: *backend-healthcheck
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8030/health', timeout=2)"
+    deploy:
+      replicas: ${RADAR_POOL_REPLICAS:-1}
 
   dojo-worker:
     # Replays Dojo runs from the RADAR image; each replica runs one at a time.
@@ -323,46 +337,6 @@ services:
       timeout: 5s
       retries: 5
 
-  socket-proxy:
-    image: tecnativa/docker-socket-proxy
-    restart: always
-    networks:
-      - socket-network
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-    environment:
-      - LOG_LEVEL=info # debug,info,notice,warning,err,crit,alert,emerg
-      ## Variables match the URL prefix (i.e. AUTH blocks access to /auth/* parts of the API, etc.).
-      # 0 to revoke access.
-      # 1 to grant access.
-      ## Granted by Default
-      - EVENTS=1
-      - PING=1
-      - VERSION=1
-      ## Revoked by Default
-      # Security critical
-      - AUTH=0
-      - SECRETS=0
-      - POST=1 # Container(s) Lifecycle Management
-      # Not always needed
-      - BUILD=0
-      - COMMIT=0
-      - CONFIGS=0
-      - CONTAINERS=0
-      - DISTRIBUTION=0
-      - EXEC=0
-      - IMAGES=1 # Required when TACTIC pulls a missing RADAR image.
-      - INFO=1 # Required for Swarm manager detection.
-      - NETWORKS=0
-      - NODES=0
-      - PLUGINS=0
-      - SERVICES=1 # Required by TACTIC RADAR Swarm orchestration.
-      - SESSION=0
-      - SWARM=0
-      - SYSTEM=0
-      - TASKS=1 # Required for Swarm service status checks.
-      - VOLUMES=0
-
   mailpit:
     image: axllent/mailpit:latest
     restart: unless-stopped
@@ -418,11 +392,7 @@ services:
     restart: unless-stopped
 
 networks:
-  # RADAR workloads are Swarm services that TACTIC attaches to this network.
   app-network:
-    driver: overlay
-    attachable: true
-  socket-network:
     driver: bridge
   emqx-network:
     driver: bridge

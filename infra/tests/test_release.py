@@ -494,6 +494,34 @@ class ReleaseTests(unittest.TestCase):
             (ROOT / "ansible/roles/stack_deploy/tasks/replaced.yml").read_text()
         )
 
+    def test_release_preflights_run_on_a_target_image_replica_before_monitors_stop(
+        self,
+    ):
+        # The running pool runs the previous RADAR image, so it can never claim
+        # a preflight pinned to the target image.
+        tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_deploy/tasks/maintenance.yml").read_text()
+        )
+        actions = [
+            step.get("vars", {}).get("monitor_action")
+            for step in tasks
+            if step.get("include_tasks") == "monitor_job.yml"
+        ]
+        self.assertNotIn("capture", actions)
+        preflight = next(step for step in tasks if "always" in step)
+        names = [step["name"] for step in preflight["block"]]
+        self.assertEqual(names[-1], "Stop active monitors with a durable restart plan")
+        replica = next(step for step in preflight["block"] if "command" in step)
+        argv = replica["command"]["argv"]
+        self.assertIn("mqtt_radar_image", argv)
+        self.assertIn("off_key_mqtt_radar.pool", argv)
+        self.assertIn("RADAR_POOL_KINDS': 'preflight'", str(preflight["block"]))
+        removal = preflight["always"][0]["command"]["argv"]
+        self.assertEqual(removal[:3], ["docker", "rm", "--force"])
+        Environment().parse(
+            (ROOT / "ansible/roles/stack_deploy/tasks/maintenance.yml").read_text()
+        )
+
     def test_application_setup_runs_after_the_release_completes(self):
         # Catalogue writes are fenced while a release is open, and a step that
         # always fails inside the release would leave it unrecoverable by retry.
@@ -857,65 +885,3 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(
             result.stdout.splitlines()[-1], "Failed readiness check: probe error"
         )
-
-    def test_runtime_worker_created_during_deploy_cannot_escape_final_verification(
-        self,
-    ):
-        image = "example/api@sha256:" + "b" * 64
-        service = {
-            "Spec": {
-                "Name": "off-key_api",
-                "Mode": {"Replicated": {"Replicas": 1}},
-                "TaskTemplate": {"ContainerSpec": {"Image": image}},
-            }
-        }
-        old_radar = {
-            "Spec": {
-                "Name": "radar-new",
-                "Labels": {"managed_by": "tactic", "service_type": "radar"},
-                "TaskTemplate": {"ContainerSpec": {"Image": "example/radar:latest"}},
-            }
-        }
-        stopped_radar = deepcopy(old_radar)
-        stopped_radar["Spec"]["TaskTemplate"]["ContainerSpec"]["Image"] = image
-        stopped_radar["Spec"]["Mode"] = {"Replicated": {"Replicas": 0}}
-        for radar, replicas, error in [
-            (old_radar, "1/1", "recreate this RADAR"),
-            (stopped_radar, "0/0", "expected 1"),
-        ]:
-            radar_row = {"ID": "radar-id", "Name": "radar-new", "Replicas": replicas}
-            with (
-                self.subTest(replicas=replicas),
-                patch.object(
-                    swarm.sys,
-                    "argv",
-                    ["check_swarm.py", "off-key", "model.json", image],
-                ),
-                patch.object(
-                    swarm.Path,
-                    "read_text",
-                    return_value=json.dumps({"services": {"api": {"image": image}}}),
-                ),
-                patch.object(
-                    swarm.subprocess,
-                    "check_output",
-                    side_effect=[
-                        "\n".join(
-                            json.dumps(row)
-                            for row in [
-                                {
-                                    "ID": "api-id",
-                                    "Name": "off-key_api",
-                                    "Replicas": "1/1",
-                                },
-                                radar_row,
-                            ]
-                        ),
-                        json.dumps([service, radar]),
-                        json.dumps(radar_row),
-                        json.dumps([radar]),
-                    ],
-                ),
-                self.assertRaisesRegex(ValueError, error),
-            ):
-                swarm.main()

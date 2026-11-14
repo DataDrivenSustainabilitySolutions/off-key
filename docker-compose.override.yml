@@ -57,9 +57,6 @@ services:
     ports:
       - "${POSTGRES_PORT}:5432"
 
-  socket-proxy:
-    container_name: socket_proxy
-
   mailpit:
     container_name: mailpit
     ports:

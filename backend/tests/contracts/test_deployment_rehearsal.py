@@ -322,75 +322,53 @@ def create_saved_graph(client, entity):
 
 
 def assert_one_graph_workload(saved, expected_image):
-    identifiers = subprocess.run(
+    """Exactly one current workload row runs the graph, pinned to this release."""
+    postgres = subprocess.run(
         [
             "docker",
-            "service",
-            "ls",
+            "ps",
             "--quiet",
             "--filter",
-            "label=managed_by=tactic",
-            "--filter",
-            "label=service_type=radar",
+            "label=com.docker.swarm.service.name=off-key_postgres",
         ],
         check=True,
         capture_output=True,
         text=True,
         timeout=30,
     ).stdout.split()
-    assert identifiers, "The production graph has no Swarm workload"
-    labels = subprocess.run(
-        [
-            "docker",
-            "service",
-            "inspect",
-            "--format",
-            "{{json .Spec.Labels}}",
-            *identifiers,
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    ).stdout.splitlines()
-    matches = [
-        identifier
-        for identifier, encoded in zip(identifiers, labels, strict=True)
-        if json.loads(encoded).get("radar_service_id") in saved.service_ids
-    ]
+    assert len(postgres) == 1, "Expected one running database container"
+    query = (
+        "SELECT coalesce(json_agg(json_build_object("
+        "'service', labels->>'radar_service_id', 'runtime', runtime, "
+        "'state', state, 'desired', desired)), '[]') "
+        "FROM radar_workloads WHERE kind = 'monitor'"
+    )
+    rows = json.loads(
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                postgres[0],
+                "psql",
+                "-U",
+                "postgres",
+                "-d",
+                "postgres",
+                "-tAc",
+                query,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout
+    )
+    assert rows, "The production graph has no RADAR workload"
+    matches = [row for row in rows if row["service"] in saved.service_ids]
     assert len(matches) == 1, "Retired graph workers survived deployment"
-    actual_image = subprocess.run(
-        [
-            "docker",
-            "service",
-            "inspect",
-            "--format",
-            "{{.Spec.TaskTemplate.ContainerSpec.Image}}",
-            matches[0],
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    ).stdout.strip()
-    assert actual_image.split("@")[-1] == expected_image.split("@")[-1]
-    states = subprocess.run(
-        [
-            "docker",
-            "service",
-            "ps",
-            matches[0],
-            "--filter",
-            "desired-state=running",
-            "--format",
-            "{{.CurrentState}}",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    ).stdout.splitlines()
-    assert [state.split()[0] for state in states] == ["Running"]
+    (current,) = matches
+    assert current["runtime"].split("@")[-1] == expected_image.split("@")[-1]
+    assert (current["state"], current["desired"]) == ("running", "run")
 
 
 def assert_graph_restored(client, entity, saved, workers, release):

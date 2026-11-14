@@ -10,10 +10,9 @@ from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...facades.docker import workload_labels
 from .radar_environment import build_radar_config_fingerprint, build_radar_environment
 from .radar_workloads import RadarWorkloadManager
-from .workload_identity import controller_id
+from .workload_identity import workload_labels
 
 
 class RadarLifecycleController:
@@ -55,7 +54,7 @@ class RadarLifecycleController:
             raise
 
     async def _complete_creation(self, service_id: str) -> MonitoringService:
-        """Adopt one generation; never discard an unknown Docker create outcome."""
+        """Adopt one generation; never discard an unknown create outcome."""
         service = await self.session.get(
             MonitoringService, service_id, populate_existing=True
         )
@@ -148,8 +147,7 @@ class RadarLifecycleController:
 
     async def remove_orphans(self) -> None:
         """Retire delayed remote creations whose durable intent was deleted."""
-        workloads = await self.workloads.list_managed(controller_id=controller_id())
-        # Unlabeled legacy workers are reconciled through their persisted Docker IDs.
+        workloads = await self.workloads.list_managed()
         candidates = {
             workload.id: service_id
             for workload in workloads

@@ -167,7 +167,6 @@ class CDTests(unittest.TestCase):
                                         "tactic": {
                                             "environment": {
                                                 "POSTGRES_PASSWORD": password,
-                                                "TACTIC_DOCKER_API_URL": "http://socket-proxy",
                                             }
                                         }
                                     }
@@ -206,12 +205,9 @@ class CDTests(unittest.TestCase):
             )
             arguments = json.loads((root / "arguments").read_text())
             self.assertIn(f"POSTGRES_PASSWORD={password}", arguments)
-            self.assertIn(
-                "TACTIC_DOCKER_API_URL=unix:///var/run/docker.sock", arguments
-            )
-            self.assertIn(
-                "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock", arguments
-            )
+            # Monitor maintenance writes workload rows; it never reaches Docker.
+            self.assertNotIn("docker.sock", " ".join(arguments))
+            self.assertNotIn("--user", arguments)
             self.assertEqual(
                 arguments[-4:],
                 ["-m", "off_key_tactic_middleware.deployment", "status", "a" * 40],

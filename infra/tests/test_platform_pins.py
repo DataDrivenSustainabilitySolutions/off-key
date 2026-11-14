@@ -23,11 +23,6 @@ ALLOWED_DRIFT = {
     # Apache-2.0 release. The collection matrix covers both.
     ("docker-compose.yml", "emqx"): "emqx/emqx:6.3.2",
     ("docker-compose.cluster.yml", "emqx"): "emqx/emqx:6.3.2",
-    # The production Docker Hub image is amd64-only; local runs use the
-    # multi-arch GHCR build (see swarm_smoke.py).
-    ("dev/local/compose.yml", "socket_proxy"): (
-        "ghcr.io/tecnativa/docker-socket-proxy:v0.4.2"
-    ),
 }
 DEFAULT = re.compile(r"^\$\{[A-Z0-9_]+:-(.+)\}$")
 

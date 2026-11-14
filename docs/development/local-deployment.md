@@ -31,11 +31,9 @@ Mailpit stores captured messages in its project volume using its
 so invitations remain available after restarting.
 
 The first build can take several minutes. Startup waits for service health.
-`local-up` also builds the RADAR image used by the normal monitoring workflow.
-TACTIC runs every RADAR workload as a Swarm service, as in production, so
-`local-up` turns a non-Swarm Docker engine into a single-node Swarm manager
-(`docker swarm init --advertise-addr 127.0.0.1`) before starting. `docker swarm
-leave --force` undoes it once no other Swarm workload needs it.
+`local-up` also builds the RADAR image and starts the RADAR worker pool
+(`mqtt-radar`), which runs every monitor as a child process, as in production.
+No Swarm and no Docker socket access are needed.
 
 If Docker Desktop's credential helper hangs while fetching public dependency
 images, use `make local-up LOCAL_ARGS=--public-images`. This mode
@@ -330,11 +328,6 @@ sidebar. No experiment flag or separate preview route is required.
 The tracked launcher and override are in `dev/local/`. They reuse the root
 Compose services and contain no machine-specific absolute paths or private
 catalogs.
-
-The local Docker management proxy is pinned to the official
-[v0.4.2 release](https://github.com/Tecnativa/docker-socket-proxy/releases/tag/v0.4.2)
-from the vendor's recommended GHCR registry. Set `LOCAL_SOCKET_PROXY_IMAGE` in
-the private local environment to validate a newer release before adopting it.
 
 ## Upgrade this iteration
 

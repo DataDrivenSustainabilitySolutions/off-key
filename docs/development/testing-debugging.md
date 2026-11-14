@@ -204,7 +204,7 @@ docker compose logs --tail 200 tactic-middleware
     ```
 
 3. Confirm TACTIC readiness.
-4. Inspect TACTIC logs for validation, Docker API, image, or network failures.
+4. Inspect TACTIC and `mqtt-radar` logs for validation, runtime image, or network failures.
 
 ### Telemetry is not arriving
 

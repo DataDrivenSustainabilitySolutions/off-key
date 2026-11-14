@@ -1,4 +1,4 @@
-"""Project persisted and Docker state into the public RADAR status contract."""
+"""Project persisted and workload state into the public RADAR status contract."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -16,6 +16,7 @@ STOPPED_WORKLOAD_STATES = {
     "no_container_id",
     "not_found",
     "removed",
+    "shutdown",
     "stopped",
 }
 TERMINAL_WORKLOAD_STATES = FAILED_WORKLOAD_STATES | STOPPED_WORKLOAD_STATES
@@ -84,40 +85,40 @@ def normalize_operational_status(service: MonitoringService) -> dict[str, Any]:
 
 def derive_operational_status(
     service: MonitoringService,
-    docker_status: str | None = None,
+    workload_status: str | None = None,
 ) -> dict[str, Any]:
-    """Derive the externally visible status from persisted and Docker state."""
+    """Derive the externally visible status from persisted and workload state."""
     status = normalize_operational_status(service)
-    docker_state = (docker_status or "").strip().lower()
+    workload_state = (workload_status or "").strip().lower()
 
-    if docker_state in FAILED_WORKLOAD_STATES:
+    if workload_state in FAILED_WORKLOAD_STATES:
         return _override_operational_status(
             status,
             "failed",
-            f"Docker workload is {docker_state}",
-            error=f"Docker workload is {docker_state}",
+            f"RADAR workload is {workload_state}",
+            error=f"RADAR workload is {workload_state}",
         )
-    if docker_state in STOPPED_WORKLOAD_STATES:
+    if workload_state in STOPPED_WORKLOAD_STATES:
         return _override_operational_status(
             status,
             "stopped",
-            f"Docker workload is {docker_state}",
+            f"RADAR workload is {workload_state}",
         )
     if not service.status:
         return _override_operational_status(status, "stopped", "Service stopped")
 
-    if docker_state in UNVERIFIED_WORKLOAD_STATES:
+    if workload_state in UNVERIFIED_WORKLOAD_STATES:
         return _mark_operational_status_stale(
-            status, "Docker status could not be verified"
+            status, "RADAR workload status could not be verified"
         )
 
     updated_at = coerce_utc(status.get("updated_at"))
-    if docker_state == "running" and updated_at is None:
+    if workload_state == "running" and updated_at is None:
         return _mark_operational_status_stale(
             status, "Runtime heartbeat has not arrived"
         )
     # The cheap overview must age persisted heartbeats too. Checking freshness
-    # does not require probing every workload in Docker.
+    # does not require probing every workload.
     if (
         updated_at is not None
         and heartbeat_age_seconds(updated_at) > RUNTIME_STATUS_STALE_AFTER_SECONDS
@@ -129,10 +130,10 @@ def derive_operational_status(
 
 def apply_terminal_operational_status(
     service: MonitoringService,
-    docker_status: str,
+    workload_status: str,
 ) -> None:
-    """Persist a terminal Docker state on an existing service model."""
-    status = derive_operational_status(service, docker_status)
+    """Persist a terminal workload state on an existing service model."""
+    status = derive_operational_status(service, workload_status)
     service.operational_stage = status["stage"]
     service.operational_status = status
     service.operational_updated_at = coerce_utc(status.get("updated_at"))

@@ -5,7 +5,6 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-import docker.errors
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
@@ -17,12 +16,6 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...config.config import get_tactic_settings
-from ...facades.docker import (
-    AsyncDocker,
-    get_workload_crashed_tasks,
-    get_workload_docker_status,
-)
 from .monitor_intent import (
     complete_stop,
     next_lifecycle_version,
@@ -38,9 +31,11 @@ from .radar_status import (
 from .radar_workloads import RadarWorkloadManager
 from .time_utils import coerce_utc
 
-# Stages a terminal Docker observation persists; seen again on the next pass,
-# with no heartbeat in between, they mean Swarm stopped restarting the worker.
+# Stages a terminal workload observation persists; seen again on the next pass,
+# with no heartbeat in between, they mean the pool stopped restarting the worker.
 ABANDONED_STAGES = frozenset({"failed", "stopped"})
+# Stops wait for the pool to end a child, so a pass runs a few at once.
+STOP_CONCURRENCY = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,12 +81,11 @@ class RadarStatusReconciliationService:
         interval_seconds: int = 60,
         terminal_service_retention_hours: int = 24,
         *,
-        async_docker: AsyncDocker | None = None,
+        workloads: RadarWorkloadManager | None = None,
     ) -> None:
-        """Own the supplied or default Docker facade and close it when stopped."""
         self.interval_seconds = interval_seconds
         self.terminal_service_retention_hours = terminal_service_retention_hours
-        self.async_docker = async_docker if async_docker is not None else AsyncDocker()
+        self.workloads = workloads if workloads is not None else RadarWorkloadManager()
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
 
@@ -105,7 +99,6 @@ class RadarStatusReconciliationService:
             self._task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._task
-        self.async_docker.close()
 
     async def _run_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -113,7 +106,7 @@ class RadarStatusReconciliationService:
                 await self._reconcile()
             except asyncio.CancelledError:
                 raise
-            except (docker.errors.DockerException, SQLAlchemyError):
+            except SQLAlchemyError:
                 logger.exception(
                     "RADAR reconciliation will retry after infrastructure failure"
                 )
@@ -140,9 +133,7 @@ class RadarStatusReconciliationService:
                 .values(**request_stop_values())
             )
             await session.commit()
-            lifecycle = RadarLifecycleController(
-                session, RadarWorkloadManager(self.async_docker)
-            )
+            lifecycle = RadarLifecycleController(session, self.workloads)
             await lifecycle.remove_orphans()
             await lifecycle.recover_pending()
             await self._reconcile_with_session(session)
@@ -153,13 +144,23 @@ class RadarStatusReconciliationService:
             _ServiceSnapshot.capture(service) for service in result.scalars().all()
         ]
         await session.commit()
-        semaphore = asyncio.Semaphore(
-            get_tactic_settings().config.docker.max_concurrent_calls
+        semaphore = asyncio.Semaphore(STOP_CONCURRENCY)
+        statuses = dict(
+            zip(
+                [item.container_id for item in snapshots],
+                [
+                    state
+                    for state, _ in await self.workloads.statuses_and_labels(
+                        [item.container_id for item in snapshots]
+                    )
+                ],
+                strict=True,
+            )
         )
 
         async def inspect(snapshot):
             async with semaphore:
-                return await self._inspect(snapshot)
+                return await self._inspect(snapshot, statuses)
 
         observations = await asyncio.gather(
             *(inspect(item) for item in snapshots), return_exceptions=True
@@ -186,10 +187,10 @@ class RadarStatusReconciliationService:
                 logger.exception(
                     "RADAR reconciliation deferred service_id=%s", snapshot.id
                 )
-        await self._record_crashes(session, snapshots, semaphore)
+        await self._record_crashes(session, snapshots)
 
-    async def _record_crashes(self, session, snapshots, semaphore) -> None:
-        """Record why a running pipeline's Swarm tasks crashed, once per task.
+    async def _record_crashes(self, session, snapshots) -> None:
+        """Record why a running pipeline's worker crashed, once per crash.
 
         A restarted worker heartbeats again, so without this a crash loop or an
         out-of-memory kill shows only as a gap in its status.
@@ -203,14 +204,9 @@ class RadarStatusReconciliationService:
             and snapshot.stop_requested_at is None
         ]
 
-        async def crashes(snapshot):
-            async with semaphore:
-                return await get_workload_crashed_tasks(
-                    self.async_docker, snapshot.container_id
-                )
-
         found = await asyncio.gather(
-            *(crashes(item) for item in watched), return_exceptions=True
+            *(self.workloads.crashes(item.container_id) for item in watched),
+            return_exceptions=True,
         )
         for snapshot, tasks in zip(watched, found, strict=True):
             if isinstance(tasks, BaseException) or not tasks:
@@ -250,7 +246,7 @@ class RadarStatusReconciliationService:
             )
         )
         room = max(RUN_EVENT_LIMIT - (stored or 0), 0)
-        # Swarm keeps a few tasks of history; record the oldest new one first.
+        # The pool keeps a few crashes of history; record the oldest new one first.
         for task in reversed(tasks[:10]):
             if task["task_id"] in known:
                 continue
@@ -269,21 +265,21 @@ class RadarStatusReconciliationService:
                 task["error"],
             )
 
-    async def _inspect(self, snapshot: _ServiceSnapshot) -> str:
+    async def _inspect(
+        self, snapshot: _ServiceSnapshot, statuses: dict[str | None, str]
+    ) -> str:
         if (
             snapshot.stop_requested_at is not None
             or snapshot.desired_state != "running"
         ):
             if snapshot.config_fingerprint:
-                await RadarWorkloadManager(self.async_docker).remove_intent(
-                    snapshot.id, snapshot.container_id
-                )
+                await self.workloads.remove_intent(snapshot.id, snapshot.container_id)
             else:
                 await self._remove_workload_if_present(snapshot.container_id)
             return "stop_confirmed"
         if snapshot.config_fingerprint and snapshot.container_id is None:
             return "pending_creation"
-        return await self._get_docker_status(snapshot.container_id)
+        return statuses[snapshot.container_id]
 
     async def _apply_observation(
         self, session: AsyncSession, snapshot: _ServiceSnapshot, observation: str
@@ -307,7 +303,7 @@ class RadarStatusReconciliationService:
                 service.status = True
                 self._mark_revived(service)
         elif terminal:
-            # A heartbeat arriving after the Docker snapshot is newer evidence.
+            # A heartbeat arriving after the workload snapshot is newer evidence.
             if service.operational_updated_at == snapshot.operational_updated_at:
                 if self._is_abandoned(snapshot):
                     await self._fail_abandoned(session, service, observation)
@@ -320,12 +316,12 @@ class RadarStatusReconciliationService:
 
     @staticmethod
     def _is_abandoned(snapshot: _ServiceSnapshot) -> bool:
-        """Whether Swarm has given up on a managed worker that should run.
+        """Whether the pool has given up on a managed worker that should run.
 
-        The first terminal observation only records the Docker state. When the
+        The first terminal observation only records the workload state. When the
         next pass still finds the worker terminal, with no heartbeat in between,
-        Swarm is not restarting it: its restart attempts are spent, it exited
-        cleanly, or its service is gone. Without this the row would keep its
+        the pool is not restarting it: its restart attempts are spent, it exited
+        cleanly, or its row is gone. Without this the row would keep its
         readings and capacity forever.
         """
         return bool(
@@ -341,7 +337,7 @@ class RadarStatusReconciliationService:
         """End the run as failed and request the stop that releases its claim."""
         now = datetime.now(UTC)
         error = (
-            f"The worker stopped and is not being restarted (Docker: {observation}). "
+            f"The worker stopped and is not being restarted (workload: {observation}). "
             "Start the monitor again once the cause is fixed."
         )
         apply_terminal_operational_status(service, observation)
@@ -359,14 +355,14 @@ class RadarStatusReconciliationService:
                     "run_failed",
                     stage="failed",
                     occurred_at=now,
-                    detail={"error": error, "docker_status": observation},
+                    detail={"error": error, "workload_status": observation},
                 )
             )
         service.desired_state = "stopped"
         service.stop_requested_at = now
         service.lifecycle_version = next_lifecycle_version(service)
         logger.warning(
-            "event=tactic.radar_worker_abandoned service_id=%s docker_status=%s",
+            "event=tactic.radar_worker_abandoned service_id=%s workload_status=%s",
             service.id,
             observation,
         )
@@ -382,12 +378,12 @@ class RadarStatusReconciliationService:
         elif self._is_purge_due(service):
             await purge_service_rows(session, [service.id])
 
-    def _apply_terminal(self, service: MonitoringService, docker_status: str) -> None:
+    def _apply_terminal(self, service: MonitoringService, workload_status: str) -> None:
         # Only rows that want to run reach here: every other row is inspected
         # as a stop. Desired intent owns the claim, including legacy rows whose
         # derived status was cleared by an older controller.
         service.status = True
-        apply_terminal_operational_status(service, docker_status)
+        apply_terminal_operational_status(service, workload_status)
 
     def _is_purge_due(self, service: MonitoringService) -> bool:
         if service.status:
@@ -402,7 +398,7 @@ class RadarStatusReconciliationService:
         )
 
     async def _remove_workload_if_present(self, container_id: str | None) -> bool:
-        return await RadarWorkloadManager(self.async_docker).remove(container_id)
+        return await self.workloads.remove(container_id)
 
     @staticmethod
     def _mark_revived(service: MonitoringService) -> None:
@@ -416,6 +412,3 @@ class RadarStatusReconciliationService:
                 is_stale=True,
             ).model_dump(mode="json", exclude_none=True)
             service.operational_updated_at = None
-
-    async def _get_docker_status(self, container_id: str | None) -> str:
-        return await get_workload_docker_status(self.async_docker, container_id or "")

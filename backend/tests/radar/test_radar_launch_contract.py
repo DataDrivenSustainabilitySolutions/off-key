@@ -123,7 +123,7 @@ def _environment(config, forecast_api_url=""):
     )
     with (
         patch(f"{MODULE}.get_tactic_settings", return_value=settings),
-        patch(f"{MODULE}.get_radar_container_runtime_settings", return_value=runtime),
+        patch(f"{MODULE}.get_radar_runtime_settings", return_value=runtime),
     ):
         return build_radar_environment(
             service_id="svc-golden", config=config, validate_params=False

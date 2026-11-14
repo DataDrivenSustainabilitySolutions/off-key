@@ -1,9 +1,8 @@
 """Persist monitor presentation independently of workload identity and lifecycle."""
 
-from contextlib import asynccontextmanager
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +13,6 @@ from off_key_core.auth.permissions import (
 )
 from off_key_core.db.maintenance import DeploymentInProgressError
 from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
-from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.services.orchestration import radar, radar_queries
 from pydantic import ValidationError
 
@@ -167,59 +165,8 @@ def test_renaming_a_monitor_obeys_operational_write_permissions(role, expected):
         rename.assert_awaited_once_with("monitor", "Climate")
 
 
-@pytest.mark.asyncio
-async def test_renamed_legacy_monitor_still_captures_restart_configuration(monkeypatch):
-    record = row({"display_name": "New legacy name"})
-    session = AsyncMock()
-    session.get.return_value = None
-    session.scalars.return_value = [record]
-    captured = configuration()
-    monkeypatch.setattr(deployment, "lock_collection_configuration", AsyncMock())
-    monkeypatch.setattr(
-        deployment, "captured_configuration", lambda *_: captured.copy()
-    )
-    docker = SimpleNamespace(
-        client=SimpleNamespace(services=SimpleNamespace(get=MagicMock())),
-        run=AsyncMock(
-            return_value=SimpleNamespace(
-                attrs={"Spec": {"TaskTemplate": {"ContainerSpec": {"Env": []}}}}
-            )
-        ),
-    )
-    assert await deployment.capture_existing(
-        session, SimpleNamespace(async_docker=docker)
-    ) == {"captured": 1}
-    assert record.launch_config["display_name"] == "New legacy name"
-    assert (
-        FormMonitorConfig.model_validate(record.launch_config).container_name
-        == "stable-workload"
-    )
-
-
-@pytest.mark.asyncio
-async def test_maintenance_actions_without_workloads_do_not_need_docker(monkeypatch):
-    session = AsyncMock()
-    session.get.return_value = None
-
-    @asynccontextmanager
-    async def open_session():
-        yield session
-
-    def unreachable_docker():
-        raise ConnectionError("Docker daemon is unreachable")
-
-    monkeypatch.setattr(deployment, "get_async_session_local", lambda: open_session)
-    monkeypatch.setattr(deployment, "get_async_docker", unreachable_docker)
-    assert await deployment.run("status", "0" * 40) == {
-        "phase": "complete",
-        "revision": None,
-    }
-    with pytest.raises(ConnectionError):
-        await deployment.run("capture", "0" * 40)
-
-
 @pytest.mark.parametrize("age,stale", [(60, False), (240, True)])
-def test_status_freshness_without_a_docker_probe(age, stale):
+def test_status_freshness_without_a_workload_probe(age, stale):
     from datetime import UTC, datetime, timedelta
 
     from off_key_tactic_middleware.services.orchestration.radar_status import (

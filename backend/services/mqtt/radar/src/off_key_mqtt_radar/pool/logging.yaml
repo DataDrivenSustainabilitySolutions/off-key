@@ -1,0 +1,9 @@
+version: 1
+disable_existing_loggers: false
+
+# The pool logs claims, exits and lease loss; each child configures its own.
+loggers:
+  off_key_mqtt_radar.pool:
+    level: ${RADAR_POOL_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    handlers: [console]
+    propagate: false

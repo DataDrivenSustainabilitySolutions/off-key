@@ -6,7 +6,6 @@ import json
 import re
 from datetime import UTC, datetime
 
-import docker.errors
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.models import DeploymentMaintenance, MonitoringService, PipelineRun
@@ -17,15 +16,10 @@ from off_key_core.db.pipeline_claims import (
 from off_key_core.schemas.radar import RadarStartConfig
 from sqlalchemy import select, text
 
-from .facades.docker import SWARM_TASK_DONE
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.orchestration.radar_status import (
     RUNTIME_STATUS_STALE_AFTER_SECONDS,
     heartbeat_age_seconds,
-)
-from .services.orchestration.radar_workloads import (
-    RadarWorkloadManager,
-    get_async_docker,
 )
 from .services.pipelines.forms import (
     UnconvertibleFormMonitor,
@@ -36,7 +30,6 @@ from .services.pipelines.release import (
     normalize_saved_launch,
     prepare_release_monitors,
     record_release_run,
-    saved_form_monitor,
 )
 
 # A saved launch can be restarted without reading the old workload.
@@ -45,53 +38,6 @@ _LAUNCH_KEYS = ("container_name", "mqtt_topics", "monitoring")
 
 def _has_launch(configuration: dict) -> bool:
     return all(key in configuration for key in _LAUNCH_KEYS)
-
-
-def captured_configuration(name: str, environment: list[str]) -> dict:
-    """One-time capture of pre-integration workers, excluding runtime credentials."""
-    values = dict(value.split("=", 1) for value in environment if "=" in value)
-    config = saved_form_monitor(
-        {
-            "container_name": name,
-            "mqtt_topics": values["RADAR_SUBSCRIPTION_TOPICS"].split(","),
-            "monitoring": json.loads(values["RADAR_MONITORING_CONFIG"]),
-            "performance_config": {
-                "sensor_key_strategy": values["RADAR_SENSOR_KEY_STRATEGY"],
-            },
-            "mqtt_config": {
-                "qos": int(values["RADAR_SUBSCRIPTION_QOS"]),
-                "client_id_prefix": values["RADAR_MQTT_CLIENT_ID_PREFIX"],
-            },
-        }
-    )
-    return config.model_dump(mode="json")
-
-
-async def capture_existing(session, workloads: RadarWorkloadManager) -> dict:
-    await lock_collection_configuration(session)
-    operation = await session.get(DeploymentMaintenance, 1)
-    if operation is not None and operation.phase not in {"complete", "quiescing"}:
-        raise ValueError("Finish the pending deployment before capturing configuration")
-    services = await session.scalars(
-        select(MonitoringService).where(monitor_claim_condition())
-    )
-    count = 0
-    for service in services:
-        configuration = service.launch_config or {}
-        if _has_launch(configuration):
-            continue
-        workload = await workloads.async_docker.run(
-            workloads.async_docker.client.services.get, service.container_id
-        )
-        environment = workload.attrs["Spec"]["TaskTemplate"]["ContainerSpec"]["Env"]
-        service.launch_config = captured_configuration(
-            service.container_name, environment
-        )
-        if configuration.get("display_name"):
-            service.launch_config["display_name"] = configuration["display_name"]
-        count += 1
-    await session.commit()
-    return {"captured": count}
 
 
 async def prepare_operation(session, workloads, revision: str):
@@ -111,9 +57,7 @@ async def prepare_operation(session, workloads, revision: str):
     for service in services:
         restart = service.stop_requested_at is None
         if restart and not _has_launch(service.launch_config or {}):
-            raise ValueError(
-                "Capture existing active monitor configuration before cutover"
-            )
+            raise ValueError("An active monitor has no saved launch configuration")
         snapshot = {
             "previous_id": service.id,
             "workload_id": service.container_id,
@@ -215,30 +159,6 @@ async def reserve(session, revision: str) -> dict:
     return {"phase": operation.phase}
 
 
-async def wait_stopped(workloads, workload_id: str, *, attempts: int = 120):
-    for _ in range(attempts):
-        try:
-            service = await workloads.async_docker.run(
-                workloads.async_docker.client.services.get, workload_id
-            )
-        except docker.errors.NotFound as exc:
-            raise ValueError(
-                "Cannot verify the retiring RADAR service; recovery is required"
-            ) from exc
-        if service.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] != 0:
-            raise ValueError("The retiring RADAR service must have zero replicas")
-        # Swarm removes cancelled task records while scaling down. Poll the
-        # service's current tasks, including retiring tasks, rather than stale IDs.
-        tasks = await workloads.async_docker.run(
-            workloads.async_docker.client.api.tasks,
-            filters={"service": workload_id},
-        )
-        if all(task["Status"]["State"] in SWARM_TASK_DONE for task in tasks):
-            return
-        await asyncio.sleep(1)
-    raise ValueError("A retiring RADAR task did not stop; deployment remains blocked")
-
-
 async def begin(session, orchestration, revision: str) -> dict:
     operation = await prepare_operation(session, orchestration.workloads, revision)
     if operation.phase != "preparing":
@@ -266,16 +186,9 @@ async def stop_release_monitor(session, orchestration, monitor, revision):
     """Retire attached or pending intent, preserving the claim on uncertainty."""
     workload_id = monitor["workload_id"]
     if workload_id:
-        try:
-            workload = await orchestration.workloads.async_docker.run(
-                orchestration.workloads.async_docker.client.services.get, workload_id
-            )
-        except docker.errors.NotFound:
-            # A missing service may still have retiring task records.
-            await orchestration.workloads.remove(workload_id)
-        else:
-            await orchestration.workloads.async_docker.run(workload.scale, 0)
-            await wait_stopped(orchestration.workloads, workload_id)
+        # The pool ends the child; the row stays until the stop below removes it.
+        await orchestration.workloads.request_stop(workload_id)
+        await orchestration.workloads.wait_stopped(workload_id)
     service = await session.get(MonitoringService, monitor["previous_id"])
     if service is not None and not await orchestration.stop_radar_service(
         service.id, deployment_revision=revision
@@ -477,11 +390,6 @@ async def abort(session, revision: str) -> dict:
 async def run(action: str, revision: str) -> dict:
     sessions = get_async_session_local()
     async with sessions() as session:
-        if action == "capture":
-            # Building the Docker client queries the daemon, so only the
-            # action that inspects workloads connects to it.
-            workloads = RadarWorkloadManager(get_async_docker())
-            return await capture_existing(session, workloads)
         actions = {
             "reserve": reserve,
             "finish": finish,
@@ -522,7 +430,6 @@ def main() -> None:
     parser.add_argument(
         "action",
         choices=[
-            "capture",
             "reserve",
             "begin",
             "resume",

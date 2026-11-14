@@ -30,9 +30,6 @@ from off_key_tactic_middleware.services.catalogue.system import SystemService
 from off_key_tactic_middleware.services.catalogue.system_live import (
     SystemLiveService,
 )
-from off_key_tactic_middleware.services.orchestration.radar_workloads import (
-    close_shared_async_docker,
-)
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -222,8 +219,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.exception("Error stopping live views")
         app.state.system_live = None
         app.state.broker_check = None
-        # Monitor stops and collection pauses open a Docker client on first use.
-        close_shared_async_docker()
     logger.info("Application shutdown...")
 
 

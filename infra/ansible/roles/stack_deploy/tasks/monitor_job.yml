@@ -6,5 +6,3 @@
     release_job_image: "{{ tactic_image }}"
     release_job_module: off_key_tactic_middleware.deployment
     release_job_arguments: ["{{ monitor_action }}", "{{ release.application_revision }}"]
-    release_job_overrides:
-      TACTIC_DOCKER_API_URL: unix:///var/run/docker.sock

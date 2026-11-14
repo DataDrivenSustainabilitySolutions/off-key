@@ -1,15 +1,8 @@
 from off_key_tactic_middleware.config import (
-    RadarContainerRuntimeSettings,
+    RadarRuntimeSettings,
     RadarWorkloadLifecycle,
     TacticSettings,
 )
-
-
-def test_split_constraints_parses_csv():
-    settings = TacticSettings(
-        TACTIC_DOCKER_DEFAULT_CONSTRAINTS=" 'node.role == worker' , rack==1,,"
-    )
-    assert settings._parse_default_constraints() == ["node.role == worker", "rack==1"]
 
 
 def test_tactic_settings_expose_radar_workload_image_and_startup_grace():
@@ -24,21 +17,12 @@ def test_tactic_settings_expose_radar_workload_image_and_startup_grace():
     assert settings.config.terminal_service_retention_hours == 12
 
 
-def test_radar_container_runtime_settings_build_encoded_database_url():
-    settings = RadarContainerRuntimeSettings(
-        POSTGRES_USER="db@user",
-        POSTGRES_PASSWORD="p@ss",
-        POSTGRES_HOST="db-host",
-        POSTGRES_PORT=5432,
-        POSTGRES_DB="radar",
-        ENVIRONMENT="Production",
-    )
+def test_radar_runtime_settings_carry_no_credential():
+    """The pool's children inherit the database and secrets from the replica."""
+    settings = RadarRuntimeSettings(ENVIRONMENT="Production")
 
     assert settings.ENVIRONMENT == "production"
-    assert (
-        settings.radar_database_url
-        == "postgresql+asyncpg://db%40user:p%40ss@db-host:5432/radar"
-    )
+    assert set(RadarRuntimeSettings.model_fields) == {"ENVIRONMENT"}
 
 
 def test_radar_lifecycle_defaults_to_ephemeral_in_development(monkeypatch):
@@ -68,12 +52,8 @@ GOLDEN_OVERRIDES = {
     "TACTIC_HOST": "127.0.0.1",
     "TACTIC_PORT": 8100,
     "TACTIC_LOG_LEVEL": "debug",
-    "TACTIC_DOCKER_API_URL": "unix:///var/run/docker.sock",
-    "TACTIC_DOCKER_MAX_CONCURRENT_CALLS": 7,
-    "TACTIC_DOCKER_ADDITIONAL_NETWORKS": "app, data",
-    "TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT": "1g",
-    "TACTIC_DOCKER_DEFAULT_CPU_RESERVATION": "",
-    "TACTIC_DOCKER_DEFAULT_CONSTRAINTS": "rack==1, 'node.role == worker'",
+    "TACTIC_POOL_MEMORY_LIMIT": "1g",
+    "TACTIC_POOL_RESTART_MONITORS": False,
     "TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST": "broker",
     "TACTIC_RADAR_DEFAULT_MQTT_USE_TLS": True,
     "TACTIC_RADAR_DEFAULT_MQTT_USERNAME": "radar",
@@ -97,9 +77,9 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
     changed = {
         key: value
         for key, value in golden.items()
-        if value != defaults[key] and key not in {"docker", "radar_defaults"}
+        if value != defaults[key] and key not in {"pool", "radar_defaults"}
     }
-    for section in ("docker", "radar_defaults"):
+    for section in ("pool", "radar_defaults"):
         changed |= {
             f"{section}.{key}": value
             for key, value in golden[section].items()
@@ -115,11 +95,8 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
         "forecast_api_url": "http://forecast:8020",
         "reconciliation_interval": 30,
         "radar_workload_lifecycle": "persistent",
-        "docker.api_url": "unix:///var/run/docker.sock",
-        "docker.max_concurrent_calls": 7,
-        "docker.additional_networks": ["app", "data"],
-        "docker.default_memory_limit": "1g",
-        "docker.default_constraints": ["rack==1", "node.role == worker"],
+        "pool.memory_limit": "1g",
+        "pool.restart_monitors": False,
         "radar_defaults.mqtt_broker_host": "broker",
         "radar_defaults.mqtt_use_tls": True,
         "radar_defaults.mqtt_username": "radar",
@@ -127,7 +104,7 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
         "radar_defaults.log_level": "WARNING",
         "radar_defaults.rate_limit_per_minute": 600,
     }
-    assert defaults["docker"]["default_constraints"] == ["node.role == worker"]
+    assert defaults["pool"] == {"memory_limit": "512m", "restart_monitors": True}
     assert defaults["radar_workload_lifecycle"] == "ephemeral"
     # No forecast service unless the deployment names one.
     assert defaults["forecast_api_url"] == ""
@@ -136,32 +113,27 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
 def test_every_tactic_setting_maps_to_one_config_field():
     """Settings follow <prefix><FIELD>; exceptions are named here with a reason."""
     from off_key_tactic_middleware.config.config import (
-        DockerConfig,
+        PoolConfig,
         RadarDefaultsConfig,
         TacticConfig,
     )
 
     derived = {
-        # Parsed lists and the environment-dependent lifecycle policy.
-        "TACTIC_DOCKER_ADDITIONAL_NETWORKS",
-        "TACTIC_DOCKER_DEFAULT_CONSTRAINTS",
+        # The environment-dependent lifecycle policy.
         "TACTIC_RADAR_WORKLOAD_LIFECYCLE",
-        # Read directly by their consumers, outside the runtime config.
+        # Read directly by its consumers, outside the runtime config.
         "ENVIRONMENT",
-        "TACTIC_RADAR_SECRET_SERVICE",
     }
     mapped = (
         {f"TACTIC_{name.upper()}" for name in TacticConfig.model_fields}
-        | {f"TACTIC_DOCKER_{name.upper()}" for name in DockerConfig.model_fields}
+        | {f"TACTIC_POOL_{name.upper()}" for name in PoolConfig.model_fields}
         | {
             f"TACTIC_RADAR_DEFAULT_{name.upper()}"
             for name in RadarDefaultsConfig.model_fields
         }
     ) - {
-        "TACTIC_DOCKER",
+        "TACTIC_POOL",
         "TACTIC_RADAR_DEFAULTS",
-        "TACTIC_DOCKER_ADDITIONAL_NETWORKS",
-        "TACTIC_DOCKER_DEFAULT_CONSTRAINTS",
         "TACTIC_RADAR_WORKLOAD_LIFECYCLE",
     }
     assert set(TacticSettings.model_fields) == mapped | derived

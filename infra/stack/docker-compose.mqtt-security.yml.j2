@@ -12,7 +12,7 @@ services:
         target: emqx_auth_users.json
 
   # Live views, broker checks and the composer's model list run in the API; the
-  # worker records sources and starts RADAR. Both read the same credentials.
+  # worker records sources and submits RADAR workloads. Both read the same credentials.
   api:
     secrets: &domain_secrets
       - source: emqx_ca_cert
@@ -47,7 +47,7 @@ services:
         target: RADAR_MQTT_API_KEY
       - source: radar_checkpoint_secret
         target: RADAR_CHECKPOINT_SECRET
-      # TACTIC copies this reference to each RADAR worker it starts.
+      # Read by the monitors the pool runs.
       - source: forecast_api_token
         target: FORECAST_API_TOKEN
 

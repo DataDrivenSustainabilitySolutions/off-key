@@ -888,9 +888,9 @@ class RadarStartConfig(_MonitorLaunch):
     # A property of the start, not of what is executed: a shadow run and a live
     # one of the same pipeline learn the same state.
     shadow: bool = Field(default=False, description=SHADOW)
-    runtime_image: str | None = Field(
-        default=None, max_length=512, pattern=r"^(?:[^\s]+@)?sha256:[a-f0-9]{64}$"
-    )
+    # The RADAR pool runtime the run is pinned to: only a pool replica running
+    # it claims the run's workload.
+    runtime_image: str | None = Field(default=None, max_length=512, pattern=r"^\S+$")
 
     @model_validator(mode="after")
     def validate_pipeline(self) -> "RadarStartConfig":

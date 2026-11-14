@@ -19,6 +19,8 @@
   loop:
     - mailpit
     - tailscale-dev-proxy
+    # RADAR runs in the pool; nothing in the stack talks to Docker any more.
+    - socket-proxy
   when:
     - (stack_name ~ '_' ~ item) in production_stack_services.stdout_lines
 

@@ -1,0 +1,11 @@
+---
+# Before the RADAR pool, TACTIC ran each monitor as its own Swarm service. The
+# release has stopped those monitors and restarts them on the pool, and TACTIC
+# has no Docker access to remove the old services, so the release removes them.
+- name: Find this stack's TACTIC-managed services
+  include_tasks: stack_workers.yml
+
+- name: Remove the TACTIC-managed services
+  command:
+    argv: "{{ ['docker', 'service', 'rm'] + (stack_tactic_workers | map(attribute='Spec.Name') | list) }}"
+  when: stack_tactic_workers | length > 0

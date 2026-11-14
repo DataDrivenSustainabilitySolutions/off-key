@@ -8,9 +8,6 @@
   assert:
     that: release_job_output.phase == 'complete'
 
-- name: Validate unchanged runtime worker images and secret wiring
-  include_tasks: worker_security.yml
-
 - name: Reserve the shared durable release operation without stopping monitors
   include_tasks: monitor_job.yml
   vars:

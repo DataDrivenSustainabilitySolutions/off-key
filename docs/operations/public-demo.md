@@ -23,8 +23,11 @@ The hosted demo uses a Cloudflare WAF custom rule named **Demo entry
 verification**, with expression `(http.host eq "demo.aberration.app")` and action
 **Managed Challenge**. This applies to the entire demo hostname, including its
 API. After a visitor passes the check, Cloudflare's clearance cookie permits
-subsequent requests. Reload an already-open demo page if its background requests
-encounter the new challenge. Automated clients without clearance are challenged.
+subsequent requests. If public-access discovery or session restoration encounters
+the challenge, **Verify browser** reloads the current page so Cloudflare can
+complete its check. This preserves the destination and saved login; ordinary API
+permission failures do not trigger browser verification. Automated clients
+without clearance are challenged.
 The rule does not match production hostnames and needs no application widget key.
 
 The demo inventory lists its URL in `release_public_challenge_urls`. Deployment

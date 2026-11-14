@@ -8,7 +8,7 @@ import pytest
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.database import CheckpointOwnershipLost, DatabaseWriter
 from off_key_mqtt_radar.runtime_checkpoint import (
@@ -27,12 +27,14 @@ pytestmark = pytest.mark.radar_integration
 
 def config():
     return form_radar_config(
-        tiny_adaptive_monitoring(), ["telemetry/entity/x"], MQTTRadarConfig
+        tiny_adaptive_monitoring(), ["telemetry/entity/x"], RadarConfig
     )
 
 
 def snapshot(codec, detector):
-    return codec.encode(RuntimeCheckpoint(detector=detector.export_checkpoint()))
+    return codec.encode(
+        RuntimeCheckpoint(detector=detector.export_checkpoint(), log_position=0)
+    )
 
 
 @pytest.fixture

@@ -71,6 +71,8 @@ class MQTTMessage:
     retain: bool = False
     timestamp: datetime | None = None
     received_monotonic: float | None = None
+    # The reading's telemetry log position, when it came from the log.
+    log_seq: int | None = None
 
     def get_json_payload(self) -> dict[str, Any]:
         """Parse payload as JSON"""

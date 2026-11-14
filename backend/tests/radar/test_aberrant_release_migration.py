@@ -10,7 +10,7 @@ from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
 from off_key_tactic_middleware.services.pipelines.release import normalize_saved_launch
 
@@ -32,12 +32,14 @@ def test_authentic_1_3_checkpoint_requires_fresh_learning(monkeypatch):
         "alignment_max_skew_seconds",
     ):
         fixture["launch"]["performance_config"].pop(key)
+    # Migration 035 removed the broker options.
+    fixture["launch"].pop("mqtt_config")
     original = deepcopy(fixture["launch"])
     launch = normalize_saved_launch(fixture["launch"])
     assert fixture["launch"] == original
     assert launch.pipeline.model_dump(mode="json") == original["pipeline"]
     assert launch.monitoring.aberrant_version == "1.5.0"
-    config = MQTTRadarConfig(pipeline=launch.pipeline)
+    config = RadarConfig(pipeline=launch.pipeline)
     record = fixture["checkpoint"]
     record["payload"] = base64.b64decode(record["payload"], validate=True)
     assert record["processed_count"] == 6
@@ -49,8 +51,9 @@ def test_authentic_1_3_checkpoint_requires_fresh_learning(monkeypatch):
     monkeypatch.setattr(
         "off_key_mqtt_radar.runtime_checkpoint.pickle.loads", reject_deserialization
     )
-    # Authentication must succeed before this incompatible-runtime rejection.
-    with pytest.raises(ValueError, match="incompatible"):
+    # A snapshot without a log position is refused before anything is read;
+    # migration 035 deletes such snapshots, so their monitors learn afresh.
+    with pytest.raises(ValueError, match="format_version"):
         codec.decode(record)
     detector = AdaptiveStreamDetectionService(config)
     assert detector.state == AdaptiveStreamState.WARMUP

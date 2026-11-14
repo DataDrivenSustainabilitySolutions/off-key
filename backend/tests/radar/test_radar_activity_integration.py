@@ -1,18 +1,16 @@
-"""Exercise activity health with real MQTT, a real detector, and TimescaleDB."""
+"""Exercise activity health with the telemetry log, a real detector and PostgreSQL."""
 
 import asyncio
-import json
 import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from amqtt.client import MQTTClient
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
 from off_key_mqtt_radar import service as service_module
 from off_key_mqtt_radar.activity import ActivityTracker
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.health_monitor import HealthMonitor
@@ -22,26 +20,25 @@ from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tests.support.form_pipeline import form_radar_config
-from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
+from tests.support.mqtt import tiny_adaptive_monitoring, wait_until
+from tests.support.telemetry_log import log_reading
 
 pytestmark = pytest.mark.radar_integration
 
 
 @pytest.mark.asyncio
 async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
-    monkeypatch,
+    telemetry_log, monkeypatch
 ):
-    broker, port = await start_mqtt_broker()
     config = form_radar_config(
         tiny_adaptive_monitoring(),
         ["telemetry/activity/a", "telemetry/activity/b"],
-        MQTTRadarConfig,
-        broker_host="127.0.0.1",
-        broker_port=port,
+        RadarConfig,
         db_write_enabled=False,
         memory_limit_mb=2048,
         minimum_hold_seconds=0.3,
         health_check_interval=0.05,
+        log_poll_seconds=0.01,
     )
     monkeypatch.setenv("SERVICE_ID", "activity-monitor")
     clear_radar_runtime_settings_cache()
@@ -49,15 +46,10 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         service_module, "get_radar_settings", lambda: SimpleNamespace(config=config)
     )
     monitor = RadarService()
-    publisher = MQTTClient(client_id="activity-publisher")
 
     async def publish(sensor, value):
-        await publisher.publish(
-            f"telemetry/activity/{sensor}",
-            json.dumps(
-                {"value": value, "timestamp": datetime.now(UTC).isoformat()}
-            ).encode(),
-            qos=1,
+        await log_reading(
+            telemetry_log, f"telemetry/activity/{sensor}", value, datetime.now(UTC)
         )
 
     def operational():
@@ -65,10 +57,9 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
 
     try:
         await monitor.start()
-        await publisher.connect(f"mqtt://127.0.0.1:{port}")
         # Keep supplying fresh observations through cold model initialization.
-        # A burst followed by silence can correctly expire in the ingress queue
-        # under this test's deliberately short 300 ms minimum hold.
+        # A burst followed by silence can correctly expire under this test's
+        # deliberately short 300 ms minimum hold.
         deadline = time.monotonic() + 30
         index = 0
         while operational()["stage"] != "operational":
@@ -122,8 +113,6 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         assert status["coverage"]["dropped_by_reason"] == {"stale_reading": 1}
     finally:
         await monitor.stop()
-        await publisher.disconnect()
-        await broker.shutdown()
         clear_radar_runtime_settings_cache()
 
 
@@ -148,7 +137,7 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
     config = form_radar_config(
         None,
         ["telemetry/charger-sim-1/sine"],
-        MQTTRadarConfig,
+        RadarConfig,
         minimum_hold_seconds=0.1,
         db_batch_timeout=0.05,
     )

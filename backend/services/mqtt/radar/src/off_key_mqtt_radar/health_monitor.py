@@ -59,7 +59,7 @@ class HealthMonitor:
         self._health_check_task: asyncio.Task | None = None
 
         # Component references (set via set_components)
-        self._mqtt_client = None
+        self._telemetry_log = None
         self._database_writer = None
         self._detector = None
         self._memory_manager = None
@@ -77,7 +77,7 @@ class HealthMonitor:
 
     def set_components(
         self,
-        mqtt_client=None,
+        telemetry_log=None,
         database_writer=None,
         detector=None,
         memory_manager=None,
@@ -88,13 +88,13 @@ class HealthMonitor:
         Set references to components for health checking.
 
         Args:
-            mqtt_client: MQTT client component
+            telemetry_log: Reader of the monitor's telemetry log
             database_writer: Database writer component
             detector: Anomaly detector component
             memory_manager: Memory manager component
             message_processor: Message processor component
         """
-        self._mqtt_client = mqtt_client
+        self._telemetry_log = telemetry_log
         self._database_writer = database_writer
         self._detector = detector
         self._memory_manager = memory_manager
@@ -239,8 +239,8 @@ class HealthMonitor:
     def _collect_component_health(self) -> dict[str, Any]:
         """Collect health payloads from the configured runtime components."""
         components: dict[str, Any] = {}
-        if self._mqtt_client:
-            components["mqtt_client"] = self._mqtt_client.get_health_status()
+        if self._telemetry_log:
+            components["telemetry_log"] = self._telemetry_log.get_health_status()
         if self._database_writer:
             components["database_writer"] = self._database_writer.get_health_status()
         if self._detector:
@@ -256,15 +256,15 @@ class HealthMonitor:
     ) -> list[str]:
         """Reduce component and resource health into stable alert identifiers."""
         alerts: list[str] = []
-        mqtt_health = components.get("mqtt_client")
+        input_health = components.get("telemetry_log")
         if (
-            mqtt_health
-            and mqtt_health.get("status") != "healthy"
-            and mqtt_health.get("reason") != "coverage_gap"
+            input_health
+            and input_health.get("status") != "healthy"
+            and input_health.get("reason") != "coverage_gap"
         ):
-            alerts.append(f"mqtt_{mqtt_health.get('reason', 'unknown')}")
+            alerts.append(f"input_{input_health.get('reason', 'unknown')}")
         coverage = RadarCoverageStatus.model_validate(
-            (mqtt_health or {}).get("coverage", {})
+            (input_health or {}).get("coverage", {})
         )
         if coverage.has_gaps:
             alerts.append("monitoring_coverage_gap")
@@ -431,7 +431,7 @@ class HealthMonitor:
         )
         last_alignment_status = processor_metrics.get("last_alignment_status")
         coverage = RadarCoverageStatus.model_validate(
-            (components.get("mqtt_client") or {}).get("coverage", {})
+            (components.get("telemetry_log") or {}).get("coverage", {})
         )
 
         stage = "waiting_for_data"

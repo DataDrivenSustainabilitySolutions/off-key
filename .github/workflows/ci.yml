@@ -577,7 +577,7 @@ jobs:
               engine.dispose()
           PY
 
-      - name: Test real MQTT, durable recovery, lifecycle and the worker pool
+      - name: Test log replay, durable recovery, lifecycle and the worker pool
         timeout-minutes: 25
         run: |
           uv run --frozen --project backend python -u -m pytest -vv --tb=short -ra \

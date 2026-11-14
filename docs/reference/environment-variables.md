@@ -173,7 +173,7 @@ TACTIC writes each monitor and preflight job as a row of `radar_workloads`; repl
 | `TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS` | `120` | Successor heartbeat deadline after creation, 10–600 seconds. |
 | `TACTIC_PIPELINE_PHASE_TIMEOUT_SECONDS` | `900` | Longest an activation may stay in any other open phase before it ends as failed, 60–7200 seconds. |
 | `TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS`, `TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS` | `2`, `8` | Activation concurrency bounds; see [Monitoring pipelines](../development/monitoring-pipelines.md) |
-| `TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB`, `TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE`, `TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES` | `384`, `256`, `65536` | Managed worker budgets; see [RADAR deployment capacity](../operations/radar-capacity.md) |
+| `TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB`, `TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE` | `384`, `256` | Managed worker budgets; see [RADAR deployment capacity](../operations/radar-capacity.md) |
 | `TACTIC_RADAR_MAX_ACTIVE_MONITORS` | `20` | Monitor count limit; see [RADAR deployment capacity](../operations/radar-capacity.md) |
 | `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret of the pool in production | Signs runtime checkpoints; monitor children inherit it from the pool. See [RADAR recovery](../operations/radar-recovery.md) |
 
@@ -183,25 +183,22 @@ TACTIC sets these on each workload row; the pool adds them to the child's enviro
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `RADAR_MQTT_BROKER_HOST` | `emqx-main` | RADAR broker |
-| `RADAR_MQTT_BROKER_PORT` | `1883` | Broker port |
-| `RADAR_MQTT_USE_TLS` | `false` | MQTT TLS toggle |
-| `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
-| `RADAR_SUBSCRIPTION_TOPICS` | Set by TACTIC | Concrete topics from the monitor's selected readings (wildcards are rejected) |
+| `RADAR_SUBSCRIPTION_TOPICS` | Set by TACTIC | Accepted topics of the monitor's selected readings (wildcards are rejected); each `telemetry/<charger>/<key>` names the stored stream the monitor reads from the telemetry log |
 | `RADAR_MONITORING_CONFIG` | Set by TACTIC | Strategy settings derived from the pipeline; when supplied, they must match the graph |
 | `RADAR_PIPELINE_CONFIG` | Required | Version-1 canonical bound execution JSON, emitted by activation. Every monitor runs a pipeline; RADAR does not start without one. Limited to 96 KiB serialized. |
 | `RADAR_SHADOW` | `false` | Set by TACTIC for a monitor started in shadow, and absent otherwise. The monitor learns and scores as usual, keeps every alarm it would raise as muted evidence and raises none. |
 | `RADAR_FATAL_PERSIST_RETRY_SECONDS` | `5` | Retry interval while a quarantined managed graph waits to persist its failed-run admission fence. Must be greater than zero and at most 30 seconds. No further graph calls or checkpoint exports occur. |
-| `RADAR_RATE_LIMIT_PER_MINUTE` | `0` | Aggregate observation limit across the monitor's topics; `0` disables throttling. Positive limits discard excess inputs and permanently flag the monitor's coverage as degraded. Managed workloads use `TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE`, also defaulting to `0`. |
-| `RADAR_MAX_QUEUE_SIZE` | `256` | Maximum admitted messages waiting for the serial processor, bounded before the network thread schedules asyncio work. |
-| `RADAR_MAX_PAYLOAD_BYTES` | `65536` | Maximum admitted payload size. Larger observations are discarded and counted as coverage gaps. The default queue holds at most 16 MiB of payload bytes plus object overhead. Enforce broker packet limits as well: the MQTT library receives a packet before admission. |
+| `RADAR_MAX_QUEUE_SIZE` | `256` | Results waiting for the database. A full queue holds the log reader back; nothing is dropped. |
+| `RADAR_LOG_POLL_SECONDS` | `0.5` | How often a caught-up monitor reads the telemetry log for new rows, above 0 and at most 30. |
+| `RADAR_LOG_BATCH_SIZE` | `500` | Rows read per query; a monitor behind the log reads full batches until it catches up. |
 | `RADAR_HOLD_INTERVALS` | `3` | How many of its own learned intervals a reading's last value stays usable in an observation, from 1 to 1000. |
 | `RADAR_MINIMUM_HOLD_SECONDS` | `30` | The shortest time a reading's last value stays usable, and the limit while its interval is not known yet. |
 | `RADAR_FUTURE_TOLERANCE_SECONDS` | `5` | Maximum permitted observation time ahead of the worker clock. |
 
 The former strategy variables (`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`,
 `RADAR_MODEL_PARAMS`, `RADAR_STATIC_BASELINE_CONFIG` and
-`RADAR_ADAPTIVE_STREAM_CONFIG`) are no longer read.
+`RADAR_ADAPTIVE_STREAM_CONFIG`) are no longer read. Monitors do not connect to a broker
+and read no broker, rate-limit or payload-size settings.
 
 ## Forecast service
 

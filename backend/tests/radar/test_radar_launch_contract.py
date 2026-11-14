@@ -40,22 +40,13 @@ RADAR_SETTINGS = (
     PreflightSettings,
     ForecastClientSettings,
 )
-# TACTIC-private keys travelling in the same dict, and keys RADAR may stop
-# reading while TACTIC keeps emitting them so fingerprints stay stable.
-NOT_READ_BY_RADAR = {
-    "RADAR_RUNTIME_IMAGE",
-    "RADAR_COLLECTION_FINGERPRINT",
-    "RADAR_BATCH_SIZE",
-    "RADAR_BATCH_TIMEOUT",
-    "RADAR_CHECKPOINT_STORAGE",
-}
-# RadarDefaultsConfig fields whose RADAR name is not RADAR_<FIELD>.
-RADAR_NAMES = {"mqtt_qos": "RADAR_SUBSCRIPTION_QOS"}
+# TACTIC-private keys travelling in the same dict.
+NOT_READ_BY_RADAR = {"RADAR_RUNTIME_IMAGE", "RADAR_COLLECTION_FINGERPRINT"}
 GOLDEN_FINGERPRINTS = {
-    "static": "6849acdd7c8fb6c12e42f891342a2a7f2ef352bdb224c15b7d658123b6ea0201",
+    "static": "9a82ad92cf50aedb3536f5afb85b22590f1cbb79c9c3a767bb0bff0422aec17e",
     # The explicit library version changes with every Aberrant upgrade.
-    "adaptive": "b33bfdfd1d61eae49f45f616097e4a53f3be9dd4373caba543a53e406dd440d2",
-    "pipeline": "779edfb396a674c178b60d250f1a4c1161a6f39436fd160645b8cc240b3be84c",
+    "adaptive": "1da18028cad33b0fe066ffe868a47f770a22755e779bccd108805434c92bb440",
+    "pipeline": "c098ee2965ae0a3a0fe94581d083b14b999c814972788d8b1ae6c1ee33ddc6cf",
 }
 
 
@@ -66,7 +57,6 @@ def _static_config():
         strategy="static_baseline",
         model_type="pyod_iforest",
         model_params={"n_estimators": 100},
-        mqtt_config={"qos": 1, "client_id_prefix": "golden"},
         performance_config={
             "sensor_key_strategy": "leaf",
             "minimum_hold_seconds": 20.0,
@@ -145,11 +135,12 @@ def test_tactic_defaults_match_radar_defaults():
     radar_fields = RadarSettings.model_fields
     tactic_fields = TacticSettings.model_fields
     for name, field in RadarDefaultsConfig.model_fields.items():
+        if name.startswith("mqtt_"):
+            continue  # The collection endpoint's broker; monitors have none.
         assert tactic_fields[f"TACTIC_RADAR_DEFAULT_{name.upper()}"].default == (
             field.default
         ), name
-        radar_name = RADAR_NAMES.get(name, f"RADAR_{name.upper()}")
-        assert radar_fields[radar_name].default == field.default, name
+        assert radar_fields[f"RADAR_{name.upper()}"].default == field.default, name
 
 
 @pytest.mark.parametrize("name", CONFIGS)

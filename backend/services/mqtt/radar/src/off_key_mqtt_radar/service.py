@@ -26,6 +26,7 @@ from .coverage import CoverageTracker
 from .database import (
     CheckpointOwnershipLost,
     DatabaseWriter,
+    get_radar_async_session_factory,
 )
 from .detector_handle import DetectorHandle
 from .detector_runtime import DetectorRuntime
@@ -36,13 +37,13 @@ from .health_monitor import HealthMonitor
 from .memory import MemoryManager
 from .message_processor import MessageProcessor
 from .models import MQTTMessage
-from .mqtt_client import RadarMQTTClient
 from .runtime_checkpoint import (
     CoverageCheckpoint,
     ProcessorCheckpoint,
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
 )
+from .telemetry_log import LogClock, TelemetryLogReader
 from .topic_parser import TopicParser
 
 
@@ -54,6 +55,7 @@ class RestoredRuntime:
     processor: ProcessorCheckpoint | None = None
     coverage: dict = field(default_factory=dict)
     observation_watermarks: dict[str, dict[str, float]] = field(default_factory=dict)
+    log_position: int | None = None
     restored: bool = False
 
 
@@ -73,7 +75,9 @@ class RadarService:
         self.config = get_radar_settings().config
 
         # Core components
-        self.mqtt_client: RadarMQTTClient | None = None
+        self.telemetry_log: TelemetryLogReader | None = None
+        # Alignment judges each reading at the time the collector received it.
+        self.log_clock = LogClock()
         self.detector: DetectorHandle | None = None
         self.database_writer: DatabaseWriter | None = None
 
@@ -147,7 +151,7 @@ class RadarService:
             self._detector_runtime = DetectorRuntime(self.detector)
             await self._detector_runtime.refresh()
 
-            # One coverage ledger per start, shared by the MQTT client and processor.
+            # One coverage ledger per start, shared by the log reader and processor.
             self.coverage = CoverageTracker()
             if restored.coverage:
                 self.coverage.restore(restored.coverage)
@@ -159,6 +163,8 @@ class RadarService:
                 timing=self.config.timing(),
                 sensor_key_strategy=self.config.sensor_key_strategy,
                 coverage=self.coverage,
+                clock=self.log_clock,
+                monotonic=self.log_clock,
             )
             if restored.processor is not None:
                 self.message_processor.restore_counters(restored.processor)
@@ -166,16 +172,14 @@ class RadarService:
                 restored.observation_watermarks
             )
 
+            await self._setup_telemetry_log(restored.log_position)
             await self._checkpoint_if_due(force=True)
-            if restored.restored:
-                self.coverage.record_possible_gap("worker_restart")
-
-            await self._setup_mqtt_client()
+            await self.telemetry_log.start()
             self._checkpoint_task = asyncio.create_task(self._checkpoint_loop())
 
             # Start health monitoring with component references
             self.health_monitor.set_components(
-                mqtt_client=self.mqtt_client,
+                telemetry_log=self.telemetry_log,
                 database_writer=self.database_writer,
                 detector=self._detector_runtime,
                 memory_manager=self.memory_manager,
@@ -214,7 +218,7 @@ class RadarService:
         """Stop the RADAR service"""
         has_started_components = any(
             [
-                self.mqtt_client,
+                self.telemetry_log,
                 self.detector,
                 self.database_writer,
                 self.message_processor,
@@ -239,7 +243,7 @@ class RadarService:
         await self._stop_component("detector", self.detector)
         await self._stop_component("database_writer", self.database_writer)
 
-        self.mqtt_client = None
+        self.telemetry_log = None
         self.detector = None
         self.database_writer = None
         self.message_processor = None
@@ -275,7 +279,7 @@ class RadarService:
             self._checkpoint_task = None
         # Finish the in-flight handler before freezing the final detector state.
         await self._stop_component("health_monitor", self.health_monitor)
-        await self._stop_component("mqtt_client", self.mqtt_client)
+        await self._stop_component("telemetry_log", self.telemetry_log)
         if self._checkpoint_ready and not isinstance(
             self._fatal_error, FatalExecutionError
         ):
@@ -318,12 +322,14 @@ class RadarService:
                     processor=snapshot.processor,
                     coverage=snapshot.coverage.data,
                     observation_watermarks=snapshot.observation_watermarks,
+                    log_position=snapshot.log_position,
                     restored=True,
                 )
                 self.recovery_status.update(
                     restored_processed_count=record["processed_count"],
                     restored_saved_at=record["saved_at"].isoformat(),
-                    input_recovery="live_only_with_possible_gap",
+                    restored_log_position=snapshot.log_position,
+                    input_recovery="log_replay",
                 )
         else:
             logger.info(
@@ -359,18 +365,21 @@ class RadarService:
 
         logger.info("Database writer setup complete")
 
-    async def _setup_mqtt_client(self):
-        """Initialize MQTT client and message handling"""
-        logger.info("Setting up MQTT client")
+    async def _setup_telemetry_log(self, position: int | None) -> None:
+        """Place the reader at the restored position, or the newest row."""
+        self.telemetry_log = TelemetryLogReader(
+            get_radar_async_session_factory(),
+            self.config.subscription_topics,
+            clock=self.log_clock,
+            coverage=self.coverage,
+            poll_seconds=self.config.log_poll_seconds,
+            batch_size=self.config.log_batch_size,
+        )
+        self.telemetry_log.set_message_handler(self._handle_log_message)
+        await self.telemetry_log.place(position)
 
-        self.mqtt_client = RadarMQTTClient(self.config, coverage=self.coverage)
-        self.mqtt_client.set_message_handler(self._handle_mqtt_message)
-        await self.mqtt_client.start()
-
-        logger.info("MQTT client setup complete")
-
-    async def _handle_mqtt_message(self, message: MQTTMessage):
-        """Handle incoming MQTT message using extracted MessageProcessor."""
+    async def _handle_log_message(self, message: MQTTMessage):
+        """Process one logged reading under the processing lock."""
         # Shutdown must not cancel between model advancement and evidence enqueue.
         operation = asyncio.create_task(self._process_one_message(message))
         try:
@@ -391,10 +400,15 @@ class RadarService:
         try:
             if self.database_writer is not None:
                 self.database_writer.raise_if_fenced()
-            # Delegate to message processor
-            result = await self._detector_runtime.call(
-                self.message_processor.process_message_sync, message
-            )
+            try:
+                result = await self._detector_runtime.call(
+                    self.message_processor.process_message_sync, message
+                )
+            finally:
+                # Under the processing lock, before any checkpoint: the saved
+                # position always matches the readings the state contains.
+                if message.log_seq is not None:
+                    self.telemetry_log.record_processed(message.log_seq)
 
             if result:
                 # Record processing time in health monitor
@@ -507,8 +521,8 @@ class RadarService:
         self.recovery_status.update(
             saved_processed_count=checkpoint["processed_count"],
             saved_at=checkpoint["saved_at"].isoformat(),
-            maximum_normal_rollback_samples=self.config.checkpoint_interval,
-            input_recovery="live_only_with_possible_gap",
+            saved_log_position=self.telemetry_log.position,
+            input_recovery="log_replay",
         )
 
     def _freeze_checkpoint(self, force: bool):
@@ -552,6 +566,7 @@ class RadarService:
                 processor=processor,
                 coverage=CoverageCheckpoint(data=coverage_state),
                 observation_watermarks=self.message_processor.export_observation_watermarks(),
+                log_position=self.telemetry_log.position,
             )
         )
         return checkpoint, processor, phase, gap

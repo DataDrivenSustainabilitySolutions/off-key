@@ -5,6 +5,7 @@ from sqlalchemy import (
     DDL,
     JSON,
     TIMESTAMP,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Sequence,
     Text,
     UniqueConstraint,
     event,
@@ -244,6 +246,9 @@ class Charger(Base):
     )
 
 
+TELEMETRY_LOG_SEQUENCE = Sequence("telemetry_log_seq", metadata=Base.metadata)
+
+
 class Telemetry(Base):
     __tablename__ = "telemetry"
 
@@ -256,6 +261,12 @@ class Telemetry(Base):
     data_source: Mapped[str] = mapped_column(Text, nullable=False)
     created: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+    # Position in the telemetry log, in commit order; RADAR reads by it.
+    log_seq: Mapped[int | None] = mapped_column(
+        BigInteger,
+        TELEMETRY_LOG_SEQUENCE,
+        server_default=TELEMETRY_LOG_SEQUENCE.next_value(),
     )
 
     # The primary key serves upserts; TimescaleDB adds its own time index.
@@ -277,6 +288,8 @@ class Telemetry(Base):
             "created",
             "timestamp",
         ),
+        # Log reads: one monitor's streams from its saved position.
+        Index("ix_telemetry_log", "charger_id", "type", "log_seq"),
     )
 
 

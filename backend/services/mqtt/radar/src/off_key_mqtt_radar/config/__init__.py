@@ -1,8 +1,8 @@
-"""MQTT RADAR configuration public exports."""
+"""RADAR configuration public exports."""
 
 from .config import (
     AnomalyDetectionConfig,
-    MQTTRadarConfig,
+    RadarConfig,
     RadarSettings,
     clear_radar_settings_cache,
     get_radar_settings,
@@ -20,8 +20,8 @@ from .runtime import (
 
 __all__ = [
     "AnomalyDetectionConfig",
-    "MQTTRadarConfig",
     "RadarCheckpointSettings",
+    "RadarConfig",
     "RadarDatabaseSettings",
     "RadarRuntimeFileSettings",
     "RadarSettings",

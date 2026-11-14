@@ -13,7 +13,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.runtime_checkpoint import (
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
@@ -37,13 +37,15 @@ def main():
             "calibration_window_size": 3,
         },
     )
-    config = MQTTRadarConfig(pipeline=launch.pipeline)
+    config = RadarConfig(pipeline=launch.pipeline)
     detector = AdaptiveStreamDetectionService(config)
     for value in (1.0, 2.0, 3.0, 4.0, 5.0, 6.0):
         detector.process_data_point({"x": value})
     assert detector.state.value == "operational"
     codec = RuntimeCheckpointCodec("aberrant-upgrade-reference", config, SECRET)
-    record = codec.encode(RuntimeCheckpoint(detector=detector.export_checkpoint()))
+    record = codec.encode(
+        RuntimeCheckpoint(detector=detector.export_checkpoint(), log_position=0)
+    )
     assert codec.decode(record).detector["processed_count"] == 6
     record["payload"] = base64.b64encode(record["payload"]).decode()
     record["saved_at"] = record["saved_at"].isoformat()

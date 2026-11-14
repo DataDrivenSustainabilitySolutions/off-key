@@ -207,7 +207,6 @@ def test_tactic_builds_static_environment(monkeypatch):
             strategy="static_baseline",
             model_type="pyod_iforest",
             model_params={"n_estimators": 100},
-            mqtt_config={},
             performance_config={
                 "sensor_key_strategy": "leaf",
                 "minimum_hold_seconds": 20.0,
@@ -261,16 +260,11 @@ def test_tactic_builds_static_environment(monkeypatch):
     assert validator.call_args.kwargs["family"] == "static_pyod"
 
 
-def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
-    monkeypatch,
-):
+def test_production_monitor_environment_carries_no_broker_settings(monkeypatch):
     _validator(monkeypatch)
     settings = TacticSettings(
         TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST="emqx-main",
-        TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT=8883,
-        TACTIC_RADAR_DEFAULT_MQTT_USE_TLS=True,
         TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH=True,
-        TACTIC_RADAR_DEFAULT_MQTT_USERNAME="offkey-radar",
     )
     runtime = SimpleNamespace(
         ENVIRONMENT="production",
@@ -285,19 +279,10 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
         env = build_radar_environment(
             service_id="svc", config=config, validate_params=True
         )
-        config.mqtt_config = {"host": "evil.example"}
-        with pytest.raises(ValueError, match="cannot be overridden"):
-            build_radar_environment(
-                service_id="svc", config=config, validate_params=True
-            )
     assert env["ENVIRONMENT"] == "production"
-    assert env["RADAR_MQTT_BROKER_HOST"] == "emqx-main"
-    assert env["RADAR_MQTT_BROKER_PORT"] == "8883"
-    assert env["RADAR_MQTT_USE_TLS"] == "true"
-    assert env["RADAR_MQTT_USE_AUTH"] == "true"
-    assert env["RADAR_MQTT_USERNAME"] == "offkey-radar"
-    assert env["RADAR_MQTT_CA_FILE"] == "/run/secrets/EMQX_CA_CERT"
-    assert "RADAR_MQTT_API_KEY" not in env
+    # Monitors read the stored telemetry log; they never reach a broker.
+    assert env["RADAR_SUBSCRIPTION_TOPICS"] == "telemetry/c1/L1"
+    assert not [key for key in env if "MQTT" in key]
 
 
 def test_tactic_builds_adaptive_environment(monkeypatch):
@@ -312,7 +297,6 @@ def test_tactic_builds_adaptive_environment(monkeypatch):
             strategy="adaptive_stream",
             model_type="aberrant_online_isolation_forest",
             model_params={"num_trees": 2},
-            mqtt_config={},
             performance_config={},
             adaptive_stream_config={
                 "model_type": "aberrant_online_isolation_forest",
@@ -346,7 +330,6 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict(
             strategy="adaptive_stream",
             model_type=None,
             model_params={},
-            mqtt_config={},
             performance_config={},
             adaptive_stream_config=None,
         ),
@@ -366,7 +349,6 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict(
                 strategy="adaptive_stream",
                 model_type="aberrant_knn",
                 model_params=None,
-                mqtt_config={},
                 performance_config={},
                 adaptive_stream_config={
                     "model_type": "aberrant_online_isolation_forest"

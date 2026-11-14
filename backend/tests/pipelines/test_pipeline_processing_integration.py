@@ -1,15 +1,13 @@
-"""Production graph execution over real MQTT, PostgreSQL and signed snapshots."""
+"""Production graph execution over the telemetry log and signed snapshots."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import signal
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import pytest
-from amqtt.client import MQTTClient
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
 from off_key_core.db.pipelines import MonitoringPipeline, PipelineRevision, PipelineRun
@@ -34,7 +32,8 @@ from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 
 from tests.support.adaptive_pipeline import adaptive_pipeline_config
-from tests.support.mqtt import mqtt_broker, wait_until
+from tests.support.mqtt import wait_until
+from tests.support.telemetry_log import log_readings
 
 pytestmark = pytest.mark.radar_integration
 
@@ -105,44 +104,37 @@ async def pipeline_environment(disposable_database, monkeypatch):
         "RADAR_ADAPTIVE_STREAM_CONFIG",
     ):
         monkeypatch.delenv(name, raising=False)
-    async with mqtt_broker() as (_, port):
-        settings = {
-            "ENVIRONMENT": "development",
-            "SERVICE_ID": SERVICE_ID,
-            "RADAR_LIFECYCLE_VERSION": "1",
-            "RADAR_PIPELINE_CONFIG": execution.model_dump_json(),
-            "RADAR_SUBSCRIPTION_TOPICS": ",".join(
-                item.accepted_topic for item in execution.bindings
-            ),
-            "RADAR_MQTT_BROKER_HOST": "127.0.0.1",
-            "RADAR_MQTT_BROKER_PORT": str(port),
-            "RADAR_MQTT_USE_AUTH": "false",
-            "RADAR_MQTT_USE_TLS": "false",
-            "RADAR_SENSOR_KEY_STRATEGY": "full_hierarchy",
-            "RADAR_DATABASE_URL": disposable_database.url.set(
-                drivername="postgresql+asyncpg"
-            ).render_as_string(hide_password=False),
-            "RADAR_DB_WRITE_ENABLED": "true",
-            "RADAR_CHECKPOINT_SECRET": "disposable-pipeline-checkpoint-key",
-            "RADAR_CHECKPOINT_INTERVAL": "1",
-            "RADAR_HEALTH_CHECK_INTERVAL": "5",
-            "RADAR_RATE_LIMIT_PER_MINUTE": "0",
-        }
-        for key, value in settings.items():
-            monkeypatch.setenv(key, value)
+    settings = {
+        "ENVIRONMENT": "development",
+        "SERVICE_ID": SERVICE_ID,
+        "RADAR_LIFECYCLE_VERSION": "1",
+        "RADAR_PIPELINE_CONFIG": execution.model_dump_json(),
+        "RADAR_SUBSCRIPTION_TOPICS": ",".join(
+            item.accepted_topic for item in execution.bindings
+        ),
+        "RADAR_SENSOR_KEY_STRATEGY": "full_hierarchy",
+        "RADAR_DATABASE_URL": disposable_database.url.set(
+            drivername="postgresql+asyncpg"
+        ).render_as_string(hide_password=False),
+        "RADAR_DB_WRITE_ENABLED": "true",
+        "RADAR_CHECKPOINT_SECRET": "disposable-pipeline-checkpoint-key",
+        "RADAR_CHECKPOINT_INTERVAL": "1",
+        "RADAR_HEALTH_CHECK_INTERVAL": "5",
+        "RADAR_LOG_POLL_SECONDS": "0.01",
+    }
+    for key, value in settings.items():
+        monkeypatch.setenv(key, value)
+    clear_radar_settings_cache()
+    clear_radar_runtime_settings_cache()
+    monkeypatch.setattr(radar_database, "_radar_async_session_factory", None)
+    sessions = radar_database.get_radar_async_session_factory()
+    try:
+        # Observations are appended to the log the monitor reads.
+        yield execution, sessions, sessions
+    finally:
+        await sessions.kw["bind"].dispose()
         clear_radar_settings_cache()
         clear_radar_runtime_settings_cache()
-        monkeypatch.setattr(radar_database, "_radar_async_session_factory", None)
-        sessions = radar_database.get_radar_async_session_factory()
-        publisher = MQTTClient(client_id="pipeline-integration-publisher")
-        try:
-            await publisher.connect(f"mqtt://127.0.0.1:{port}")
-            yield execution, sessions, publisher
-        finally:
-            await publisher.disconnect()
-            await sessions.kw["bind"].dispose()
-            clear_radar_settings_cache()
-            clear_radar_runtime_settings_cache()
 
 
 @asynccontextmanager
@@ -171,17 +163,13 @@ async def supervised_service():
 async def publish_observation(execution, publisher, index):
     timestamp = datetime.now(UTC)
     data = {"a": float(index), "b": float(index**2), "temperature": 20.0 + index}
-    for binding in execution.bindings:
-        await publisher.publish(
-            binding.accepted_topic,
-            json.dumps(
-                {
-                    "value": data[binding.slot_id],
-                    "timestamp": timestamp.isoformat(),
-                }
-            ).encode(),
-            qos=1,
-        )
+    await log_readings(
+        publisher,
+        [
+            (binding.accepted_topic, data[binding.slot_id], timestamp)
+            for binding in execution.bindings
+        ],
+    )
     return data, timestamp
 
 
@@ -301,14 +289,14 @@ async def test_mutating_model_failure_preserves_checkpoint_and_fences_restart(
         previous = await checkpoint_at(sessions, 7)
         primary = service.detector.primary_service
         terminal = inject_mutating_failure(monkeypatch, primary)
-        network_client = service.mqtt_client.client
+        log = service.telemetry_log
         await publish_observation(execution, publisher, 8)
         with pytest.raises(RuntimeError, match="managed persistence failure"):
             async with asyncio.timeout(20):
                 await runner
         assert isinstance(service._fatal_error, FatalExecutionError)
         assert not service.is_running
-        assert network_client._thread is None
+        assert log._task is None
         assert terminal.window["temperature"][-1] == 28.0
         with pytest.raises(FatalExecutionError):
             primary.export_checkpoint()
@@ -369,7 +357,7 @@ async def test_mutating_model_failure_preserves_checkpoint_and_fences_restart(
         restart = RadarService()
         with pytest.raises(RuntimeError, match="running monitor intent"):
             await restart.start()
-        assert restart.mqtt_client is None
+        assert restart.telemetry_log is None
         assert restart.detector is None
 
 

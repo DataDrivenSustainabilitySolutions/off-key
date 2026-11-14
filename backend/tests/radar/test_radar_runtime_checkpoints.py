@@ -12,7 +12,7 @@ from off_key_core.db.migrate import apply_migrations, migration_status
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.config.runtime import RadarCheckpointSettings
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
@@ -72,7 +72,7 @@ def _config(strategy="static_baseline"):
         )
     )
     return form_radar_config(
-        monitoring, ["telemetry/entity/x"], MQTTRadarConfig, checkpoint_interval=10
+        monitoring, ["telemetry/entity/x"], RadarConfig, checkpoint_interval=10
     )
 
 
@@ -104,6 +104,7 @@ def _snapshot(detector):
                 "dropped_by_reason": {"queue_full": 2},
             }
         ),
+        log_position=41,
     )
 
 
@@ -435,7 +436,7 @@ def test_checkpoint_migration_adopts_existing_database_and_drops_the_path_table(
 
 async def _replacement_probe():
     request = json.loads(sys.stdin.read())
-    config = MQTTRadarConfig.model_validate(request["config"])
+    config = RadarConfig.model_validate(request["config"])
     engine = create_async_engine(request["database_url"])
     writer = DatabaseWriter(config, async_sessionmaker(engine))
     try:

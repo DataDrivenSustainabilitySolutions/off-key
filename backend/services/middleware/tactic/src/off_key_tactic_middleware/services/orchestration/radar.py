@@ -179,14 +179,7 @@ class RadarOrchestrationService:
                 mode="json", exclude_none=True
             ),
             operational_updated_at=None,
-            launch_config=config.model_dump(mode="json")
-            | {
-                "mqtt_config": config.mqtt_config.model_dump()
-                | {
-                    "qos": int(env_vars["RADAR_SUBSCRIPTION_QOS"]),
-                    "client_id_prefix": env_vars["RADAR_MQTT_CLIENT_ID_PREFIX"],
-                },
-            },
+            launch_config=config.model_dump(mode="json"),
         )
         try:
             self.session.add(service_record)

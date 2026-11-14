@@ -144,7 +144,6 @@
       emqx_server_cert: "{{ emqx_server_cert }}"
       emqx_server_key: "{{ emqx_server_key }}"
       mqtt_proxy_password: "{{ mqtt_proxy_password }}"
-      mqtt_radar_password: "{{ mqtt_radar_password }}"
       radar_checkpoint_secret: "{{ radar_checkpoint_secret }}"
       forecast_api_token: "{{ forecast_service_token }}"
       emqx_auth_users: >-

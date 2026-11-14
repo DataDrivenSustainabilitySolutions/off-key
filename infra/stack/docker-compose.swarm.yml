@@ -180,9 +180,9 @@ services:
   mqtt-radar:
     image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.pool" ]
+    # Monitors read the stored telemetry log; nothing here reaches a broker.
     networks:
       - app-network
-      - emqx-network
     # Liveness: the replica answers 503 once it can no longer renew its leases.
     healthcheck:
       test: ["CMD", "/app/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8030/health', timeout=5)"]

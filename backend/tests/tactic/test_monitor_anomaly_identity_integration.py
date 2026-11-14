@@ -6,7 +6,7 @@ import pytest
 from off_key_core.db.migrate import apply_migrations, migration_status
 from off_key_core.db.models import Anomaly, AnomalyIdentity, MonitoringEvidence
 from off_key_core.schemas.system import SystemDocument, SystemSnapshot
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.models import AnomalyResult
 from off_key_tactic_middleware.repositories.data import AnomalyRepository
@@ -67,9 +67,7 @@ async def test_independent_monitor_alarms_survive_retries_and_independent_deleti
                 },
             )
             writer = DatabaseWriter(
-                form_radar_config(
-                    None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig
-                ),
+                form_radar_config(None, ["telemetry/charger-sim-1/sine"], RadarConfig),
                 session_factory=sessions,
                 service_id=service_id,
             )

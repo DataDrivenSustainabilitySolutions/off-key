@@ -11,9 +11,10 @@ from typing import Any, TypeGuard, cast
 
 from off_key_core.config.logging_errors import safe_error_text
 from off_key_core.config.logs import log_performance, logger
+from off_key_core.db.locks import TELEMETRY_LOG_LOCK
 from off_key_core.db.models import Telemetry
 from off_key_core.db.worker_ownership import WorkerOwnership
-from sqlalchemy import CursorResult
+from sqlalchemy import CursorResult, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -399,6 +400,11 @@ class DatabaseWriter:
                 try:
                     if self.ownership is not None:
                         await self.ownership.fence(session)
+                    # Log positions are taken under this lock until commit.
+                    await session.execute(
+                        text("SELECT pg_advisory_xact_lock(:key)"),
+                        {"key": TELEMETRY_LOG_LOCK},
+                    )
                     insert_result = cast(CursorResult[Any], await session.execute(stmt))
                     rowcount = insert_result.rowcount
                     records_written = (

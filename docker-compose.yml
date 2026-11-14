@@ -55,7 +55,6 @@ x-tactic-env: &tactic-env
   TACTIC_RADAR_WORKLOAD_LIFECYCLE: "${TACTIC_RADAR_WORKLOAD_LIFECYCLE}"
   TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB: "${TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB:-384}"
   TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE: "${TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE:-256}"
-  TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES: "${TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES:-65536}"
   TACTIC_RADAR_MAX_ACTIVE_MONITORS: "${TACTIC_RADAR_MAX_ACTIVE_MONITORS:-20}"
   TACTIC_PIPELINE_AUTHORING_ENABLED: "${TACTIC_PIPELINE_AUTHORING_ENABLED:-false}"
   TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS: "${TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS:-90}"
@@ -182,10 +181,10 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
-    # Monitors subscribe to the brokers and preflight jobs reach the forecast service.
+    # Monitors read the stored telemetry log; preflight jobs reach the forecast
+    # service. Nothing here reaches a broker.
     networks:
       - app-network
-      - emqx-network
     restart: always
     healthcheck:
       <<: *backend-healthcheck

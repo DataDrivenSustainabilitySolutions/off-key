@@ -9,7 +9,7 @@ from off_key_core.schemas.pipelines import (
     PipelineExecutionConfig,
 )
 from off_key_mqtt_radar import database as radar_database
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
@@ -58,7 +58,7 @@ async def signed_graph_writer(pipeline_database, monkeypatch):
         await session.commit()
     monkeypatch.setenv("SERVICE_ID", activation.service_id)
     clear_radar_runtime_settings_cache()
-    config = MQTTRadarConfig(pipeline=execution)
+    config = RadarConfig(pipeline=execution)
     detector = StaticConformalDetectionService(config)
     writer = DatabaseWriter(
         config, session_factory=pipeline_database, managed_checkpoints=True
@@ -72,6 +72,7 @@ async def signed_graph_writer(pipeline_database, monkeypatch):
                 detector=detector.export_checkpoint(),
                 processor=ProcessorCheckpoint(),
                 coverage=CoverageCheckpoint(data={}),
+                log_position=0,
             )
         )
         assert await writer.load_checkpoint(activation.service_id) is None

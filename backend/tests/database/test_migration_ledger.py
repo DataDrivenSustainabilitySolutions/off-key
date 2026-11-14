@@ -120,6 +120,9 @@ APPLIED_CHECKSUMS = {
     "034_radar_workload_pool.sql": (
         "99a71f0503ecea7472490a884e195bcc13d469004986949faa0d8530f97f2888"
     ),
+    "035_telemetry_log.sql": (
+        "a3bb5e458f2a087d9fc2698b004631b732ffb542442fdc958490b14106f1ed99"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new

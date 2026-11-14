@@ -48,7 +48,6 @@ async def main():
     logger.info(
         "event=radar.configuration_summary",
         extra={
-            "broker": f"{cfg.broker_host}:{cfg.broker_port}",
             "topics": cfg.subscription_topics,
             "model_type": cfg.monitoring.model_type,
             "db_write_enabled": cfg.db_write_enabled,

@@ -18,7 +18,7 @@ vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, can: () => f
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 vi.mock("@/features/pipelines/api", () => ({
   pipelinesApi: {
-    proposals: vi.fn(), proposal: vi.fn(), decideProposal: vi.fn(), catalog: vi.fn(), validate: vi.fn(), apply: vi.fn(),
+    proposals: vi.fn(), capacity: vi.fn(), proposal: vi.fn(), decideProposal: vi.fn(), catalog: vi.fn(), validate: vi.fn(), apply: vi.fn(),
     activation: vi.fn(), cancel: vi.fn(), service: vi.fn(), blocks: vi.fn(), list: vi.fn(),
   },
 }));
@@ -78,6 +78,7 @@ beforeEach(() => {
   vi.mocked(pipelinesApi.validate).mockImplementation(async (sent) => ({ valid: true, definition: normalizeDefinition(sent), issues: [], features: {}, provenance_complete: true }));
   vi.mocked(pipelinesApi.proposals).mockImplementation(async (status) => status === "open" ? [summary()] : [summary(), declined]);
   vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal());
+  vi.mocked(pipelinesApi.capacity).mockResolvedValue({ running: 1, limit: 6 });
   vi.mocked(pipelinesApi.apply).mockResolvedValue(activation);
   vi.mocked(pipelinesApi.activation).mockResolvedValue(activation);
   vi.mocked(pipelinesApi.decideProposal).mockImplementation(async (id, decision) =>
@@ -153,6 +154,15 @@ describe("proposals", () => {
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} />);
     await screen.findByRole("button", { name: "Review Pump vibration" });
     expect(screen.queryByRole("button", { name: "Decline Pump vibration" })).toBeNull();
+  });
+
+  it("says how many monitor places are free, and warns when none is", async () => {
+    const view = render(<PipelineProposalList onReview={() => {}} onBack={() => {}} canDecide />);
+    expect(await screen.findByText("5 of 6 monitor places are free.")).toBeTruthy();
+    view.unmount();
+    vi.mocked(pipelinesApi.capacity).mockResolvedValue({ running: 2, limit: 2 });
+    render(<PipelineProposalList onReview={() => {}} onBack={() => {}} canDecide />);
+    expect((await screen.findByRole("alert")).textContent).toContain("All 2 monitor places are taken");
   });
 
   it("declines with a word for the author", async () => {

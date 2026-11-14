@@ -61,3 +61,15 @@ def claim_owners(active, pending, *, released: Iterable[str] = ()) -> set[str]:
     return {item.id for item in active if item.id not in retiring} | {
         item.service_id for item in pending
     }
+
+
+async def monitors_holding_capacity(session) -> int:
+    """How many monitors run or start now, as the capacity check counts them."""
+    active = list(
+        (
+            await session.scalars(
+                select(MonitoringService).where(monitor_claim_condition())
+            )
+        ).all()
+    )
+    return len(claim_owners(active, await pending_activations(session)))

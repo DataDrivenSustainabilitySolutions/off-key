@@ -5,11 +5,19 @@ from uuid import uuid4
 
 from off_key_core.config.logs import log_security_event
 from off_key_core.db.collection_runtime import read_collection_runtime
-from off_key_core.db.models import Agent, DojoRun, PipelineProposal, User
+from off_key_core.db.models import (
+    Agent,
+    DojoRun,
+    DojoRunResult,
+    PipelineProposal,
+    User,
+)
+from off_key_core.db.pipeline_claims import monitors_holding_capacity
 from off_key_core.models.pipelines import validate_pipeline
 from off_key_core.schemas.pipelines import (
     MAX_OPEN_PROPOSALS,
     MAX_PROPOSALS_LISTED,
+    MonitorCapacity,
     PipelineDefinition,
     PipelineProposalCreate,
     PipelineProposalDecision,
@@ -20,6 +28,7 @@ from off_key_core.schemas.pipelines import (
 )
 from sqlalchemy import func, select
 
+from ...config.config import get_tactic_settings
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from .library import begin_library_write
 
@@ -91,7 +100,11 @@ class PipelineProposals:
                     | {"missing_readings": _missing(row, recorded)}
                 )
                 for row in rows
-            ]
+            ],
+            capacity=MonitorCapacity(
+                running=await monitors_holding_capacity(self.session),
+                limit=get_tactic_settings().config.radar_max_active_monitors,
+            ),
         )
 
     async def get(self, identifier: str) -> PipelineProposalView:
@@ -184,6 +197,23 @@ class PipelineProposals:
             raise ValidationError(
                 "The test ran another design. Test this design, then propose "
                 "it with that test."
+            )
+        scored = await self.session.scalar(
+            select(
+                select(DojoRunResult.sequence)
+                .where(
+                    DojoRunResult.run_id == run_id,
+                    DojoRunResult.score.is_not(None),
+                )
+                .exists()
+            )
+        )
+        if not scored:
+            # Zero alarms there says nothing, yet reads as a quiet design.
+            raise ValidationError(
+                "The test scored nothing: the replay ended inside the design's "
+                "warm-up. Test on more days, or with shorter training and "
+                "calibration windows, then propose it with that test."
             )
 
     async def decide(

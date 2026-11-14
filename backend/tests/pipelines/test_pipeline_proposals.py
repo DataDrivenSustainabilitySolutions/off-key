@@ -12,6 +12,7 @@ from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
     DojoRun,
+    DojoRunResult,
     PipelineProposal,
     User,
 )
@@ -89,8 +90,13 @@ async def library(member_database, monkeypatch):
             DeploymentMaintenance,
             DojoDataset,
             DojoRun,
+            DojoRunResult,
         ):
             await connection.run_sync(table.__table__.create)
+    # What holds capacity is RADAR's count, tested with the activations.
+    monkeypatch.setattr(
+        proposal_service, "monitors_holding_capacity", AsyncMock(return_value=1)
+    )
     await bootstrap(sessions)
     yield sessions
     get_tactic_settings.cache_clear()
@@ -107,7 +113,9 @@ async def again_after_refusal(session, *callers) -> None:
         await session.refresh(caller)
 
 
-async def ran_on_history(session, run_id: str, *, status="succeeded", definition=None):
+async def ran_on_history(
+    session, run_id: str, *, status="succeeded", definition=None, scored=True
+):
     """A test of a design on history, as the Dojo keeps it."""
     ran = compile_pipeline(PipelineDefinition.model_validate(definition or design()))
     if await session.get(DojoDataset, "old-trips") is None:
@@ -123,6 +131,21 @@ async def ran_on_history(session, run_id: str, *, status="succeeded", definition
             },
         )
     )
+    when = datetime(2026, 11, 14, tzinfo=UTC)
+    session.add(
+        DojoRunResult(run_id=run_id, sequence=1, timestamp=when, phase="warmup")
+    )
+    if scored:
+        session.add(
+            DojoRunResult(
+                run_id=run_id,
+                sequence=2,
+                timestamp=when,
+                phase="operational",
+                score=0.4,
+                threshold=0.9,
+            )
+        )
     await session.commit()
     return run_id
 
@@ -328,6 +351,10 @@ async def test_a_test_is_evidence_only_for_the_design_it_ran(library):
         await session.commit()
         await session.refresh(agent)
         await refused("The test ran another design", test_run_id="run-6")
+        # A replay that ended inside the warm-up scored nothing to go by.
+        await ran_on_history(session, "run-8", scored=False)
+        await session.refresh(agent)
+        await refused("The test scored nothing", test_run_id="run-8")
 
 
 @pytest.mark.asyncio
@@ -408,7 +435,7 @@ async def test_proposals_travel_under_their_public_names():
     try:
         async with asgi_client(api(admin)) as client:
             listed = await client.get("/v1/pipeline-proposals?status=open")
-            assert listed.json() == {"items": []}
+            assert listed.json() == {"items": [], "capacity": None}
             body = proposal().model_dump(mode="json") | {
                 "replace_monitor_id": "service-1"
             }
@@ -432,3 +459,15 @@ async def test_proposals_travel_under_their_public_names():
     assert author is admin
     assert (sent.replace_service_id, sent.name) == ("service-1", "Pump vibration")
     assert proposals.create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_the_list_says_how_much_room_there_is_to_start_one(library):
+    async with library() as session:
+        listed = await PipelineProposals(session).list()
+        assert listed.capacity is not None
+        assert listed.capacity.running == 1
+        assert (
+            listed.capacity.limit
+            == get_tactic_settings().config.radar_max_active_monitors
+        )

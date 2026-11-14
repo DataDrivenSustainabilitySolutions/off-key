@@ -122,6 +122,18 @@ def docker(*arguments: str, check: bool = True) -> str:
     ).stdout.strip()
 
 
+def container_logs(container: str) -> str:
+    # Mosquitto logs to stderr, which `docker logs` replays on its own stderr.
+    result = subprocess.run(
+        ["docker", "logs", container],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return result.stdout + result.stderr
+
+
 def wait_for(probe, *, timeout=90):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -206,7 +218,7 @@ def pool_runtime():
             "printf 'listener 1883\\nallow_anonymous true\\n' > /tmp/test.conf; "
             "exec mosquitto -c /tmp/test.conf",
         )
-        wait_for(lambda: "running" in docker("logs", broker, check=False))
+        wait_for(lambda: "running" in container_logs(broker))
         pool = owner + "-pool"
         docker(
             "run",

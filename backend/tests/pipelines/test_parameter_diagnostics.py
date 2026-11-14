@@ -3,15 +3,12 @@
 from copy import deepcopy
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1.monitors import _normalize_models_for_gateway
+from off_key_api_gateway.api.v1.monitors import detectors_by_type
 from off_key_core.models.adaptive import detector_component
 from off_key_core.models.parameter_validation import validate_parameter_schema
 from off_key_core.models.pipeline_fields import component_fields
 from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
 from off_key_core.schemas.radar import AdaptiveStreamConfig
-from off_key_tactic_middleware.api.v1.models import router
 from off_key_tactic_middleware.services.pipelines.release import normalize_saved_launch
 from pydantic import ValidationError
 
@@ -68,11 +65,7 @@ def test_pydantic_variant_diagnostics_address_submitted_object_keys():
 
 
 def test_discovery_serves_the_graphs_actual_fields_without_numerical_imports():
-    app = FastAPI()
-    app.include_router(router)
-    response = TestClient(app).get("/models/")
-    assert response.status_code == 200
-    models = _normalize_models_for_gateway(response.json())
+    models = detectors_by_type()
     components = {item.id: item for item in pipeline_catalog().components}
     for name, model in models.items():
         assert model["fields"] == [

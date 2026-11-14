@@ -26,11 +26,12 @@ from off_key_core.schemas.system import (
 )
 from off_key_core.schemas.system_collection import SystemCollectionChange
 from off_key_core.utils.collection_rules import CollectionRuleResolver
-from sqlalchemy import literal, select, tuple_
+from sqlalchemy import func, literal, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import ConflictError
 from .system_collection import SystemCollectionService
+from .system_ingress import RECONNECT_CHANNEL
 
 
 class SystemService:
@@ -106,6 +107,19 @@ class SystemService:
 
     async def storage(self) -> StorageStatus:
         return await read_storage_status(self.session)
+
+    async def request_reconnect(self, connection_id: str) -> bool:
+        """Ask the recording ingress to retry a broker now instead of after its
+        backoff. False while the ingress reports no recording from that broker.
+        """
+        runtime = await read_collection_runtime(self.session)
+        if connection_id not in ((runtime.ingress or {}).get("sources") or {}):
+            return False
+        await self.session.execute(
+            select(func.pg_notify(RECONNECT_CHANNEL, connection_id))
+        )
+        await self.session.commit()
+        return True
 
     async def require_writes(self) -> None:
         await require_application_writes(self.session)

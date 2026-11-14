@@ -164,7 +164,8 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 ## Data access paths
 
-- Frontend → API Gateway → TACTIC data services → database.
+- Frontend → API (domain services in process) → database.
+- The TACTIC worker reads and writes through the same services in the background.
 - MQTT Proxy writes telemetry through the shared backend service layer.
 - RADAR writes monitoring evidence and anomalies.
 - DB Sync initializes the current schema and exposes schema readiness. Startup does

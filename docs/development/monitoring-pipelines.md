@@ -66,9 +66,8 @@ route is closed to keys unless its decorator carries
 starts services may call, so the same mark decides access and shows in the OpenAPI
 document as `x-agent-access`. A key has no permissions: on a marked route it
 passes the permission checks, and `current_member` refuses it wherever a handler
-needs a person. To open a route, mark it in both services and add it to
-`GATEWAY_AGENT_ACCESS` and `TACTIC_AGENT_ACCESS` in
-`backend/tests/contracts/test_access_matrix.py`, which fail until the tables and
+needs a person. To open a route, mark it and add it to `GATEWAY_AGENT_ACCESS` in
+`backend/tests/contracts/test_access_matrix.py`, which fails until the table and
 the marks agree.
 
 A caller that may not start a service, or would rather ask, hands its design in
@@ -1528,8 +1527,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The reference is immutable commit
-`730e91b9b30a6122ef073a4dae55fec0293df437`, the release that added per-reading
-hold timing and migration 033.
+`48b8eb008103d95d541bf19a95fc1deae6ab3e36`, the first build with one API service.
+It has per-reading hold timing and migration 033.
 Its layout holds switched-off steps and notes, and a step's title lives in the
 design, as in the current release. The rehearsal still switches between
 different application binaries.

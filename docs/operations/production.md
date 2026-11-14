@@ -275,7 +275,7 @@ investigation. In Explore, for example:
 
 A browser error from the API shows a reference such as `(reference 4f1c…)`. It is
 the request's correlation ID, so `{service=~".+"} |= "4f1c…"` finds every line of
-that request across the gateway and TACTIC.
+that request in the API.
 
 Alloy uses a per-node Unix proxy limited to the Docker discovery and log APIs.
 No monitoring service publishes a port; only Traefik connects Grafana's internal

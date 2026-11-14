@@ -2,8 +2,6 @@
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
@@ -17,7 +15,6 @@ from off_key_core.db.models import (
     User,
 )
 from off_key_core.schemas.dojo import CsvImportQuery, RunCreate, RunPromote
-from off_key_tactic_middleware.api.v1.dojo import router
 from off_key_tactic_middleware.domain import ConflictError, NotFoundError
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.runs import DojoRuns
@@ -25,6 +22,7 @@ from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 from sqlalchemy import select
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
 from tests.support.membership import bootstrap
 from tests.support.pipelines import quick
@@ -123,15 +121,7 @@ async def test_promotion_needs_a_run_and_pipeline_authoring(sessions, monkeypatc
 
 
 def app(factory):
-    application = FastAPI()
-    application.include_router(router, prefix="/api/v1")
-
-    async def database():
-        async with factory() as session:
-            yield session
-
-    application.dependency_overrides[get_db_async] = database
-    return application
+    return gateway_app(sessions=factory)
 
 
 @pytest.mark.asyncio
@@ -157,16 +147,16 @@ async def test_promotion_also_needs_manage_monitors(sessions):
     body = {"name": "From the Dojo"}
     async with asgi_client(app(factory)) as client:
         refused = await client.post(
-            f"/api/v1/dojo/runs/{run.id}/promote",
+            f"/v1/dojo/runs/{run.id}/promote",
             json=body,
             headers={"Authorization": f"Bearer {access_token(trainer)}"},
         )
         read = await client.get(
-            f"/api/v1/dojo/runs/{run.id}",
+            f"/v1/dojo/runs/{run.id}",
             headers={"Authorization": f"Bearer {access_token(trainer)}"},
         )
         created = await client.post(
-            f"/api/v1/dojo/runs/{run.id}/promote",
+            f"/v1/dojo/runs/{run.id}/promote",
             json=body,
             headers={"Authorization": f"Bearer {access_token(admin)}"},
         )

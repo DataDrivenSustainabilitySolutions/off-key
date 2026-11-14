@@ -51,9 +51,8 @@ revoking it and each service a key starts are logged as security events.
 
 ## Installation and upgrade
 
-1. Configure a dedicated random `INTERNAL_API_SECRET` (at least 32 characters)
-   in the API and TACTIC environments. Generate it with `openssl rand -hex 32`.
-   Keep it separate from JWT, database, and MQTT credentials.
+1. Configure a random `JWT_SECRET` of at least 32 characters. Generate it with
+   `openssl rand -hex 32` and keep it separate from database and MQTT credentials.
 2. Set `FRONTEND_BASE_URL` to the externally reachable dashboard URL and configure
    SMTP. The development default is Mailpit, which captures mail rather than
    delivering it. Real organization invitations and password recovery require
@@ -107,10 +106,9 @@ New passwords require at least 12 characters and at most 72 UTF-8 bytes.
 
 ## Operating boundary
 
-The gateway checks current membership on every protected request. TACTIC business
-routes require the API service credential; health and readiness remain public.
-The internal TACTIC port is bound to localhost in development and is not published
-by the Swarm stack. Keep databases, the Docker socket proxy, SMTP, and brokers on
+The API checks current membership on every protected request. The TACTIC worker
+serves only health and readiness; its port is bound to localhost in development
+and is not published by the Swarm stack. Keep databases, the Docker socket proxy, SMTP, and brokers on
 private networks. Remote users enter through the HTTPS dashboard/API ingress.
 
 The infrastructure renders a host-only `.env` and scoped `.env.<service>` files

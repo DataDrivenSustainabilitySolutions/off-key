@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import HTTPException
+from off_key_api_gateway.api.access import signed_in_member
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE, Permission
 from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import MemberRole, RememberedSession, User
@@ -20,9 +20,6 @@ from off_key_core.schemas.members import (
 )
 from off_key_core.utils import mail
 from off_key_tactic_middleware import bootstrap_admin
-from off_key_tactic_middleware.api.collection_auth import signed_in_member
-from off_key_tactic_middleware.api.v1.members import member_service
-from off_key_tactic_middleware.api.v1.members import router as members_router
 from off_key_tactic_middleware.domain import (
     AuthenticationError,
     ConflictError,
@@ -37,7 +34,6 @@ from off_key_tactic_middleware.services.accounts.users import UserService
 from sqlalchemy import select, text
 
 from tests.support.env import set_auth_env
-from tests.support.http import asgi_client
 from tests.support.membership import PASSWORD, bootstrap
 from tests.support.tokens import access_token
 
@@ -75,8 +71,12 @@ async def test_remembered_sessions_store_hashes_expire_and_revoke_individually(
     async with sessions() as session:
         service = RememberedSessionService(session)
         user = await session.get(User, user_id)
-        first = await service.create(user)
-        second = await service.create(user)
+        first = await service.create(
+            user_id=user.id, session_version=user.session_version
+        )
+        second = await service.create(
+            user_id=user.id, session_version=user.session_version
+        )
         stored = await session.get(
             RememberedSession, hashlib.sha256(first["token"].encode()).hexdigest()
         )
@@ -132,7 +132,9 @@ async def test_remembered_session_reuse_after_rotation_ends_the_sign_in(
     async with sessions() as session:
         service = RememberedSessionService(session)
         user = await session.get(User, user_id)
-        original = (await service.create(user))["token"]
+        original = (
+            await service.create(user_id=user.id, session_version=user.session_version)
+        )["token"]
         spent = await session.get(
             RememberedSession, hashlib.sha256(original.encode()).hexdigest()
         )
@@ -184,21 +186,13 @@ async def test_remembered_sessions_obey_current_membership(member_database, chan
     user_id = await bootstrap(sessions)
     async with sessions() as session:
         user = await session.get(User, user_id)
-        remembered = await RememberedSessionService(session).create(user)
+        remembered = await RememberedSessionService(session).create(
+            user_id=user.id, session_version=user.session_version
+        )
         if change == "password_reset":
-            app = FastAPI()
-            app.include_router(members_router)
-            app.dependency_overrides[member_service] = lambda: MemberService(session)
-            async with asgi_client(app) as client:
-                link = await client.post(
-                    "/members/request-password-reset", json={"email": user.email}
-                )
-                assert link.status_code == 200
-                reset = await client.post(
-                    "/members/reset-password",
-                    json={"token": link.json()["token"], "new_password": PASSWORD},
-                )
-                assert reset.status_code == 200
+            members = MemberService(session)
+            link = await members.issue_reset_token(user.email)
+            await members.reset_password(link["token"], PASSWORD)
         elif change == "disabled":
             user.is_active = False
         elif change == "unverified":
@@ -377,15 +371,12 @@ async def test_invitation_reset_and_immediate_session_revocation(
             )
 
     claims = await login()
-    credential = HTTPAuthorizationCredentials(
-        scheme="Bearer",
-        credentials=access_token(
-            SimpleNamespace(
-                email=claims["email"],
-                id=claims["id"],
-                session_version=claims["session_version"],
-            )
-        ),
+    credential = access_token(
+        SimpleNamespace(
+            email=claims["email"],
+            id=claims["id"],
+            session_version=claims["session_version"],
+        )
     )
     async with sessions() as session:
         assert (await signed_in_member(credential, session)).id == claims["id"]
@@ -400,15 +391,12 @@ async def test_invitation_reset_and_immediate_session_revocation(
         assert denied.value.status_code == 401
 
     claims = await login()
-    credential = HTTPAuthorizationCredentials(
-        scheme="Bearer",
-        credentials=access_token(
-            SimpleNamespace(
-                email=claims["email"],
-                id=claims["id"],
-                session_version=claims["session_version"],
-            )
-        ),
+    credential = access_token(
+        SimpleNamespace(
+            email=claims["email"],
+            id=claims["id"],
+            session_version=claims["session_version"],
+        )
     )
     async with sessions() as session:
         actor = await session.get(User, admin_id)
@@ -564,13 +552,10 @@ async def test_reset_between_actor_read_and_self_update_revokes_new_session(
             admin_id, MemberUpdate(role="user", is_active=True), actor
         )
         assert changed.session_version == reset_version + 1
-    credential = HTTPAuthorizationCredentials(
-        scheme="Bearer",
-        credentials=access_token(
-            SimpleNamespace(
-                email="admin@example.com", id=admin_id, session_version=reset_version
-            )
-        ),
+    credential = access_token(
+        SimpleNamespace(
+            email="admin@example.com", id=admin_id, session_version=reset_version
+        )
     )
     async with sessions() as session:
         with pytest.raises(HTTPException) as denied:

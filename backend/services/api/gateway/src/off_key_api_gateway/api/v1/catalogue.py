@@ -1,12 +1,11 @@
 """The catalogue, its recording, brokers, storage and live views.
 
-TACTIC enforces `manage_sources` on changes; the gateway forwards the member's
-credential and answers with the public field names.
+Changes need `manage_sources`. Answers carry the public field names.
 """
 
-from typing import Any
-
-from fastapi import APIRouter, Depends, Path, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
+from off_key_core.auth.permissions import Permission
+from off_key_core.db.models import User
 from off_key_core.schemas.collection_health import CollectionHealth
 from off_key_core.schemas.collection_rules import (
     CollectionRule,
@@ -26,24 +25,31 @@ from off_key_core.schemas.system_collection import (
     SystemCollectionScope,
 )
 from off_key_core.schemas.system_live import SystemLiveScope, SystemLiveStart
+from off_key_tactic_middleware.services.catalogue.broker_check import BrokerCheck
+from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.catalogue.system_live import (
+    LiveSessionError,
+    SystemLiveService,
+)
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.json_schema import SkipJsonSchema
 
-from ...facades.tactic import tactic
-from ..access import member_authorization
-from ..errors import TacticErrorRoute
+from ...providers import get_broker_check, get_live_service, get_system_service
+from ..access import current_member, require_permission
+from ..errors import DomainErrorRoute
 
-router = APIRouter(route_class=TacticErrorRoute)
-brokers_router = APIRouter(route_class=TacticErrorRoute)
-recording_router = APIRouter(route_class=TacticErrorRoute)
-storage_router = APIRouter(route_class=TacticErrorRoute)
-live_router = APIRouter(route_class=TacticErrorRoute)
+router = APIRouter(route_class=DomainErrorRoute)
+brokers_router = APIRouter(route_class=DomainErrorRoute)
+recording_router = APIRouter(route_class=DomainErrorRoute)
+storage_router = APIRouter(route_class=DomainErrorRoute)
+live_router = APIRouter(route_class=DomainErrorRoute)
+manage_sources = require_permission(Permission.manage_sources)
 
 VIEW_ID = Path(pattern=r"^[0-9a-f]{32}$")
 
 
 class _Open(BaseModel):
-    """A TACTIC answer whose other fields pass through unchanged."""
+    """An answer whose other fields pass through unchanged."""
 
     model_config = ConfigDict(extra="allow")
 
@@ -61,7 +67,7 @@ class RecordedReading(_Open):
         default=None, **public("broker_id", "connection_id")
     )
     policy_origin: PolicyOrigin | None = None
-    # How TACTIC stores the reading; the API names readings by id only.
+    # How the reading is stored; the API names readings by id only.
     entity_id: SkipJsonSchema[str | None] = Field(default=None, exclude=True)
     telemetry_key: SkipJsonSchema[str | None] = Field(default=None, exclude=True)
     accepted_topic: SkipJsonSchema[str | None] = Field(default=None, exclude=True)
@@ -120,28 +126,15 @@ class LiveView(_Open):
     telemetry: LiveMeasurements = Field(**public("measurements", "telemetry"))
 
 
-async def system_request(
-    method: str,
-    authorization: str,
-    path: str = "",
-    body: Any = None,
-):
-    return await tactic.request(
-        method,
-        f"/api/v1/system{path}",
-        json_data=body,
-        headers={"Authorization": authorization},
-    )
-
-
-def _dump(model: BaseModel, **options) -> dict:
-    """TACTIC reads the internal field names."""
-    return model.model_dump(mode="json", **options)
+def _catalogue(snapshot, *, can_edit: bool) -> dict:
+    return {**snapshot.model_dump(mode="json"), "can_edit": can_edit}
 
 
 @router.get("", response_model=Catalogue)
 async def get_catalogue(
-    request: Request, authorization: str = Depends(member_authorization)
+    request: Request,
+    user: User = Depends(current_member),
+    system: SystemService = Depends(get_system_service),
 ):
     """The saved catalogue and how it is recorded now.
 
@@ -150,7 +143,10 @@ async def get_catalogue(
     `runtime.bindings` says per reading id how it is recorded;
     `can_edit` says whether the caller may change it.
     """
-    result = await system_request("GET", authorization)
+    result = _catalogue(
+        await system.read(),
+        can_edit=Permission.manage_sources in user.permissions,
+    )
     if getattr(request.state, "demo_guest", False):
         result = {**result, "updated_by": None, "can_edit": False}
     return result
@@ -158,7 +154,10 @@ async def get_catalogue(
 
 @router.put("", response_model=Catalogue)
 async def save_catalogue(
-    change: SystemChange, authorization: str = Depends(member_authorization)
+    change: SystemChange,
+    request: Request,
+    user: User = Depends(manage_sources),
+    system: SystemService = Depends(get_system_service),
 ):
     """Replace the saved catalogue. Needs `manage_sources`.
 
@@ -167,50 +166,76 @@ async def save_catalogue(
     that running monitors use answers 409 unless `pause_affected_monitors` is
     set, which pauses those monitors first.
     """
-    return await system_request("PUT", authorization, body=_dump(change))
+    snapshot = await system.save(change, actor=user.email)
+    live = getattr(request.app.state, "system_live", None)
+    if live is not None:
+        await live.reconcile(snapshot)
+    return _catalogue(snapshot, can_edit=True)
 
 
 @router.get("/revisions")
 async def list_catalogue_revisions(
-    authorization: str = Depends(member_authorization),
+    user: User = Depends(current_member),
+    system: SystemService = Depends(get_system_service),
 ):
     """The last 50 saved catalogue revisions, newest first, with who saved them."""
-    return await system_request("GET", authorization, "/revisions")
+    return await system.revisions(limit=50)
 
 
 @brokers_router.post("/check", response_model=SystemConnectionCheck)
 async def check_broker(
     scope: SystemConnectionCheckScope,
-    authorization: str = Depends(member_authorization),
+    user: User = Depends(manage_sources),
+    system: SystemService = Depends(get_system_service),
+    checker: BrokerCheck = Depends(get_broker_check),
 ):
     """Connect once to a saved broker and disconnect; nothing is subscribed.
 
-    Needs `manage_sources`.
+    A broker is sent one MQTT CONNECT, an HTTP source one GET for the request
+    path of its first reading. Needs `manage_sources`.
     """
-    return await system_request(
-        "POST", authorization, "/connections/check", _dump(scope)
+    snapshot = await system.read()
+    connection = next(
+        (
+            item
+            for item in snapshot.document.connections
+            if item.id == scope.connection_id
+        ),
+        None,
     )
+    if connection is None:
+        raise HTTPException(404, "This broker is not in the saved system.")
+    path = next(
+        (
+            stream.topic
+            for stream in snapshot.document.streams
+            if connection.protocol == "http" and stream.connection_id == connection.id
+        ),
+        None,
+    )
+    return await checker.check(connection, path=path)
 
 
 @brokers_router.post("/{broker_id}/reconnect", response_model=BrokerReconnect)
 async def reconnect_broker(
     broker_id: str = Path(min_length=1, max_length=280),
-    authorization: str = Depends(member_authorization),
+    user: User = Depends(manage_sources),
+    system: SystemService = Depends(get_system_service),
 ):
     """Retry a recorded broker now instead of waiting for its backoff.
 
     Needs `manage_sources`.
     """
-    scope = SystemConnectionCheckScope(connection_id=broker_id)
-    return await system_request(
-        "POST", authorization, "/connections/reconnect", _dump(scope)
-    )
+    if not await system.request_reconnect(broker_id):
+        raise HTTPException(409, "No readings are being recorded from this broker.")
+    return {"connection_id": broker_id}
 
 
 @recording_router.put("", response_model=Catalogue)
 async def change_recording(
     change: SystemCollectionChange | SystemCollectionRuleChange,
-    authorization: str = Depends(member_authorization),
+    user: User = Depends(manage_sources),
+    system: SystemService = Depends(get_system_service),
 ):
     """Change which readings are recorded and how. Needs `manage_sources`.
 
@@ -218,102 +243,128 @@ async def change_recording(
     broker, topic or reading scope. Affected monitors answer 409 unless
     `pause_affected_monitors` is set. Answers with the saved catalogue.
     """
-    return await system_request("PUT", authorization, "/collection", _dump(change))
+    snapshot = await system.apply_collection(change, actor=user.email)
+    return _catalogue(snapshot, can_edit=True)
 
 
 @recording_router.post("/preview", response_model=RecordingPreview)
 async def preview_recording(
     change: SystemCollectionChange | SystemCollectionRuleChange,
-    authorization: str = Depends(member_authorization),
+    user: User = Depends(manage_sources),
+    system: SystemService = Depends(get_system_service),
 ):
     """Preview a recording change without applying it. Needs `manage_sources`.
 
     Answers how many readings would start, stop or change rate, the expected
     rows per day and the running monitors the change would affect.
     """
-    return await system_request(
-        "POST", authorization, "/collection/preview", _dump(change)
-    )
+    # A dict keeps the counts: RecordingPreview names only the renamed fields,
+    # and FastAPI drops a returned model's other fields.
+    return (await system.preview_collection(change)).model_dump(mode="json")
 
 
 @recording_router.post("/status", response_model=RecordingStatus)
 async def get_recording_status(
-    scope: SystemCollectionScope, authorization: str = Depends(member_authorization)
+    scope: SystemCollectionScope,
+    user: User = Depends(current_member),
+    system: SystemService = Depends(get_system_service),
 ):
     """Recording state of the given `reading_ids` and their brokers."""
-    return await system_request(
-        "POST", authorization, "/collection/status", _dump(scope)
-    )
+    return await system.collection_status(scope.stream_ids)
 
 
 @recording_router.get("/health", response_model=CollectionHealth)
-async def get_recording_health(authorization: str = Depends(member_authorization)):
+async def get_recording_health(
+    user: User = Depends(current_member),
+    system: SystemService = Depends(get_system_service),
+):
     """Whether readings are being recorded, and what to fix if not.
 
     `diagnosis` names the first failing check (`code`, `tone`, `title`,
     `explanation`) so a caller needs no rules of its own. The raw collector and
     broker reports it was decided from are included for detail views.
     """
-    return await system_request("GET", authorization, "/health")
+    return await system.health()
 
 
 @storage_router.get("", response_model=StorageStatus)
-async def get_storage(authorization: str = Depends(member_authorization)):
+async def get_storage(
+    user: User = Depends(current_member),
+    system: SystemService = Depends(get_system_service),
+):
     """Database size, retention policies and the storage cap."""
-    return await system_request("GET", authorization, "/storage")
+    return await system.storage()
 
 
 @live_router.get("/measurements", response_model=LiveMeasurements)
 async def list_live_measurements(
     after_sequence: int = Query(default=0, ge=0),
-    authorization: str = Depends(member_authorization),
+    user: User = Depends(current_member),
+    system: SystemService = Depends(get_system_service),
+    live: SystemLiveService = Depends(get_live_service),
 ):
-    """Latest values from open live views, after the given sequence number.
-
-    Needs `manage_sources`.
-    """
-    return await system_request(
-        "GET", authorization, f"/live?after_sequence={after_sequence}"
-    )
+    """Latest values from open live views, after the given sequence number."""
+    await live.reconcile(await system.read())
+    return live.snapshot(after_sequence)
 
 
 @live_router.post("/views", response_model=LiveView)
 async def open_live_view(
-    change: SystemLiveStart, authorization: str = Depends(member_authorization)
+    change: SystemLiveStart,
+    user: User = Depends(manage_sources),
+    system: SystemService = Depends(get_system_service),
+    live: SystemLiveService = Depends(get_live_service),
 ):
     """Watch configured readings live without recording them.
 
     The view ends on its own unless it is renewed while needed. Nothing is
     stored. Needs `manage_sources`.
     """
-    return await system_request(
-        "POST", authorization, "/live/leases", _dump(change, exclude_none=True)
-    )
+    await system.require_writes()
+    try:
+        return await live.acquire(
+            await system.read(),
+            user.id,
+            change.expected_revision,
+            change.stream_ids,
+        )
+    except LiveSessionError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
 
 
 @live_router.post("/views/{view_id}/renew", response_model=LiveView)
 async def renew_live_view(
     view_id: str = VIEW_ID,
-    authorization: str = Depends(member_authorization),
     change: SystemLiveScope | None = None,
+    user: User = Depends(manage_sources),
+    system: SystemService = Depends(get_system_service),
+    live: SystemLiveService = Depends(get_live_service),
 ):
     """Keep a live view open, optionally with other `reading_ids`.
 
     Needs `manage_sources`.
     """
-    return await system_request(
-        "PUT",
-        authorization,
-        f"/live/leases/{view_id}",
-        _dump(change) if change else None,
-    )
+    await system.require_writes()
+    try:
+        return await live.renew(
+            await system.read(),
+            user.id,
+            view_id,
+            change.stream_ids if change else None,
+        )
+    except LiveSessionError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
 
 
 @live_router.delete("/views/{view_id}", status_code=204)
 async def close_live_view(
     view_id: str = VIEW_ID,
-    authorization: str = Depends(member_authorization),
+    user: User = Depends(manage_sources),
+    live: SystemLiveService = Depends(get_live_service),
 ):
     """End a live view. Needs `manage_sources`."""
-    await system_request("DELETE", authorization, f"/live/leases/{view_id}")
+    try:
+        await live.release(user.id, view_id)
+    except LiveSessionError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
     return Response(status_code=204)

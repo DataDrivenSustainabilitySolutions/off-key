@@ -1,10 +1,10 @@
 ---
 # Only services holding database credentials and the RADAR workers TACTIC
 # started can write during a schema upgrade; a service the new model no longer
-# describes is stopped too, since nothing says it cannot write. Ingress
-# (cloudflared, Traefik, landing, frontend, oauth2-proxy), the stateless gateway
-# and the brokers keep running, so a release that stops part-way never takes
-# the public site offline.
+# describes is stopped too, since nothing says it cannot write. The API holds
+# database credentials, so it stops too; ingress (cloudflared, Traefik, landing,
+# frontend, oauth2-proxy) and the brokers keep running, so a release that stops
+# part-way keeps the public site up.
 - name: List the existing application services
   command:
     argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "label=com.docker.stack.namespace={{ stack_name }}"]

@@ -45,6 +45,14 @@ def get_async_docker() -> AsyncDocker:
     return _shared_async_docker
 
 
+def close_shared_async_docker() -> None:
+    """Close the process-wide Docker facade, if one was made."""
+    global _shared_async_docker
+    client, _shared_async_docker = _shared_async_docker, None
+    if client is not None:
+        client.close()
+
+
 class RadarWorkloadManager:
     """Create, inspect, and remove RADAR Swarm services."""
 

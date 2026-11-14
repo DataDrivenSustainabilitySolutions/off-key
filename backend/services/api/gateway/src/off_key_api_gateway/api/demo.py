@@ -1,9 +1,9 @@
 """Public read-only demo.
 
 With ``DEMO_MODE`` on, a request without an ``Authorization`` header is a
-guest. A guest reaches only the routes in ``GUEST_ROUTES``; the gateway signs
-those requests in as one ordinary viewer member, so TACTIC still applies the
-member role to every call. Anything else answers 403, including routes added
+guest. A guest reaches only the routes in ``GUEST_ROUTES``; the API signs
+those requests in as one ordinary viewer member, so the member role still
+applies to every call. Anything else answers 403, including routes added
 later, until they are listed here. Requests that carry a token are untouched.
 """
 
@@ -19,11 +19,15 @@ from limits.strategies import MovingWindowRateLimiter
 from off_key_core.auth.demo import DEMO_VIEWER_ROLE
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.logs import logger
+from off_key_core.db.base import get_async_session_local
 from off_key_core.demo.sources import public_sources
+from off_key_tactic_middleware.domain import AuthenticationError
+from off_key_tactic_middleware.repositories import UserRepository
+from off_key_tactic_middleware.services.accounts.users import UserService
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from ..facades.tactic import TacticError, tactic
 from ..settings import DemoSettings
 from .rate_limiter import client_ip
 from .request_guards import route_path
@@ -158,11 +162,14 @@ class DemoViewer:
         if email is None or password is None:
             raise DemoUnavailable
         try:
-            viewer = await tactic.authenticate_user(
-                email=str(email), password=password.get_secret_value()
+            async with get_async_session_local()() as session:
+                viewer = await UserService(
+                    session, UserRepository(session)
+                ).authenticate(email=str(email), password=password.get_secret_value())
+        except (AuthenticationError, SQLAlchemyError, OSError) as exc:
+            logger.error(
+                "event=demo.viewer_sign_in_failed error_type=%s", type(exc).__name__
             )
-        except TacticError as exc:
-            logger.error("event=demo.viewer_sign_in_failed status=%s", exc.status)
             raise DemoUnavailable from exc
         # The dedicated role is checked again, with its permissions, on every read.
         if viewer.get("role") != DEMO_VIEWER_ROLE:

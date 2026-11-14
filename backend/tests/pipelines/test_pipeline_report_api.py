@@ -5,10 +5,8 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from fastapi import FastAPI
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.config.auth import get_auth_settings
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import PipelineRun, User
 from off_key_core.models.pipeline_reports import MAX_PIPELINE_REPORT_BYTES
 from off_key_core.models.pipelines import execution_fingerprint, pipeline_catalog
@@ -20,10 +18,10 @@ from off_key_core.schemas.pipelines import (
 )
 from off_key_core.schemas.radar import RadarStartConfig
 from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
-from off_key_tactic_middleware.api.v1.pipelines import router
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 
+from tests.support.gateway import gateway_app
 from tests.support.maximum_pipeline import maximum_definition
 from tests.support.pipeline_database import membership_token
 
@@ -99,14 +97,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         session.add_all(users)
         await session.commit()
         admin_token, member_token = map(membership_token, users)
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v1")
-
-    async def database_session():
-        async with pipeline_database() as session:
-            yield session
-
-    app.dependency_overrides[get_db_async] = database_session
+    app = gateway_app(sessions=pipeline_database)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://fixture"
@@ -120,19 +111,19 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
             "idempotency_key": "http-apply",
         }
         denied = await client.post(
-            "/api/v1/monitors/pipelines/apply",
+            "/v1/pipelines/apply",
             headers={"Authorization": f"Bearer {member_token}"},
             json=apply_body,
         )
         assert denied.status_code == 403, denied.text[:1000]
         applied = await client.post(
-            "/api/v1/monitors/pipelines/apply",
+            "/v1/pipelines/apply",
             headers={"Authorization": f"Bearer {admin_token}"},
             json=apply_body,
         )
         assert applied.status_code == 202, applied.text[:1000]
         retried = await client.post(
-            "/api/v1/monitors/pipelines/apply",
+            "/v1/pipelines/apply",
             headers={"Authorization": f"Bearer {admin_token}"},
             json=apply_body,
         )
@@ -140,7 +131,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         assert retried.json()["id"] == applied.json()["id"]
         selected = "p59_" + "x" * 96
         response = await client.post(
-            f"/api/v1/monitors/pipelines/{design.id}/validate",
+            f"/v1/pipelines/{design.id}/validate",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={
                 "definition": maximum_definition().model_dump(mode="json"),
@@ -151,7 +142,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         assert len(response.content) <= MAX_PIPELINE_REPORT_BYTES
         assert len(response.json()["features"][selected]) == 100
         response = await client.post(
-            "/api/v1/monitors/pipelines/validate",
+            "/v1/pipelines/validate",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={
                 "definition": maximum_definition().model_dump(mode="json"),
@@ -162,7 +153,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         assert len(response.content) <= MAX_PIPELINE_REPORT_BYTES
         assert len(response.json()["features"][selected]) == 100
         response = await client.post(
-            "/api/v1/monitors/pipelines/validate",
+            "/v1/pipelines/validate",
             headers={"Authorization": f"Bearer {member_token}"},
             json={"definition": maximum_definition().model_dump(mode="json")},
         )
@@ -170,7 +161,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         invalid = maximum_definition().model_dump(mode="json")
         invalid["nodes"][0]["params"] = {"😺" * 100_000: "unknown"}
         response = await client.post(
-            f"/api/v1/monitors/pipelines/{design.id}/validate",
+            f"/v1/pipelines/{design.id}/validate",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={"definition": invalid, "selected_node_id": "input"},
         )
@@ -188,7 +179,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         monkeypatch.setenv("TACTIC_PIPELINE_AUTHORING_ENABLED", "false")
         get_tactic_settings.cache_clear()
         response = await client.get(
-            f"/api/v1/monitors/{service_id}/pipeline",
+            f"/v1/monitors/{service_id}/pipeline",
             params={"selected_node_id": selected},
             headers={"Authorization": f"Bearer {member_token}"},
         )
@@ -200,7 +191,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
             len(httpx.Response(200, json=report).content) <= MAX_PIPELINE_REPORT_BYTES
         )
         response = await client.get(
-            f"/api/v1/monitors/{service_id}/pipeline",
+            f"/v1/monitors/{service_id}/pipeline",
             params={"selected_node_id": "removed_node"},
             headers={"Authorization": f"Bearer {member_token}"},
         )
@@ -209,7 +200,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         assert report["features"] == {}
         assert "selected_node" in {issue["code"] for issue in report["issues"]}
         response = await client.get(
-            f"/api/v1/monitors/{service_id}/pipeline-metadata",
+            f"/v1/monitors/{service_id}/pipeline/metadata",
             params={"selected_node_id": selected},
             headers={"Authorization": f"Bearer {member_token}"},
         )
@@ -221,14 +212,14 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
         assert len(focused["features"]) <= 2
         assert len(response.content) <= MAX_PIPELINE_REPORT_BYTES
         response = await client.get(
-            f"/api/v1/monitors/pipelines/{design.id}/revisions/{revision.id}/metadata",
+            f"/v1/pipelines/{design.id}/revisions/{revision.id}/metadata",
             params={"selected_node_id": selected},
             headers={"Authorization": f"Bearer {member_token}"},
         )
         assert response.status_code == 200, response.text[:1000]
         assert response.json()["features"] == focused["features"]
         response = await client.post(
-            f"/api/v1/monitors/pipelines/{design.id}/validate",
+            f"/v1/pipelines/{design.id}/validate",
             headers={"Authorization": f"Bearer {member_token}"},
             json={"definition": maximum_definition().model_dump(mode="json")},
         )

@@ -4,8 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     Anomaly,
     DeploymentMaintenance,
@@ -29,7 +27,6 @@ from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_tactic_middleware.api.v1.dojo import router
 from off_key_tactic_middleware.domain import ConflictError, NotFoundError
 from off_key_tactic_middleware.services.dojo import labels as labels_module
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
@@ -37,6 +34,7 @@ from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from sqlalchemy import MetaData
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
 from tests.support.membership import bootstrap
 from tests.support.tokens import access_token
@@ -235,15 +233,8 @@ async def test_route_suggests_labels_to_members_who_may_use_the_dojo(sessions):
     creator = await bootstrap(factory)
     async with factory() as session:
         admin = await session.get(User, creator)
-    application = FastAPI()
-    application.include_router(router, prefix="/api/v1")
-
-    async def database():
-        async with factory() as session:
-            yield session
-
-    application.dependency_overrides[get_db_async] = database
-    path = f"/api/v1/dojo/datasets/{view.id}/label-suggestions"
+    application = gateway_app(sessions=factory)
+    path = f"/v1/dojo/datasets/{view.id}/label-suggestions"
     async with asgi_client(application) as client:
         listed = await client.get(
             path,

@@ -14,8 +14,10 @@ Visual monitor designs, numerical compilation, activation claims and recovery
 contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 
 - `frontend` (React): user-facing UI.
-- `api-gateway` (FastAPI): external API facade under `/v1`.
-- `tactic-middleware` (FastAPI): data adapter and RADAR orchestration.
+- `api-gateway` (FastAPI): the one API under `/v1`; it serves every request in
+  process, with the domain services and the database.
+- `tactic-middleware`: the background worker. It records sources, runs pipeline
+  activations and keeps RADAR workloads in step; it serves only `/health` and `/ready`.
 - `db-sync`: schema initialization and readiness API.
 - `mqtt-proxy`: selected collection, sampling and accepted MQTT publishing.
 - `mqtt-radar`: anomaly workload image; TACTIC launches one workload per monitor.
@@ -28,15 +30,15 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 - `emqx-main`, plus optional `emqx-worker`: internal broker.
 - `source-broker`: deterministic local source telemetry broker.
 - `mailpit`: local mail capture for authentication flows.
-- `socket-proxy`: restricted Docker API access for TACTIC.
+- `socket-proxy`: restricted Docker API access for TACTIC and the API.
 
 ## Service responsibilities and interplay
 
 | Service | Owns | Reads from | Writes to | Critical dependencies |
 | --- | --- | --- | --- | --- |
 | Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway, reached through `/api` on the frontend's own origin |
-| API Gateway | External route contract and request composition | TACTIC data, membership, catalogue and monitoring endpoints | HTTP responses | TACTIC readiness |
-| TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model catalogue | Database and container lifecycle | Docker API, database |
+| API Gateway | The route contract, membership, catalogue, monitors, live views and broker checks | Database, Docker API proxy, brokers, model catalogue | Database, monitor stops and removals | Database, Docker API |
+| TACTIC worker | Source recording, pipeline activations and RADAR reconciliation | Database, Docker API proxy, brokers | Database and container lifecycle | Docker API, database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |
 | MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
 | EMQX | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |
@@ -49,7 +51,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 ### 1. Authentication and session flow
 
 1. The frontend calls Gateway authentication routes under `/v1/auth`.
-2. The Gateway delegates data operations to TACTIC.
+2. The API checks credentials against the database in the same process.
 3. Password hashes and verification state are resolved through database-backed services.
 4. Verification and reset emails use the configured SMTP service; local mode uses Mailpit.
 5. The frontend stores the bearer token and attaches it to later API calls.
@@ -68,7 +70,7 @@ See [Collection](../operations/system-collection.md) for revision transitions an
 
 1. An operator selects sensors and a strategy in the frontend.
 2. The frontend calls Gateway monitor routes under `/v1/monitors`.
-3. TACTIC validates the request, persists the desired workload generation and
+3. The API validates the request, persists the desired workload generation and
    claims its selected sensors before calling Docker. Pending and stopping
    monitors retain their sensor claims until reconciliation confirms the change.
 4. TACTIC creates or adopts the deterministic `radar-<service-id>` workload.
@@ -106,22 +108,21 @@ completed monitor stops remain durable.
 Local Compose starts everything with one command; its `depends_on` health
 conditions form two chains:
 
-- `timescaledb` → `db-sync` (`/ready/schema`) → `tactic-middleware` (`/ready`) →
-  `api-gateway` (`/health`) → `frontend`.
+- `timescaledb` → `db-sync` (`/ready/schema`) → `api-gateway` (`/health`) →
+  `frontend`, with `tactic-middleware` (`/ready`) beside the API.
 - `timescaledb`, `db-sync` and `emqx-main` → `mqtt-proxy` (`/ready` once the
   collection revision is applied).
 
 Production Swarm has no start order; the release gates on
 `infra/scripts/check_application.py` instead.
 
-Gateway liveness can succeed while TACTIC-backed data or monitoring operations remain unavailable.
+API liveness says nothing about the database; TACTIC readiness says the worker reaches Docker.
 
 ## Service-to-service HTTP contracts
 
 | Caller | Callee | Critical paths | Purpose |
 | --- | --- | --- | --- |
 | Frontend | API Gateway | `/v1/auth/*`, `/v1/catalogue*`, `/v1/devices*`, `/v1/readings/*`, `/v1/monitors/*`, `/v1/pipelines/*`, `/v1/pipeline-*`, `/v1/detectors`, `/v1/evidence*`, `/v1/alarms*` | Primary user contract |
-| API Gateway | TACTIC | `/api/v1/data/*`, `/api/v1/members/*`, `/api/v1/system/*`, `/api/v1/monitors/*`, `/api/v1/orchestration/radar/*`, `/api/v1/models/*` | Data access, membership, catalogue, pipelines and orchestration; `test_tactic_gateway_contract.py` checks every call |
 | API Gateway (startup) | DB Sync | `/health` | Waits for the schema service before serving |
 | Health tooling | API Gateway | `/health` | Gateway liveness |
 | Health tooling | TACTIC | `/health`, `/ready` | Orchestration and registry readiness |
@@ -133,8 +134,8 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 
 | Symptom | Likely breakpoint | First checks |
 | --- | --- | --- |
-| Frontend loads but has no data | Gateway-to-TACTIC data path | Gateway health, TACTIC readiness, both logs |
-| Monitoring start fails | Model validation, sensor ownership, or Docker API | TACTIC readiness, `/v1/detectors`, active monitors |
+| Frontend loads but has no data | API database path | API health and logs, database health |
+| Monitoring start fails | Model validation, sensor ownership, or Docker API | TACTIC readiness and logs, `/v1/detectors`, active monitors |
 | Telemetry is missing | Source, proxy parsing, or database write | Source publish, proxy logs/readiness, database health |
 | Evidence is absent | RADAR workload or broker topic path | Service list, RADAR logs, EMQX stream |
 | Authentication email is missing | SMTP configuration | Mail service logs and `EMAIL_*` transport settings |

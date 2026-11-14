@@ -1,9 +1,6 @@
 # Rename to vault.yml and encrypt:
 #   ansible-vault encrypt inventories/prod/group_vars/all/vault.yml
 
-# Dedicated API-to-TACTIC credential: openssl rand -hex 32
-internal_api_secret: "CHANGE_ME_generate_with_openssl_rand_hex_32"
-
 jwt_secret: "CHANGE_ME"
 # Keep a separate value while pre-membership application images are deployed.
 postgres_password: "CHANGE_ME"
@@ -27,7 +24,7 @@ mqtt_proxy_password: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_PASSWORD"
 mqtt_radar_password: "TEST_ONLY_REPLACE_WITH_DIFFERENT_RANDOM_32_BYTE_PASSWORD"
 radar_checkpoint_secret: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_SECRET"
 # Optional. Token shared by the forecast service and the workers that call it. Left
-# out, a release derives it from internal_api_secret. To set your own: openssl rand -hex 32
+# out, a release derives it from jwt_secret. To set your own: openssl rand -hex 32
 # forecast_api_token: "CHANGE_ME_generate_with_openssl_rand_hex_32"
 
 # Reusable auth key for the prod management tailnet. The prod inventory maps this to

@@ -92,7 +92,6 @@ def render(directory, environment, **overrides):
     variables = {
         "release": fixture_release(),
         "validation_environment": environment,
-        "internal_api_secret": "validation-internal-service-secret-123456789",
         "stack_dir": str(directory / "stack"),
         "stack_file_owner": str(os.getuid()),
         "stack_file_group": str(os.getgid()),

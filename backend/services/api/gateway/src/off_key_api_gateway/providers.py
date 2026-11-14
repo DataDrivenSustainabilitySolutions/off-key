@@ -1,47 +1,54 @@
-"""
-Dependency injection providers for TACTIC middleware service.
+"""The domain services each request works with, one database session apiece.
 
 Routers under api/v1 are transport-only: they receive services from these
 providers and never touch a database session, query or transaction directly
-(test_tactic_data_api_architecture enforces this). New services take the
-AsyncSession directly; the existing repositories stay but are not extended.
+(test_api_architecture enforces this). New services take the AsyncSession
+directly; the existing repositories stay but are not extended.
 """
 
 from functools import partial
 
 from fastapi import Depends, HTTPException, Request
 from off_key_core.db.base import get_db_async
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from .repositories import (
+from off_key_tactic_middleware.repositories import (
     AnomalyRepository,
     FavoriteRepository,
     UserRepository,
 )
-from .services.accounts.agents import AgentService
-from .services.accounts.members import MemberService
-from .services.accounts.remembered_sessions import RememberedSessionService
-from .services.accounts.users import UserService
-from .services.catalogue.broker_check import BrokerCheck
-from .services.catalogue.system import SystemService
-from .services.catalogue.system_ingress import SystemIngress
-from .services.catalogue.system_live import SystemLiveService
-from .services.data import (
+from off_key_tactic_middleware.services.accounts.agents import AgentService
+from off_key_tactic_middleware.services.accounts.members import MemberService
+from off_key_tactic_middleware.services.accounts.remembered_sessions import (
+    RememberedSessionService,
+)
+from off_key_tactic_middleware.services.accounts.users import UserService
+from off_key_tactic_middleware.services.catalogue.broker_check import BrokerCheck
+from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.catalogue.system_live import (
+    SystemLiveService,
+)
+from off_key_tactic_middleware.services.data import (
     AlarmService,
     CatalogueDataService,
     FavoriteService,
 )
-from .services.data.alarm_actions import AlarmActions
-from .services.dojo.datasets import DojoDatasets
-from .services.dojo.labels import DojoLabels
-from .services.dojo.metrics import DojoMetrics
-from .services.dojo.runs import DojoRuns
-from .services.orchestration.radar import RadarOrchestrationService
-from .services.pipelines.activation import PipelineActivations
-from .services.pipelines.blocks import PipelineBlocks
-from .services.pipelines.forms import start_form_monitor
-from .services.pipelines.library import PipelineLibrary
-from .services.pipelines.proposals import PipelineProposals
+from off_key_tactic_middleware.services.data.alarm_actions import AlarmActions
+from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
+from off_key_tactic_middleware.services.dojo.labels import DojoLabels
+from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
+from off_key_tactic_middleware.services.dojo.runs import DojoRuns
+from off_key_tactic_middleware.services.orchestration.radar import (
+    RadarOrchestrationService,
+)
+from off_key_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
+from off_key_tactic_middleware.services.pipelines.blocks import PipelineBlocks
+from off_key_tactic_middleware.services.pipelines.forms import start_form_monitor
+from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+from off_key_tactic_middleware.services.pipelines.proposals import (
+    PipelineProposals,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # One session per request, committed when the route returns and before the
 # response is sent. FastAPI ends a dependency with the default scope only after
@@ -53,15 +60,6 @@ RequestSession = Depends(get_db_async, scope="function")
 def get_radar_orchestration_service(
     session: AsyncSession = RequestSession,
 ) -> RadarOrchestrationService:
-    """
-    Dependency injection provider for RadarOrchestrationService.
-
-    Args:
-        session: Database session from dependency injection
-
-    Returns:
-        RadarOrchestrationService: Configured service instance
-    """
     return RadarOrchestrationService(session)
 
 
@@ -116,14 +114,6 @@ def get_broker_check(request: Request) -> BrokerCheck:
     service = getattr(request.app.state, "broker_check", None)
     if service is None:
         raise HTTPException(503, "Connection checks are unavailable.")
-    return service
-
-
-def get_system_ingress(request: Request) -> SystemIngress:
-    """The process-wide recording ingress; it owns every recorded broker client."""
-    service = getattr(request.app.state, "system_ingress", None)
-    if service is None:
-        raise HTTPException(503, "Recording is unavailable.")
     return service
 
 

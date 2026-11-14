@@ -44,6 +44,9 @@ from .system_live_mqtt import LiveMqttWorker
 
 # A deadline that has always passed: the broker's client gave up after a refusal.
 REFUSED = float("-inf")
+# The API asks the ingress, which runs in the worker, to retry a broker now by
+# sending the broker's id on this channel (SystemService.request_reconnect).
+RECONNECT_CHANNEL = "off_key_ingress_reconnect"
 RETRY_HINT = "It is retried automatically; reconnect to try again now."
 MAX_PENDING_MESSAGES = 512
 MAX_PENDING_BYTES = 8 * 1024 * 1024
@@ -103,6 +106,7 @@ class SystemIngress:
         self.pending_bytes = 0
         self.retained_topics: set[str] = set()
         self.effects = asyncio.Lock()
+        self.reconnects: set[asyncio.Task] = set()
 
     async def start(self):
         if self.settings.SYSTEM_COLLECTION_ENABLED:
@@ -624,17 +628,41 @@ class SystemIngress:
             if lease is None:
                 return
             self.ownership = lease
+            stop_listening = await self._listen_for_reconnects(ownership)
             try:
                 async with asyncio.TaskGroup() as tasks:
                     tasks.create_task(self._forward_forever())
                     tasks.create_task(self._poll_owned(ownership))
             finally:
+                with suppress(Exception):
+                    await stop_listening()
                 await self._stop_workers()
                 if self.output is not None:
                     await close_client(self.output)
                     self.output = None
                 with suppress(Exception):
                     await lease.release(ownership)
+
+    async def _listen_for_reconnects(self, ownership):
+        """Retry a broker when the API asks, on the connection that holds the lease.
+
+        Only the owner listens, so a request reaches the one process recording.
+        The ownership poll commits every two seconds, which starts the LISTEN.
+        """
+        driver = (await ownership.get_raw_connection()).driver_connection
+        loop = asyncio.get_running_loop()
+
+        def requested(_connection, _pid, _channel, connection_id):
+            task = loop.create_task(self.reconnect(connection_id))
+            self.reconnects.add(task)
+            task.add_done_callback(self.reconnects.discard)
+
+        await driver.add_listener(RECONNECT_CHANNEL, requested)
+
+        async def stop_listening():
+            await driver.remove_listener(RECONNECT_CHANNEL, requested)
+
+        return stop_listening
 
     async def _poll_owned(self, ownership):
         lease = self.ownership

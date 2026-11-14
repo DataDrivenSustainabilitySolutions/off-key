@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_api_gateway.api.v1 import alarms as gateway
 from off_key_core.db.models import Anomaly
 from off_key_core.schemas.alarms import AlarmCreate, AlarmQuery
 from off_key_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
@@ -174,19 +173,6 @@ async def test_a_new_alarm_over_several_readings_is_multivariate():
         None,
     )
     assert row.value_type == "zscore"
-
-
-async def test_gateway_forwards_the_query_as_json(monkeypatch):
-    request = AsyncMock(return_value={})
-    monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.query_alarms(
-        AlarmQuery(reading_ids=["line-temperature"], max_p_value=0.01)
-    )
-    sent = request.await_args.kwargs
-    assert sent["endpoint"] == "/api/v1/data/alarms/query"
-    assert sent["json_data"]["reading_ids"] == ["line-temperature"]
-    assert sent["json_data"]["max_p_value"] == 0.01
-    assert sent["json_data"]["limit"] == 200
 
 
 async def test_an_empty_or_unknown_scope_answers_without_reading_alarms():

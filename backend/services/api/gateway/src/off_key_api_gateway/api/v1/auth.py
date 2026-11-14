@@ -1,4 +1,6 @@
 import hashlib
+from collections.abc import Mapping
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -7,7 +9,6 @@ from fastapi import (
     HTTPException,
     Request,
     Response,
-    status,
 )
 from fastapi.responses import JSONResponse
 from off_key_core.auth.tokens import AccessClaims, issue_access_token
@@ -22,36 +23,42 @@ from off_key_core.schemas.user import (
     UserLogin,
 )
 from off_key_core.utils.mail import send_password_reset_email
+from off_key_tactic_middleware.domain import AuthenticationError
+from off_key_tactic_middleware.services.accounts.members import MemberService
+from off_key_tactic_middleware.services.accounts.remembered_sessions import (
+    RememberedSessionService,
+)
+from off_key_tactic_middleware.services.accounts.users import UserService
+from sqlalchemy.exc import SQLAlchemyError
 
-from ...facades.tactic import TacticError, tactic
-from ..errors import TacticErrorRoute
+from ...providers import (
+    get_member_service,
+    get_remembered_session_service,
+    get_user_service,
+)
+from ..errors import DomainErrorRoute
 from ..rate_limiter import client_ip, limiter
 
-router = APIRouter(route_class=TacticErrorRoute)
+router = APIRouter(route_class=DomainErrorRoute)
 REMEMBERED_SESSION_COOKIE = "off_key_remembered_session"
 # One budget per client address across every credential endpoint, so a single
 # source cannot spray guesses over many accounts or tokens.
 auth_client_limit = limiter.shared_limit("30/minute", scope="auth-client")
 
 
-def access_token_response(authenticated_user: dict) -> dict:
-    user_id = authenticated_user.get("id")
-    if type(user_id) is not int or user_id <= 0:
-        raise HTTPException(502, "Authentication service returned an invalid user id")
-    version = authenticated_user.get("session_version")
-    if type(version) is not int or version < 0:
-        raise HTTPException(502, "Authentication service returned an invalid session")
+def access_token_response(identity: Mapping[str, Any]) -> dict:
+    """A bearer token for a member whose credentials were just checked."""
     return {
         "access_token": issue_access_token(
             AccessClaims(
-                sub=authenticated_user["email"],
-                user_id=user_id,
-                session_version=version,
-                session_family=authenticated_user.get("session_family"),
+                sub=identity["email"],
+                user_id=identity["id"],
+                session_version=identity["session_version"],
+                session_family=identity.get("session_family"),
             )
         ),
         "token_type": "bearer",
-        "member_id": user_id,
+        "member_id": identity["id"],
     }
 
 
@@ -107,12 +114,12 @@ def remembered_token(request: Request) -> str | None:
         return None
 
 
-async def revoke_remembered_cookie(request: Request) -> None:
+async def revoke_remembered_cookie(
+    request: Request, sessions: RememberedSessionService
+) -> None:
     token = remembered_token(request)
     if token:
-        await tactic.request(
-            "POST", "/api/v1/members/sessions/revoke", json_data={"token": token}
-        )
+        await sessions.revoke(token)
 
 
 def login_attempt(request: Request, user: UserLogin) -> UserLogin:
@@ -149,21 +156,24 @@ def auth_limit_key(request: Request) -> str:
 @limiter.limit("10/minute", key_func=auth_limit_key)
 @auth_client_limit
 async def accept_invitation(
-    request: Request, invitation: AcceptInvitation = Depends(invitation_attempt)
+    request: Request,
+    invitation: AcceptInvitation = Depends(invitation_attempt),
+    members: MemberService = Depends(get_member_service),
 ):
     """Choose a password with the token from an invitation email."""
-    return await tactic.request(
-        "POST",
-        "/api/v1/members/accept-invitation",
-        json_data=invitation.model_dump(),
-    )
+    await members.accept_invitation(invitation.token, invitation.password)
+    return {"message": "Account activated. You can now sign in."}
 
 
 @router.post("/login")
 @limiter.limit("10/minute", key_func=auth_limit_key)
 @auth_client_limit
 async def login(
-    request: Request, response: Response, user: UserLogin = Depends(login_attempt)
+    request: Request,
+    response: Response,
+    user: UserLogin = Depends(login_attempt),
+    users: UserService = Depends(get_user_service),
+    sessions: RememberedSessionService = Depends(get_remembered_session_service),
 ):
     """Exchange email and password for a bearer access token.
 
@@ -173,35 +183,29 @@ async def login(
     session cookie that `/v1/auth/refresh` trades for new tokens.
     """
     try:
-        authenticated_user = await tactic.authenticate_user(
+        authenticated_user = await users.authenticate(
             email=user.email,
             password=user.password,
         )
-    except TacticError as e:
-        if e.status in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
-            log_security_event(
-                "user_login_failed",
-                user.email,
-                {"status": e.status},
-            )
+    except AuthenticationError:
+        log_security_event("user_login_failed", user.email, {"status": 401})
         raise
 
-    result = access_token_response(authenticated_user)
-    await revoke_remembered_cookie(request)
+    await revoke_remembered_cookie(request, sessions)
     if user.remember_me:
-        session = await tactic.request(
-            "POST",
-            "/api/v1/members/sessions",
-            headers={"Authorization": f"Bearer {result['access_token']}"},
+        session = await sessions.create(
+            user_id=authenticated_user["id"],
+            session_version=authenticated_user["session_version"],
         )
         set_session_cookie(
             request, response, session["token"], REMEMBERED_SESSION_SECONDS
         )
         result = access_token_response(
-            authenticated_user | {"session_family": session.get("session_family")}
+            authenticated_user | {"session_family": session["session_family"]}
         )
     else:
         clear_session_cookie(request, response)
+        result = access_token_response(authenticated_user)
 
     safe_email = redact_email(authenticated_user["email"])
     logger.info("event=auth.user_logged_in email=%s", safe_email)
@@ -216,7 +220,11 @@ async def login(
 
 @router.post("/refresh", dependencies=[Depends(session_request)])
 @limiter.limit("60/minute")
-async def refresh_session(request: Request, response: Response):
+async def refresh_session(
+    request: Request,
+    response: Response,
+    sessions: RememberedSessionService = Depends(get_remembered_session_service),
+):
     """Browser only: trade the remembered-session cookie for a new access token.
 
     Needs the header `X-Off-Key-Session: 1`.
@@ -224,17 +232,15 @@ async def refresh_session(request: Request, response: Response):
     token = remembered_token(request)
     if token:
         try:
-            user = await tactic.request(
-                "POST", "/api/v1/members/sessions/refresh", json_data={"token": token}
-            )
+            user = await sessions.refresh(token)
+        except AuthenticationError:
+            pass
+        else:
             response.headers["Cache-Control"] = "no-store"
             if user.get("token"):
                 # Rotation keeps the original deadline; the old secret is spent.
                 set_session_cookie(request, response, user["token"], user["expires_in"])
             return access_token_response(user)
-        except TacticError as exc:
-            if exc.status != 401:
-                raise
     denied = JSONResponse({"detail": "Sign in to continue"}, status_code=401)
     clear_session_cookie(request, denied)
     return denied
@@ -242,21 +248,22 @@ async def refresh_session(request: Request, response: Response):
 
 @router.post("/logout", dependencies=[Depends(session_request)])
 @limiter.limit("60/minute")
-async def logout(request: Request, response: Response):
+async def logout(
+    request: Request,
+    response: Response,
+    sessions: RememberedSessionService = Depends(get_remembered_session_service),
+):
     """Revoke the supplied bearer token and the browser's remembered session.
 
     Needs the header `X-Off-Key-Session: 1`.
     """
     try:
-        await revoke_remembered_cookie(request)
-        if authorization := request.headers.get("Authorization"):
-            await tactic.request(
-                "POST",
-                "/api/v1/members/sessions/revoke-access",
-                headers={"Authorization": authorization},
-            )
-    except TacticError:
-        # Still remove the browser credential during a temporary service outage.
+        await revoke_remembered_cookie(request, sessions)
+        scheme, _, credential = request.headers.get("Authorization", "").partition(" ")
+        if scheme.lower() == "bearer" and credential:
+            await sessions.revoke_access(credential)
+    except SQLAlchemyError:
+        # Still remove the browser credential during a temporary database outage.
         response = JSONResponse(
             {"detail": "Session service unavailable"}, status_code=503
         )
@@ -281,16 +288,13 @@ async def request_password_reset(
     request: Request,
     background: BackgroundTasks,
     user: ForgotPasswordRequest = Depends(reset_email_attempt),
+    members: MemberService = Depends(get_member_service),
 ):
     """Email a password-reset link if the address belongs to a member.
 
     The answer is the same either way, so it reveals no accounts.
     """
-    result = await tactic.request(
-        "POST",
-        "/api/v1/members/request-password-reset",
-        json_data=user.model_dump(),
-    )
+    result = await members.issue_reset_token(str(user.email))
     if result:
         # Deliver after responding so mail latency does not reveal the account.
         background.add_task(deliver_password_reset, result["email"], result["token"])
@@ -303,11 +307,10 @@ async def request_password_reset(
 @limiter.limit("10/minute", key_func=auth_limit_key)
 @auth_client_limit
 async def confirm_password_reset(
-    request: Request, reset: PasswordReset = Depends(reset_attempt)
+    request: Request,
+    reset: PasswordReset = Depends(reset_attempt),
+    members: MemberService = Depends(get_member_service),
 ):
     """Set a new password with the token from a reset email."""
-    return await tactic.request(
-        "POST",
-        "/api/v1/members/reset-password",
-        json_data=reset.model_dump(),
-    )
+    await members.reset_password(reset.token, reset.new_password)
+    return {"message": "Password has been successfully reset"}

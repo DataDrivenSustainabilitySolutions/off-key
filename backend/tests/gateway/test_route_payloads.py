@@ -4,26 +4,14 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from off_key_core.auth.permissions import MEMBER_ROLE
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import MonitoringService
-from off_key_tactic_middleware.api.collection_auth import current_caller
-from off_key_tactic_middleware.api.v1 import pipelines as pipelines_api
-from off_key_tactic_middleware.api.v1 import system as system_api
+
+from tests.support.gateway import gateway_app, member
 
 
-def client(router, session, overrides=None):
-    app = FastAPI()
-    app.include_router(router)
-    app.dependency_overrides[get_db_async] = lambda: session
-    app.dependency_overrides[current_caller] = lambda: SimpleNamespace(
-        id=1, email="member@example.com", role=MEMBER_ROLE
-    )
-    for dependency, value in (overrides or {}).items():
-        app.dependency_overrides[dependency] = value
-    return TestClient(app)
+def client(session):
+    return TestClient(gateway_app(member(), session=session))
 
 
 def service_session(services):
@@ -43,10 +31,10 @@ def monitor(state):
 
 def test_pipeline_state_returns_the_stored_state_or_a_404():
     session = service_session({"m1": monitor({"nodes": 3}), "m2": monitor(None)})
-    with client(pipelines_api.router, session) as http:
-        assert http.get("/monitors/m1/pipeline-state").json() == {"nodes": 3}
-        assert http.get("/monitors/m2/pipeline-state").json() is None
-        missing = http.get("/monitors/unknown/pipeline-state")
+    with client(session) as http:
+        assert http.get("/v1/monitors/m1/pipeline/state").json() == {"nodes": 3}
+        assert http.get("/v1/monitors/m2/pipeline/state").json() is None
+        missing = http.get("/v1/monitors/unknown/pipeline/state")
     assert missing.status_code == 404
     assert missing.json() == {"detail": "Monitoring service not found"}
 
@@ -62,10 +50,11 @@ def test_workspace_reports_the_selected_service_state_and_tolerates_unknowns():
     )
     session.scalars.return_value = SimpleNamespace(all=lambda: [record])
     session.scalar.return_value = None  # nothing saved yet: no catalogue readings
-    with client(pipelines_api.router, session) as http:
-        selected = http.get("/monitors/workspace", params={"selected_service_id": "m1"})
-        unknown = http.get("/monitors/workspace", params={"selected_service_id": "x"})
-        none = http.get("/monitors/workspace")
+    with client(session) as http:
+        overview = "/v1/monitors/overview"
+        selected = http.get(overview, params={"selected_monitor_id": "m1"})
+        unknown = http.get(overview, params={"selected_monitor_id": "x"})
+        none = http.get(overview)
     assert selected.json()["pipeline_state"] == {"nodes": 3}
     # The overview answers with the API's names; container details stay inside.
     assert selected.json()["selected_monitor_id"] == "m1"
@@ -91,8 +80,8 @@ def test_system_revisions_are_newest_first_with_isoformat_times():
     ]
     session = AsyncMock()
     session.scalars.return_value = rows
-    with client(system_api.router, session) as http:
-        response = http.get("/system/revisions")
+    with client(session) as http:
+        response = http.get("/v1/catalogue/revisions")
     assert response.json() == [
         {
             "revision": 2,
@@ -108,3 +97,43 @@ def test_system_revisions_are_newest_first_with_isoformat_times():
     query = str(session.scalars.call_args.args[0])
     assert "ORDER BY system_revisions.revision DESC" in query
     assert "LIMIT" in query
+
+
+def test_recording_preview_answers_every_count_not_only_the_renamed_fields():
+    """The app reads affected_monitors before it saves a recording change."""
+    from off_key_api_gateway.providers import get_system_service
+    from off_key_core.schemas.system_collection import SystemCollectionPreview
+
+    preview = SystemCollectionPreview(
+        revision=4,
+        collection_revision=5,
+        selected_readings=1,
+        sampled_rows_per_day_ceiling=86400,
+        original_rate_readings=0,
+        affected_monitors=[{"id": "m1"}],
+        changed_readings=1,
+        starting_readings=1,
+        bindings={"r1": {"connection_id": "b1", "policy": {"mode": "off"}}},
+    )
+    system = SimpleNamespace(preview_collection=AsyncMock(return_value=preview))
+    app = gateway_app(member("admin"), overrides={get_system_service: lambda: system})
+    with TestClient(app) as http:
+        response = http.post(
+            "/v1/recording/preview",
+            json={
+                "expected_revision": 4,
+                "expected_collection_revision": 5,
+                "rule_changes": [
+                    {
+                        "scope": {"kind": "broker", "broker_id": "b1"},
+                        "policy": {"mode": "sample", "interval_seconds": 1},
+                    }
+                ],
+            },
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["affected_monitors"] == [{"id": "m1"}]
+    assert body["sampled_rows_per_day_ceiling"] == 86400
+    assert body["starting_readings"] == 1
+    assert body["bindings"]["r1"]["broker_id"] == "b1"

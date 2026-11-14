@@ -13,13 +13,14 @@ from tests.support.compose import environment_keys, load_compose
 
 ROOT = Path(__file__).resolve().parents[3]
 BACKEND = ROOT / "backend"
+# The API serves the domain in process, so it reads the TACTIC package too.
 SERVICES = {
-    "api-gateway": "services/api/gateway",
-    "tactic-middleware": "services/middleware/tactic",
-    "mqtt-proxy": "services/mqtt/proxy",
-    "mqtt-radar": "services/mqtt/radar",
-    "db-sync": "services/db/sync",
-    "forecast": "services/forecast/service",
+    "api-gateway": ("services/api/gateway", "services/middleware/tactic"),
+    "tactic-middleware": ("services/middleware/tactic",),
+    "mqtt-proxy": ("services/mqtt/proxy",),
+    "mqtt-radar": ("services/mqtt/radar",),
+    "db-sync": ("services/db/sync",),
+    "forecast": ("services/forecast/service",),
 }
 COMPOSE_FILES = ("docker-compose.yml", "dev/local/compose.yml")
 # Everything that reads or sets a documented variable.
@@ -60,7 +61,10 @@ def documented_variables() -> set[str]:
 @pytest.mark.parametrize("service", SERVICES)
 def test_compose_passes_only_variables_the_service_reads(compose_file, service):
     definition = load_compose(ROOT / compose_file)["services"].get(service) or {}
-    code = source_text(BACKEND / SERVICES[service] / "src", BACKEND / "libs/core/src")
+    code = source_text(
+        *(BACKEND / package / "src" for package in SERVICES[service]),
+        BACKEND / "libs/core/src",
+    )
     unread = [
         key
         for key in environment_keys(definition)

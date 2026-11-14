@@ -58,7 +58,6 @@ def test_init_preserves_private_configuration(launcher):
         values[key]
         for key in (
             "JWT_SECRET",
-            "INTERNAL_API_SECRET",
             "POSTGRES_PASSWORD",
             "EMQX_DASHBOARD_PASSWORD",
         )

@@ -1,15 +1,31 @@
+"""Who is calling, checked against the account as it is now on every request.
+
+A caller is a member with a token, or an agent with a key. A key is refused on
+every route that does not open itself to keys.
+"""
+
 from functools import cache
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from off_key_core.auth.agents import AGENT_KEY_PREFIX, agent_refusal, is_agent_key
+from off_key_core.auth.agents import (
+    AGENT_KEY_PREFIX,
+    agent_key_digest,
+    agent_refusal,
+    is_agent_key,
+)
 from off_key_core.auth.demo import DEMO_VIEWER_PERMISSIONS, DEMO_VIEWER_ROLE
 from off_key_core.auth.permissions import Permission
-from off_key_core.schemas.agents import AgentProfile
-from off_key_core.schemas.members import MemberProfile
+from off_key_core.auth.tokens import (
+    InvalidAccessToken,
+    access_token_digest,
+    decode_access_token,
+)
+from off_key_core.db.models import Agent, RememberedSession, RevokedAccessToken, User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..facades.tactic import TacticError, tactic
-from .errors import raise_tactic_http_error
+from ..providers import RequestSession
 
 # Declared once so the OpenAPI document names the scheme and every protected
 # operation lists it, instead of an "authorization" parameter that generated
@@ -28,57 +44,71 @@ bearer = HTTPBearer(
 )
 
 
-async def member_authorization(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-) -> str:
-    """The caller's bearer credential, forwarded unchanged to TACTIC."""
-    if credentials is None:
-        raise HTTPException(401, "Sign in to continue")
-    return f"Bearer {credentials.credentials}"
-
-
-async def signed_in_member(authorization: str) -> MemberProfile:
-    """The member a token names, asked of TACTIC on every request."""
+async def signed_in_member(token: str, session: AsyncSession) -> User:
+    """The member a token names, checked against the account as it is now."""
     try:
-        result = await tactic.request(
-            "GET",
-            "/api/v1/members/me",
-            headers={"Authorization": authorization},
+        claims = decode_access_token(token)
+    except InvalidAccessToken as exc:
+        detail = (
+            "Invalid or expired access token"
+            if exc.kind == "token"
+            else "Invalid access token"
         )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
-    return MemberProfile.model_validate(result)
+        raise HTTPException(401, detail) from exc
+    statement = select(User).where(
+        User.id == claims.user_id,
+        User.email == claims.sub,
+        ~select(RevokedAccessToken.token_hash)
+        .where(RevokedAccessToken.token_hash == access_token_digest(token))
+        .exists(),
+    )
+    if claims.session_family is not None:
+        statement = statement.where(
+            select(RememberedSession.token_hash)
+            .where(
+                RememberedSession.family_id == claims.session_family,
+                RememberedSession.user_id == claims.user_id,
+            )
+            .exists()
+        )
+    user = await session.scalar(statement)
+    if (
+        user is None
+        or not user.is_verified
+        or not user.is_active
+        or user.session_version != claims.session_version
+    ):
+        raise HTTPException(401, "This session is no longer valid")
+    return user
 
 
-async def _agent(request: Request, authorization: str) -> AgentProfile:
-    try:
-        result = await tactic.request(
-            "GET",
-            "/api/v1/agents/me",
-            headers={"Authorization": authorization},
-        )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
-    agent = AgentProfile.model_validate(result)
-    refusal = agent_refusal(request.scope.get("route"), starts=agent.starts)
-    if refusal:
-        raise HTTPException(403, refusal)
-    return agent
+async def agent_by_key(key: str, session: AsyncSession) -> Agent | None:
+    """The agent holding a key; a revoked key names nobody."""
+    return await session.scalar(
+        select(Agent).where(Agent.key_hash == agent_key_digest(key))
+    )
 
 
 async def current_caller(
     request: Request,
-    authorization: str = Depends(member_authorization),
-) -> MemberProfile | AgentProfile:
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    session: AsyncSession = RequestSession,
+) -> User | Agent:
     """The signed-in member, or an agent on a route that is open to keys."""
-    if is_agent_key(authorization.removeprefix("Bearer ")):
-        return await _agent(request, authorization)
-    member = await signed_in_member(authorization)
+    if credentials is None:
+        raise HTTPException(401, "Sign in to continue")
+    if is_agent_key(credentials.credentials):
+        agent = await agent_by_key(credentials.credentials, session)
+        if agent is None:
+            raise HTTPException(401, "This key is not valid")
+        refusal = agent_refusal(request.scope.get("route"), starts=agent.starts)
+        if refusal:
+            raise HTTPException(403, refusal)
+        return agent
+    member = await signed_in_member(credentials.credentials, session)
     if getattr(request.state, "demo_guest", False) and (
         member.role != DEMO_VIEWER_ROLE
         or set(member.permissions) != DEMO_VIEWER_PERMISSIONS
-        or not member.is_active
-        or not member.is_verified
     ):
         # A guest browses as the demo viewer. Its role and permissions are
         # checked on every request, even while the viewer's token is cached.
@@ -86,35 +116,34 @@ async def current_caller(
     return member
 
 
-async def current_member(
-    caller: MemberProfile | AgentProfile = Depends(current_caller),
-) -> MemberProfile:
+async def current_member(caller: User | Agent = Depends(current_caller)) -> User:
     """A person. A key is refused here even on a route that is open to keys."""
-    if isinstance(caller, AgentProfile):
+    if isinstance(caller, Agent):
         raise HTTPException(403, "This needs a member, not a key for an agent")
     return caller
 
 
-async def current_agent(
-    caller: MemberProfile | AgentProfile = Depends(current_caller),
-) -> AgentProfile:
-    if not isinstance(caller, AgentProfile):
+async def current_agent(caller: User | Agent = Depends(current_caller)) -> Agent:
+    if not isinstance(caller, Agent):
         raise HTTPException(403, "Only a key for an agent can ask this")
     return caller
 
 
-def caller_key(caller: MemberProfile | AgentProfile) -> str:
+def member_id(caller: User | Agent) -> int | None:
+    """Who a record names as its creator. An agent is not a member, so none."""
+    return None if isinstance(caller, Agent) else caller.id
+
+
+def caller_key(caller: User | Agent) -> str:
     """What a rate limit counts a caller by. An agent never shares a member's."""
-    prefix = "agent-" if isinstance(caller, AgentProfile) else ""
+    prefix = "agent-" if isinstance(caller, Agent) else ""
     return f"{prefix}{caller.id}"
 
 
-def _refuse_without(
-    permission: Permission, caller: MemberProfile | AgentProfile
-) -> None:
+def _refuse_without(permission: Permission, caller: User | Agent) -> None:
     # A key has no permissions: the route it calls says what it is open to,
     # and current_caller has checked that.
-    if isinstance(caller, AgentProfile):
+    if isinstance(caller, Agent):
         return
     if permission not in caller.permissions:
         raise HTTPException(403, f"This needs the {permission} permission")
@@ -125,8 +154,8 @@ def require_permission(permission: Permission):
     """One dependency per permission, so access tests can tell them apart."""
 
     async def holds_permission(
-        caller: MemberProfile | AgentProfile = Depends(current_caller),
-    ) -> MemberProfile | AgentProfile:
+        caller: User | Agent = Depends(current_caller),
+    ) -> User | Agent:
         _refuse_without(permission, caller)
         return caller
 
@@ -140,7 +169,7 @@ def writes_require(permission: Permission):
 
     async def reads_open_writes_checked(
         request: Request,
-        caller: MemberProfile | AgentProfile = Depends(current_caller),
+        caller: User | Agent = Depends(current_caller),
     ) -> None:
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             _refuse_without(permission, caller)

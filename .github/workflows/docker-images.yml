@@ -40,6 +40,7 @@ jobs:
             build_args: |
               SERVICE_NAME=off-key-api-gateway
               SERVICE_ROOT=services/api/gateway
+              SERVICE_DEPENDENCIES=services/middleware/tactic
             target: ""
           - service: tactic-middleware
             image_name: off-key-tactic-middleware

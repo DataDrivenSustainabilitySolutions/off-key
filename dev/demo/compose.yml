@@ -2,23 +2,20 @@
 services:
   frontend:
     ports: ["127.0.0.1:${DEMO_FRONTEND_PORT:-5174}:5173"]
+  # The API serves the demo and its live views; the worker records the feeds.
   api-gateway:
-    environment:
+    environment: &demo-env
       FRONTEND_BASE_URL: "http://localhost:${DEMO_FRONTEND_PORT:-5174}"
       CORS_ALLOWED_ORIGINS: '["http://localhost:${DEMO_FRONTEND_PORT:-5174}"]'
+      TACTIC_RADAR_WORKLOAD_LIFECYCLE: persistent
       DEMO_MODE: 'true'
       DEMO_VIEWER_EMAIL: "${DEMO_VIEWER_EMAIL:?Set a dedicated viewer email}"
       DEMO_VIEWER_PASSWORD: "${DEMO_VIEWER_PASSWORD:?Set a random viewer password}"
-  tactic-middleware:
-    environment:
-      FRONTEND_BASE_URL: "http://localhost:${DEMO_FRONTEND_PORT:-5174}"
-      TACTIC_RADAR_WORKLOAD_LIFECYCLE: persistent
-      DEMO_MODE: 'true'
-      DEMO_VIEWER_EMAIL: "${DEMO_VIEWER_EMAIL}"
-      DEMO_VIEWER_PASSWORD: "${DEMO_VIEWER_PASSWORD}"
       DEMO_FEEDS_JSON: "${DEMO_FEEDS_JSON:-}"
       SYSTEM_LIVE_ENABLED: 'true'
       SYSTEM_LIVE_ALLOWED_HOSTS: '["demo-broker"]'
+  tactic-middleware:
+    environment: *demo-env
   mailpit:
     ports: ["127.0.0.1:${DEMO_MAIL_PORT:-8027}:8025"]
     volumes: !override

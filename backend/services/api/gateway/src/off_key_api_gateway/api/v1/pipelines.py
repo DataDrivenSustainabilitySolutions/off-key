@@ -1,12 +1,25 @@
-"""Typed member routes with independent polling, compiler and mutation budgets."""
+"""Monitoring designs, their components, activations, blocks and proposals.
+
+Each route has its own budget per caller: polling reads, compiler runs and
+changes are limited separately.
+"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
-from off_key_core.auth.agents import OPEN_TO_AGENTS, STARTS_SERVICES
-from off_key_core.schemas.agents import AgentProfile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
+from off_key_core.auth.agents import OPEN_TO_AGENTS, STARTS_SERVICES, shadow_refusal
+from off_key_core.config.logs import log_security_event
+from off_key_core.db.models import Agent, User
+from off_key_core.models.pipeline_edits import edit_design
+from off_key_core.models.pipeline_reports import bounded_validation_report
+from off_key_core.models.pipeline_search import search_components
+from off_key_core.models.pipelines import (
+    pipeline_catalog,
+    pipeline_component,
+)
+from off_key_core.models.pipelines import validate_pipeline as check_design
 from off_key_core.schemas.forecast import ForecastModelInfo
-from off_key_core.schemas.members import MemberProfile
 from off_key_core.schemas.pipeline_tools import (
     ComponentSearchPage,
     ComponentSearchQuery,
@@ -48,16 +61,31 @@ from off_key_core.schemas.pipelines import (
     PipelineWorkspace,
     ProposalStatus,
 )
+from off_key_tactic_middleware.config.config import get_tactic_settings
+from off_key_tactic_middleware.services.pipelines import forecast_models
+from off_key_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
+from off_key_tactic_middleware.services.pipelines.blocks import PipelineBlocks
+from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+from off_key_tactic_middleware.services.pipelines.proposals import (
+    PipelineProposals,
+)
 
-from ...facades.tactic import path_segment, tactic
-from ..access import caller_key, current_caller
-from ..errors import TacticErrorRoute
+from ...providers import (
+    get_pipeline_activations,
+    get_pipeline_blocks,
+    get_pipeline_library,
+    get_pipeline_proposals,
+)
+from ..access import caller_key, current_caller, current_member
+from ..errors import DomainErrorRoute
 from ..rate_limiter import client_ip, limiter
 
 
 async def member_scope(
     request: Request,
-    caller: MemberProfile | AgentProfile = Depends(current_caller),
+    caller: User | Agent = Depends(current_caller),
 ):
     request.state.pipeline_member_id = caller_key(caller)
 
@@ -69,7 +97,7 @@ def member_key(request: Request) -> str:
 
 
 def member_router() -> APIRouter:
-    return APIRouter(dependencies=[Depends(member_scope)], route_class=TacticErrorRoute)
+    return APIRouter(dependencies=[Depends(member_scope)], route_class=DomainErrorRoute)
 
 
 router = member_router()
@@ -90,14 +118,12 @@ compile_limit = limiter.shared_limit(
 )
 
 
-async def forward(request, method, path, body=None, params=None):
-    return await tactic.request(
-        method,
-        f"/api/v1/monitors{path}",
-        json_data=body.model_dump(mode="json") if body is not None else None,
-        params=params,
-        headers={"Authorization": request.headers["Authorization"]},
-    )
+async def invoke(operation):
+    """Await a design operation; a design it cannot work with answers 422."""
+    try:
+        return await operation
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.post(
@@ -107,7 +133,12 @@ async def forward(request, method, path, body=None, params=None):
     openapi_extra=STARTS_SERVICES,
 )
 @write_limit
-async def apply_pipeline(request: Request, change: PipelineApplyRequest):
+async def apply_pipeline(
+    request: Request,
+    change: PipelineApplyRequest,
+    caller: User | Agent = Depends(current_caller),
+    activations: PipelineActivations = Depends(get_pipeline_activations),
+):
     """Start or replace a monitor from a design in one step. Needs `manage_monitors`.
 
     Saves the design, publishes a revision and activates it on the readings in
@@ -120,7 +151,25 @@ async def apply_pipeline(request: Request, change: PipelineApplyRequest):
     agent may start, not replace, and one that starts in shadow only gets 403
     without `shadow`.
     """
-    return await forward(request, "POST", "/pipelines/apply", change)
+    if isinstance(caller, Agent):
+        # A key adds a service. Taking a running one away stays with a member.
+        if change.replace_service_id is not None:
+            raise HTTPException(
+                403, "Replacing a running service needs a member, not a key"
+            )
+        refusal = shadow_refusal(starts=caller.starts, shadow=change.shadow)
+        if refusal:
+            raise HTTPException(403, refusal)
+        log_security_event(
+            "agent_service_start",
+            caller.name,
+            {
+                "agent_id": caller.id,
+                "service": change.display_name,
+                "shadow": change.shadow,
+            },
+        )
+    return await invoke(activations.apply(change))
 
 
 @monitor_pipeline_router.get(
@@ -128,17 +177,14 @@ async def apply_pipeline(request: Request, change: PipelineApplyRequest):
 )
 @read_limit
 async def get_monitor_overview(
-    request: Request, selected_monitor_id: str | None = None
+    request: Request,
+    selected_monitor_id: str | None = Query(default=None, max_length=100),
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """What the Monitoring page loads: every monitor, whether designs may be
     edited, and the live pipeline state of `selected_monitor_id`.
     """
-    return await forward(
-        request,
-        "GET",
-        "/workspace",
-        params={"selected_service_id": selected_monitor_id},
-    )
+    return await library.workspace(selected_monitor_id)
 
 
 @components_router.get("", response_model=PipelineCatalog, openapi_extra=OPEN_TO_AGENTS)
@@ -151,7 +197,7 @@ async def list_pipeline_components(request: Request):
     defaults. Keys that would be empty are left out. The JSON schema of a
     component's settings is not part of the listing; read the component for it.
     """
-    return await forward(request, "GET", "/pipelines/catalog")
+    return pipeline_catalog(get_tactic_settings().config.pipeline_authoring_enabled)
 
 
 @components_router.get(
@@ -171,12 +217,7 @@ async def search_pipeline_components(
     Each answer has the component's `id`, `label`, `group`, one `description`
     and the names of its `settings`; read the component for the rest.
     """
-    return await forward(
-        request,
-        "GET",
-        "/pipelines/catalog/search",
-        params=query.model_dump(exclude_none=True),
-    )
+    return search_components(query)
 
 
 @components_router.get(
@@ -187,9 +228,10 @@ async def get_pipeline_component(request: Request, component_id: str):
     """One component as the listing has it, with the JSON schema of its
     settings as `parameter_schema`.
     """
-    return await forward(
-        request, "GET", f"/pipelines/catalog/components/{path_segment(component_id)}"
-    )
+    component = pipeline_component(component_id)
+    if component is None:
+        raise HTTPException(404, "Pipeline component not found")
+    return component
 
 
 @forecast_models_router.get(
@@ -203,7 +245,7 @@ async def list_forecast_models(request: Request):
     `error`). `service` is `not_deployed` where the deployment has no forecast
     service, and `unreachable` while it does not answer; `models` is then empty.
     """
-    return await forward(request, "GET", "/pipelines/forecast-models")
+    return await run_in_threadpool(forecast_models.forecast_models)
 
 
 @forecast_models_router.post(
@@ -218,18 +260,21 @@ async def download_forecast_model(request: Request, change: ForecastModelDownloa
     download starts again. Answers 409 where the deployment has no forecast
     service, 404 for a model it does not offer, and 503 while it does not answer.
     """
-    return await forward(
-        request, "POST", "/pipelines/forecast-models/downloads", change
-    )
+    try:
+        return await run_in_threadpool(forecast_models.request_download, change.model)
+    except forecast_models.ForecastServiceUnreachable as exc:
+        raise HTTPException(
+            503, "The forecast service does not answer. Try again shortly."
+        ) from exc
 
 
-def _without_members(proposal: dict) -> dict:
+def _without_members(proposal):
     """What a public demo guest sees of a proposal: an agent by its name, a
     member only as a member. A member's email never leaves the installation."""
-    hidden: dict = {"decided_by": "A member" if proposal.get("decided_by") else None}
-    if proposal.get("author_kind") == "member":
+    hidden: dict = {"decided_by": "A member" if proposal.decided_by else None}
+    if proposal.author_kind == "member":
         hidden["author"] = "A member"
-    return {**proposal, **hidden}
+    return proposal.model_copy(update=hidden)
 
 
 @proposals_router.get(
@@ -242,23 +287,18 @@ async def list_pipeline_proposals(
         ProposalStatus | None,
         Query(description="Only proposals in this state, such as `open`."),
     ] = None,
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
 ):
     """Proposals, the newest first, without their designs.
 
     A proposal is a design handed to a member to decide on. `decision_note`
     carries what the member answered.
     """
-    result = await forward(
-        request,
-        "GET",
-        "/pipeline-proposals",
-        params=None if status is None else {"status": status},
-    )
+    result = await proposals.list(status)
     if getattr(request.state, "demo_guest", False):
-        result = {
-            **result,
-            "items": [_without_members(item) for item in result["items"]],
-        }
+        result = result.model_copy(
+            update={"items": [_without_members(item) for item in result.items]}
+        )
     return result
 
 
@@ -269,7 +309,12 @@ async def list_pipeline_proposals(
     openapi_extra=OPEN_TO_AGENTS,
 )
 @write_limit
-async def create_pipeline_proposal(request: Request, change: PipelineProposalCreate):
+async def create_pipeline_proposal(
+    request: Request,
+    change: PipelineProposalCreate,
+    caller: User | Agent = Depends(current_caller),
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
     """Hand a design to a member to decide on. Needs `manage_monitors`, or a key.
 
     Give the `name` the monitor would carry and the `reason` for it, with the
@@ -280,7 +325,7 @@ async def create_pipeline_proposal(request: Request, change: PipelineProposalCre
     meant to take the place of. The design must check without errors.
     Answers 409 while 50 proposals wait for a decision.
     """
-    return await forward(request, "POST", "/pipeline-proposals", change)
+    return await proposals.create(change, caller)
 
 
 @proposals_router.get(
@@ -289,11 +334,13 @@ async def create_pipeline_proposal(request: Request, change: PipelineProposalCre
     openapi_extra=OPEN_TO_AGENTS,
 )
 @read_limit
-async def get_pipeline_proposal(request: Request, proposal_id: str):
+async def get_pipeline_proposal(
+    request: Request,
+    proposal_id: str,
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
     """One proposal with its design, layout and bindings."""
-    result = await forward(
-        request, "GET", f"/pipeline-proposals/{path_segment(proposal_id)}"
-    )
+    result = await proposals.get(proposal_id)
     if getattr(request.state, "demo_guest", False):
         result = _without_members(result)
     return result
@@ -302,7 +349,11 @@ async def get_pipeline_proposal(request: Request, proposal_id: str):
 @proposals_router.post("/{proposal_id}/decision", response_model=PipelineProposalView)
 @write_limit
 async def decide_pipeline_proposal(
-    request: Request, proposal_id: str, decision: PipelineProposalDecision
+    request: Request,
+    proposal_id: str,
+    decision: PipelineProposalDecision,
+    member: User = Depends(current_member),
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
 ):
     """Accept or decline a proposal. Needs `manage_monitors`; a key cannot decide.
 
@@ -310,12 +361,7 @@ async def decide_pipeline_proposal(
     `POST /v1/pipelines/apply`. Answers 409 once the proposal is decided or
     withdrawn.
     """
-    return await forward(
-        request,
-        "POST",
-        f"/pipeline-proposals/{path_segment(proposal_id)}/decision",
-        decision,
-    )
+    return await proposals.decide(proposal_id, decision, member)
 
 
 @proposals_router.post(
@@ -324,61 +370,78 @@ async def decide_pipeline_proposal(
     openapi_extra=OPEN_TO_AGENTS,
 )
 @write_limit
-async def withdraw_pipeline_proposal(request: Request, proposal_id: str):
+async def withdraw_pipeline_proposal(
+    request: Request,
+    proposal_id: str,
+    caller: User | Agent = Depends(current_caller),
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
     """Take back a proposal that still waits. Only its author can; others get 403."""
-    return await forward(
-        request, "POST", f"/pipeline-proposals/{path_segment(proposal_id)}/withdraw"
-    )
+    return await proposals.withdraw(proposal_id, caller)
 
 
 @blocks_router.get("", response_model=PipelineBlockList, openapi_extra=OPEN_TO_AGENTS)
 @read_limit
-async def list_pipeline_blocks(request: Request):
+async def list_pipeline_blocks(
+    request: Request, blocks: PipelineBlocks = Depends(get_pipeline_blocks)
+):
     """Every saved block, by name. A block is a chain of steps with their
     settings that the composer copies into a design.
     """
-    return await forward(request, "GET", "/pipeline-blocks")
+    return await blocks.list()
 
 
 @blocks_router.post("", response_model=PipelineBlockView, status_code=201)
 @write_limit
-async def create_pipeline_block(request: Request, change: PipelineBlockCreate):
+async def create_pipeline_block(
+    request: Request,
+    change: PipelineBlockCreate,
+    blocks: PipelineBlocks = Depends(get_pipeline_blocks),
+):
     """Save a chain of steps as a block. Needs `manage_monitors`.
 
     `steps` are in order, each feeding the next; a block holds only steps that
     take features and give features. Answers 409 for a name that is taken or
     once the library holds 100 blocks.
     """
-    return await forward(request, "POST", "/pipeline-blocks", change)
+    return await invoke(blocks.create(change))
 
 
 @blocks_router.delete("/{block_id}", status_code=204)
 @write_limit
-async def delete_pipeline_block(request: Request, block_id: str):
+async def delete_pipeline_block(
+    request: Request,
+    block_id: str,
+    blocks: PipelineBlocks = Depends(get_pipeline_blocks),
+):
     """Delete a block. Needs `manage_monitors`.
 
     Designs that copied its steps keep them.
     """
-    await forward(request, "DELETE", f"/pipeline-blocks/{path_segment(block_id)}")
+    await blocks.remove(block_id)
     return Response(status_code=204)
 
 
 @router.get("", response_model=PipelineListPage, openapi_extra=OPEN_TO_AGENTS)
 @read_limit
 async def list_pipelines(
-    request: Request, query: Annotated[PipelineListQuery, Query()]
+    request: Request,
+    query: Annotated[PipelineListQuery, Query()],
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Saved designs, paged."""
-    return await forward(
-        request, "GET", "/pipelines", params=query.model_dump(exclude_none=True)
-    )
+    return await invoke(library.list(query))
 
 
 @router.post("", response_model=PipelineView, status_code=201)
 @write_limit
-async def create_pipeline(request: Request, change: PipelineCreate):
+async def create_pipeline(
+    request: Request,
+    change: PipelineCreate,
+    library: PipelineLibrary = Depends(get_pipeline_library),
+):
     """Save a new design as a draft. Needs `manage_monitors`."""
-    return await forward(request, "POST", "/pipelines", change)
+    return await invoke(library.create(change))
 
 
 @router.post(
@@ -389,7 +452,9 @@ async def validate_unsaved_design(request: Request, change: PipelineValidateRequ
     """Check a design without saving it: issues, and with `selected_node_id` the
     fields available at that node.
     """
-    return await forward(request, "POST", "/pipelines/validate", change)
+    return bounded_validation_report(
+        check_design(change.definition), change.selected_node_id
+    )
 
 
 @router.post("/edit", response_model=DesignEditResult, openapi_extra=OPEN_TO_AGENTS)
@@ -410,50 +475,64 @@ async def edit_unsaved_design(request: Request, change: DesignEditRequest):
     its issues are in the report. New steps get a place on the canvas beside
     the step they follow, so the design reads well when a person opens it.
     """
-    return await forward(request, "POST", "/pipelines/edit", change)
+    try:
+        return edit_design(change)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("/{pipeline_id}", response_model=PipelineView, openapi_extra=OPEN_TO_AGENTS)
 @read_limit
-async def get_pipeline(request: Request, pipeline_id: str):
+async def get_pipeline(
+    request: Request,
+    pipeline_id: str,
+    library: PipelineLibrary = Depends(get_pipeline_library),
+):
     """One design with its draft graph, its `version` and its revisions."""
-    return await forward(request, "GET", f"/pipelines/{path_segment(pipeline_id)}")
+    return await invoke(library.get(pipeline_id))
 
 
 @router.patch("/{pipeline_id}", response_model=PipelineView)
 @write_limit
 async def update_pipeline(
-    request: Request, pipeline_id: str, change: PipelineMetadataChange
+    request: Request,
+    pipeline_id: str,
+    change: PipelineMetadataChange,
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Rename, describe or archive a design. Needs `manage_monitors`.
 
     Send the current `expected_version`; a stale one answers 409.
     """
-    return await forward(
-        request, "PATCH", f"/pipelines/{path_segment(pipeline_id)}", change
-    )
+    return await invoke(library.metadata(pipeline_id, change))
 
 
 @router.put("/{pipeline_id}/draft", response_model=PipelineView)
 @write_limit
-async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSave):
+async def save_draft(
+    request: Request,
+    pipeline_id: str,
+    change: PipelineDraftSave,
+    library: PipelineLibrary = Depends(get_pipeline_library),
+):
     """Replace a design's draft graph and layout. Needs `manage_monitors`.
 
     Send the current `expected_version`; a stale one answers 409.
     """
-    return await forward(
-        request, "PUT", f"/pipelines/{path_segment(pipeline_id)}/draft", change
-    )
+    return await invoke(library.save_draft(pipeline_id, change))
 
 
 @router.post("/{pipeline_id}/validate", response_model=PipelineValidationReport)
 @compile_limit
 async def validate_pipeline(
-    request: Request, pipeline_id: str, change: PipelineValidateRequest
+    request: Request,
+    pipeline_id: str,
+    change: PipelineValidateRequest,
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Check a graph against a saved design without saving it."""
-    return await forward(
-        request, "POST", f"/pipelines/{path_segment(pipeline_id)}/validate", change
+    return await invoke(
+        library.validate(pipeline_id, change.definition, change.selected_node_id)
     )
 
 
@@ -467,14 +546,10 @@ async def list_pipeline_revisions(
     request: Request,
     pipeline_id: str,
     query: Annotated[PipelineRevisionQuery, Query()],
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Published revisions of a design, newest first, paged by `next_before`."""
-    return await forward(
-        request,
-        "GET",
-        f"/pipelines/{path_segment(pipeline_id)}/revisions",
-        params=query.model_dump(exclude_none=True),
-    )
+    return await invoke(library.revisions(pipeline_id, query))
 
 
 @router.post(
@@ -483,14 +558,17 @@ async def list_pipeline_revisions(
     status_code=201,
 )
 @write_limit
-async def publish_revision(request: Request, pipeline_id: str, change: PipelinePublish):
+async def publish_revision(
+    request: Request,
+    pipeline_id: str,
+    change: PipelinePublish,
+    library: PipelineLibrary = Depends(get_pipeline_library),
+):
     """Freeze the current draft as a new revision that monitors can run.
 
     Needs `manage_monitors`. Send the current `expected_version`.
     """
-    return await forward(
-        request, "POST", f"/pipelines/{path_segment(pipeline_id)}/revisions", change
-    )
+    return await invoke(library.publish(pipeline_id, change))
 
 
 @router.get(
@@ -499,13 +577,14 @@ async def publish_revision(request: Request, pipeline_id: str, change: PipelineP
     openapi_extra=OPEN_TO_AGENTS,
 )
 @read_limit
-async def get_revision(request: Request, pipeline_id: str, revision_id: str):
+async def get_revision(
+    request: Request,
+    pipeline_id: str,
+    revision_id: str,
+    library: PipelineLibrary = Depends(get_pipeline_library),
+):
     """One published revision with its graph and fingerprint."""
-    return await forward(
-        request,
-        "GET",
-        f"/pipelines/{path_segment(pipeline_id)}/revisions/{path_segment(revision_id)}",
-    )
+    return await invoke(library.revision(pipeline_id, revision_id))
 
 
 @router.get(
@@ -519,21 +598,23 @@ async def get_revision_metadata(
     pipeline_id: str,
     revision_id: str,
     selected_node_id: str = Query(min_length=1, max_length=100),
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Validation of a published revision, with the fields available at
     `selected_node_id`.
     """
-    return await forward(
-        request,
-        "GET",
-        f"/pipelines/{path_segment(pipeline_id)}/revisions/{path_segment(revision_id)}/metadata",
-        params={"selected_node_id": selected_node_id},
+    return await invoke(
+        library.revision_metadata(pipeline_id, revision_id, selected_node_id)
     )
 
 
 @activations_router.post("", response_model=PipelineActivationView, status_code=202)
 @write_limit
-async def activate_pipeline(request: Request, change: PipelineActivationRequest):
+async def activate_pipeline(
+    request: Request,
+    change: PipelineActivationRequest,
+    activations: PipelineActivations = Depends(get_pipeline_activations),
+):
     """Run a published revision as a monitor. Needs `manage_monitors`.
 
     `bindings` maps each input slot to a catalogue reading id. Answers 202 with
@@ -541,7 +622,7 @@ async def activate_pipeline(request: Request, change: PipelineActivationRequest)
     `cancelled`. Repeating a request with the same `idempotency_key` returns the
     first activation instead of starting another.
     """
-    return await forward(request, "POST", "/pipeline-activations", change)
+    return await invoke(activations.submit(change))
 
 
 @activations_router.get(
@@ -550,11 +631,13 @@ async def activate_pipeline(request: Request, change: PipelineActivationRequest)
     openapi_extra=OPEN_TO_AGENTS,
 )
 @read_limit
-async def get_activation(request: Request, activation_id: str):
+async def get_activation(
+    request: Request,
+    activation_id: str,
+    activations: PipelineActivations = Depends(get_pipeline_activations),
+):
     """Progress of an activation: its `phase`, the monitor it starts and any issues."""
-    return await forward(
-        request, "GET", f"/pipeline-activations/{path_segment(activation_id)}"
-    )
+    return await invoke(activations.get(activation_id))
 
 
 @activations_router.post(
@@ -563,11 +646,13 @@ async def get_activation(request: Request, activation_id: str):
     openapi_extra=STARTS_SERVICES,
 )
 @write_limit
-async def cancel_activation(request: Request, activation_id: str):
+async def cancel_activation(
+    request: Request,
+    activation_id: str,
+    activations: PipelineActivations = Depends(get_pipeline_activations),
+):
     """Cancel an activation that has not finished. Needs `manage_monitors`."""
-    return await forward(
-        request, "DELETE", f"/pipeline-activations/{path_segment(activation_id)}"
-    )
+    return await invoke(activations.cancel(activation_id))
 
 
 @monitor_pipeline_router.get(
@@ -580,16 +665,12 @@ async def get_monitor_pipeline(
     request: Request,
     monitor_id: str,
     selected_node_id: str | None = Query(default=None, min_length=1, max_length=100),
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """The design a monitor runs, its current run, recent run history and
     validation, optionally for `selected_node_id`.
     """
-    return await forward(
-        request,
-        "GET",
-        f"/{path_segment(monitor_id)}/pipeline",
-        params={"selected_node_id": selected_node_id} if selected_node_id else None,
-    )
+    return await invoke(library.service(monitor_id, selected_node_id))
 
 
 @monitor_pipeline_router.get(
@@ -602,16 +683,12 @@ async def list_monitor_pipeline_history(
     request: Request,
     monitor_id: str,
     query: Annotated[PipelineHistoryQuery, Query()],
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Earlier runs this monitor replaced, most recent first. For the next page
     ask for the history of `next_monitor_id`.
     """
-    return await forward(
-        request,
-        "GET",
-        f"/{path_segment(monitor_id)}/pipeline-history",
-        params=query.model_dump(exclude_none=True),
-    )
+    return await invoke(library.history(monitor_id, query))
 
 
 @monitor_pipeline_router.get(
@@ -620,11 +697,13 @@ async def list_monitor_pipeline_history(
     openapi_extra=OPEN_TO_AGENTS,
 )
 @read_limit
-async def get_monitor_pipeline_timeline(request: Request, monitor_id: str):
+async def get_monitor_pipeline_timeline(
+    request: Request,
+    monitor_id: str,
+    library: PipelineLibrary = Depends(get_pipeline_library),
+):
     """What a monitor's run went through, oldest event first, and how it ended."""
-    return await forward(
-        request, "GET", f"/{path_segment(monitor_id)}/pipeline-timeline"
-    )
+    return await invoke(library.timeline(monitor_id))
 
 
 @monitor_pipeline_router.get(
@@ -637,25 +716,25 @@ async def get_monitor_pipeline_metadata(
     request: Request,
     monitor_id: str,
     selected_node_id: str = Query(min_length=1, max_length=100),
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Validation of a monitor's design, with the fields available at
     `selected_node_id`.
     """
-    return await forward(
-        request,
-        "GET",
-        f"/{path_segment(monitor_id)}/pipeline-metadata",
-        params={"selected_node_id": selected_node_id},
-    )
+    return await invoke(library.service_metadata(monitor_id, selected_node_id))
 
 
 @monitor_pipeline_router.get(
     "/{monitor_id}/pipeline/state", openapi_extra=OPEN_TO_AGENTS
 )
 @read_limit
-async def get_monitor_pipeline_state(request: Request, monitor_id: str):
+async def get_monitor_pipeline_state(
+    request: Request,
+    monitor_id: str,
+    library: PipelineLibrary = Depends(get_pipeline_library),
+):
     """The diagnostic snapshot a running monitor last reported for its nodes."""
-    return await forward(request, "GET", f"/{path_segment(monitor_id)}/pipeline-state")
+    return await invoke(library.pipeline_state(monitor_id))
 
 
 @monitor_pipeline_router.put(
@@ -663,12 +742,13 @@ async def get_monitor_pipeline_state(request: Request, monitor_id: str):
 )
 @write_limit
 async def save_monitor_pipeline_layout(
-    request: Request, monitor_id: str, layout: PipelineLayout
+    request: Request,
+    monitor_id: str,
+    layout: PipelineLayout,
+    library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     """Store where a monitor's nodes sit on the canvas; the graph is unchanged.
 
     Needs `manage_monitors`.
     """
-    return await forward(
-        request, "PUT", f"/{path_segment(monitor_id)}/pipeline-layout", layout
-    )
+    return await invoke(library.layout(monitor_id, layout))

@@ -6,17 +6,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import catalogue as gateway
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.system import SystemStream
-from off_key_core.schemas.system_live import SystemLiveStart
 from off_key_core.utils.payload_decode import decode_value
-from off_key_tactic_middleware.api.collection_auth import current_caller
-from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.config.system_live import (
     LiveCredential,
     LiveSocksProxy,
@@ -30,6 +24,7 @@ from off_key_tactic_middleware.services.catalogue.system_live import (
 from off_key_tactic_middleware.services.catalogue.system_live_mqtt import LiveMqttWorker
 from socks import SOCKS5
 
+from tests.support.gateway import gateway_app
 from tests.support.system_live import FakeWorker, manager, snapshot
 
 
@@ -590,88 +585,51 @@ def test_mqtt_tls_websocket_reconnect_and_suback_state():
     client.loop_stop.assert_called_once()
 
 
-def _api(monkeypatch, *, role=MEMBER_ROLE, authenticated=True):
-    app = FastAPI()
-    app.include_router(system_api.router)
+def _api(monkeypatch, *, role=MEMBER_ROLE, authenticated=True, session=None):
+    caller = (
+        User(id=1, email="member@example.com", role=role) if authenticated else None
+    )
+    app = gateway_app(caller, session=session)
     service, _ = manager()
     app.state.system_live = service
-    if authenticated:
-        app.dependency_overrides[current_caller] = lambda: User(
-            id=1, email="member@example.com", role=role
-        )
-    app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     monkeypatch.setattr(SystemService, "read", AsyncMock(return_value=snapshot()))
     monkeypatch.setattr(SystemService, "require_writes", AsyncMock())
     return app, service
 
 
+VIEW = "/v1/live/views"
+
+
 def test_live_route_requires_sign_in_and_admin_for_broker_actions(monkeypatch):
     app, service = _api(monkeypatch, authenticated=False)
     with TestClient(app) as client:
-        assert client.get("/system/live").status_code == 401
-        assert (
-            client.post(
-                "/system/live/leases", json={"expected_revision": 1}
-            ).status_code
-            == 401
-        )
+        assert client.get("/v1/live/measurements").status_code == 401
+        assert client.post(VIEW, json={"expected_revision": 1}).status_code == 401
     app, service = _api(monkeypatch)
     with TestClient(app) as client:
-        assert client.get("/system/live").status_code == 200
-        assert (
-            client.post(
-                "/system/live/leases", json={"expected_revision": 1}
-            ).status_code
-            == 403
-        )
-        assert client.put("/system/live/leases/" + "a" * 32).status_code == 403
-        assert client.delete("/system/live/leases/" + "a" * 32).status_code == 403
+        assert client.get("/v1/live/measurements").status_code == 200
+        assert client.post(VIEW, json={"expected_revision": 1}).status_code == 403
+        view = f"{VIEW}/{'a' * 32}"
+        assert client.post(view + "/renew").status_code == 403
+        assert client.delete(view).status_code == 403
     assert service.workers == []
 
 
 def test_admin_route_starts_renews_and_releases_with_no_database_telemetry_writes(
     monkeypatch,
 ):
-    app, service = _api(monkeypatch, role=ADMIN_ROLE)
     session = AsyncMock()
-    app.dependency_overrides[get_db_async] = lambda: session
+    app, service = _api(monkeypatch, role=ADMIN_ROLE, session=session)
     with TestClient(app) as client:
-        result = client.post("/system/live/leases", json={"expected_revision": 1})
-        assert result.status_code == 200
-        lease_id = result.json()["lease_id"]
-        assert client.put("/system/live/leases/" + lease_id).status_code == 200
+        result = client.post(VIEW, json={"expected_revision": 1})
+        assert result.status_code == 200, result.text
+        view_id = result.json()["view_id"]
+        assert client.post(f"{VIEW}/{view_id}/renew").status_code == 200
         service.workers[0].message("room/values", b'{"temperature":20}', False)
-        assert client.get("/system/live").json()["samples"][0]["value"] == 20
-        assert client.delete("/system/live/leases/" + lease_id).status_code == 204
-        assert client.get("/system/live").json()["mode"] == "configured_only"
+        live = client.get("/v1/live/measurements").json()
+        assert live["samples"][0]["value"] == 20
+        assert client.delete(f"{VIEW}/{view_id}").status_code == 204
+        live = client.get("/v1/live/measurements").json()
+        assert live["mode"] == "configured_only"
     session.add.assert_not_called()
     session.execute.assert_not_called()
-    session.commit.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_gateway_preserves_authorization_and_live_request_contract(monkeypatch):
-    request = AsyncMock(return_value={"mode": "configured_only"})
-    monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.open_live_view(SystemLiveStart(expected_revision=7), "Bearer token")
-    request.assert_awaited_with(
-        "POST",
-        "/api/v1/system/live/leases",
-        json_data={"expected_revision": 7},
-        headers={"Authorization": "Bearer token"},
-    )
-    await gateway.list_live_measurements(12, "Bearer token")
-    request.assert_awaited_with(
-        "GET",
-        "/api/v1/system/live?after_sequence=12",
-        json_data=None,
-        headers={"Authorization": "Bearer token"},
-    )
-    lease_id = "b" * 32
-    await gateway.renew_live_view(lease_id, "Bearer token")
-    assert request.await_args.args == ("PUT", f"/api/v1/system/live/leases/{lease_id}")
-    await gateway.close_live_view(lease_id, "Bearer token")
-    assert request.await_args.args == (
-        "DELETE",
-        f"/api/v1/system/live/leases/{lease_id}",
-    )

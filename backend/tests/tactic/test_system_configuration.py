@@ -6,11 +6,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import catalogue as gateway_system
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     Charger,
     CollectionBinding,
@@ -24,14 +21,13 @@ from off_key_core.db.system import (
     SystemRevision,
 )
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_tactic_middleware.api.collection_auth import current_caller
-from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.services.catalogue import system as system_service
 from pydantic import ValidationError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from tests.support.gateway import gateway_app
 from tests.support.legacy_catalogue import legacy_catalog
 from tests.support.system_document import (
     AsyncSessionAdapter,
@@ -403,16 +399,12 @@ async def test_stale_edits_fail_and_noop_does_not_bump_revision(database):
 
 
 def test_routes_enforce_current_database_admin_role_and_member_reads(monkeypatch):
-    app = FastAPI()
-    app.include_router(system_api.router)
-    member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_caller] = lambda: member
-    app.dependency_overrides[get_db_async] = lambda: AsyncMock()
+    app = gateway_app(User(email="member@example.com", role=MEMBER_ROLE))
     read = AsyncMock(return_value={})
     monkeypatch.setattr(system_service.SystemService, "save", read)
     with TestClient(app) as client:
         denied = client.put(
-            "/system",
+            "/v1/catalogue",
             json={
                 "expected_revision": 0,
                 "document": document().model_dump(mode="json"),
@@ -423,23 +415,20 @@ def test_routes_enforce_current_database_admin_role_and_member_reads(monkeypatch
 
 
 def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypatch):
-    app = FastAPI()
-    app.include_router(system_api.router)
     member = User(email="member@example.com", role=MEMBER_ROLE)
-    app.dependency_overrides[current_caller] = lambda: member
-    app.dependency_overrides[get_db_async] = lambda: AsyncMock()
+    app = gateway_app(member)
     snapshot = SystemSnapshot(revision=1, document=document(), storage_origin="saved")
     read = AsyncMock(return_value=snapshot)
     save = AsyncMock(return_value=snapshot)
     monkeypatch.setattr(system_service.SystemService, "read", read)
     monkeypatch.setattr(system_service.SystemService, "save", save)
     with TestClient(app) as client:
-        result = client.get("/system")
+        result = client.get("/v1/catalogue")
         assert result.status_code == 200
         assert result.json()["can_edit"] is False
         member.role = ADMIN_ROLE
         result = client.put(
-            "/system",
+            "/v1/catalogue",
             json={
                 "expected_revision": 1,
                 "document": document().model_dump(mode="json"),
@@ -448,18 +437,3 @@ def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypat
         assert result.status_code == 200
         assert result.json()["can_edit"] is True
         assert save.await_args.kwargs["actor"] == "member@example.com"
-
-
-@pytest.mark.asyncio
-async def test_gateway_forwards_revision_document_and_authorization(monkeypatch):
-    request = AsyncMock(return_value={"revision": 1})
-    monkeypatch.setattr(gateway_system.tactic, "request", request)
-    change = SystemChange(expected_revision=0, document=document())
-    result = await gateway_system.save_catalogue(change, "Bearer test-token")
-    assert result == {"revision": 1}
-    request.assert_awaited_once_with(
-        "PUT",
-        "/api/v1/system",
-        json_data=change.model_dump(mode="json"),
-        headers={"Authorization": "Bearer test-token"},
-    )

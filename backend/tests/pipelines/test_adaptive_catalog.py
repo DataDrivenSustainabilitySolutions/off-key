@@ -5,20 +5,17 @@ import json
 import pytest
 from aberrant import __version__
 from aberrant.catalog import DetectorConfig
-from off_key_api_gateway.api.v1.monitors import _normalize_models_for_gateway
+from off_key_api_gateway.api.v1.monitors import detectors_by_type
 from off_key_core.models import (
     ABERRANT_VERSION,
     ADAPTIVE_MODELS_BY_TYPE,
-    adaptive_model_metadata,
     validate_adaptive_model_params,
 )
 from off_key_core.models.adaptive import CATALOG
-from off_key_core.models.pipeline_fields import component_fields
 from off_key_core.models.pipelines import validate_pipeline
 from off_key_core.schemas.pipelines import PipelineDefinition
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.catalog import generate_catalog
-from off_key_tactic_middleware.api.v1.models import ModelInfo
 
 from tests.support.pipelines import template
 
@@ -133,23 +130,9 @@ def test_request_rejects_another_runtime_version():
         AdaptiveStreamConfig(aberrant_version="0.5.0")
 
 
-def test_catalog_capabilities_survive_tactic_and_gateway_responses():
+def test_catalog_capabilities_reach_the_detector_listing():
     model_type = "aberrant_rolling_matrix_profile"
-    definition = ADAPTIVE_MODELS_BY_TYPE[model_type]
-    response = ModelInfo(
-        model_type=model_type,
-        family="adaptive_aberrant",
-        name=definition["name"],
-        import_paths=[definition["import_path"]],
-        parameter_schema=definition["parameter_schema"],
-        fields=component_fields(definition["parameter_schema"]),
-        default_parameters=definition["default_parameters"],
-        strategy="adaptive_stream",
-        version=ABERRANT_VERSION,
-        requires_special_handling=False,
-        **adaptive_model_metadata(model_type),
-    )
-    payload = _normalize_models_for_gateway([response.model_dump()])[model_type]
+    payload = detectors_by_type("adaptive_stream")[model_type]
     assert payload["family"] == "adaptive_aberrant"
     assert payload["algorithm_family"] == "time_series"
     assert payload["catalog_id"] == "rolling_matrix_profile"

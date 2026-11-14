@@ -113,7 +113,7 @@ npm --prefix frontend run build
 | ------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------- |
 | Frontend cannot call the API in host mode   | `API_PROXY_TARGET` still uses container DNS              | Set it to `http://localhost:8000`                   |
 | Gateway restarts during boot                | Database schema is not ready                             | Wait, then inspect `db-sync` and gateway logs       |
-| Monitoring endpoints return upstream errors | TACTIC is not ready or cannot reach the Docker API proxy | Check <http://localhost:8001/ready> and TACTIC logs |
+| Monitors stay pending or fail to start | TACTIC is not ready or cannot reach the Docker API proxy | Check <http://localhost:8001/ready> and TACTIC logs |
 | Pre-commit fails unexpectedly               | Dependencies differ from the lockfiles                   | Re-run the frozen dependency installs               |
 
 ## Related pages

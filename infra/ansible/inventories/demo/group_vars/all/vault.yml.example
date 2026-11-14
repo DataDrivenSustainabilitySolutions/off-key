@@ -1,6 +1,5 @@
 # Copy to vault.yml, fill all values and encrypt with ansible-vault.
 # Each secret belongs to the DEMO installation. Never copy the production vault.
-internal_api_secret: CHANGE_ME_generate_a_unique_random_32_byte_secret
 jwt_secret: CHANGE_ME_generate_a_different_random_32_byte_secret
 postgres_password: CHANGE_ME
 emqx_dashboard_password: CHANGE_ME

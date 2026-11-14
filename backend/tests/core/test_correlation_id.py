@@ -10,7 +10,6 @@ from off_key_core.config.logs import (
     correlation_headers,
     get_correlation_id,
 )
-from off_key_tactic_middleware.main import create_app
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from tests.support.http import asgi_client
@@ -89,9 +88,3 @@ async def test_downstream_calls_see_the_request_id():
     response = await _get(app, {"X-Correlation-ID": "request-123"})
 
     assert response.json() == {"X-Correlation-ID": "request-123"}
-
-
-def test_tactic_binds_the_id_outermost():
-    app = create_app()
-
-    assert app.user_middleware[0].cls is CorrelationIdMiddleware

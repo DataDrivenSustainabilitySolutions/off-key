@@ -20,10 +20,12 @@ classifiers = [
 ]
 dependencies = [
     "off-key-core[web,mail,auth]",
+    # The domain services, their repositories and the background workers' shared
+    # code; the API calls them in process.
+    "off-key-tactic-middleware",
     "fastapi>=0.115.8",
     "slowapi>=0.1.9",
     "uvicorn>=0.25.0",
-    "aiohttp>=3.14.3",
     "mcp>=2.3,<3",
 ]
 
@@ -33,3 +35,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 off-key-core = { workspace = true }
+off-key-tactic-middleware = { workspace = true }

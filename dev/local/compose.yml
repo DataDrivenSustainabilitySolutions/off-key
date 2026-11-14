@@ -29,16 +29,18 @@ services:
       - "127.0.0.1:${LOCAL_FRONTEND_PORT:-5174}:5173"
 
   api-gateway:
-    ports:
-      - "127.0.0.1:${LOCAL_API_PORT:-8002}:8000"
-
-  tactic-middleware:
-    # Ephemeral cleanup is host-wide; this deployment owns only its DB records.
-    environment:
+    # Live views and broker checks run in the API; it reads the worker's settings.
+    environment: &local-domain-env
+      # Ephemeral cleanup is host-wide; this deployment owns only its DB records.
       TACTIC_RADAR_WORKLOAD_LIFECYCLE: persistent
       SYSTEM_LIVE_ENABLED: "${SYSTEM_LIVE_ENABLED:-true}"
       SYSTEM_LIVE_ALLOWED_HOSTS: '${SYSTEM_LIVE_ALLOWED_HOSTS:-["source-broker","fixture-broker-campus","fixture-broker-production","fixture-broker-greenhouse","fixture-broker-meter","fixture-broker-weather","fixture-broker-pump"]}'
       SYSTEM_HTTP_ALLOWED_ORIGINS: '${SYSTEM_HTTP_ALLOWED_ORIGINS:-["http://fixture-api:8080"]}'
+    ports:
+      - "127.0.0.1:${LOCAL_API_PORT:-8002}:8000"
+
+  tactic-middleware:
+    environment: *local-domain-env
     ports:
       - "127.0.0.1:${LOCAL_TACTIC_PORT:-8003}:8000"
 

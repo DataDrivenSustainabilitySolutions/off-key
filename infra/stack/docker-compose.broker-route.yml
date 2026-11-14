@@ -2,7 +2,7 @@
 #
 # Merged right after docker-compose.swarm.yml when broker_route_enabled is on.
 # One singleton Tailscale node that joins the network a deployment's brokers
-# live on and offers a SOCKS5 proxy into it; TACTIC reaches the hosts that
+# live on and offers a SOCKS5 proxy into it; the API and TACTIC reach the hosts that
 # SYSTEM_BROKER_ROUTES covers through that proxy. Installations whose brokers
 # are reachable directly leave it out. References the
 # base's overlay networks, so it is NOT valid on its own.
@@ -22,7 +22,7 @@ services:
       - TS_STATE_DIR=/var/lib/tailscale
       # SOCKS5 proxy on port 1055, named by the route's socks_proxy.
       - TS_SOCKS5_SERVER=0.0.0.0:1055
-    # The proxy has no login, so only TACTIC shares its network: other workloads
+    # The proxy has no login, so only the API and TACTIC share its network: other workloads
     # cannot tunnel through it, and a peer on the source network that reaches
     # the proxy finds nothing else behind it.
     networks:
@@ -37,6 +37,10 @@ services:
         constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
+
+  api:
+    networks:
+      - broker-route-network
 
   tactic:
     networks:

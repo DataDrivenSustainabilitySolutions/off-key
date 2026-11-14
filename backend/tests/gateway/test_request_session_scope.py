@@ -1,21 +1,18 @@
-"""A write is committed before TACTIC answers it."""
+"""A write is committed before the API answers it."""
 
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from off_key_api_gateway.api.access import current_caller
+from off_key_api_gateway.providers import RequestSession, get_system_service
 from off_key_core.db.base import get_db_async
-from off_key_tactic_middleware.api.collection_auth import current_caller
-from off_key_tactic_middleware.provider import RequestSession, get_system_service
 
-TACTIC = (
-    Path(__file__).resolve().parents[2]
-    / "services"
-    / "middleware"
-    / "tactic"
-    / "src"
-    / "off_key_tactic_middleware"
+SERVICES = Path(__file__).resolve().parents[2] / "services"
+SOURCES = (
+    SERVICES / "api" / "gateway" / "src" / "off_key_api_gateway",
+    SERVICES / "middleware" / "tactic" / "src" / "off_key_tactic_middleware",
 )
 
 
@@ -96,10 +93,11 @@ def test_members_and_services_share_the_request_session():
         assert any(default is RequestSession for default in defaults), provider
 
 
-def test_every_tactic_session_dependency_uses_the_request_session():
+def test_every_session_dependency_uses_the_request_session():
     offenders = [
-        str(path.relative_to(TACTIC))
-        for path in sorted(TACTIC.rglob("*.py"))
+        str(path.relative_to(SERVICES))
+        for source in SOURCES
+        for path in sorted(source.rglob("*.py"))
         if "Depends(get_db_async)" in path.read_text(encoding="utf-8")
     ]
     assert offenders == []

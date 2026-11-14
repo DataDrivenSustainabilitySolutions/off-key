@@ -199,8 +199,6 @@ tactic_service_version:   "0.1.0"
 tactic_host:              "0.0.0.0"
 tactic_port:              "8001"
 tactic_log_level:         INFO
-tactic_service_host:      tactic
-tactic_service_port:      "{{ tactic_port }}"
 tactic_docker_api_url:    "http://socket-proxy"
 tactic_docker_api_port:   "2375"
 tactic_docker_max_concurrent_calls: "5"

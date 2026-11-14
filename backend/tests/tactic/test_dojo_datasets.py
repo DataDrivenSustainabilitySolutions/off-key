@@ -4,8 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
@@ -29,7 +27,6 @@ from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_tactic_middleware.api.v1.dojo import router
 from off_key_tactic_middleware.domain import NotFoundError, ValidationError
 from off_key_tactic_middleware.services.accounts.members import MemberService
 from off_key_tactic_middleware.services.dojo import datasets as dataset_module
@@ -43,6 +40,7 @@ from pydantic import ValidationError as SchemaError
 from sqlalchemy import MetaData, func, select
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
 from tests.support.membership import PASSWORD, bootstrap
 from tests.support.system_document import document
@@ -422,20 +420,7 @@ async def test_change_and_delete_cascade_to_points(dojo_database):
 
 
 def dojo_app(sessions):
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v1")
-
-    async def database():
-        async with sessions() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-
-    app.dependency_overrides[get_db_async] = database
-    return app
+    return gateway_app(sessions=sessions)
 
 
 @pytest.mark.asyncio
@@ -455,11 +440,11 @@ async def test_routes_upload_csv_for_administrators_only(dojo_database):
         )
     async with asgi_client(dojo_app(dojo_database)) as client:
         denied = await client.get(
-            "/api/v1/dojo/datasets",
+            "/v1/dojo/datasets",
             headers={"Authorization": f"Bearer {access_token(member)}"},
         )
         created = await client.post(
-            "/api/v1/dojo/datasets/csv",
+            "/v1/dojo/datasets/csv",
             params={"name": "Upload", "filename": "x.csv"},
             content=b"t;a\n2026-03-01T00:00:00Z;1,5\n",
             headers={
@@ -468,7 +453,7 @@ async def test_routes_upload_csv_for_administrators_only(dojo_database):
             },
         )
         invalid = await client.post(
-            "/api/v1/dojo/datasets/csv",
+            "/v1/dojo/datasets/csv",
             params={"name": "Upload"},
             content=b"t,a\nsoon,1\n",
             headers={"Authorization": f"Bearer {access_token(admin_user)}"},

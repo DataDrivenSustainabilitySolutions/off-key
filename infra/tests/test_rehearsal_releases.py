@@ -168,6 +168,8 @@ class RehearsalReleaseTests(unittest.TestCase):
             "image": "platform",
             "volumes": ["retained:/data"],
         }
+        base["services"]["mqtt-radar"]["environment"]["RADAR_POOL_RUNTIME"] = "current"
+        base["services"]["dojo-worker"] = {"image": "current"}
         snapshot = deepcopy(base)
         release = {
             "images": {name: f"older/{name}@sha256:target" for name in MODEL_SERVICES}
@@ -186,6 +188,18 @@ class RehearsalReleaseTests(unittest.TestCase):
         )
         self.assertEqual(
             selected["services"]["db-sync"]["image"], release["images"]["db_sync"]
+        )
+        # The pool claims only workloads pinned to its own image.
+        self.assertEqual(
+            selected["services"]["mqtt-radar"]["environment"],
+            {
+                "KEEP": "unchanged",
+                "RADAR_POOL_RUNTIME": release["images"]["mqtt_radar"],
+            },
+        )
+        self.assertEqual(
+            selected["services"]["dojo-worker"]["image"],
+            release["images"]["mqtt_radar"],
         )
 
     def test_release_selection_reads_the_requested_immutable_manifest(self):

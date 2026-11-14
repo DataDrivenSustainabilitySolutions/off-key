@@ -136,6 +136,25 @@ describe("proposals", () => {
     expect(await screen.findByRole("button", { name: "Review Pump vibration" })).toBeTruthy();
   });
 
+  it("declines from the list, and marks one whose readings are gone", async () => {
+    vi.mocked(pipelinesApi.proposals).mockResolvedValue([summary({ missing_readings: ["demo-hamburg:30:occupancy"] })]);
+    const view = render(<PipelineProposalList onReview={() => {}} onBack={() => {}} canDecide />);
+    const card = await screen.findByRole("button", { name: "Review Pump vibration" });
+    expect(card.textContent).toContain("Its reading no longer exists: demo-hamburg:30:occupancy. It cannot start as proposed.");
+    fireEvent.click(screen.getByRole("button", { name: "Decline Pump vibration" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Why you decline Pump vibration" }), { target: { value: "Source removed" } });
+    vi.mocked(pipelinesApi.proposals).mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "Decline proposal" }));
+    expect(await screen.findByText("No proposal waits for a decision.")).toBeTruthy();
+    expect(pipelinesApi.decideProposal).toHaveBeenLastCalledWith("p1", { status: "declined", note: "Source removed" });
+    // Only a member who manages monitors declines; others review.
+    view.unmount();
+    vi.mocked(pipelinesApi.proposals).mockResolvedValue([summary()]);
+    render(<PipelineProposalList onReview={() => {}} onBack={() => {}} />);
+    await screen.findByRole("button", { name: "Review Pump vibration" });
+    expect(screen.queryByRole("button", { name: "Decline Pump vibration" })).toBeNull();
+  });
+
   it("declines with a word for the author", async () => {
     const onDeclined = vi.fn();
     render(<PipelineProposalNotice proposal={summary()} canDecide onDeclined={onDeclined} />);

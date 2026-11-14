@@ -86,6 +86,12 @@
 .pl-proposal-decline { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .pl-proposal-decline input { flex: 1 1 180px; width: auto; }
 .pl-proposal-list small + small { margin-top: 2px; }
+.pl-proposal-list li { display: flex; flex-direction: column; gap: 6px; }
+.pl-proposal-list li > button { flex: 1; }
+.pl-proposal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.pl-proposal-list .pl-proposal-actions button { width: auto; height: auto; flex-direction: row; align-items: center; padding: 7px 10px; border-radius: var(--radius-control); font-size: var(--text-caption); }
+.pl-proposal-list .pl-proposal-actions .pl-proposal-decline { flex: 1 1 100%; }
+.pl-library-list .pl-proposal-missing, .pl-proposal-missing { color: hsl(var(--destructive)); }
 /* How an update differs from what runs, on a line of its own in the notice that says what updating does. */
 .pl-compared { display: block; }
 @media (max-width: 900px) { .pl-issue-startup { display: none; } }

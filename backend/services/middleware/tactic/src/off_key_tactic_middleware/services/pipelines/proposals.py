@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from off_key_core.config.logs import log_security_event
+from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import Agent, DojoRun, PipelineProposal, User
 from off_key_core.models.pipelines import validate_pipeline
 from off_key_core.schemas.pipelines import (
@@ -24,11 +25,28 @@ from .library import begin_library_write
 
 
 def _fields(row: PipelineProposal, model) -> dict:
-    return {key: getattr(row, key) for key in model.model_fields}
+    # missing_readings is read from the catalogue, not stored with the row.
+    return {
+        key: getattr(row, key)
+        for key in model.model_fields
+        if key != "missing_readings"
+    }
 
 
-def proposal_view(row: PipelineProposal) -> PipelineProposalView:
-    return PipelineProposalView.model_validate(_fields(row, PipelineProposalView))
+def proposal_view(
+    row: PipelineProposal, recorded: set[str] | None = None
+) -> PipelineProposalView:
+    return PipelineProposalView.model_validate(
+        _fields(row, PipelineProposalView)
+        | {"missing_readings": _missing(row, recorded)}
+    )
+
+
+def _missing(row: PipelineProposal, recorded: set[str] | None) -> list[str]:
+    """Bound readings gone from the catalogue; only an open proposal can still start."""
+    if recorded is None or row.status != "open":
+        return []
+    return sorted(set((row.bindings or {}).values()) - recorded)
 
 
 def _wrote(row: PipelineProposal, caller: User | Agent) -> bool:
@@ -41,24 +59,46 @@ class PipelineProposals:
     def __init__(self, session):
         self.session = session
 
+    async def _recorded(self) -> set[str] | None:
+        """The readings a monitor can bind now; None when that is unknown."""
+        try:
+            # A savepoint keeps a failed read from ending the caller's transaction.
+            async with self.session.begin_nested():
+                snapshot = await read_collection_runtime(self.session)
+            return {
+                stream.definition.id
+                for stream in snapshot.catalog.streams(selected_only=True)
+            }
+        except Exception:  # The marker is a hint, never a failure.
+            return None
+
     async def list(self, status: ProposalStatus | None = None) -> PipelineProposalList:
         statement = select(PipelineProposal).order_by(
             PipelineProposal.created_at.desc(), PipelineProposal.id
         )
         if status is not None:
             statement = statement.where(PipelineProposal.status == status)
-        rows = await self.session.scalars(statement.limit(MAX_PROPOSALS_LISTED))
+        rows = list(await self.session.scalars(statement.limit(MAX_PROPOSALS_LISTED)))
+        recorded = (
+            await self._recorded()
+            if any(row.status == "open" for row in rows)
+            else None
+        )
         return PipelineProposalList(
             items=[
                 PipelineProposalSummary.model_validate(
                     _fields(row, PipelineProposalSummary)
+                    | {"missing_readings": _missing(row, recorded)}
                 )
                 for row in rows
             ]
         )
 
     async def get(self, identifier: str) -> PipelineProposalView:
-        return proposal_view(await self._row(identifier))
+        row = await self._row(identifier)
+        return proposal_view(
+            row, await self._recorded() if row.status == "open" else None
+        )
 
     async def create(
         self, change: PipelineProposalCreate, caller: User | Agent

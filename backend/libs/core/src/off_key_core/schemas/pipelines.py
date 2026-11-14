@@ -892,6 +892,13 @@ class PipelineProposalSummary(PipelineModel):
         description="What the member wrote with the decision, for the author."
     )
     created_at: datetime
+    missing_readings: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Readings an open proposal binds that the catalogue no longer "
+            "records, so it cannot start as proposed."
+        ),
+    )
 
 
 class PipelineProposalView(PipelineProposalSummary):

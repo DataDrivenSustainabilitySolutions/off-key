@@ -7,10 +7,54 @@ import type { PipelineProposalSummary } from "@/types/pipelines.generated";
 import { pipelinesApi } from "./api";
 import { proposalOutcome } from "./proposals";
 
-/** The designs handed in for a decision. Reviewing one opens it in the setup. */
-export function PipelineProposalList({ onReview, onBack }: {
+/** A note that an open proposal binds readings the catalogue no longer has. */
+function missingReadings(proposal: PipelineProposalSummary): string {
+  const missing = proposal.missing_readings ?? [];
+  if (!missing.length) return "";
+  return `${missing.length === 1 ? "Its reading no longer exists" : "Its readings no longer exist"}: ${missing.join(", ")}. It cannot start as proposed.`;
+}
+
+/** Decline in place, with an optional note for the author. */
+function DeclineProposal({ proposal, onDeclined, named = false }: {
+  proposal: PipelineProposalSummary;
+  onDeclined: () => void;
+  /** In a list, the controls name the proposal they act on. */
+  named?: boolean;
+}) {
+  const of = named ? ` ${proposal.name}` : "";
+  const [declining, setDeclining] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const decline = async () => {
+    setBusy(true); setError("");
+    try {
+      await pipelinesApi.decideProposal(proposal.id, { status: "declined", note: note.trim() || null });
+      toast.success(`Declined ${proposal.name}.`, { id: "pipeline-proposal" });
+      onDeclined();
+    } catch (reason) { setError(getErrorMessage(reason)); }
+    finally { setBusy(false); }
+  };
+
+  return <>
+    {error && <p role="alert" className="pl-field-error">{error}</p>}
+    {declining
+      ? <form className="pl-proposal-decline" onSubmit={(event) => { event.preventDefault(); void decline(); }}>
+        <input autoFocus aria-label={`Why you decline${of}`} placeholder="Why, for the author (optional)" maxLength={2000}
+          value={note} disabled={busy} onChange={(event) => setNote(event.target.value)} />
+        <button type="submit" disabled={busy}>Decline proposal</button>
+        <button type="button" disabled={busy} onClick={() => { setDeclining(false); setError(""); }}>Cancel</button>
+      </form>
+      : <button type="button" aria-label={`Decline${of}`} onClick={() => setDeclining(true)}>Decline</button>}
+  </>;
+}
+
+/** The designs handed in for a decision. Reviewing one opens it in the setup; a member declines it here or there. */
+export function PipelineProposalList({ onReview, onBack, canDecide = false }: {
   onReview: (proposal: PipelineProposalSummary) => void;
   onBack: () => void;
+  canDecide?: boolean;
 }) {
   const [decided, setDecided] = useState(false);
   const [result, setResult] = useState<{ decided: boolean; items: PipelineProposalSummary[] }>();
@@ -32,7 +76,7 @@ export function PipelineProposalList({ onReview, onBack }: {
     <div className="pl-header">
       <div>
         <h1>Proposals</h1>
-        <p className="pl-help">Designs an agent or a member handed in for a decision. Review one to start it or decline it.</p>
+        <p className="pl-help">Designs an agent or a member handed in for a decision. Review one to start it, or decline it straight from the list.</p>
       </div>
     </div>
     <div className="pl-library-tools">
@@ -54,7 +98,11 @@ export function PipelineProposalList({ onReview, onBack }: {
             <small>Proposed by {proposal.author} <RelativeTime value={proposal.created_at} />
               {proposal.replace_monitor_id && " · Replaces a running service"}</small>
             {proposal.status !== "open" && <small>{proposalOutcome(proposal)}</small>}
+            {missingReadings(proposal) && <small className="pl-proposal-missing">{missingReadings(proposal)}</small>}
           </button>
+          {proposal.status === "open" && canDecide && <div className="pl-proposal-actions">
+            <DeclineProposal proposal={proposal} named onDeclined={() => setRetry((value) => value + 1)} />
+          </div>}
         </li>)}
       </ul>}
   </section>;
@@ -69,37 +117,17 @@ export function PipelineProposalNotice({ proposal, canDecide, onDeclined }: {
   canDecide: boolean;
   onDeclined: () => void;
 }) {
-  const [declining, setDeclining] = useState(false);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   const open = proposal.status === "open";
-
-  const decline = async () => {
-    setBusy(true); setError("");
-    try {
-      await pipelinesApi.decideProposal(proposal.id, { status: "declined", note: note.trim() || null });
-      toast.success(`Declined ${proposal.name}.`, { id: "pipeline-proposal" });
-      onDeclined();
-    } catch (reason) { setError(getErrorMessage(reason)); }
-    finally { setBusy(false); }
-  };
+  const missing = missingReadings(proposal);
 
   return <div className="pl-proposal" role="group" aria-label={`Proposal by ${proposal.author}`}>
     <div className="pl-proposal-text">
       <p><strong>Proposed by {proposal.author}</strong> <RelativeTime value={proposal.created_at} /></p>
       <p>{proposal.reason}</p>
+      {missing && <p className="pl-proposal-missing">{missing}</p>}
       <p className="pl-proposal-state">{open ? canDecide ? "Starting the service accepts the proposal." : "It waits for a member who manages monitors."
         : `${proposalOutcome(proposal)}.`}</p>
-      {error && <p role="alert" className="pl-field-error">{error}</p>}
     </div>
-    {open && canDecide && (declining
-      ? <form className="pl-proposal-decline" onSubmit={(event) => { event.preventDefault(); void decline(); }}>
-        <input autoFocus aria-label="Why you decline" placeholder="Why, for the author (optional)" maxLength={2000}
-          value={note} disabled={busy} onChange={(event) => setNote(event.target.value)} />
-        <button type="submit" disabled={busy}>Decline proposal</button>
-        <button type="button" disabled={busy} onClick={() => { setDeclining(false); setError(""); }}>Cancel</button>
-      </form>
-      : <button type="button" onClick={() => setDeclining(true)}>Decline</button>)}
+    {open && canDecide && <DeclineProposal proposal={proposal} onDeclined={onDeclined} />}
   </div>;
 }

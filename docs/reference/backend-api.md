@@ -286,8 +286,8 @@ here; changes need `manage_monitors`.
 | `GET` | `/pipeline-blocks` | Every saved block, by name: `items`, each with `id`, `name`, `description`, `steps` and `created_at` | None |
 | `POST` | `/pipeline-blocks` | Save a chain of steps as a block (HTTP 201). HTTP 409 when the name is taken or the library holds 100 blocks; 422 for a step a block cannot hold, such as a detector | Body: `name`, optional `description`, `steps` (1 to 16, each with `component` and optional `contract_version`, `params`, `label`) |
 | `DELETE` | `/pipeline-blocks/{block_id}` | Delete a block (HTTP 204); designs keep the steps they copied from it | Path: `block_id` |
-| `GET` | `/pipeline-proposals` | Proposals, the newest first, without their designs: `items`, each with `id`, `name`, `reason`, `author`, `author_kind`, `status`, `test_run_id`, `replace_monitor_id` and the decision | Query: optional `status` (`open`, `accepted`, `declined` or `withdrawn`) |
-| `POST` | `/pipeline-proposals` | Hand a design to a member to decide on (HTTP 201). The design must check without errors. A `test_run_id` names a Dojo run that succeeded on this very design; a run that is missing, unfinished or of another design answers HTTP 422, and titles do not count as a difference. HTTP 409 while 50 proposals wait for a decision | Body: `name`, `reason`, `definition`, optional `layout`, `bindings`, `test_run_id`, `replace_monitor_id` |
+| `GET` | `/pipeline-proposals` | Proposals, the newest first, without their designs: `items`, each with `id`, `name`, `reason`, `author`, `author_kind`, `status`, `test_run_id`, `replace_monitor_id`, `missing_readings` and the decision, and `capacity`: the monitors that run or start (`running`) against the `limit` | Query: optional `status` (`open`, `accepted`, `declined` or `withdrawn`) |
+| `POST` | `/pipeline-proposals` | Hand a design to a member to decide on (HTTP 201). The design must check without errors. A `test_run_id` names a Dojo run that succeeded on this very design; a run that is missing, unfinished, of another design or that scored nothing answers HTTP 422, and titles do not count as a difference. HTTP 409 while 50 proposals wait for a decision | Body: `name`, `reason`, `definition`, optional `layout`, `bindings`, `test_run_id`, `replace_monitor_id` |
 | `GET` | `/pipeline-proposals/{proposal_id}` | One proposal with its `definition`, `layout` and `bindings` | Path: `proposal_id` |
 | `POST` | `/pipeline-proposals/{proposal_id}/decision` | Accept or decline a proposal. Members only: a key cannot decide. Accepting starts nothing: the web app accepts a proposal once the start of its design has been requested. HTTP 409 once it is decided or withdrawn | Body: `status` (`accepted` or `declined`), optional `note` for the author |
 | `POST` | `/pipeline-proposals/{proposal_id}/withdraw` | Take back a proposal that still waits. HTTP 403 for anyone but its author | Path: `proposal_id` |
@@ -605,17 +605,19 @@ hold open and any replica answers any request.
 
 | Tool | What the agent does with it | Operation behind it |
 | --- | --- | --- |
+| `get_access` | Learns what its key may do, how many monitor places are free and how many proposals wait | `GET /agents/me`, `GET /pipeline-proposals` |
 | `list_devices`, `list_readings` | Finds what can be monitored | `GET /devices`, `GET /devices/{device_id}/readings` |
 | `profile_reading` | Learns what a reading looks like before it chooses steps | `GET /readings/{reading_id}/profile` |
 | `search_components`, `get_component` | Finds steps by purpose and reads one with its settings | `GET /pipeline-components/search`, `GET /pipeline-components/{component_id}` |
 | `list_designs`, `get_design` | Reads a design to start from: a starter, a saved template, the design of a running monitor or a proposal | `GET /pipeline-components`, `/pipelines`, `/monitors`, `/monitors/{monitor_id}/pipeline`, `/pipeline-proposals/{proposal_id}` |
 | `edit_design`, `validate_design` | Changes a design in small edits and checks it | `POST /pipelines/edit`, `POST /pipelines/validate` |
-| `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised | `POST /dojo/datasets/history`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` |
+| `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised, and when | `POST /dojo/datasets/history`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` and `/results` |
 | `propose_design`, `list_proposals`, `withdraw_proposal` | Hands a design to a member and learns what they decided | `/pipeline-proposals` |
 | `start_monitor`, `get_start` | Starts a monitor without a member's decision, in shadow with `shadow` set | `POST /pipelines/apply`, `GET /pipeline-activations/{activation_id}` |
 
 `start_monitor` and `get_start` exist only for a key whose `starts` is `shadow`
-or `live`; another key neither sees nor can call them. A key with `shadow`
+or `live`; another key does not see them, and a call to one is refused with
+the advice to propose the design instead. A key with `shadow`
 passes `shadow` to `start_monitor`, and a start without it is refused in the
 route's words. The grant is read with every request, so
 it holds from the next one.
@@ -634,7 +636,9 @@ A design passes between the tools as the agent received it: `definition` and
 readings into a Dojo dataset and queues a run on it; with the `dataset_id` of
 an earlier test the design runs on the same copy, so two results compare.
 `get_test` and `get_start` wait up to `wait_seconds` (20 unless given, at most
-45) for the run or the start to finish before they answer. `start_monitor`
+45) for the run or the start to finish before they answer. Once a test has
+alarmed, `get_test` adds `alarms`: how many separate alarms, and when the first
+20 began and ended. `start_monitor`
 names each start with an idempotency key of its own unless the agent gives
 one, and cannot replace a running monitor: that stays a proposal with
 `replace_monitor_id`.

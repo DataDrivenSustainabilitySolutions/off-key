@@ -907,10 +907,24 @@ class PipelineProposalView(PipelineProposalSummary):
     bindings: dict[str, str]
 
 
+class MonitorCapacity(PipelineModel):
+    """How many monitors may run at once, and how many run or start now."""
+
+    running: int = Field(ge=0, description="Monitors that run or start now.")
+    limit: int = Field(ge=0, description="Monitors that may run at once.")
+
+
 class PipelineProposalList(PipelineModel):
     """Proposals, the newest first, without their designs."""
 
     items: list[PipelineProposalSummary] = Field(max_length=MAX_PROPOSALS_LISTED)
+    capacity: MonitorCapacity | None = Field(
+        default=None,
+        description=(
+            "Room for monitors now. Starting a proposal needs one free place, "
+            "unless it replaces a running monitor."
+        ),
+    )
 
 
 class PipelineProposalDecision(PipelineModel):

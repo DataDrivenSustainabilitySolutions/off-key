@@ -26,6 +26,8 @@ runs a design: a graph of steps that leads from the input readings through \
 preparation and a detector to calibration, a detection rule and the output.
 
 A usual session:
+0. get_access says what your key may do and whether a monitor has room to \
+start now.
 1. list_devices and list_readings show what can be monitored. profile_reading \
 says what a reading looks like, which decides the steps it needs.
 2. list_designs and get_design give a design to start from: a starter, a saved \
@@ -172,6 +174,55 @@ LAYOUT = "Its `layout` from the same answer, so that it opens well on the canvas
 BINDINGS = "The reading each input monitors: input slot id to reading id."
 
 
+class Nothing(Args):
+    pass
+
+
+_MAY = {
+    "nothing": (
+        "propose: a member decides each design and starts it. start_monitor is "
+        "not offered to this key."
+    ),
+    "shadow": (
+        "propose, and start a monitor in shadow, where it records the alarms it "
+        "would raise and alerts nobody."
+    ),
+    "live": "propose, and start a monitor in shadow or live.",
+}
+
+
+def _room(capacity: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not capacity:
+        return None
+    free = max(capacity["limit"] - capacity["running"], 0)
+    return {**capacity, "free": free}
+
+
+@tool(Nothing)
+async def get_access(api: Api, args: Nothing):
+    """What this key may do, how many monitors run against how many may, and
+    how many proposals wait. Read it first: it says whether a design of yours
+    can start now or only be proposed, and whether a member who accepts a
+    proposal has room to start it."""
+    agent = await api.get("/v1/agents/me")
+    waiting = await api.get("/v1/pipeline-proposals", {"status": "open"})
+    room = _room(waiting.get("capacity"))
+    answer = {
+        "key": agent["name"],
+        "starts": agent["starts"],
+        "may": _MAY.get(agent["starts"], _MAY["nothing"]),
+        "monitors": room,
+        "open_proposals": len(waiting.get("items", [])),
+    }
+    if room is not None and room["free"] == 0:
+        answer["note"] = (
+            f"All {room['limit']} monitor places are taken. Nothing starts until "
+            "a member stops a monitor or raises the limit, unless a design "
+            "replaces a running monitor: propose it with replace_monitor_id."
+        )
+    return answer
+
+
 class Devices(Args):
     active: bool | None = Field(
         default=None,
@@ -234,10 +285,6 @@ async def get_component(api: Api, args: Component):
     its help, bounds and default. Read it before you add the step or change
     its settings."""
     return await api.get(f"/v1/pipeline-components/{_segment(args.component_id)}")
-
-
-class Nothing(Args):
-    pass
 
 
 @tool(Nothing)
@@ -444,10 +491,45 @@ async def get_test(api: Api, args: TestRef):
     # The agent holds the design; the compiled copy of it is long.
     answer = {key: value for key, value in run.items() if key != "definition"}
     if run["status"] == "succeeded":
-        answer["metrics"] = await api.get(f"{path}/metrics")
-        if answer["metrics"].get("scored_from") is None:
+        metrics = answer["metrics"] = await api.get(f"{path}/metrics")
+        if metrics.get("scored_from") is None:
             answer["note"] = _unscored(run)
+        elif run.get("alarm_count"):
+            alarmed = await api.get(
+                f"{path}/results", {"alarm": "true", "limit": ALARM_RESULTS}
+            )
+            answer["alarms"] = _episodes(alarmed.get("items", []))
+            if not metrics.get("labels_total"):
+                answer["note"] = (
+                    "The dataset has no labels, so false_alarms counts every "
+                    "separate alarm. alarm_count counts the results above the "
+                    "boundary, several to one alarm. `alarms` lists when they were."
+                )
     return answer
+
+
+ALARM_RESULTS = 2000
+ALARMS_LISTED = 20
+
+
+def _episodes(results: list[dict]) -> dict[str, Any]:
+    """Alarmed results in a row make one alarm: when it began and ended."""
+    episodes: list[dict[str, Any]] = []
+    previous = None
+    for item in results:
+        if previous is not None and item["sequence"] == previous + 1:
+            episodes[-1]["end"] = item["timestamp"]
+            episodes[-1]["results"] += 1
+        else:
+            episodes.append(
+                {"start": item["timestamp"], "end": item["timestamp"], "results": 1}
+            )
+        previous = item["sequence"]
+    return {
+        "count": len(episodes),
+        "listed": episodes[:ALARMS_LISTED],
+        "complete": len(results) < ALARM_RESULTS,
+    }
 
 
 def _unscored(run: dict) -> str:
@@ -499,7 +581,17 @@ async def propose_design(api: Api, args: Proposal):
     comes to run: a member opens it on the canvas, reads your reason and
     starts or declines it. The design must check without errors. Propose once
     it is tested, and say in the reason what the test showed."""
-    return await api.post("/v1/pipeline-proposals", _sent(args))
+    made = await api.post("/v1/pipeline-proposals", _sent(args))
+    if args.replace_monitor_id is None:
+        waiting = await api.get("/v1/pipeline-proposals", {"status": "open"})
+        room = _room(waiting.get("capacity"))
+        if room is not None and room["free"] == 0:
+            made["note"] = (
+                f"All {room['limit']} monitor places are taken, so a member who "
+                "accepts this cannot start it until a monitor stops or the limit "
+                "is raised. Say so in your report to them."
+            )
+    return made
 
 
 class Proposals(Args):

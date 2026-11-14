@@ -24,6 +24,7 @@ from tests.support.gateway import BY_KEY, BY_MEMBER, Callers, agent, member, ret
 URL = "http://gateway/v1/mcp"
 THEN = datetime(2026, 3, 1, tzinfo=UTC).isoformat()
 WITHOUT_THE_GRANT = [
+    "get_access",
     "list_devices",
     "list_readings",
     "profile_reading",
@@ -341,7 +342,7 @@ async def test_a_refusal_reaches_the_agent_in_the_words_of_the_api(
     refusals = (
         # The tool refuses what it does not know, without a call.
         ("drop_database", {}, "There is no tool called drop_database"),
-        ("start_monitor", start, "There is no tool called start_monitor"),
+        ("start_monitor", start, "This key may not start monitors"),
         (
             "search_components",
             {"query": "calm", "nope": 3},
@@ -460,6 +461,18 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
     stores.runs.create.return_value = run
     stores.runs.get.side_effect = lambda run_id: next(states)
     stores.metrics.run.return_value = metrics
+    alarmed = [
+        {
+            "sequence": n,
+            "timestamp": f"2026-03-01T00:0{n}:00Z",
+            "phase": "operational",
+            "score": 0.9,
+            "threshold": 0.5,
+            "alarm": True,
+        }
+        for n in (3, 4, 5, 8)
+    ]
+    stores.runs.results.return_value = {"items": alarmed, "next_after": None}
     test = {"definition": starter()["definition"], "bindings": {"value": "r-power"}}
     async with connected(gateway) as client:
         queued = said(await client.call_tool("test_design", test | {"days": 3}))
@@ -499,7 +512,26 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         assert result["stats"] == {"missing_reading": 2}
         assert "definition" not in result
         assert result["metrics"]["false_alarms_per_day"] == 2
-        assert "note" not in result
+        # Alarmed results in a row are one alarm, listed with when it was.
+        assert result["alarms"] == {
+            "count": 2,
+            "listed": [
+                {
+                    "start": "2026-03-01T00:03:00Z",
+                    "end": "2026-03-01T00:05:00Z",
+                    "results": 3,
+                },
+                {
+                    "start": "2026-03-01T00:08:00Z",
+                    "end": "2026-03-01T00:08:00Z",
+                    "results": 1,
+                },
+            ],
+            "complete": True,
+        }
+        assert stores.runs.results.await_args.args[1].alarm is True
+        # Without labels every alarm is counted false, which the note says.
+        assert result["note"].startswith("The dataset has no labels")
 
         # A replay shorter than the warm-up scores nothing, and says so.
         metrics["scored_from"] = None
@@ -575,7 +607,8 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
         assert taken_back["status"] == "withdrawn"
 
         refused = await client.call_tool("start_monitor", start)
-        assert said(refused) == "There is no tool called start_monitor"
+        assert said(refused).startswith("This key may not start monitors")
+        assert "propose_design" in said(refused)
         assert stores.activations.apply.await_count == 0
 
         key.starts = "live"
@@ -704,3 +737,26 @@ async def test_a_design_is_read_from_where_it_is(gateway, key, stores):
                 "validate_design", {"definition": held["definition"]}
             )
             assert said(checked)["valid"]
+
+
+@pytest.mark.asyncio
+async def test_an_agent_reads_what_its_key_may_do_and_the_room_to_start(
+    gateway, key, stores
+):
+    stores.proposals.list.return_value = {
+        "items": [],
+        "capacity": {"running": 2, "limit": 2},
+    }
+    async with connected(gateway) as client:
+        access = said(await client.call_tool("get_access", {}))
+        assert access["starts"] == "nothing"
+        assert access["may"].startswith("propose")
+        assert access["monitors"] == {"running": 2, "limit": 2, "free": 0}
+        assert access["open_proposals"] == 0
+        assert "places are taken" in access["note"]
+        key.starts = "shadow"
+        stores.proposals.list.return_value["capacity"] = {"running": 1, "limit": 6}
+        access = said(await client.call_tool("get_access", {}))
+        assert "shadow" in access["may"]
+        assert access["monitors"]["free"] == 5
+        assert "note" not in access

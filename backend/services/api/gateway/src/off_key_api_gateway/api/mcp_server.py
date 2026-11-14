@@ -86,8 +86,15 @@ async def _call_tool(
 ) -> types.CallToolResult:
     state = _caller(ctx)
     tool = TOOLS.get(params.name)
-    if tool is None or not _offered(tool, state.agent):
+    if tool is None:
         return _answer(f"There is no tool called {params.name}", refused=True)
+    if not _offered(tool, state.agent):
+        return _answer(
+            f"This key may not start monitors, so {params.name} is not offered "
+            "to it. Propose the design with propose_design: a member decides "
+            "and starts it. get_access says what the key may do.",
+            refused=True,
+        )
     try:
         arguments = tool.arguments.model_validate(params.arguments or {})
     except ValidationError as error:

@@ -217,6 +217,11 @@ export type MinMaxScalerParameters = {
   clip?: boolean;
 };
 
+export type MonitorCapacity = {
+  running: number;
+  limit: number;
+};
+
 export type MonitorDetail = {
   id: string;
   display_name?: string | null;
@@ -524,6 +529,7 @@ export type PipelineProposalDecision = {
 
 export type PipelineProposalList = {
   items: Array<PipelineProposalSummary>;
+  capacity?: MonitorCapacity | null;
 };
 
 export type PipelineProposalSummary = {

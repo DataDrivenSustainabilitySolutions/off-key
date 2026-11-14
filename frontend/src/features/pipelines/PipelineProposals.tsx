@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { RelativeTime } from "@/components/RelativeTime";
 import { getErrorMessage } from "@/lib/errors";
-import type { PipelineProposalSummary } from "@/types/pipelines.generated";
+import type { MonitorCapacity, PipelineProposalSummary } from "@/types/pipelines.generated";
 import { pipelinesApi } from "./api";
 import { proposalOutcome } from "./proposals";
 
@@ -61,6 +61,18 @@ export function PipelineProposalList({ onReview, onBack, canDecide = false }: {
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const items = result?.decided === decided ? result.items : undefined;
+  const [capacity, setCapacity] = useState<MonitorCapacity>();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    // The room to start is a hint beside the list; without it the list still works.
+    void pipelinesApi.capacity(controller.signal).then(
+      (next) => { if (!controller.signal.aborted) setCapacity(next); },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [retry]);
+  const full = capacity !== undefined && capacity.running >= capacity.limit;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,6 +89,11 @@ export function PipelineProposalList({ onReview, onBack, canDecide = false }: {
       <div>
         <h1>Proposals</h1>
         <p className="pl-help">Designs an agent or a member handed in for a decision. Review one to start it, or decline it straight from the list.</p>
+        {capacity && <p className={full ? "pl-proposal-capacity pl-proposal-missing" : "pl-proposal-capacity pl-help"} role={full ? "alert" : undefined}>
+          {full
+            ? `All ${capacity.limit} monitor places are taken. Starting a proposal needs a free place: stop a monitor first, or start one that replaces a running service.`
+            : `${capacity.limit - capacity.running} of ${capacity.limit} monitor places are free.`}
+        </p>}
       </div>
     </div>
     <div className="pl-library-tools">

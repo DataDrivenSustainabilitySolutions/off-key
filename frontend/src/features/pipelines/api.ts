@@ -75,6 +75,11 @@ export const pipelinesApi = {
     apiUtils
       .get<PipelineProposalList>(proposals, { signal, redirectOnUnauthorized: false, params: status ? { status } : undefined })
       .then((list) => list.items),
+  /** How many monitors run now against how many may: starting a proposal needs a free place. */
+  capacity: (signal?: AbortSignal) =>
+    apiUtils
+      .get<PipelineProposalList>(proposals, { signal, redirectOnUnauthorized: false, params: { status: "open" } })
+      .then((list) => list.capacity ?? undefined),
   proposal: (id: string, signal?: AbortSignal) =>
     apiUtils
       .get<PipelineProposalView>(`${proposals}/${encodeURIComponent(id)}`, { signal, redirectOnUnauthorized: false })

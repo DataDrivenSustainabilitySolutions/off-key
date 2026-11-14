@@ -85,12 +85,45 @@
 .pl-proposal :is(time, .pl-proposal-state) { color: hsl(var(--muted-foreground)); }
 .pl-proposal-decline { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .pl-proposal-decline input { flex: 1 1 180px; width: auto; }
-.pl-proposal-list small + small { margin-top: 2px; }
-.pl-proposal-list li { display: flex; flex-direction: column; gap: 6px; }
-.pl-proposal-list li > button { flex: 1; }
-.pl-proposal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.pl-proposal-list .pl-proposal-actions button { width: auto; height: auto; flex-direction: row; align-items: center; padding: 7px 10px; border-radius: var(--radius-control); font-size: var(--text-caption); }
-.pl-proposal-list .pl-proposal-actions .pl-proposal-decline { flex: 1 1 100%; }
+/* The Proposals page reads like the Monitoring overview: a title with the room to start, filters, and rows between lines. */
+.pl-proposals-heading { margin-top: 4px; }
+.pl-proposals-intro { margin: 8px 0 0; max-width: 72ch; color: var(--ex-muted); font-size: var(--text-body); line-height: var(--leading-body); }
+.pl-proposals-tools { margin: 28px 0 0; }
+.ex-shell .pl-proposals .mn-filters button { border: 0; background: none; padding: 5px 9px; font-size: var(--text-control); }
+.ex-shell .pl-proposals .mn-filters button:hover { background: var(--ex-hover); }
+.ex-shell .pl-proposals .mn-filters button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-side); }
+.pl-capacity { display: inline-flex; align-items: center; gap: 10px; font-size: var(--text-control); color: var(--ex-muted); }
+.pl-capacity-meter { display: inline-flex; gap: 3px; }
+.pl-capacity-meter i { width: 6px; height: 14px; border-radius: 2px; background: var(--ex-line); }
+.pl-capacity-meter i.is-taken { background: var(--ex-accent); }
+.pl-capacity.is-full { color: hsl(var(--destructive)); }
+.pl-capacity.is-full .pl-capacity-meter i.is-taken { background: hsl(var(--destructive)); }
+.pl-proposal-rows { list-style: none; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--ex-line); }
+.pl-proposal-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: start; padding: 18px 0; border-bottom: 1px solid var(--ex-line); }
+.pl-proposals .pl-proposal-row > .pl-proposal-body { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 6px; min-width: 0;
+  padding: 0; border: 0; background: none; text-align: left; font-size: var(--text-body); border-radius: var(--radius-control); }
+.pl-proposal-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.pl-proposal-title strong { font-size: var(--text-body); font-weight: 600; overflow-wrap: anywhere; }
+.pl-proposal-body:hover .pl-proposal-title strong { color: var(--ex-accent); text-decoration: underline; text-underline-offset: 3px; }
+.pl-proposal-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: var(--ex-side);
+  color: var(--ex-muted); font-size: var(--text-caption); line-height: 1.6; }
+.pl-proposal-reason { color: var(--ex-ink); font-size: var(--text-body); line-height: var(--leading-body); max-width: 80ch; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pl-proposal-body small { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-caption); color: var(--ex-muted); overflow-wrap: anywhere; }
+.pl-proposal-body small.mn-state { color: var(--ex-ink); }
+.pl-proposal-body small.pl-proposal-missing { color: hsl(var(--destructive)); }
+.pl-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 360px; }
+.pl-proposal-actions .pl-proposal-decline { flex: 1 1 100%; }
+.pl-proposal-actions .pl-apply-status { flex: 1 1 100%; margin: 0; }
+.pl-proposal-start { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.pl-proposal-why { order: 1; flex: 1 1 100%; text-align: right; font-size: var(--text-caption); color: var(--ex-muted); }
+.pl-proposals .pl-proposal-actions button.mn-primary { background: var(--ex-accent); border-color: var(--ex-accent); color: hsl(var(--primary-foreground)); font-weight: 500; }
+@media (max-width: 680px) {
+  .pl-proposal-row { grid-template-columns: minmax(0, 1fr); }
+  .pl-proposal-actions { justify-content: flex-start; max-width: none; }
+  .pl-proposal-why { text-align: left; }
+  .pl-proposal-actions button { min-height: 44px; }
+}
 .pl-library-list .pl-proposal-missing, .pl-proposal-missing { color: hsl(var(--destructive)); }
 /* How an update differs from what runs, on a line of its own in the notice that says what updating does. */
 .pl-compared { display: block; }

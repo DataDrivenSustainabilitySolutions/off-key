@@ -128,7 +128,7 @@ export default function PipelineWorkspace({
       />
     );
   if (!id && params.get("view") === "proposals")
-    return <PipelineProposalList onBack={onBack} canDecide={canEdit}
+    return <PipelineProposalList onBack={onBack} canDecide={canEdit} services={services} onStarted={onStarted}
       onReview={(item) => setParams(reviewProposal(params, item.id, item.replace_monitor_id))} />;
   if (!id && sourceId && !predecessor && !sourceError) return <p role="status">Loading service configuration…</p>;
   if (!id && proposalId && !proposal && !proposalError) return <p role="status">Opening proposal…</p>;

@@ -10,8 +10,11 @@
   register: static_previous
   changed_when: false
 
+# A requested database reset always takes the complete cutover, which runs it.
 - name: Check changes since the verified deployment
-  when: static_previous.stdout | trim | length > 0
+  when:
+    - static_previous.stdout | trim | length > 0
+    - release_reset_database | default('') | length == 0
   block:
     - name: Compare every committed path since the verified deployment
       command:

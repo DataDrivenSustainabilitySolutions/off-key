@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/auth/ProtectedRoute";
 import { endSession, refreshSession, subscribeToSession, tokenManager, waitForLogout } from "@/auth/session";
 import { apiClient, apiUtils, ApiRequestError } from "@/lib/api-client";
 import { readStoredDraft, storeDraft } from "@/lib/navigation-draft";
+import { BrowserVerificationError } from "@/lib/browser-verification";
 
 // Public-access discovery is covered by DemoGuest; these tests exercise sessions.
 vi.mock("@/auth/demo", () => ({
@@ -144,6 +145,18 @@ describe("remembered session recovery", () => {
     expect(await screen.findByText(member.email)).toBeTruthy();
   });
 
+  it("keeps the remembered login when Cloudflare challenges session restoration", async () => {
+    localStorage.setItem("token_storage_type", "remembered");
+    fetchMock.mockResolvedValueOnce(new Response("<html>Verify browser</html>", {
+      status: 403, headers: { "cf-mitigated": "challenge" },
+    }));
+    renderSession();
+    expect(await screen.findByRole("button", { name: "Verify browser" })).toBeTruthy();
+    expect(tokenManager.isRemembered()).toBe(true);
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    expect(getCurrentMember).not.toHaveBeenCalled();
+  });
+
   it("renews an expired saved token before rendering protected content", async () => {
     const renewed = token(3600, "renewed");
     tokenManager.setToken(token(-1), true);
@@ -272,6 +285,21 @@ describe("remembered session recovery", () => {
 });
 
 describe("authenticated API renewal", () => {
+  it.each([true, false])("preserves the login and distinguishes challenged API calls: challenge=%s", async challenge => {
+    const saved = token();
+    tokenManager.setToken(saved, true);
+    apiClient.defaults.adapter = async config => {
+      throw new AxiosError("Forbidden", "403", config, undefined, {
+        status: 403, statusText: "Forbidden", config,
+        headers: challenge ? { "cf-mitigated": "challenge" } : {},
+        data: challenge ? "<html>Verify browser</html>" : { detail: "Permission denied" },
+      });
+    };
+    await expect(apiClient.get("/protected")).rejects.toBeInstanceOf(challenge ? BrowserVerificationError : ApiRequestError);
+    expect(tokenManager.getToken()).toBe(saved);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("shares renewal across concurrent requests and attaches the new token", async () => {
     const renewed = token(3600, "concurrent");
     tokenManager.setToken(token(-1), true);

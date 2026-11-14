@@ -455,6 +455,7 @@ class ReleaseTests(unittest.TestCase):
     def test_readiness_tasks_are_valid_jinja_templates(self):
         for name in (
             "verify.yml",
+            "public_routes.yml",
             "application_readiness.yml",
             "application_readiness_attempt.yml",
         ):

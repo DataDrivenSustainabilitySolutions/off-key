@@ -1,16 +1,112 @@
 """Render the optional public deployment with real Ansible and Compose."""
 
 import json
+import sys
 import tempfile
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
-from support import ROOT, load_script, render, run
+from support import ROOT, ansible, load_script, render, run
 
 
 class PublicDemoTests(unittest.TestCase):
+    def test_public_probe_requires_the_configured_cloudflare_challenge(self):
+        # Real HTTP responses exercise uri's header normalization and the task's
+        # success conditions, including access-denied and missing-gate failures.
+        cases = {
+            # status, cf-mitigated, requires challenge, expected success
+            "public": (200, None, False, True),
+            "redirect": (302, None, False, True),
+            "forbidden": (403, None, False, False),
+            "challenge": (403, "challenge", True, True),
+            "plain-denial": (403, None, True, False),
+            "missing-gate": (200, None, True, False),
+            "wrong-mitigation": (403, "block", True, False),
+            "upstream-error": (503, "challenge", True, False),
+            "docs-redirect": (302, None, False, False),
+        }
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                status, mitigation, _, _ = cases[self.path.strip("/")]
+                self.send_response(status)
+                if mitigation is not None:
+                    self.send_header("cf-mitigated", mitigation)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            with tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                results = directory / "results.json"
+                (probe,) = yaml.safe_load(
+                    (
+                        ROOT / "ansible/roles/stack_deploy/tasks/public_routes.yml"
+                    ).read_text()
+                )
+                # Keep failed cases and exercise until; zero retries skips it.
+                probe.update(ignore_errors=True, retries=1, delay=0)
+                playbook = directory / "probe.yml"
+                playbook.write_text(
+                    yaml.safe_dump(
+                        [
+                            {
+                                "hosts": "localhost",
+                                "gather_facts": False,
+                                "connection": "local",
+                                "become": False,
+                                "vars": {
+                                    "ansible_python_interpreter": sys.executable,
+                                    "release_public_urls": [
+                                        f"{base}/{name}" for name in cases
+                                    ],
+                                    "release_public_challenge_urls": [
+                                        f"{base}/{name}"
+                                        for name, case in cases.items()
+                                        if case[2]
+                                    ],
+                                    "ingress_base_domain": "unused.example.org",
+                                    "frontend_base_url": f"{base}/public",
+                                    "docs_base_url": f"{base}/docs-redirect",
+                                },
+                                "tasks": [
+                                    probe,
+                                    {
+                                        "copy": {
+                                            "dest": str(results),
+                                            "content": "{{ public_route.results | to_json }}",
+                                            "mode": "0600",
+                                        }
+                                    },
+                                ],
+                            }
+                        ]
+                    )
+                )
+                ansible("playbook", "-i", "localhost,", str(playbook))
+                observed = {
+                    result["item"].removeprefix(base + "/"): not result["failed"]
+                    for result in json.loads(results.read_text())
+                }
+                self.assertEqual(
+                    observed, {name: case[3] for name, case in cases.items()}
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
     def test_public_link_precedes_dashboard_and_is_not_hidden_on_mobile(self):
         templates = Environment(
             loader=FileSystemLoader(ROOT / "stack"), undefined=StrictUndefined

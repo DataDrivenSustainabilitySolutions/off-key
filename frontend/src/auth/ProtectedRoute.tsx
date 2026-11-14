@@ -7,7 +7,7 @@ import { loginHref } from "./login-navigation";
 
 export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   const location = useLocation();
-  const { isAuthenticated, isGuest, isLoading, authError, retryAuthentication, logout } = useAuth();
+  const { isAuthenticated, isGuest, isLoading, authError, browserVerificationRequired, retryAuthentication, logout } = useAuth();
 
   if (authError) {
     return (
@@ -15,9 +15,11 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
         <div role="alert" className="max-w-md space-y-4 rounded-xl border border-border bg-card p-6 text-foreground shadow-sm">
           <p>{authError}</p>
           <div className="flex gap-3">
-            <Button onClick={retryAuthentication}>Retry</Button>
-            <Button variant="outline" onClick={logout}>Sign out</Button>
-            <Button variant="ghost" asChild><Link to={loginHref(location)}>Admin sign in</Link></Button>
+            <Button onClick={retryAuthentication}>{browserVerificationRequired ? 'Verify browser' : 'Retry'}</Button>
+            {!browserVerificationRequired && <>
+              <Button variant="outline" onClick={logout}>Sign out</Button>
+              <Button variant="ghost" asChild><Link to={loginHref(location)}>Admin sign in</Link></Button>
+            </>}
           </div>
         </div>
       </AuthBackdrop>

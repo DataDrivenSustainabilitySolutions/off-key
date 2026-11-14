@@ -20,6 +20,7 @@ stack_replaced_services: []
 stack_retired_secret_keys: []
 stack_retired_files: []
 release_public_urls: ["{{ frontend_base_url }}"]
+release_public_challenge_urls: ["{{ frontend_base_url }}"]
 demo_viewer_email: demo-viewer@aberration.app
 anomaly_alert_recipients: "{{ superuser_mail }}"
 system_live_enabled: true

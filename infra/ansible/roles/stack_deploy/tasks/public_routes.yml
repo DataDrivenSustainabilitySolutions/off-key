@@ -1,0 +1,27 @@
+---
+# Application readiness and worker checks run before this external edge probe.
+- name: Check the public website, docs and dashboard HTTP responses through Cloudflare
+  uri:
+    url: "{{ item }}/"
+    method: GET
+    follow_redirects: none
+    status_code: "{{ public_status_codes }}"
+    timeout: 10
+    headers:
+      Cache-Control: no-cache
+  register: public_route
+  retries: 12
+  delay: 5
+  until:
+    - public_route.status | default(0) in public_status_codes
+    - >-
+      item not in (release_public_challenge_urls | default([])) or
+      public_route.cf_mitigated | default('') == 'challenge'
+  loop: "{{ release_public_urls | default(['https://' ~ ingress_base_domain, frontend_base_url, docs_base_url]) }}"
+  vars:
+    # A protected route must challenge this cookieless probe. An ordinary 403,
+    # or an unprotected 200, cannot prove that the expected edge gate is active.
+    # Documentation must remain publicly readable, without a login redirect.
+    public_status_codes: >-
+      {{ [403] if item in (release_public_challenge_urls | default([]))
+         else [200] if item == docs_base_url else [200, 301, 302, 307, 308] }}

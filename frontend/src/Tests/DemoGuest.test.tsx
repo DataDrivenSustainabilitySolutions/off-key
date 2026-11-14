@@ -82,4 +82,24 @@ describe('public demo access', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Admin sign in' }));
     await waitFor(() => expect(screen.getByText('Administrator login')).toBeTruthy());
   });
+
+  it.each([true, false])('distinguishes a Cloudflare challenge from an ordinary 403: challenge=%s', async challenge => {
+    const actual = await vi.importActual<typeof import('@/auth/demo')>('@/auth/demo');
+    vi.mocked(loadDemoStatus).mockImplementation(actual.loadDemoStatus);
+    vi.mocked(fetch).mockResolvedValue(new Response('<html>Access check</html>', {
+      status: 403, headers: challenge ? { 'cf-mitigated': 'challenge' } : {},
+    }));
+    mount();
+    expect(await screen.findByRole('button', { name: challenge ? 'Verify browser' : 'Retry' })).toBeTruthy();
+    expect(!!screen.queryByRole('link', { name: 'Admin sign in' })).toBe(!challenge);
+    expect(screen.queryByText('Public workspace')).toBeNull();
+  });
+
+  it('returns to public access when a temporary discovery failure is retried', async () => {
+    vi.mocked(loadDemoStatus).mockRejectedValueOnce(new Error('Offline'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Public workspace')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });

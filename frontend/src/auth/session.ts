@@ -1,5 +1,6 @@
 import { getUserIdFromToken, isTokenExpired, parseNumericUserId } from './token';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
+import { BrowserVerificationError } from '@/lib/browser-verification';
 
 const TOKEN_KEY = 'auth_token';
 const STORAGE_TYPE_KEY = 'token_storage_type';
@@ -113,6 +114,7 @@ export const refreshSession = (): Promise<string | null> => {
   const pending = (async () => {
     const response = await sessionRequest(API_CONFIG.ENDPOINTS.AUTH.REFRESH);
     if (startedGeneration !== generation || !tokenManager.isRemembered()) return tokenManager.getToken();
+    if (response.headers.get('cf-mitigated') === 'challenge') throw new BrowserVerificationError();
     if (!response.ok) {
       if (response.status === 401) tokenManager.removeToken();
       throw new SessionRequestError(

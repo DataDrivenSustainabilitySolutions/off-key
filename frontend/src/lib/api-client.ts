@@ -13,6 +13,7 @@ import { getUserIdFromToken } from '@/auth/token';
 import { loginHref } from '@/auth/login-navigation';
 import { isPublicDemo } from '@/auth/demo';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
+import { BrowserVerificationError } from './browser-verification';
 
 
 export interface ApiIssue {
@@ -108,6 +109,9 @@ const createApiClient = (): AxiosInstance => {
       // Request-interceptor failures (including temporary renewal outages) must
       // keep their original status and leave the saved session intact.
       if (!axios.isAxiosError(error)) return Promise.reject(error);
+      if (error.response?.headers?.['cf-mitigated'] === 'challenge') {
+        return Promise.reject(new BrowserVerificationError());
+      }
       // Handle 401 Unauthorized
       if (error.response?.status === 401) {
         const options = error.config as (InternalAxiosRequestConfig & ApiRequestOptions & { sessionRetried?: boolean }) | undefined;

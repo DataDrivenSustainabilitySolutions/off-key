@@ -4,6 +4,7 @@ import { endSession, refreshSession, subscribeToSession, tokenManager } from "./
 import { getTokenPayload, getUserIdFromToken } from "./token";
 import { getCurrentMember, type Member, type Permission } from "@/lib/member-api";
 import { loadDemoStatus, type DemoStatus } from "./demo";
+import { BrowserVerificationError } from "@/lib/browser-verification";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -12,6 +13,7 @@ interface AuthContextType {
   userId: number | null;
   isLoading: boolean;
   authError: string | null;
+  browserVerificationRequired: boolean;
   retryAuthentication: () => void;
   member: Member | null;
   /** Whether the signed-in member may make changes that need this permission. */
@@ -22,6 +24,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const RENEW_FAILED = "We couldn’t renew your session. Your saved login is still available.";
+const authenticationError = (error: unknown, fallback: string): Error =>
+  error instanceof BrowserVerificationError ? error : new Error(fallback);
 
 const getStoredToken = () => tokenManager.getToken();
 const noServerToken = () => null;
@@ -32,8 +36,10 @@ type ProfileState = {
   token: string;
   attempt: number;
   member: Member | null;
-  error: string | null;
+  error: Error | null;
 };
+
+type AttemptFailure = { attempt: number; error: Error };
 
 const reusableMember = (profile: ProfileState | null, token: string | null): Member | null => {
   if (!profile?.member || !token || tokenManager.isTokenExpired(token)) return null;
@@ -49,18 +55,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const token = useSyncExternalStore(subscribeToSession, getStoredToken, noServerToken);
   const [profile, setProfile] = useState<ProfileState | null>(null);
-  const [attempt, retryAuthentication] = useReducer((value: number) => value + 1, 0);
-  const [restoreFailure, setRestoreFailure] = useState<number | null>(null);
+  const [attempt, retryAttempt] = useReducer((value: number) => value + 1, 0);
+  const [restoreFailure, setRestoreFailure] = useState<AttemptFailure | null>(null);
   // Remembered access tokens are kept in memory; a new tab restores one from the cookie.
   const remembered = useSyncExternalStore(subscribeToSession, isRememberedSession, notRemembered);
   const restoring = !token && remembered;
   const [demo, setDemo] = useState<DemoStatus | null>(null);
-  const [demoFailure, setDemoFailure] = useState<{ attempt: number; message: string } | null>(null);
+  const [demoFailure, setDemoFailure] = useState<AttemptFailure | null>(null);
   useEffect(() => {
     if (token || restoring) return;
     const controller = new AbortController();
-    loadDemoStatus(controller.signal).then(setDemo).catch(() => {
-      if (!controller.signal.aborted) setDemoFailure({ attempt, message: "We couldn’t check public access. Retry or sign in to continue." });
+    loadDemoStatus(controller.signal).then(status => {
+      if (controller.signal.aborted) return;
+      setDemo(status);
+      setDemoFailure(null);
+    }).catch(error => {
+      if (!controller.signal.aborted) setDemoFailure({ attempt, error: authenticationError(error, "We couldn’t check public access. Retry or sign in to continue.") });
     });
     return () => controller.abort();
   }, [token, restoring, attempt]);
@@ -69,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!restoring) return;
     let cancelled = false;
     refreshSession().catch((error: { status?: number }) => {
-      if (!cancelled && error.status !== 401) setRestoreFailure(attempt);
+      if (!cancelled && error.status !== 401) setRestoreFailure({ attempt, error: authenticationError(error, RENEW_FAILED) });
     });
     return () => { cancelled = true; };
   }, [restoring, attempt]);
@@ -92,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (status === 401) {
           tokenManager.removeToken();
         } else {
-          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: "We couldn’t connect to your account. Your saved login is still available." }));
+          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: authenticationError(error, "We couldn’t connect to your account. Your saved login is still available.") }));
         }
       }
     };
@@ -113,13 +123,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       void refreshSession().catch((error: { status?: number }) => {
         if (!cancelled && error.status !== 401) {
-          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: RENEW_FAILED }));
+          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: authenticationError(error, RENEW_FAILED) }));
         }
       });
     };
     const onResume = () => {
       if (typeof expires === "number" && expires * 1000 <= Date.now() + 30_000) renew();
-      if (profile?.error || tokenManager.isTokenExpired(token)) retryAuthentication();
+      if (profile?.error || tokenManager.isTokenExpired(token)) retryAttempt();
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") onResume();
@@ -162,10 +172,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const resolved = profile?.token === token && profile.attempt === attempt ? profile : null;
   const expired = !!token && tokenManager.isTokenExpired(token);
   const member = !expired ? resolved?.member ?? reusableMember(profile, token) : null;
-  const restoreError = restoring && restoreFailure === attempt
-    ? RENEW_FAILED : null;
-  const demoError = !token && !restoring && demoFailure?.attempt === attempt ? demoFailure.message : null;
-  const authError = member ? null : resolved?.error ?? restoreError ?? demoError;
+  const restoreError = restoring && restoreFailure?.attempt === attempt ? restoreFailure.error : null;
+  const demoError = !token && !restoring && demoFailure?.attempt === attempt ? demoFailure.error : null;
+  const failure = member ? null : resolved?.error ?? restoreError ?? demoError;
+  const authError = failure?.message ?? null;
+  const browserVerificationRequired = failure instanceof BrowserVerificationError;
+  const retryAuthentication = () => {
+    // A top-level navigation lets Cloudflare complete the check; another fetch cannot.
+    if (browserVerificationRequired) window.location.reload();
+    else retryAttempt();
+  };
   const isLoading = (restoring && !restoreError)
     || (!token && !restoring && !demo && !demoError)
     || (!!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError)));
@@ -187,7 +203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, isGuest, demo, userId, member, can, isLoading, authError, retryAuthentication, login, logout }}
+      value={{ isAuthenticated, isGuest, demo, userId, member, can, isLoading, authError, browserVerificationRequired, retryAuthentication, login, logout }}
     >
       {children}
     </AuthContext.Provider>

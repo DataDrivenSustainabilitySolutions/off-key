@@ -405,9 +405,15 @@ def release_model(base, release):
     for name, service in MODEL_SERVICES.items():
         if service in model["services"]:
             model["services"][service]["image"] = release["images"][name]
-    model["services"]["tactic"]["environment"]["TACTIC_RADAR_IMAGE"] = release[
-        "images"
-    ]["mqtt_radar"]
+    radar = release["images"]["mqtt_radar"]
+    model["services"]["tactic"]["environment"]["TACTIC_RADAR_IMAGE"] = radar
+    # The pool claims only workloads pinned to the image it names, and the Dojo
+    # workers run the RADAR image too; both roll back with it.
+    pool = model["services"].get("mqtt-radar")
+    if pool is not None:
+        pool.setdefault("environment", {})["RADAR_POOL_RUNTIME"] = radar
+    if "dojo-worker" in model["services"]:
+        model["services"]["dojo-worker"]["image"] = radar
     return model
 
 

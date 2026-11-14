@@ -241,13 +241,19 @@ test.describe("adaptive monitoring production lifecycle", () => {
         )
         .toBe(true);
 
+      // publishCycle sends L1 before L2. The monitor may score the intermediate
+      // snapshot with the previous L2 as well as the fully refreshed pair.
+      const expectedObservations = publishedCycles.flatMap((cycle, index) => {
+        const previous = publishedCycles[index - 1];
+        return previous ? [{ L1: cycle.L1, L2: previous.L2 }, cycle] : [cycle];
+      });
       for (const row of operationalEvidence) {
         expect(Object.keys(row.input_timestamps).sort()).toEqual(expectedReadings);
         const normalizedInputs = {
           L1: new Date(row.input_timestamps[l1Reading]!).toISOString(),
           L2: new Date(row.input_timestamps[l2Reading]!).toISOString(),
         };
-        expect(publishedCycles).toContainEqual(normalizedInputs);
+        expect(expectedObservations).toContainEqual(normalizedInputs);
         expect(Date.parse(row.timestamp)).toBe(
           Math.max(
             Date.parse(row.input_timestamps[l1Reading]!),

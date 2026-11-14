@@ -23,6 +23,23 @@ pytestmark = [
 ]
 
 
+def _publication_snapshots(
+    readings: dict[str, str],
+    published_values: list[dict[str, float]],
+    observations: dict[str, dict[float, datetime]],
+) -> list[dict[str, datetime]]:
+    # L1 arrives before L2: its update may use the preceding L2, then the
+    # next arrival refreshes both. Only exact snapshots of this order count.
+    snapshots = []
+    latest_inputs = {}
+    for values in published_values:
+        for key, value in values.items():
+            latest_inputs[readings[key]] = observations[key][value]
+            if len(latest_inputs) == len(readings):
+                snapshots.append(dict(latest_inputs))
+    return snapshots
+
+
 def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     gateway_url = os.getenv("E2E_GATEWAY_URL", "http://localhost:8000").rstrip("/")
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
@@ -98,13 +115,9 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                 pytest.fail(
                     "The upstream multivariate observations did not reach history"
                 )
-            cycles = [
-                {
-                    entity.readings[key]: observations[key][value]
-                    for key, value in values.items()
-                }
-                for values in published_values
-            ]
+            cycles = _publication_snapshots(
+                entity.readings, published_values, observations
+            )
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
                 response = client.get(

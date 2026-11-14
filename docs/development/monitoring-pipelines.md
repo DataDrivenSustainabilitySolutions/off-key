@@ -1527,7 +1527,7 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The reference is immutable commit
-`e62db2875fe6318e03870b85fe376d2714955598`, the first build that runs RADAR in a leased worker pool.
+`9954e815b67ff173ba6f5b94daf11a01a04f361b`, the first build that runs RADAR in a leased worker pool.
 It has per-reading hold timing and migration 034.
 Its layout holds switched-off steps and notes, and a step's title lives in the
 design, as in the current release. The rehearsal still switches between

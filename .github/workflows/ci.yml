@@ -797,7 +797,7 @@ jobs:
         if: matrix.lane == 'rehearsal'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: e62db2875fe6318e03870b85fe376d2714955598
+          ref: 9954e815b67ff173ba6f5b94daf11a01a04f361b
           path: .tmp/compatible-release-source
           fetch-depth: 1
           persist-credentials: false

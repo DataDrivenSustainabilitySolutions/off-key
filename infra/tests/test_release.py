@@ -522,6 +522,30 @@ class ReleaseTests(unittest.TestCase):
             (ROOT / "ansible/roles/stack_deploy/tasks/maintenance.yml").read_text()
         )
 
+    def test_a_release_removes_the_swarm_services_of_pre_pool_monitors(self):
+        # TACTIC has no Docker access, so only the release can remove them;
+        # monitors restart on the pool after the release applies.
+        tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_deploy/tasks/main.yml").read_text()
+        )
+        full_cutover = next(step for step in tasks if "block" in step)
+        included = [step.get("include_tasks") for step in full_cutover["block"]]
+        position = included.index("tactic_workers_retire.yml")
+        self.assertEqual(included[position - 1], "maintenance.yml")
+        self.assertLess(position, included.index("apply.yml"))
+        retire = yaml.safe_load(
+            (
+                ROOT / "ansible/roles/stack_deploy/tasks/tactic_workers_retire.yml"
+            ).read_text()
+        )
+        self.assertEqual(retire[0]["include_tasks"], "stack_workers.yml")
+        # Before apply: backend convergence rejects the leftover proxy.
+        self.assertIn("_socket-proxy", retire[2]["set_fact"]["pre_pool_services"])
+        self.assertIn("'docker', 'service', 'rm'", retire[3]["command"]["argv"])
+        apply = (ROOT / "ansible/roles/stack_deploy/tasks/apply.yml").read_text()
+        # A removed service is never scaled back up.
+        self.assertIn("name not in (pre_pool_services | default([]))", apply)
+
     def test_application_setup_runs_after_the_release_completes(self):
         # Catalogue writes are fenced while a release is open, and a step that
         # always fails inside the release would leave it unrecoverable by retry.

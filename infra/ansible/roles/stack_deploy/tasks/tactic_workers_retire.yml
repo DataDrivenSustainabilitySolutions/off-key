@@ -1,0 +1,25 @@
+---
+# Before the RADAR pool, TACTIC ran each monitor as its own Swarm service. The
+# release has stopped those monitors and restarts them on the pool, and TACTIC
+# has no Docker access to remove the old services, so the release removes them.
+# The socket proxy that served TACTIC goes too: stack deploy keeps services the
+# model dropped, and backend convergence rejects any service the model lacks.
+- name: Find this stack's TACTIC-managed services
+  include_tasks: stack_workers.yml
+
+- name: List the stack services before removing the socket proxy
+  command:
+    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "label=com.docker.stack.namespace={{ stack_name }}"]
+  register: pre_pool_stack_services
+  changed_when: false
+
+- name: Select the pre-pool services to remove
+  set_fact:
+    pre_pool_services: >-
+      {{ (stack_tactic_workers | map(attribute='Spec.Name') | list)
+         + ([stack_name ~ '_socket-proxy'] | intersect(pre_pool_stack_services.stdout_lines)) }}
+
+- name: Remove the TACTIC-managed services and the socket proxy
+  command:
+    argv: "{{ ['docker', 'service', 'rm'] + pre_pool_services }}"
+  when: pre_pool_services | length > 0

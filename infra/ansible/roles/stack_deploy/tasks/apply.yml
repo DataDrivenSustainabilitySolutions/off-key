@@ -68,7 +68,7 @@
           {% set replicas = {} %}
           {% set stack_services = stack_compose_model.services.keys() | map('regex_replace', '^', stack_name ~ '_') | list %}
           {% for name, count in (persistence_writer_replicas | default({})).items() %}
-          {% if name not in stack_services %}
+          {% if name not in stack_services and name not in (pre_pool_services | default([])) %}
           {% set _ = replicas.update({name: count}) %}
           {% endif %}
           {% endfor %}

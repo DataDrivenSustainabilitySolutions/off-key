@@ -23,8 +23,8 @@
     - name: Prepare schema and retire active monitor workers
       include_tasks: maintenance.yml
 
-    - name: Validate the current runtime worker images and secret wiring
-      include_tasks: worker_security.yml
+    - name: Remove the per-monitor services an earlier TACTIC created
+      include_tasks: tactic_workers_retire.yml
 
     - name: Stop services this release replaces before their successors start
       include_tasks: replaced.yml

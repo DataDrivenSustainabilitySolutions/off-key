@@ -1527,8 +1527,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The reference is immutable commit
-`48b8eb008103d95d541bf19a95fc1deae6ab3e36`, the first build with one API service.
-It has per-reading hold timing and migration 033.
+`e62db2875fe6318e03870b85fe376d2714955598`, the first build that runs RADAR in a leased worker pool.
+It has per-reading hold timing and migration 034.
 Its layout holds switched-off steps and notes, and a step's title lives in the
 design, as in the current release. The rehearsal still switches between
 different application binaries.
@@ -1540,7 +1540,9 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `05659351`, has no migration 033;
+`932f831f` runs RADAR as one Swarm service per monitor and has no migration 034;
+`730e91b9` serves the API from TACTIC;
+`05659351` has no migration 033;
 `14f26c36` refuses a layout with switched-off steps
 or notes, and returns a title on each card's place; `197cc239` has no migration 032;
 `efe30f4a` has no migration 031;
@@ -1553,7 +1555,7 @@ reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
 has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
 1.4.0, so the rehearsal accepts none of them.
 Releases before
-migration 033 refuse a database that has applied it. Rolling back past
+migration 034 refuse a database that has applied it. Rolling back past
 this schema boundary means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.

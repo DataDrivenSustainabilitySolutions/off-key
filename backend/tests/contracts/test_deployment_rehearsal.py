@@ -26,6 +26,9 @@ from tests.support.integration_catalogue import (
 )
 from tests.support.restorable_state import MAIL_SINK, create_restorable_state
 
+# The stack name infra/tests/swarm_smoke.py deploys the rehearsal under.
+REHEARSAL_STACK = "offkey-smoke"
+
 pytestmark = [
     pytest.mark.deployment,
     pytest.mark.skipif(
@@ -329,7 +332,9 @@ def assert_one_graph_workload(saved, expected_image):
             "ps",
             "--quiet",
             "--filter",
-            "label=com.docker.swarm.service.name=off-key_postgres",
+            f"label=com.docker.swarm.service.name={REHEARSAL_STACK}_postgres",
+            "--filter",
+            "status=running",
         ],
         check=True,
         capture_output=True,

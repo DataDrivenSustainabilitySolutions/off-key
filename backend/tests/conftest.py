@@ -13,6 +13,7 @@ from sqlalchemy.engine import make_url
 from tests.support.pipeline_database import pipeline_database  # noqa: F401
 from tests.support.runtime_cache import reset_settings_caches
 from tests.support.signed_writer import signed_graph_writer  # noqa: F401
+from tests.support.telemetry_log import telemetry_log  # noqa: F401
 
 DATABASE_FIXTURES = frozenset({"disposable_database", "member_database"})
 

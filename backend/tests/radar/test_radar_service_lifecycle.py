@@ -86,14 +86,14 @@ async def test_radar_service_stop_cleans_up_partially_started_components(
         return SimpleNamespace(stop=stop)
 
     radar_service.health_monitor = component("health_monitor")
-    radar_service.mqtt_client = component("mqtt_client", RuntimeError("broker"))
+    radar_service.telemetry_log = component("telemetry_log", RuntimeError("log"))
     radar_service.database_writer = component("database_writer")
 
     await radar_service.stop()
 
     # Ingestion stops first; a failing component does not skip the rest.
-    assert stopped == ["health_monitor", "mqtt_client", "database_writer"]
-    assert radar_service.mqtt_client is None
+    assert stopped == ["health_monitor", "telemetry_log", "database_writer"]
+    assert radar_service.telemetry_log is None
     assert radar_service.database_writer is None
 
 
@@ -111,7 +111,7 @@ async def test_cancelled_message_handler_finishes_processing_before_reraising(
         finished.set()
 
     radar_service._process_one_message = process
-    handler = asyncio.create_task(radar_service._handle_mqtt_message(object()))
+    handler = asyncio.create_task(radar_service._handle_log_message(object()))
     await started.wait()
 
     handler.cancel()
@@ -224,10 +224,10 @@ def test_health_status_uses_one_metric_snapshot_and_reduces_alerts():
         "error_rate": 0.2,
     }
     monitor.set_components(
-        mqtt_client=SimpleNamespace(
+        telemetry_log=SimpleNamespace(
             get_health_status=lambda: {
                 "status": "unhealthy",
-                "reason": "disconnected",
+                "reason": "log_unavailable",
             }
         ),
         database_writer=SimpleNamespace(
@@ -245,7 +245,7 @@ def test_health_status_uses_one_metric_snapshot_and_reduces_alerts():
 
     assert status.status == "degraded"
     assert status.active_alerts == [
-        "mqtt_disconnected",
+        "input_log_unavailable",
         "detector_degraded",
         "high_memory_usage",
         "high_error_rate",
@@ -371,8 +371,8 @@ async def test_messages_after_a_fatal_error_are_dropped_unprocessed(monkeypatch)
     process = AsyncMock()
     monkeypatch.setattr(radar_service, "_process_locked_message", process)
 
-    await radar_service._handle_mqtt_message(SimpleNamespace(topic="t"))
+    await radar_service._handle_log_message(SimpleNamespace(topic="t"))
     radar_service._fatal_error = FatalExecutionError("fenced")
-    await radar_service._handle_mqtt_message(SimpleNamespace(topic="t"))
+    await radar_service._handle_log_message(SimpleNamespace(topic="t"))
 
     process.assert_awaited_once()

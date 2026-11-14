@@ -6,16 +6,11 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from off_key_mqtt_radar.config.config import MQTTRadarConfig, RadarSettings
 from off_key_mqtt_radar.coverage import CoverageTracker
 from off_key_mqtt_radar.feature_validation import TelemetryFeatureValidator
 from off_key_mqtt_radar.health_monitor import HealthMonitor
 from off_key_mqtt_radar.message_processor import MessageProcessor
 from off_key_mqtt_radar.models import MQTTMessage
-from off_key_tactic_middleware.config.config import RadarDefaultsConfig
-from pydantic import ValidationError
-
-from tests.support.form_pipeline import form_radar_config, set_pipeline_environment
 
 
 def test_coverage_counters_are_thread_safe_and_checkpoint_round_trips():
@@ -40,28 +35,6 @@ def test_coverage_counters_are_thread_safe_and_checkpoint_round_trips():
     assert snapshot.last_gap_at.utcoffset().total_seconds() == 0
     snapshot.dropped_by_reason.clear()
     assert restored.snapshot().dropped_by_reason == {"queue_full": 1100}
-
-
-def _runtime_config(**fields):
-    return form_radar_config(
-        None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig, **fields
-    )
-
-
-@pytest.mark.parametrize(
-    "model", [_runtime_config, RadarDefaultsConfig], ids=["runtime", "defaults"]
-)
-def test_rate_limits_are_opt_in_and_reject_negative_limits(model):
-    assert model().rate_limit_per_minute == 0
-    assert model(rate_limit_per_minute=12000).rate_limit_per_minute == 12000
-    with pytest.raises(ValidationError):
-        model(rate_limit_per_minute=-1)
-
-
-def test_environment_rate_limit_is_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("RADAR_RATE_LIMIT_PER_MINUTE", raising=False)
-    set_pipeline_environment(monkeypatch)
-    assert RadarSettings().RADAR_RATE_LIMIT_PER_MINUTE == 0
 
 
 @pytest.mark.asyncio
@@ -93,13 +66,13 @@ async def test_invalid_observations_record_coverage_losses(payload, reason):
 def test_resumed_traffic_does_not_clear_monitoring_coverage_alert():
     tracker = CoverageTracker()
     tracker.record_received()
-    tracker.record_drop("rate_limit", 100)
+    tracker.record_drop("invalid_payload", 100)
     for _ in range(100):
         tracker.record_received()
     monitor = HealthMonitor()
     monitor.started_monotonic = time.monotonic()
     monitor.set_components(
-        mqtt_client=SimpleNamespace(
+        telemetry_log=SimpleNamespace(
             get_health_status=lambda: {
                 "status": "healthy",
                 "coverage": tracker.snapshot().model_dump(mode="json"),

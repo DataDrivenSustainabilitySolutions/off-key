@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from .config.config import AnomalyDetectionConfig
 
-_DOMAIN = b"OFFKEY-RADAR-RUNTIME-CHECKPOINT-V1\x00"
+_DOMAIN = b"OFFKEY-RADAR-RUNTIME-CHECKPOINT-V2\x00"
 
 
 class ProcessorCheckpoint(BaseModel):
@@ -43,13 +43,16 @@ class RuntimeCheckpoint(BaseModel):
     observation_watermarks: dict[str, dict[str, FiniteFloat]] = Field(
         default_factory=dict
     )
+    # The last telemetry log position this state includes; replay continues
+    # after it.
+    log_position: int = Field(ge=0)
 
 
 class CheckpointHeader(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     service_id: str = Field(min_length=1)
-    format_version: Literal[1] = 1
+    format_version: Literal[2] = 2
     configuration_fingerprint: str
     runtime_fingerprint: str
     processed_count: int = Field(ge=0)
@@ -81,7 +84,7 @@ class RuntimeCheckpointCodec:
         }
         self.configuration_fingerprint = self._fingerprint(configuration)
         runtime = {
-            "checkpoint_format": 1,
+            "checkpoint_format": 2,
             "python": platform.python_version(),
             **{
                 package: version(package)

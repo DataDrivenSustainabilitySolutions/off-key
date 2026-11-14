@@ -59,7 +59,6 @@ GOLDEN_OVERRIDES = {
     "TACTIC_RADAR_DEFAULT_MQTT_USERNAME": "radar",
     "TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE": 128,
     "TACTIC_RADAR_DEFAULT_LOG_LEVEL": "warning",
-    "TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE": 600,
     "TACTIC_RADAR_IMAGE": "registry.example/radar:golden",
     "TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS": 3,
     "TACTIC_FORECAST_API_URL": "http://forecast:8020",
@@ -102,7 +101,6 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
         "radar_defaults.mqtt_username": "radar",
         "radar_defaults.max_queue_size": 128,
         "radar_defaults.log_level": "WARNING",
-        "radar_defaults.rate_limit_per_minute": 600,
     }
     assert defaults["pool"] == {"memory_limit": "512m", "restart_monitors": True}
     assert defaults["radar_workload_lifecycle"] == "ephemeral"

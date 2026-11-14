@@ -121,8 +121,6 @@ def _radar_environment(topic, model_type="pyod_iforest", *, monitoring=True):
             "RADAR_MONITORING_CONFIG": json.dumps(
                 {"strategy": "static_baseline", "model_type": model_type}
             ),
-            "RADAR_SUBSCRIPTION_QOS": "1",
-            "RADAR_MQTT_CLIENT_ID_PREFIX": "radar",
         }
     return MagicMock(return_value=environment)
 

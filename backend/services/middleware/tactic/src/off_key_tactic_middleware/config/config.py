@@ -16,7 +16,6 @@ from off_key_core.config.resource_budget import (
     DEFAULT_RADAR_MEMORY_MB,
     MEBIBYTE,
     parse_memory_bytes,
-    validate_ingress_budget,
 )
 from off_key_core.config.validation import Environment
 from pydantic import (
@@ -87,7 +86,6 @@ class RadarDefaultsConfig(BaseModel):
     memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
     checkpoint_interval: int = Field(default=10000, ge=100, le=100000)
     max_queue_size: int = Field(default=256, gt=0, le=10000)
-    max_payload_bytes: int = Field(default=65536, gt=0, le=1048576)
 
     # Default Database Settings
     db_write_enabled: bool = True
@@ -97,16 +95,8 @@ class RadarDefaultsConfig(BaseModel):
     # Default Health Settings
     health_check_interval: float = Field(default=30.0, ge=0.1, le=3600.0)
     log_level: LogLevel = "INFO"
-    rate_limit_per_minute: int = Field(default=0, ge=0, le=100000)
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
-
-    @model_validator(mode="after")
-    def validate_queued_payload_budget(self) -> "RadarDefaultsConfig":
-        validate_ingress_budget(
-            self.max_queue_size, self.max_payload_bytes, self.memory_limit_mb
-        )
-        return self
 
 
 class TacticConfig(BaseModel):
@@ -231,9 +221,6 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.max_queue_size, gt=0, le=10000
     )
-    TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES: int = Field(
-        default=DEFAULT_RADAR_DEFAULTS.max_payload_bytes, gt=0, le=1048576
-    )
     TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
     )
@@ -248,9 +235,6 @@ class TacticSettings(BaseSettings):
     )
     TACTIC_RADAR_DEFAULT_LOG_LEVEL: str = Field(
         default=DEFAULT_RADAR_DEFAULTS.log_level
-    )
-    TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = Field(
-        default=DEFAULT_RADAR_DEFAULTS.rate_limit_per_minute
     )
     TACTIC_RADAR_IMAGE: str = Field(default=_tactic_default("radar_image"))
     TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(

@@ -255,10 +255,13 @@ record, so a change to one client is visible against the rest.
 | TACTIC upstream readers | 30 s | system CA store | Paho, 1–30 s backoff; ingress has no cutoff, the live view ends a broker after `SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS` (15 s) | every subscription acknowledged | ingress forwards payloads up to 64 KiB |
 | TACTIC ingress publisher | 30 s | configured CA file | Paho, 1–30 s backoff, no cutoff | connected | one envelope per forwarded payload |
 | Collection worker | 15 s | configured CA file | collection loop, about every 2 s, no cutoff | connected and catalogue applied | envelopes up to six times the payload limit; payloads up to 64 KiB |
-| RADAR worker | 60 s | configured CA file | one owner, 5 s doubling to 5 min, no cutoff | every required subscription acknowledged | `RADAR_MAX_PAYLOAD_BYTES`, 64 KiB by default |
 
 A refused connection (wrong credentials or permissions) is retried on the same
 schedule as an outage, so the broker sees the same credentials again.
+
+RADAR monitors have no MQTT client. Each reads its readings from the stored
+telemetry log, in the order the collection worker committed them, and saves the
+position it reached with its checkpoint; see [RADAR recovery](radar-recovery.md).
 
 For local MQTT examples and private catalogue simulation, see
 [Local deployment](../development/local-deployment.md).

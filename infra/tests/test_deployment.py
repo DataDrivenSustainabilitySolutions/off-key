@@ -709,8 +709,6 @@ class DeploymentTests(unittest.TestCase):
                 "mqtt_proxy_password": "MQTT_APIKEY",
             },
             "mqtt-radar": {
-                "emqx_ca_cert": "EMQX_CA_CERT",
-                "mqtt_radar_password": "RADAR_MQTT_API_KEY",
                 "radar_checkpoint_secret": "RADAR_CHECKPOINT_SECRET",
                 "forecast_api_token": "FORECAST_API_TOKEN",
             },
@@ -1002,8 +1000,10 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(
             proxy["environment"]["MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
         )
-        # The pool's MQTT login is a secret file, never an environment value.
-        self.assertNotIn("RADAR_MQTT_API_KEY", radar["environment"])
+        # Monitors read the stored log; the pool holds no broker login.
+        self.assertFalse(
+            {key for key in radar["environment"] if key.startswith("RADAR_MQTT")}
+        )
         self.assertEqual(
             radar["command"], ["/app/bin/python", "-m", "off_key_mqtt_radar.pool"]
         )
@@ -1023,12 +1023,7 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertEqual(
             {secret["target"] for secret in radar["secrets"]},
-            {
-                "EMQX_CA_CERT",
-                "RADAR_MQTT_API_KEY",
-                "RADAR_CHECKPOINT_SECRET",
-                "FORECAST_API_TOKEN",
-            },
+            {"RADAR_CHECKPOINT_SECRET", "FORECAST_API_TOKEN"},
         )
         self.assertEqual(
             {secret["target"] for secret in broker["secrets"]},

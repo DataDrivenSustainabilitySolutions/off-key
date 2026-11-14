@@ -189,7 +189,6 @@ class PipelineActivations:
             display_name=request.display_name,
             mqtt_topics=topics,
             performance_config=performance,
-            mqtt_config=form.mqtt_config,
             pipeline=PipelineExecutionConfig(
                 definition=definition,
                 bindings=bindings,

@@ -13,8 +13,8 @@ pool. Default budgets are:
 | Memory per child before the pool kills it (`TACTIC_POOL_MEMORY_LIMIT`) | 512 MiB |
 | Memory limit of one replica in Swarm (`RADAR_POOL_MEMORY_LIMIT`) | 4 GiB |
 | RADAR internal RSS alert/cleanup target | 384 MiB |
-| MQTT queue capacity | 256 messages |
-| Maximum MQTT payload | 65,536 bytes |
+| Results waiting for the database (`RADAR_MAX_QUEUE_SIZE`) | 256 |
+| Telemetry log rows per read (`RADAR_LOG_BATCH_SIZE`) | 500 |
 | Concurrent active or pending monitors | 20 |
 | PostgreSQL pool per monitor | At most 2 connections, no overflow |
 
@@ -39,16 +39,13 @@ access. Twenty monitors can consume forty database connections. The second
 worker connection allows a health heartbeat to report a blocked evidence
 transaction.
 
-Configure the internal target and ingress bounds with
-`TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB`, `TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE`, and
-`TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES`. These are forwarded to every worker.
-The internal target must stay below the child memory limit.
-
-At default ingress limits, queued payload bytes are bounded to 16 MiB. Configuration
-rejects a raw payload capacity that reaches the internal memory target. This bound
-excludes Python object overhead, topics, decoded data, model state, evidence queues,
-training/calibration buffers, and checkpoint serialization copies. The internal
-target triggers observation/cleanup; the pool enforces the actual memory limit.
+Configure the internal target and the result queue with
+`TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB` and `TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE`.
+These are forwarded to every worker. The internal target must stay below the child
+memory limit. A monitor holds at most one `RADAR_LOG_BATCH_SIZE` batch of telemetry
+rows in memory; a monitor that falls behind reads the stored log rather than
+buffering input. The internal target triggers observation/cleanup; the pool
+enforces the actual memory limit.
 
 Profile representative sensor counts, data rates, detector parameters, full fitting,
 and checkpoint peaks before admitting a deployment workload. The accepted model

@@ -6,7 +6,7 @@ import pytest
 from off_key_core.config.resource_budget import MEBIBYTE, parse_memory_bytes
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_tactic_middleware.config.config import (
     PoolConfig,
     RadarDefaultsConfig,
@@ -45,16 +45,13 @@ def test_default_worker_and_pool_budgets_agree():
     assert (
         config.radar_defaults.memory_limit_mb
         == form_radar_config(
-            None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig
+            None, ["telemetry/charger-sim-1/sine"], RadarConfig
         ).memory_limit_mb
         == 384
     )
     assert config.pool.memory_limit_bytes == 512 * MEBIBYTE
     assert config.radar_max_active_monitors == 20
-    assert (
-        config.radar_defaults.max_queue_size * config.radar_defaults.max_payload_bytes
-        == 16 * MEBIBYTE
-    )
+    assert config.radar_defaults.max_queue_size == 256
 
 
 @pytest.mark.parametrize("target", [512, 1024])
@@ -66,20 +63,6 @@ def test_internal_target_cannot_reach_the_pool_memory_limit(target):
         )
 
 
-def _runtime_config(**fields):
-    return form_radar_config(
-        None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig, **fields
-    )
-
-
-@pytest.mark.parametrize(
-    "factory", [_runtime_config, RadarDefaultsConfig], ids=["runtime", "defaults"]
-)
-def test_queue_payload_capacity_must_fit_inside_memory_target(factory):
-    with pytest.raises(ValidationError, match="queued MQTT payload bytes"):
-        factory(max_queue_size=1024, max_payload_bytes=1048576)
-
-
 def test_operator_capacity_and_pool_limits_are_typed():
     settings = TacticSettings(
         TACTIC_RADAR_MAX_ACTIVE_MONITORS=4,
@@ -87,7 +70,6 @@ def test_operator_capacity_and_pool_limits_are_typed():
         TACTIC_POOL_MEMORY_LIMIT="1g",
         TACTIC_POOL_RESTART_MONITORS=False,
         TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE=128,
-        TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES=32768,
     )
     config = settings.config
     assert config.radar_max_active_monitors == 4
@@ -95,7 +77,6 @@ def test_operator_capacity_and_pool_limits_are_typed():
     assert config.pool.memory_limit_bytes == 1024 * MEBIBYTE
     assert config.pool.restart_monitors is False
     assert config.radar_defaults.max_queue_size == 128
-    assert config.radar_defaults.max_payload_bytes == 32768
     with pytest.raises(ValidationError):
         TacticSettings(TACTIC_RADAR_MAX_ACTIVE_MONITORS=0)
 

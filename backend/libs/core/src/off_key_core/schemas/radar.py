@@ -11,7 +11,6 @@ from pydantic import (
     Field,
     TypeAdapter,
     field_validator,
-    model_serializer,
     model_validator,
 )
 
@@ -148,7 +147,7 @@ class RadarCoverageStatus(BaseModel):
 
 
 class RadarRecoveryStatus(BaseModel):
-    """Persisted checkpoint progress, distinct from input replay guarantees."""
+    """Persisted checkpoint progress and the log position it resumes from."""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -158,8 +157,11 @@ class RadarRecoveryStatus(BaseModel):
     restored_saved_at: datetime | None = None
     saved_processed_count: int | None = Field(default=None, ge=0)
     saved_at: datetime | None = None
-    maximum_normal_rollback_samples: int | None = Field(default=None, ge=0)
-    input_recovery: Literal["live_only_with_possible_gap"] | None = None
+    # The telemetry log position each checkpoint holds; a restart replays the
+    # readings after it, so nothing is lost between checkpoints.
+    restored_log_position: int | None = Field(default=None, ge=0)
+    saved_log_position: int | None = Field(default=None, ge=0)
+    input_recovery: Literal["log_replay"] | None = None
 
 
 class RadarOperationalStatus(BaseModel):
@@ -744,24 +746,6 @@ class RadarServiceLabel(BaseModel):
     _name = field_validator("display_name")(validate_service_name)
 
 
-class RadarMqttOverrides(BaseModel):
-    """Trusted saved launch options; public monitor creation uses server defaults."""
-
-    model_config = ConfigDict(extra="forbid")
-    host: str | None = Field(default=None, min_length=1, max_length=253)
-    port: int | None = Field(default=None, ge=1, le=65535)
-    use_tls: bool | None = None
-    use_auth: bool | None = None
-    username: str | None = Field(default=None, max_length=256)
-    api_key: str | None = Field(default=None, max_length=4096)
-    qos: Literal[0, 1, 2] | None = None
-    client_id_prefix: str | None = Field(default=None, min_length=1, max_length=128)
-
-    @model_serializer(mode="wrap")
-    def serialize_overrides(self, handler):
-        return {key: value for key, value in handler(self).items() if value is not None}
-
-
 class _MonitorLaunch(BaseModel):
     """Fields shared by a setup-form request and a bound pipeline launch."""
 
@@ -774,7 +758,6 @@ class _MonitorLaunch(BaseModel):
     mqtt_topics: list[str]
     monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
     performance_config: PerformanceConfig = Field(default_factory=PerformanceConfig)
-    mqtt_config: RadarMqttOverrides = Field(default_factory=RadarMqttOverrides)
 
     @field_validator("display_name")
     @classmethod
@@ -786,7 +769,7 @@ class _MonitorLaunch(BaseModel):
     def validate_topics(cls, value: list[str]) -> list[str]:
         return normalize_static_monitoring_topics(value)
 
-    @field_validator("performance_config", "mqtt_config", mode="before")
+    @field_validator("performance_config", mode="before")
     @classmethod
     def normalize_optional_options(cls, value: Any) -> Any:
         return {} if value is None else value

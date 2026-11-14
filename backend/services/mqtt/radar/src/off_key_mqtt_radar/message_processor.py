@@ -83,7 +83,8 @@ class MessageProcessor:
         self.memory_manager = memory_manager
         self.coverage = coverage
         self.required_sensors = required_sensors or set()
-        self.activity = ActivityTracker(self.required_sensors)
+        # Activity ages inputs on the same clock that judges observations.
+        self.activity = ActivityTracker(self.required_sensors, clock=monotonic)
         self.alignment = SensorStateCache(
             self.required_sensors, timing, clock=clock, monotonic=monotonic
         )

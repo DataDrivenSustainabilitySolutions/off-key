@@ -23,7 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from .config.config import MQTTRadarConfig
+from .config.config import RadarConfig
 from .config.runtime import get_radar_checkpoint_settings, get_radar_database_settings
 from .database_status import (
     FAIL_PIPELINE_RUN,
@@ -106,7 +106,7 @@ class DatabaseWriter:
 
     def __init__(
         self,
-        config: MQTTRadarConfig,
+        config: RadarConfig,
         session_factory: async_sessionmaker[AsyncSession] | None = None,
         *,
         managed_checkpoints: bool = False,

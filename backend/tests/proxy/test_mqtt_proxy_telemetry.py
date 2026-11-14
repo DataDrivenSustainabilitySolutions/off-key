@@ -257,7 +257,9 @@ async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate)
     committed = []
     staged = []
 
-    async def execute(statement):
+    async def execute(statement, parameters=None):
+        if parameters is not None:
+            return MagicMock()  # The telemetry log lock.
         params = statement.compile().params
         sensors = [value for key, value in params.items() if key.startswith("type_m")]
         if "bad" in sensors:

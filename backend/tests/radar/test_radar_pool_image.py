@@ -1,9 +1,10 @@
 """Opt-in deployment regression: the current RADAR image's pool restores a monitor.
 
 Build backend/Dockerfile for off-key-mqtt-radar, then set TEST_RADAR_IMAGE. The
-test runs that image as a pool replica next to a disposable database and broker,
-kills the monitor's child the way an out-of-memory kill would, and checks the
-replica restarts it from its signed checkpoint. Only containers and networks
+test runs that image as a pool replica next to a disposable database, appends
+readings to the telemetry log, kills the monitor's child the way an
+out-of-memory kill would, and checks the replica restarts it from its signed
+checkpoint and replays the log after it. Only containers and networks
 carrying this test's ownership label are removed.
 """
 
@@ -16,8 +17,8 @@ import uuid
 from datetime import UTC, datetime
 from uuid import uuid4
 
-import paho.mqtt.client as mqtt
 import pytest
+from off_key_core.db.locks import TELEMETRY_LOG_LOCK
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
 from off_key_core.db.workloads import RadarWorkload
@@ -122,16 +123,27 @@ def docker(*arguments: str, check: bool = True) -> str:
     ).stdout.strip()
 
 
-def container_logs(container: str) -> str:
-    # Mosquitto logs to stderr, which `docker logs` replays on its own stderr.
-    result = subprocess.run(
-        ["docker", "logs", container],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    return result.stdout + result.stderr
+def log_reading(engine, topic, value, received):
+    """Append one reading as the collector does, under the log lock."""
+    _, charger, key = topic.split("/", 2)
+    with engine.begin() as connection:
+        connection.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": TELEMETRY_LOG_LOCK},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO telemetry"
+                " (charger_id, timestamp, value, type, data_source)"
+                " VALUES (:charger, :timestamp, :value, :key, 'mqtt')"
+            ),
+            {
+                "charger": charger,
+                "timestamp": received,
+                "value": value,
+                "key": key,
+            },
+        )
 
 
 def wait_for(probe, *, timeout=90):
@@ -198,27 +210,6 @@ def pool_runtime():
         wait_for(database_ready)
         with engine.begin() as connection:
             apply_migrations(connection)
-        broker = owner + "-mqtt"
-        docker(
-            "run",
-            "--detach",
-            "--name",
-            broker,
-            "--network",
-            owner,
-            "--label",
-            label,
-            "--publish",
-            "127.0.0.1::1883",
-            "--memory",
-            "64m",
-            "eclipse-mosquitto:2.0",
-            "sh",
-            "-c",
-            "printf 'listener 1883\\nallow_anonymous true\\n' > /tmp/test.conf; "
-            "exec mosquitto -c /tmp/test.conf",
-        )
-        wait_for(lambda: "running" in container_logs(broker))
         pool = owner + "-pool"
         docker(
             "run",
@@ -256,7 +247,7 @@ def pool_runtime():
             "-m",
             "off_key_mqtt_radar.pool",
         )
-        yield owner, label, image, engine, database, broker, pool
+        yield owner, label, image, engine, database, pool
     finally:
         if engine:
             engine.dispose()
@@ -267,8 +258,7 @@ def pool_runtime():
 
 
 def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
-    owner, label, image, engine, database, broker, pool = pool_runtime
-    broker_port = published_port(broker, "1883/tcp")
+    owner, label, image, engine, database, pool = pool_runtime
     service_id = owner + "-monitor"
     topics = ["telemetry/pool-test/a", "telemetry/pool-test/b"]
     with engine.begin() as connection:
@@ -291,18 +281,12 @@ def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
         "ENVIRONMENT": "development",
         "SERVICE_ID": service_id,
         "RADAR_LIFECYCLE_VERSION": "1",
-        "RADAR_MQTT_BROKER_HOST": broker,
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(topics),
-        "RADAR_SUBSCRIPTION_QOS": "1",
         "RADAR_PIPELINE_CONFIG": form_pipeline(monitoring, topics).model_dump_json(),
         "RADAR_CHECKPOINT_INTERVAL": "5",
         "RADAR_HEALTH_CHECK_INTERVAL": "0.5",
-        "RADAR_SENSOR_FRESHNESS_SECONDS": "3",
-        # Retained inputs must be rejected by their restored watermarks rather
-        # than merely ageing out while the replacement process imports models.
-        "RADAR_OBSERVATION_MAX_AGE_SECONDS": "600",
+        "RADAR_LOG_POLL_SECONDS": "0.1",
         "RADAR_DB_BATCH_TIMEOUT": "0.2",
-        "RADAR_RATE_LIMIT_PER_MINUTE": "0",
         "RADAR_MEMORY_LIMIT_MB": "384",
     }
     workload_id = uuid.uuid4().hex
@@ -357,9 +341,6 @@ def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
                 {"id": service_id},
             )
 
-    publisher = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-    publisher.connect("127.0.0.1", broker_port)
-    publisher.loop_start()
     try:
         wait_for(lambda: status().get("updated_at"), timeout=120)
         index = 0
@@ -370,21 +351,13 @@ def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
                 "Real worker did not produce scoring evidence within 120 seconds"
             )
             for sensor, topic in enumerate(topics):
-                payload = {
-                    "value": math.sin(index / 3) + sensor,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-                publisher.publish(
-                    topic, json.dumps(payload), qos=1, retain=True
-                ).wait_for_publish(5)
-                latest_watermarks[topic.rsplit("/", 1)[-1]] = datetime.fromisoformat(
-                    payload["timestamp"]
-                ).timestamp()
+                received = datetime.now(UTC)
+                log_reading(engine, topic, math.sin(index / 3) + sensor, received)
+                latest_watermarks[topic.rsplit("/", 1)[-1]] = received.timestamp()
             time.sleep(0.08)
             index += 1
-        # Cross-topic delivery may coalesce readings under strict-barrier
-        # alignment. Drain actual receipts and verify the signed runtime state
-        # contains the latest retained observation from every stream.
+        # Drain actual receipts and verify the signed runtime state contains
+        # the latest logged observation from every stream.
         drained = wait_for(
             lambda: status() if status().get("message_count", 0) >= index * 2 else None
         )
@@ -440,36 +413,17 @@ def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
         wait_for(lambda: status().get("recovery", {}).get("restored"), timeout=120)
         assert status()["processed_message_count"] >= before
         assert status()["recovery"]["restored_processed_count"] >= before
-        assert status()["coverage"]["has_gaps"]
-        assert status()["coverage"]["possible_gap_count"] >= 1
-        wait_for(
-            lambda: (
-                status()["coverage"]["dropped_by_reason"].get(
-                    "observation_duplicate", 0
-                )
-                >= 2
-            )
-        )
+        assert status()["recovery"]["input_recovery"] == "log_replay"
+        # The replacement continues after the snapshot's position: nothing is
+        # lost and nothing already in the snapshot is scored again.
+        assert not status()["coverage"]["has_gaps"]
+        assert status()["coverage"]["possible_gap_count"] == 0
         assert checkpoint_count() == before
         assert evidence_count() == before_evidence
-        assert status()["coverage"]["last_gap_reason"] in {
-            "worker_restart",
-            "observation_duplicate",
-        }
         replaced_at = datetime.now(UTC)
         for index in range(10):
             for topic in topics:
-                publisher.publish(
-                    topic,
-                    json.dumps(
-                        {
-                            "value": float(index),
-                            "timestamp": datetime.now(UTC).isoformat(),
-                        }
-                    ),
-                    qos=1,
-                    retain=True,
-                ).wait_for_publish(5)
+                log_reading(engine, topic, float(index), datetime.now(UTC))
             time.sleep(0.1)
         wait_for(lambda: checkpoint_count() > before)
         wait_for(lambda: evidence_count() > before_evidence)
@@ -499,9 +453,6 @@ def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
                     "evidence_after_recovery": evidence_count(),
                     "restored": recovered["recovery"]["restored"],
                     "coverage_gap": recovered["coverage"]["has_gaps"],
-                    "replayed_observations_rejected": recovered["coverage"][
-                        "dropped_by_reason"
-                    ].get("observation_duplicate", 0),
                 }
             )
         )
@@ -521,6 +472,3 @@ def test_current_image_pool_restores_a_killed_monitor(pool_runtime):
         )
         print(docker("logs", "--tail", "200", pool, check=False))
         raise
-    finally:
-        publisher.disconnect()
-        publisher.loop_stop()

@@ -1,16 +1,12 @@
 """
-Configuration for MQTT RADAR service
+Configuration for the RADAR monitor runtime
 """
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
 
 from dotenv import load_dotenv
-from off_key_core.config.resource_budget import (
-    DEFAULT_RADAR_MEMORY_MB,
-    validate_ingress_budget,
-)
+from off_key_core.config.resource_budget import DEFAULT_RADAR_MEMORY_MB
 from off_key_core.config.validation import SECRETS_DIR, Environment
 from off_key_core.models.pipelines import derive_monitoring_config
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
@@ -98,53 +94,34 @@ class AnomalyDetectionConfig(PerformanceConfig):
         return result
 
 
-class MQTTRadarConfig(AnomalyDetectionConfig):
-    """MQTT RADAR service configuration"""
+class RadarConfig(AnomalyDetectionConfig):
+    """One monitor's runtime configuration."""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    # MQTT Connection
-    broker_host: str = "localhost"
-    broker_port: int = 1883
-    use_tls: bool = False
-    ca_file: str | None = None
-    client_id_prefix: str = "radar"
-
-    # Optional authentication
-    use_auth: bool = False
-    username: str = ""
-    api_key: str = ""
-
-    # Subscription settings
+    # The accepted telemetry topics of the pipeline's bindings; each names one
+    # stored stream the monitor reads from the telemetry log.
     subscription_topics: list[str] = Field(
         default_factory=lambda: ["telemetry/charger-sim-1/sine"]
     )
-    subscription_qos: int = 0
     # Database settings
     db_write_enabled: bool = True
     db_batch_size: int = Field(default=50, gt=0)
     db_batch_timeout: float = Field(default=2.0, gt=0)
+    # Results waiting for the database; a full queue holds the log reader back.
+    max_queue_size: int = Field(default=256, gt=0, le=10000)
+
+    # Telemetry log reads
+    log_poll_seconds: float = Field(default=0.5, gt=0, le=30)
+    log_batch_size: int = Field(default=500, gt=0, le=10000)
 
     # Monitoring
     health_check_interval: float = 30.0
     log_level: str = "INFO"
 
-    # Performance
-    max_queue_size: int = Field(default=256, gt=0, le=10000)
-    max_payload_bytes: int = Field(default=65536, gt=0, le=1048576)
-
-    # Security
-    # Zero accepts every observation until the bounded ingestion queue is full.
-    rate_limit_per_minute: int = Field(default=0, ge=0)
+    # Input validation
     max_feature_count: int = 100
     max_string_length: int = 1000
-
-    @model_validator(mode="after")
-    def validate_queued_payload_budget(self) -> "MQTTRadarConfig":
-        validate_ingress_budget(
-            self.max_queue_size, self.max_payload_bytes, self.memory_limit_mb
-        )
-        return self
 
     @field_validator("subscription_topics")
     @classmethod
@@ -159,21 +136,8 @@ class RadarSettings(BaseSettings):
     # Configuration Management
     ENVIRONMENT: Environment = "development"
 
-    # MQTT Configuration
-    RADAR_MQTT_BROKER_HOST: str = "localhost"
-    RADAR_MQTT_BROKER_PORT: int = 1883
-    RADAR_MQTT_USE_TLS: bool = False
-    RADAR_MQTT_CA_FILE: str | None = None
-    RADAR_MQTT_CLIENT_ID_PREFIX: str = "radar"
-
-    # Authentication
-    RADAR_MQTT_USE_AUTH: bool = False
-    RADAR_MQTT_USERNAME: str = ""
-    RADAR_MQTT_API_KEY: str = ""
-
     # Topics
     RADAR_SUBSCRIPTION_TOPICS: str = "telemetry/charger-sim-1/sine"  # Comma-separated
-    RADAR_SUBSCRIPTION_QOS: int = 0
     RADAR_SENSOR_KEY_STRATEGY: str = "full_hierarchy"
     # MonitorTiming: how long each reading's last value stays usable.
     RADAR_HOLD_INTERVALS: float = 3.0
@@ -191,9 +155,12 @@ class RadarSettings(BaseSettings):
     # TACTIC sets it for a shadow run only: every alarm is kept back as muted.
     RADAR_SHADOW: bool = False
 
+    # Telemetry log reads
+    RADAR_LOG_POLL_SECONDS: float = Field(default=0.5, gt=0, le=30)
+    RADAR_LOG_BATCH_SIZE: int = Field(default=500, gt=0, le=10000)
+
     # Performance
     RADAR_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
-    RADAR_MAX_PAYLOAD_BYTES: int = Field(default=65536, gt=0, le=1048576)
     RADAR_MEMORY_LIMIT_MB: int = Field(
         default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384
     )
@@ -202,7 +169,6 @@ class RadarSettings(BaseSettings):
     # Monitoring
     RADAR_HEALTH_CHECK_INTERVAL: float = 30.0
     RADAR_LOG_LEVEL: str = "INFO"
-    RADAR_RATE_LIMIT_PER_MINUTE: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(
         case_sensitive=True,
@@ -224,29 +190,9 @@ class RadarSettings(BaseSettings):
         """Validate sensor key strategy from environment."""
         return normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
 
-    @model_validator(mode="after")
-    def validate_mqtt_security_posture(self) -> Self:
-        if self.ENVIRONMENT == "production":
-            if not self.RADAR_MQTT_USE_TLS:
-                raise ValueError(
-                    "RADAR_MQTT_USE_TLS must be true when ENVIRONMENT=production"
-                )
-            if not self.RADAR_MQTT_USE_AUTH:
-                raise ValueError(
-                    "RADAR_MQTT_USE_AUTH must be true when ENVIRONMENT=production"
-                )
-        if self.RADAR_MQTT_USE_AUTH:
-            if not self.RADAR_MQTT_USERNAME.strip():
-                raise ValueError("RADAR_MQTT_USERNAME is required when auth is enabled")
-            if len(self.RADAR_MQTT_API_KEY.strip()) < 10:
-                raise ValueError(
-                    "RADAR_MQTT_API_KEY must have at least 10 characters with auth"
-                )
-        return self
-
     @property
-    def config(self) -> MQTTRadarConfig:
-        """Create MQTTRadarConfig from environment settings"""
+    def config(self) -> RadarConfig:
+        """The monitor configuration these settings describe."""
 
         # Parse topics
         topics = normalize_static_monitoring_topics(
@@ -269,17 +215,8 @@ class RadarSettings(BaseSettings):
             raise ValueError("Runtime subscriptions conflict with pipeline bindings")
         topics = expected_topics
 
-        return MQTTRadarConfig(
-            broker_host=self.RADAR_MQTT_BROKER_HOST,
-            broker_port=self.RADAR_MQTT_BROKER_PORT,
-            use_tls=self.RADAR_MQTT_USE_TLS,
-            ca_file=self.RADAR_MQTT_CA_FILE,
-            client_id_prefix=self.RADAR_MQTT_CLIENT_ID_PREFIX,
-            use_auth=self.RADAR_MQTT_USE_AUTH,
-            username=self.RADAR_MQTT_USERNAME,
-            api_key=self.RADAR_MQTT_API_KEY,
+        return RadarConfig(
             subscription_topics=topics,
-            subscription_qos=self.RADAR_SUBSCRIPTION_QOS,
             sensor_key_strategy=self.RADAR_SENSOR_KEY_STRATEGY,
             hold_intervals=self.RADAR_HOLD_INTERVALS,
             minimum_hold_seconds=self.RADAR_MINIMUM_HOLD_SECONDS,
@@ -289,13 +226,13 @@ class RadarSettings(BaseSettings):
             db_batch_timeout=self.RADAR_DB_BATCH_TIMEOUT,
             health_check_interval=self.RADAR_HEALTH_CHECK_INTERVAL,
             log_level=self.RADAR_LOG_LEVEL,
-            rate_limit_per_minute=self.RADAR_RATE_LIMIT_PER_MINUTE,
             memory_limit_mb=self.RADAR_MEMORY_LIMIT_MB,
             monitoring=monitoring,
             pipeline=pipeline,
             shadow=self.RADAR_SHADOW,
             max_queue_size=self.RADAR_MAX_QUEUE_SIZE,
-            max_payload_bytes=self.RADAR_MAX_PAYLOAD_BYTES,
+            log_poll_seconds=self.RADAR_LOG_POLL_SECONDS,
+            log_batch_size=self.RADAR_LOG_BATCH_SIZE,
             checkpoint_interval=self.RADAR_CHECKPOINT_INTERVAL,
         )
 

@@ -39,12 +39,9 @@ services:
       - source: mqtt_proxy_password
         target: MQTT_APIKEY
 
+  # Monitors read the stored telemetry log, so the pool holds no broker login.
   mqtt-radar:
     secrets:
-      - source: emqx_ca_cert
-        target: EMQX_CA_CERT
-      - source: mqtt_radar_password
-        target: RADAR_MQTT_API_KEY
       - source: radar_checkpoint_secret
         target: RADAR_CHECKPOINT_SECRET
       # Read by the monitors the pool runs.

@@ -31,7 +31,7 @@ from off_key_mqtt_radar.admission import (
     RadarAdmissionSettings,
     require_monitor_admission,
 )
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
+from off_key_mqtt_radar.config.config import RadarConfig
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.deployment import reserve
@@ -500,7 +500,7 @@ async def test_runtime_failure_cannot_be_overwritten_by_heartbeat_verification(
         await session.commit()
 
     writer = DatabaseWriter(
-        MQTTRadarConfig(pipeline=execution),
+        RadarConfig(pipeline=execution),
         session_factory=pipeline_database,
         managed_checkpoints=True,
         service_id=activation.service_id,
@@ -642,13 +642,11 @@ async def test_release_converts_a_saved_form_monitor_or_retires_it(pipeline_data
             "mqtt_topics": [topics["temperature"], topics["current"]],
             "monitoring": {"strategy": "static_baseline"},
             "performance_config": {"hold_intervals": 4},
-            "mqtt_config": {"qos": 1},
             "pipeline": None,
         }
         launch, metadata = await convert_saved_form_monitor(session, saved)
 
         assert launch.container_name == "radar-device"
-        assert launch.mqtt_config.qos == 1
         assert launch.performance_config.hold_intervals == 4
         assert {item.reading_id for item in launch.pipeline.bindings} == {
             "current",

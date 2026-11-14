@@ -6,7 +6,7 @@ from off_key_core.schemas.radar import (
 )
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 from off_key_mqtt_radar.config.config import (
-    MQTTRadarConfig,
+    RadarConfig,
     RadarSettings,
 )
 from pydantic import ValidationError
@@ -72,8 +72,8 @@ def test_mqtt_settings_validate_primitive_constraints(monkeypatch):
 
 
 def test_mqtt_radar_config_mutable_defaults_are_isolated():
-    cfg_one = form_radar_config(None, [TOPIC], MQTTRadarConfig)
-    cfg_two = form_radar_config(None, [TOPIC], MQTTRadarConfig)
+    cfg_one = form_radar_config(None, [TOPIC], RadarConfig)
+    cfg_two = form_radar_config(None, [TOPIC], RadarConfig)
     defaults = dict(cfg_two.monitoring.model_params)
 
     cfg_one.subscription_topics.append("telemetry/charger-sim-1/cosine")
@@ -98,7 +98,7 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
 )
 def test_mqtt_radar_config_rejects_ambiguous_static_sensor_assignments(topics, message):
     with pytest.raises(ValidationError, match=message):
-        form_radar_config(None, topics, MQTTRadarConfig)
+        form_radar_config(None, topics, RadarConfig)
 
 
 def test_anomaly_detection_config_uses_strategy_specific_adaptive_config():
@@ -336,39 +336,6 @@ def test_static_martingale_automatic_threshold_constraints():
 def test_static_baseline_rejects_removed_fdr_config():
     with pytest.raises(ValidationError, match="fdr_config"):
         StaticBaselineConfig(fdr_config={})
-
-
-def test_radar_settings_require_secure_mqtt_in_production(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("RADAR_MQTT_USE_TLS", "false")
-    monkeypatch.setenv("RADAR_MQTT_USE_AUTH", "false")
-
-    with pytest.raises(ValidationError, match="RADAR_MQTT_USE_TLS"):
-        RadarSettings()
-
-
-def test_radar_settings_allow_insecure_mqtt_in_development(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setenv("RADAR_MQTT_USE_TLS", "false")
-    monkeypatch.setenv("RADAR_MQTT_USE_AUTH", "false")
-    settings = RadarSettings()
-    assert settings.RADAR_MQTT_USE_TLS is False
-    assert settings.RADAR_MQTT_USE_AUTH is False
-
-
-def test_radar_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
-    monkeypatch.delenv("RADAR_MQTT_API_KEY", raising=False)
-    (tmp_path / "RADAR_MQTT_API_KEY").write_text("radar-password-123456")
-    settings = RadarSettings(
-        ENVIRONMENT="production",
-        RADAR_MQTT_USE_TLS=True,
-        RADAR_MQTT_USE_AUTH=True,
-        RADAR_MQTT_USERNAME="offkey-radar",
-        RADAR_MQTT_CA_FILE="/run/secrets/EMQX_CA_CERT",
-        _secrets_dir=tmp_path,
-    )
-    assert settings.config.api_key == "radar-password-123456"
-    assert settings.config.ca_file == "/run/secrets/EMQX_CA_CERT"
 
 
 def test_mqtt_settings_require_secure_mqtt_in_production(monkeypatch):

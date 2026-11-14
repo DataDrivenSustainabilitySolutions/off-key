@@ -60,7 +60,6 @@
     argv: [docker, service, inspect, "{{ stack_name }}_{{ item.service }}"]
   loop:
     - {service: mqtt-proxy, target: MQTT_APIKEY, key: mqtt_proxy_password}
-    - {service: mqtt-radar, target: RADAR_MQTT_API_KEY, key: mqtt_radar_password}
   register: existing_mqtt_clients
   changed_when: false
   failed_when: false

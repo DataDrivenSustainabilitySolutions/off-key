@@ -32,15 +32,3 @@ def parse_memory_bytes(value: str) -> int:
     prefix = unit.lower()[:1]
     multiplier = 1024 ** {"k": 1, "m": 2, "g": 3, "t": 4}.get(prefix, 0)
     return _whole_positive_quantity(Decimal(number) * multiplier, "Memory")
-
-
-def validate_ingress_budget(
-    max_queue_size: int,
-    max_payload_bytes: int,
-    memory_limit_mb: int,
-) -> None:
-    """Raw queued payloads alone must not consume the worker's entire target."""
-    if max_queue_size * max_payload_bytes >= memory_limit_mb * MEBIBYTE:
-        raise ValueError(
-            "Maximum queued MQTT payload bytes must be below the RADAR memory budget"
-        )

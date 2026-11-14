@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from off_key_core.config.logs import logger
 from off_key_core.models import ADAPTIVE_MODEL_FAMILY, STATIC_MODEL_FAMILY
-from off_key_core.schemas.radar import RadarMqttOverrides, RadarStartConfig
+from off_key_core.schemas.radar import RadarStartConfig
 
 from ...config.config import get_radar_runtime_settings, get_tactic_settings
 from ...models.catalog import validate_model_params
@@ -72,53 +72,17 @@ def build_radar_environment(
     validated when it was saved, so rebuilding it skips the check.
     """
     monitoring = config.monitoring
-    mqtt_config = RadarMqttOverrides.model_validate(
-        config.mqtt_config or {}
-    ).model_dump()
     performance = config.performance_config
     defaults = get_tactic_settings().config.radar_defaults
     runtime = get_radar_runtime_settings()
-    if runtime.ENVIRONMENT == "production":
-        forbidden = {
-            "host",
-            "port",
-            "use_tls",
-            "use_auth",
-            "username",
-            "api_key",
-        } & mqtt_config.keys()
-        if forbidden:
-            raise ValueError("Production MQTT connection settings cannot be overridden")
     environment = {
         "SERVICE_ID": service_id,
-        # RADAR no longer reads this key. It stays so persisted config
-        # fingerprints of running monitors do not change.
-        "RADAR_CHECKPOINT_STORAGE": "database",
         "ENVIRONMENT": runtime.ENVIRONMENT,
-        "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),
-        "RADAR_MQTT_BROKER_PORT": str(
-            mqtt_config.get("port", defaults.mqtt_broker_port)
-        ),
-        "RADAR_MQTT_USE_TLS": str(
-            mqtt_config.get("use_tls", defaults.mqtt_use_tls)
-        ).lower(),
-        "RADAR_MQTT_CLIENT_ID_PREFIX": mqtt_config.get(
-            "client_id_prefix", defaults.mqtt_client_id_prefix
-        ),
-        "RADAR_MQTT_USE_AUTH": str(
-            mqtt_config.get("use_auth", defaults.mqtt_use_auth)
-        ).lower(),
-        "RADAR_MQTT_USERNAME": mqtt_config.get("username", defaults.mqtt_username),
+        # The accepted topics name the stored streams the monitor reads.
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(config.mqtt_topics),
-        "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
-        # RADAR ignores these retired keys; they stay so persisted config
-        # fingerprints of running monitors do not change.
-        "RADAR_BATCH_SIZE": "100",
-        "RADAR_BATCH_TIMEOUT": "1.0",
         "RADAR_MEMORY_LIMIT_MB": str(defaults.memory_limit_mb),
         "RADAR_CHECKPOINT_INTERVAL": str(defaults.checkpoint_interval),
         "RADAR_MAX_QUEUE_SIZE": str(defaults.max_queue_size),
-        "RADAR_MAX_PAYLOAD_BYTES": str(defaults.max_payload_bytes),
         "RADAR_SENSOR_KEY_STRATEGY": str(performance.sensor_key_strategy),
         "RADAR_HOLD_INTERVALS": str(performance.hold_intervals),
         "RADAR_MINIMUM_HOLD_SECONDS": str(performance.minimum_hold_seconds),
@@ -128,18 +92,12 @@ def build_radar_environment(
         "RADAR_DB_BATCH_TIMEOUT": str(defaults.db_batch_timeout),
         "RADAR_HEALTH_CHECK_INTERVAL": str(defaults.health_check_interval),
         "RADAR_LOG_LEVEL": defaults.log_level,
-        "RADAR_RATE_LIMIT_PER_MINUTE": str(defaults.rate_limit_per_minute),
     }
     forecast_api_url = get_tactic_settings().config.forecast_api_url
     if forecast_api_url:
         # Pretrained forecaster steps ask this service for their forecasts. Its
         # token is a secret of the RADAR pool, which its children inherit.
         environment["FORECAST_API_URL"] = forecast_api_url
-    if runtime.ENVIRONMENT == "production":
-        environment["RADAR_MQTT_CA_FILE"] = "/run/secrets/EMQX_CA_CERT"
-    elif mqtt_config.get("api_key"):
-        environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
-
     if validate_params:
         try:
             validate_model_params(

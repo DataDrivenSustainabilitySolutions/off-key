@@ -211,14 +211,12 @@ tactic_radar_default_mqtt_username:         "{{ radar_mqtt_username }}"
 tactic_radar_default_mqtt_qos:              "0"
 tactic_radar_default_memory_limit_mb:       "384"
 tactic_radar_default_max_queue_size: "256"
-tactic_radar_default_max_payload_bytes: "65536"
 tactic_radar_default_checkpoint_interval:   "10000"
 tactic_radar_default_db_write_enabled:      "true"
 tactic_radar_default_db_batch_size:         "50"
 tactic_radar_default_db_batch_timeout:      "2.0"
 tactic_radar_default_health_check_interval: "30.0"
 tactic_radar_default_log_level:             INFO
-tactic_radar_default_rate_limit_per_minute: "0"
 
 # ── Ports ─────────────────────────────────────────────────────────────────────
 

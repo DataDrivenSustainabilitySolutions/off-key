@@ -19,29 +19,38 @@ overridden. The public development key is rejected in production. Keep the
 configured key stable across worker replacements. Key rotation requires a
 reviewed recovery/recalibration procedure; changing it invalidates old snapshots.
 
-After an established MQTT connection drops, one reconnect owner retries until
-subscriptions recover or the worker shuts down. Backoff starts at five seconds
-and doubles to a maximum of five minutes, without an attempt cutoff. Every
-required subscription must receive a successful broker acknowledgement before
-the worker reports connected. Recovery retains the coverage gap from the outage.
+A monitor reads its input from the stored telemetry log, not from a broker. The
+collection worker appends each accepted reading to `telemetry`, and each row takes
+the next `log_seq` under one transaction lock, so positions become visible in
+order: once a monitor has read a position, no smaller one can still appear. The
+monitor reads the rows of its own readings after the position it last processed,
+`RADAR_LOG_BATCH_SIZE` at a time, and polls every `RADAR_LOG_POLL_SECONDS` once it
+has caught up. A failed read is retried with backoff up to 30 seconds and reports
+the monitor unhealthy until a read succeeds. Nothing is dropped for being slow.
 
-The worker checkpoints before subscribing, at detector phase changes, after
+The worker checkpoints before it reads the log, at detector phase changes, after
 `RADAR_CHECKPOINT_INTERVAL` aligned observations, within
 `RADAR_CHECKPOINT_MAX_INTERVAL_SECONDS` (30 seconds by default), and after
-stopping ingestion during graceful shutdown. Known coverage changes also trigger
+stopping its log reader during graceful shutdown. Known coverage changes also trigger
 a checkpoint. Pending alarms and evidence commit in the same transaction as the
-snapshot. Failed writes retain pending results and stop further model advancement
+snapshot, and the snapshot holds the log position of exactly the readings its
+state contains: the position advances under the same lock checkpoints take. Failed writes retain pending results and stop further model advancement
 after the configured `RADAR_CHECKPOINT_TIMEOUT_SECONDS` (30 seconds by default).
 An interrupted static fit restarts from its preserved training and calibration
 observations.
 
-This restores the latest committed detector state after task or node replacement.
-A hard crash can roll back work since that snapshot. Evidence committed by earlier
-background batches can be ahead of the restored detector. Current MQTT input is a
-live stream: observations missed during downtime or rolled-back processing are not
-replayed. Recovery reports this possible coverage gap, resets partially aligned
-sensor frames, and requires new sensor observations. Recovery metadata is included
-in the worker health metrics and persisted operational status. These guarantees
+This restores the latest committed detector state after task or node replacement,
+then replays every reading logged after the snapshot's position: work rolled back
+by a hard crash and readings that arrived while the monitor was down are both
+processed. Every reading carries the time the collection worker received it, and
+the monitor's clocks follow that time while it works through the log, so a
+replayed backlog is judged as it was live, the same way a Dojo replay is. Once
+caught up, the clocks follow the wall clock, so a silent reading still goes stale. Evidence committed by earlier background
+batches can be ahead of the restored detector; its keys are deterministic, so the
+replay writes it once. A restore resets partially aligned sensor frames. A new
+monitor starts at the newest logged row. Recovery metadata, including the restored
+and saved log positions, is included in the worker health metrics and persisted
+operational status. These guarantees
 depend on the PostgreSQL deployment retaining its data; a node-local worker volume
 is not required.
 
@@ -49,9 +58,8 @@ Managed snapshots also retain the highest accepted observation timestamp for eac
 reading. Replacement workers restore these watermarks while clearing partial
 feature vectors. Retained or replayed observations already covered by the snapshot
 cannot advance the restored detector; each required reading must produce a newer
-observation. Watermarks share the snapshot's rollback boundary, so they do not
-provide exactly-once processing after a hard crash. Receipt clocks are local to
-the current worker and include time spent waiting in its ingress queue.
+observation. Watermarks share the snapshot's log position, so replay after a hard crash
+processes each reading once.
 
 A managed snapshot with processed observations but no observation history fails
 startup. This revision is unreleased and does not accept an older payload that
@@ -69,7 +77,7 @@ worker commits a successor, a stale writer cannot commit further checkpoints or
 evidence. Ownership loss is terminal: pending results remain queued, new results
 are rejected, and the worker stops after observing the loss. This permits
 concurrent computation during replacement; it does not provide exclusive
-inference or replay missed input.
+inference.
 
 Health writes check the signature without locking the snapshot row, allowing a
 heartbeat to report an evidence transaction blocked in PostgreSQL. During a
@@ -81,8 +89,8 @@ checkpoint encoding on one dedicated model thread. The event loop persists
 evidence and reports health from complete cached detector snapshots. A slow model
 cannot create concurrent inference or prevent the health loop from observing a
 stall. Cancellation waits for the active model operation before taking the final
-snapshot. The MQTT network thread admits messages into a bounded Janus queue,
-without scheduling one unbounded asyncio callback per incoming observation.
+snapshot. The log reader hands one row at a time to the model owner, so a slow
+model holds the reader back instead of growing a queue.
 
 ## Graph failures and revision rollback
 

@@ -16,9 +16,9 @@ from tests.support.form_pipeline import set_pipeline_environment
 @pytest.mark.asyncio
 async def test_custom_file_applies_on_startup_and_next_restart(tmp_path, monkeypatch):
     config_file = tmp_path / "radar.env"
-    config_file.write_text("RADAR_MQTT_BROKER_HOST=first-broker\n")
+    config_file.write_text("RADAR_LOG_POLL_SECONDS=1.5\n")
     monkeypatch.setenv("RADAR_CONFIG_FILE", str(config_file))
-    monkeypatch.setenv("RADAR_MQTT_BROKER_HOST", "environment-broker")
+    monkeypatch.setenv("RADAR_LOG_POLL_SECONDS", "0.5")
     set_pipeline_environment(monkeypatch)
     monkeypatch.setattr(bootstrap, "load_env", lambda: None)
     monkeypatch.setattr(bootstrap, "load_yaml_config", lambda _: None)
@@ -35,15 +35,15 @@ async def test_custom_file_applies_on_startup_and_next_restart(tmp_path, monkeyp
         clear_radar_settings_cache()
         clear_radar_runtime_settings_cache()
         await entrypoint.main()
-        assert services[0].config.broker_host == "first-broker"
-        config_file.write_text("RADAR_MQTT_BROKER_HOST=second-broker\n")
-        assert services[0].config.broker_host == "first-broker"
+        assert services[0].config.log_poll_seconds == 1.5
+        config_file.write_text("RADAR_LOG_POLL_SECONDS=2.5\n")
+        assert services[0].config.log_poll_seconds == 1.5
         # A new process begins with fresh settings caches.
         clear_radar_settings_cache()
         clear_radar_runtime_settings_cache()
         await entrypoint.main()
-        assert services[1].config.broker_host == "second-broker"
-        assert services[0].config.broker_host == "first-broker"
+        assert services[1].config.log_poll_seconds == 2.5
+        assert services[0].config.log_poll_seconds == 1.5
     finally:
         clear_radar_settings_cache()
         clear_radar_runtime_settings_cache()

@@ -16,6 +16,10 @@ on:
         description: Controlled first deployment; stop old writers and capture existing monitors
         default: false
         type: boolean
+      reset_database:
+        description: Erase the database after a backup and start empty; type the stack name (off-key) to confirm
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -127,6 +131,7 @@ jobs:
         if: steps.release.outputs.ready == 'true'
         env:
           BOOTSTRAP: ${{ inputs.bootstrap || false }}
+          RESET_DATABASE: ${{ inputs.reset_database || '' }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
           # Replaces ansible.cfg's ssh_args, so it keeps their connection reuse: without it
           # every task opens a new SSH session through the tailnet.
@@ -135,6 +140,11 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          # Only the stack name confirms a reset; anything else never reaches Ansible.
+          if [ -n "$RESET_DATABASE" ] && [ "$RESET_DATABASE" != off-key ]; then
+            echo "reset_database must be empty or the stack name, off-key." | tee "$OFFKEY_RELEASE_OUTCOME/production.failed"
+            exit 1
+          fi
           cd infra/ansible
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
           readiness="$OFFKEY_DEPLOY_DIRECTORY/production-readiness"
@@ -148,7 +158,7 @@ jobs:
           }
           uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { failed "Production preflight failed; check private SSH/configuration and the setup guide." "$OFFKEY_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
-            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "readiness_report_file=$readiness" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { failed "Production release failed; inspect private server records and retry the attempted SHA." "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
+            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "release_reset_database=$RESET_DATABASE" -e "readiness_report_file=$readiness" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { failed "Production release failed; inspect private server records and retry the attempted SHA." "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
             python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
             keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
             touch "$OFFKEY_RELEASE_OUTCOME/production.released"

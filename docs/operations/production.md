@@ -85,6 +85,37 @@ route identity, recovery records and private inventories are not published as Ac
 artifacts. Investigate live failures through trusted SSH and the server-side
 records, not public log uploads.
 
+## Schema baseline and database reset
+
+The schema has one baseline. An empty database receives the current schema from
+the ORM bootstrap and records `000_baseline.sql` in its migration ledger; later
+migrations follow it in order. A database created before the baseline carries the
+retired migrations 001–035 or none at all. It cannot be upgraded: the migration
+preflight refuses it before any writer stops, so production keeps running the
+release it has and the task **Refuse a database from before the schema baseline**
+fails.
+
+Start such a stack from an empty database with an explicit reset. It names the
+stack it erases:
+
+```sh
+make deploy-prod REVISION=<full SHA> RESET_DATABASE=off-key
+```
+
+or, in the **Deploy Production** workflow, type `off-key` in *reset_database*.
+The release stops every writer, saves a validated custom-format backup to
+`<stack_dir>/.backup/resets/<UTC time>/database.dump` with its checksum on the
+database node, drops and recreates the database with TimescaleDB, and then
+deploys as on a new cluster. Every account, monitor, design, proposal, dataset,
+alarm and reading is gone; the administrator invitation is emailed again at the
+end of the release. Each reset keeps its own backup, so a retry never replaces
+the backup of the data with one of the empty database. Restore it with the
+[recovery](recovery.md) procedure if it is needed again; the restored data only
+runs on a release from before the baseline.
+
+The [demo](public-demo.md#reset-the-demo-database) resets the same way from its
+own inventory.
+
 ## Checks before production
 
 The `deployment-smoke` CI lanes run the existing browser and adaptive-monitor journeys against a

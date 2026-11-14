@@ -1,0 +1,62 @@
+---
+# Replace the stack's database with an empty one, after a verified backup.
+# Only an operator asks for this, by naming the stack it erases: every account,
+# monitor, design, dataset and reading goes. The migration preflight then sees
+# a fresh database and the release installs the current schema on it.
+- name: Require the reset to name this stack
+  assert:
+    that: release_reset_database == stack_name
+    fail_msg: >-
+      A database reset erases everything in {{ stack_name }}. Repeat it with
+      RESET_DATABASE={{ stack_name }} to confirm which stack it erases.
+
+- name: Select the database writers to stop before the reset
+  include_tasks: release_writers.yml
+
+- name: Stop writers before the reset backup
+  include_role:
+    name: swarm_scale
+  vars:
+    swarm_scale_replicas: "{{ dict(release_writers | zip([0] * (release_writers | length))) }}"
+
+- name: Confirm every writer has stopped
+  include_role:
+    name: persistence_switch
+    tasks_from: wait_stopped
+  vars:
+    service_names: "{{ release_writers }}"
+
+- name: Locate the database to reset
+  include_role:
+    name: swarm_task
+  vars:
+    svc: postgres
+
+# Each reset keeps its own backup, so a retried reset never replaces the
+# backup of the data with a backup of the empty database.
+- name: Back up the database, then replace it with an empty one
+  shell: |
+    set -euo pipefail
+    umask 077
+    backup={{ (stack_dir ~ '/.backup/resets/') | quote }}"$(date -u +%Y%m%dT%H%M%SZ)"
+    mkdir -p "$backup"
+    cid={{ svc_container | quote }}
+    docker exec "$cid" pg_dump -U {{ postgres_user | quote }} -d {{ postgres_db | quote }} -Fc > "$backup/database.dump.pending"
+    docker exec -i "$cid" pg_restore --list < "$backup/database.dump.pending" > /dev/null
+    mv "$backup/database.dump.pending" "$backup/database.dump"
+    sha256sum "$backup/database.dump" > "$backup/database.dump.sha256"
+    sha256sum --check "$backup/database.dump.sha256" > /dev/null
+    docker exec "$cid" dropdb -U {{ postgres_user | quote }} --maintenance-db=template1 --if-exists --force {{ postgres_db | quote }}
+    docker exec "$cid" createdb -U {{ postgres_user | quote }} --maintenance-db=template1 --template=template0 {{ postgres_db | quote }}
+    docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d {{ postgres_db | quote }} -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+    echo "$backup"
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ svc_node }}"
+  register: release_reset
+
+- name: Report where the data before the reset is kept
+  debug:
+    msg: >-
+      {{ stack_name }} now has an empty database. The data before the reset is
+      in {{ release_reset.stdout_lines | last }}/database.dump on {{ svc_node }}.

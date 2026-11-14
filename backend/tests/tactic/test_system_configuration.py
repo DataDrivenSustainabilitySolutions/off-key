@@ -1,4 +1,4 @@
-"""Saved-system structure, persistence, authorization and legacy non-mutation."""
+"""Saved-system structure, persistence and authorization."""
 
 import json
 from copy import deepcopy
@@ -11,8 +11,6 @@ from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.models import (
     Charger,
     CollectionBinding,
-    CollectionConfiguration,
-    CollectionRevision,
     User,
 )
 from off_key_core.db.system import (
@@ -28,7 +26,6 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from tests.support.gateway import gateway_app
-from tests.support.legacy_catalogue import legacy_catalog
 from tests.support.system_document import (
     AsyncSessionAdapter,
     create_sqlite_tables,
@@ -80,8 +77,6 @@ def database(tmp_path, monkeypatch):
     tables = [
         Charger.__table__,
         CollectionBinding.__table__,
-        CollectionConfiguration.__table__,
-        CollectionRevision.__table__,
         SystemConfiguration.__table__,
         SystemRevision.__table__,
         SystemCollectionConfiguration.__table__,
@@ -298,22 +293,8 @@ def test_json_pointers_and_websocket_connections_roundtrip():
 
 
 @pytest.mark.asyncio
-async def test_structure_saves_survive_reopen_and_never_rewrite_active_collection(
-    database,
-):
-    legacy = legacy_catalog("off").model_dump(mode="json")
+async def test_structure_saves_survive_reopen(database):
     with Session(database) as session:
-        session.add(
-            CollectionConfiguration(
-                id=1,
-                revision=7,
-                document=legacy,
-                ingress_status={"status": "disabled"},
-                collection_status={"status": "paused"},
-                updated_by="operator@example.com",
-            )
-        )
-        session.commit()
         service = system_service.SystemService(AsyncSessionAdapter(session))
         first = await service.save(
             SystemChange(expected_revision=0, document=document()),
@@ -368,11 +349,7 @@ async def test_structure_saves_survive_reopen_and_never_rewrite_active_collectio
         assert restored.document.streams[0].appearance.icon == "pump"
         assert restored.document.groups[0].appearance.color == "sage"
         assert restored.document.topic_appearances[0].appearance.icon == "factory"
-        unchanged = session.get(CollectionConfiguration, 1)
-        assert unchanged.revision == 7 and unchanged.document == legacy
-        assert unchanged.collection_status == {"status": "paused"}
         assert len(list(session.scalars(select(SystemRevision)))) == 2
-        assert list(session.scalars(select(CollectionRevision))) == []
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,10 @@ from sqlalchemy import select
 from .preflight import PipelinePreflight
 from .runs import ensure_predecessor_run
 
+# Aberrant versions whose saved launches this release restarts. A release that
+# changes the pin adds the version it replaces once its settings are reviewed.
+REVIEWED_ABERRANT_VERSIONS = frozenset({ABERRANT_VERSION})
+
 
 def _reviewed_saved_launch(value: dict) -> dict:
     """A copy whose adaptive model version this release can run."""
@@ -25,17 +29,12 @@ def _reviewed_saved_launch(value: dict) -> dict:
     monitoring = value.get("monitoring", {})
     if monitoring.get("strategy") == "adaptive_stream":
         previous = monitoring.get("aberrant_version", ABERRANT_VERSION)
-        if previous not in {"1.1.0", "1.2.0", "1.3.0", "1.4.0", ABERRANT_VERSION}:
+        if previous not in REVIEWED_ABERRANT_VERSIONS:
             raise ValueError(
                 f"No reviewed release normalization for Aberrant {previous}"
             )
         monitoring["aberrant_version"] = ABERRANT_VERSION
     return value
-
-
-def is_saved_form_monitor(value: dict) -> bool:
-    """Launches saved before every monitor ran as a pipeline carry none."""
-    return not value.get("pipeline")
 
 
 def saved_form_monitor(value: dict) -> FormMonitorConfig:
@@ -49,8 +48,8 @@ def saved_form_monitor(value: dict) -> FormMonitorConfig:
 
 def normalize_saved_launch(value: dict) -> RadarStartConfig:
     """A release restarts learning; historical records remain unmodified."""
-    if is_saved_form_monitor(value):
-        raise ValueError("Convert the saved form monitor to a pipeline first")
+    if not value.get("pipeline"):
+        raise ValueError("An active monitor's saved launch has no pipeline")
     value = _reviewed_saved_launch(value)
     execution = PipelineExecutionConfig.model_validate(value["pipeline"])
     definition = compile_pipeline(execution.definition).definition
@@ -130,9 +129,7 @@ async def _prepare_graph_run(session, monitor, config, workloads):
             execution=execution.model_dump(mode="json"),
             launch_config=config.model_dump(mode="json"),
             layout=previous.layout,
-            # A converted form monitor brings the metadata of its new bindings.
-            binding_metadata=monitor.get("binding_metadata")
-            or previous.binding_metadata,
+            binding_metadata=previous.binding_metadata,
             status="reserved",
             created_at=datetime.now(UTC),
         )

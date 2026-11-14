@@ -19,12 +19,8 @@ class MonitoringEvidenceClock(Base):
 
 
 def install_evidence_clock(connection) -> None:
-    # Bootstrap and upgrades install exactly the same trigger definitions.
-    sql = (
-        files("off_key_core")
-        .joinpath("db/migrations/025_evidence_cursor.sql")
-        .read_text()
-    )
+    # Every schema bootstrap installs these trigger definitions.
+    sql = files("off_key_core").joinpath("db/sql/evidence_clock.sql").read_text()
     # asyncpg prepares one statement at a time; explicit boundaries preserve
     # the semicolons inside the PL/pgSQL functions.
     for statement in sql.split("-- statement\n"):

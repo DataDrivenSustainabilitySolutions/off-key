@@ -121,6 +121,6 @@ the same revision again rather than recovering the previous run.
 
 Ship pipeline-compatible runtime/schema support before enabling authoring. Turning
 authoring off does not disable existing graph execution, inspection or stopping.
-Software rollback requires a pipeline-compatible binary or the reviewed database
-restore procedure. Pre-feature binaries cannot read the newer migration ledger or
-graph launch contracts.
+Software rollback requires a binary from the same schema baseline or the reviewed
+database restore procedure. Binaries from before the baseline cannot read its
+migration ledger or graph launch contracts.

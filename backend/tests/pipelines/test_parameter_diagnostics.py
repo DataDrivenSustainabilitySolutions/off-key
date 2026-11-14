@@ -17,7 +17,7 @@ from tests.support.form_pipeline import form_launch
 pytestmark = pytest.mark.radar_integration
 
 
-def test_reviewed_1_3_launch_normalization_preserves_history_and_execution():
+def test_saved_launch_normalization_preserves_history_and_execution():
     launch = form_launch(
         container_name="reviewed-migration",
         strategy="adaptive_stream",
@@ -31,13 +31,16 @@ def test_reviewed_1_3_launch_normalization_preserves_history_and_execution():
         },
     )
     saved = launch.model_dump(mode="json")
-    saved["monitoring"]["aberrant_version"] = "1.3.0"
     original = deepcopy(saved)
     normalized = normalize_saved_launch(saved)
     assert saved == original
     assert normalized.monitoring.aberrant_version == "1.5.0"
     assert normalized.pipeline == launch.pipeline
     assert normalized.runtime_image is None
+    # Launches saved before the schema baseline cannot exist; none is reviewed.
+    saved["monitoring"]["aberrant_version"] = "1.4.0"
+    with pytest.raises(ValueError, match="No reviewed release normalization"):
+        normalize_saved_launch(saved)
 
 
 def test_pydantic_variant_diagnostics_address_submitted_object_keys():

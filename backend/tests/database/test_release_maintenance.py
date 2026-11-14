@@ -1,6 +1,5 @@
 """Verify release locking, retries and migration transactions in isolated databases."""
 
-import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -13,23 +12,21 @@ from off_key_core.db.maintenance import (
     require_application_writes,
 )
 from off_key_core.db.migrate import (
+    BASELINE,
+    LEDGER,
     MIGRATION_LOCK,
+    RetiredSchemaError,
     apply_migrations,
     migration_files,
     migration_status,
     verify_migrations,
 )
 from off_key_core.db.models import (
-    Charger,
-    CollectionConfiguration,
     DeploymentMaintenance,
     MonitoringEvidence,
     MonitoringService,
     PipelineRun,
-    Telemetry,
-    User,
 )
-from off_key_core.schemas.system_collection import stable_key
 from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.services.accounts.members import MemberService
 from off_key_tactic_middleware.services.catalogue.system_ingress import (
@@ -39,21 +36,11 @@ from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
 from off_key_tactic_middleware.services.pipelines import release
-from sqlalchemy import insert, inspect, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from tests.support.env import DATABASE_ENVIRONMENT, set_environment
 from tests.support.form_pipeline import form_launch, stored_revision
-from tests.support.schema_baselines import (
-    EXPECTED_MIGRATIONS,
-    migrations_from,
-    remove_pipeline_schema,
-    restore_entity_favorites,
-    restore_retired_schema,
-    restore_role_enum,
-    rewind_ledger,
-)
 
 
 class _Preflight:
@@ -69,10 +56,6 @@ class _Preflight:
         return {"succeeded": True}
 
 
-def test_migration_history_is_the_expected_sequence():
-    assert tuple(migration_files()) == EXPECTED_MIGRATIONS
-
-
 def test_read_only_schema_verification_requires_a_complete_existing_ledger(
     disposable_database,
 ):
@@ -83,448 +66,66 @@ def test_read_only_schema_verification_requires_a_complete_existing_ledger(
         assert inspect(connection).get_table_names() == before
         apply_migrations(connection)
         assert verify_migrations(connection)["pending"] == []
-        connection.execute(
-            text("DELETE FROM off_key_schema_migrations WHERE version = :version"),
-            {"version": EXPECTED_MIGRATIONS[-1]},
-        )
+        later = migration_files() | {"001_later.sql": "SELECT 1;"}
         with pytest.raises(ValueError, match="fully applied"):
-            verify_migrations(connection)
+            verify_migrations(connection, later)
 
 
-def test_template_migration_preserves_existing_designs(disposable_database):
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        connection.execute(
-            text("ALTER TABLE monitoring_pipelines DROP COLUMN is_template")
-        )
-        connection.execute(
-            text(
-                "DELETE FROM off_key_schema_migrations "
-                "WHERE version >= '013_pipeline_templates.sql'"
-            )
-        )
-        connection.execute(
-            text(
-                "INSERT INTO monitoring_pipelines "
-                "(id,name,description,archived,version,draft,layout) "
-                "VALUES ('existing','Existing template','',false,1,'{}','{}')"
-            )
-        )
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "013_pipeline_templates.sql"
-        )
-        assert (
-            connection.scalar(
-                text("SELECT is_template FROM monitoring_pipelines WHERE id='existing'")
-            )
-            is True
-        )
-
-
-def test_retired_schema_migration_keeps_the_telemetry_primary_key(
+def test_fresh_database_records_the_baseline_and_later_migrations_run_once(
     disposable_database,
 ):
     with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        restore_retired_schema(connection)
-        rewind_ledger(connection, "014_drop_unread_schema.sql")
-    with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "014_drop_unread_schema.sql"
-        )
-        schema = inspect(connection)
-        assert schema.get_pk_constraint("telemetry")["constrained_columns"] == [
-            "charger_id",
-            "timestamp",
-            "type",
-        ]
-        assert "model_registry" not in schema.get_table_names()
-        assert "stateful_set_name" not in {
-            column["name"] for column in schema.get_columns("services")
+        assert migration_status(connection) == {
+            "pending": [BASELINE],
+            "applied": [],
+            "fresh": True,
         }
-
-
-def save_catalogue(connection, *device_ids: str, bindings=None) -> None:
-    """A saved catalogue with these devices and collection bindings, as
-    migrations read them."""
-    connection.execute(
-        text(
-            "INSERT INTO system_configuration (id, revision, document, updated_by) "
-            "VALUES (1, 1, CAST(:document AS jsonb), 'test') "
-            "ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document"
-        ),
-        {"document": json.dumps({"devices": [{"id": id} for id in device_ids]})},
-    )
-    connection.execute(
-        text(
-            "INSERT INTO system_collection_configuration (id, revision, document, "
-            "ingress_status, collection_status, updated_by) "
-            "VALUES (1, 1, CAST(:document AS jsonb), '{}', '{}', 'test') "
-            "ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document"
-        ),
-        {"document": json.dumps({"bindings": bindings or {}})},
-    )
-
-
-def test_member_favorites_migration_keeps_entity_favorites(disposable_database):
-    entity = stable_key("entity", "pump")
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        connection.execute(
-            insert(User).values(id=1, email="a@example.test", hashed_password="h")
-        )
-        connection.execute(insert(Charger).values(charger_id=entity))
-        save_catalogue(connection, "pump")
-        restore_entity_favorites(connection)
-        # The former table allowed the same entity twice.
-        connection.execute(
-            text(
-                "INSERT INTO favorites (user_id, charger_id) "
-                "VALUES (1, :entity), (1, :entity)"
-            ),
-            {"entity": entity},
-        )
-        rewind_ledger(connection, "018_member_favorites.sql")
-    with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "018_member_favorites.sql"
-        )
-        assert "favorites" not in inspect(connection).get_table_names()
-        # Migration 023 then names the device behind the entity.
-        assert connection.execute(
-            text("SELECT user_id, kind, item_id FROM member_favorites")
-        ).all() == [(1, "device", "pump")]
-
-
-def test_device_favorites_migration_names_catalogue_devices(disposable_database):
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        connection.execute(
-            insert(User).values(id=1, email="a@example.test", hashed_password="h")
-        )
-        connection.execute(
-            text(
-                "ALTER TABLE member_favorites DROP CONSTRAINT ck_member_favorite_kind;"
-                "ALTER TABLE member_favorites ADD CONSTRAINT ck_member_favorite_kind "
-                "CHECK (kind IN ('entity', 'reading', 'monitor'))"
-            )
-        )
-        # An upgraded installation keeps recording the fan under its charger id.
-        save_catalogue(
-            connection,
-            "pump",
-            "fan",
-            bindings={
-                "fan:speed": {"entity_id": "charger-7", "device_id": "fan"},
-                "outside": {"entity_id": stable_key("entity", "broker")},
-            },
-        )
-        for kind, item_id in (
-            ("entity", stable_key("entity", "pump")),
-            ("entity", "charger-7"),
-            # A broker's readings without a device, and an entity of no device.
-            ("entity", stable_key("entity", "broker")),
-            ("entity", "charger-9"),
-            ("reading", "pump:flow"),
-            ("monitor", "m1"),
-        ):
-            connection.execute(
-                text(
-                    "INSERT INTO member_favorites (user_id, kind, item_id) "
-                    "VALUES (1, :kind, :item_id)"
-                ),
-                {"kind": kind, "item_id": item_id},
-            )
-        rewind_ledger(connection, "023_device_favorites.sql")
-    with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "023_device_favorites.sql"
-        )
-        assert connection.execute(
-            text("SELECT kind, item_id FROM member_favorites ORDER BY kind, item_id")
-        ).all() == [
-            ("device", "fan"),
-            ("device", "pump"),
-            ("monitor", "m1"),
-            ("reading", "pump:flow"),
-        ]
-        with pytest.raises(IntegrityError), connection.begin_nested():
-            connection.execute(
-                text(
-                    "INSERT INTO member_favorites (user_id, kind, item_id) "
-                    "VALUES (1, 'entity', 'x')"
-                )
-            )
-
-
-def test_member_roles_migration_keeps_every_members_access(disposable_database):
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        restore_role_enum(connection)
-        for id, role in ((1, "admin"), (2, "user")):
-            connection.execute(
-                insert(User).values(
-                    id=id, email=f"{role}@example.test", hashed_password="h", role=role
-                )
-            )
-        rewind_ledger(connection, "021_member_roles.sql")
-    with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "021_member_roles.sql"
-        )
-        assert connection.execute(
-            text("SELECT id, name, permissions FROM member_roles ORDER BY id")
-        ).all() == [("admin", "Administrator", []), ("user", "Member", [])]
-        assert connection.execute(
-            text("SELECT id, role FROM users ORDER BY id")
-        ).all() == [(1, "admin"), (2, "user")]
-        schema = inspect(connection)
-        assert [key["referred_table"] for key in schema.get_foreign_keys("users")] == [
-            "member_roles"
-        ]
-        assert not connection.scalar(
-            text("SELECT count(*) FROM pg_type WHERE typname = 'roleenum'")
-        )
-        # A role a member holds cannot disappear underneath them.
-        with pytest.raises(IntegrityError), connection.begin_nested():
-            connection.execute(text("DELETE FROM member_roles WHERE id = 'user'"))
-
-
-def test_run_timeline_migration_keeps_existing_runs(disposable_database):
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        connection.execute(text("DROP TABLE monitoring_pipeline_run_events"))
-        connection.execute(
-            text("ALTER TABLE monitoring_pipeline_runs DROP COLUMN final_status")
-        )
-        rewind_ledger(connection, "016_pipeline_run_events.sql")
-        connection.execute(
-            insert(PipelineRun).values(
-                id="earlier",
-                service_id="earlier-service",
-                launch_config={},
-                layout={},
-                status="stopped",
-            )
-        )
-    with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "016_pipeline_run_events.sql"
-        )
-        # Runs from before the timeline have no final status and no events.
-        assert connection.execute(
-            text(
-                "SELECT status, final_status FROM monitoring_pipeline_runs "
-                "WHERE id='earlier'"
-            )
-        ).one() == ("stopped", None)
-        assert (
-            connection.scalar(
-                text("SELECT count(*) FROM monitoring_pipeline_run_events")
-            )
-            == 0
-        )
-
-
-def test_reading_hold_migration_retires_freshness_and_skew(disposable_database):
-    retired = {
-        "sensor_key_strategy": "leaf",
-        "sensor_freshness_seconds": 30.0,
-        "observation_max_age_seconds": 30.0,
-        "observation_future_tolerance_seconds": 5.0,
-        "alignment_max_skew_seconds": 5.0,
-    }
-    activity = {"freshness_seconds": 30.0, "inputs_stalled": False}
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        rewind_ledger(connection, "033_reading_hold_timing.sql")
-        connection.execute(
-            insert(MonitoringService).values(
-                id="held",
-                container_name="held",
-                mqtt_topic=[],
-                launch_config={"display_name": "Held", "performance_config": retired},
-                operational_status={"stage": "operational", "activity": activity},
-            )
-        )
-        connection.execute(
-            insert(PipelineRun).values(
-                id="held-run",
-                service_id="held",
-                launch_config={"performance_config": retired},
-                layout={},
-                status="stopped",
-                final_status={"stage": "stopped", "activity": activity},
-            )
-        )
-    with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "033_reading_hold_timing.sql"
-        )
-        launch, status = connection.execute(
-            text(
-                "SELECT launch_config, operational_status FROM services WHERE id='held'"
-            )
-        ).one()
-        assert launch == {
-            "display_name": "Held",
-            "performance_config": {"sensor_key_strategy": "leaf"},
-        }
-        assert status == {"stage": "operational", "activity": {"inputs_stalled": False}}
-        run_launch, final = connection.execute(
-            text(
-                "SELECT launch_config, final_status FROM monitoring_pipeline_runs "
-                "WHERE id='held-run'"
-            )
-        ).one()
-        assert run_launch == {"performance_config": {"sensor_key_strategy": "leaf"}}
-        assert final == {"stage": "stopped", "activity": {"inputs_stalled": False}}
-
-
-def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
-    disposable_database,
-):
-    with disposable_database.begin() as connection:
-        assert migration_status(connection)["fresh"]
-        apply_migrations(connection)
-        assert migration_status(connection)["pending"] == []
-        connection.execute(
-            insert(MonitoringService).values(
-                id="old",
-                container_name="old",
-                status=False,
-                mqtt_topic=[],
-            )
-        )
-        rewind_ledger(connection)
-        connection.execute(text("DROP TABLE deployment_maintenance"))
-        connection.execute(text("DROP TABLE remembered_sessions"))
-        remove_pipeline_schema(connection)
-        connection.execute(text("ALTER TABLE services DROP COLUMN launch_config"))
-        for table in (
-            "system_configuration",
-            "system_revisions",
-            "system_collection_configuration",
-        ):
-            connection.execute(text(f"DROP TABLE {table}"))
-    with disposable_database.begin() as connection:
-        assert migration_status(connection)["pending"] == migrations_from(
-            "003_deployment_maintenance.sql"
-        )
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "003_deployment_maintenance.sql"
-        )
-        assert (
-            connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
-        )
+        assert apply_migrations(connection) == {"applied": [BASELINE], "fresh": True}
         assert apply_migrations(connection)["applied"] == []
-        changed = migration_files() | {"003_deployment_maintenance.sql": "SELECT 1;"}
+        later = migration_files() | {
+            "001_later.sql": "CREATE TABLE release_probe (id integer);"
+        }
+        assert apply_migrations(connection, later)["applied"] == ["001_later.sql"]
+        assert inspect(connection).has_table("release_probe")
+        assert apply_migrations(connection, later)["applied"] == []
+        changed = later | {"001_later.sql": "SELECT 1;"}
         with pytest.raises(ValueError, match="history differs"):
             migration_status(connection, changed)
 
 
-@pytest.mark.parametrize("ledger", [False, True])
-def test_clean_break_preserves_configuration_and_history_and_runs_once(
-    disposable_database, ledger
+@pytest.mark.parametrize(
+    "history",
+    ["retired_ledger", "empty_ledger", "no_ledger", "unknown_tables"],
+)
+def test_a_database_from_before_the_baseline_is_refused_unchanged(
+    disposable_database, history
 ):
     with disposable_database.begin() as connection:
         apply_migrations(connection)
-        connection.execute(
-            insert(MonitoringService).values(
-                id="existing-service",
-                container_name="existing-service",
-                status=False,
-                mqtt_topic=["telemetry/existing/temperature"],
-                launch_config={
-                    "display_name": "Existing monitor",
-                    "training_window_size": 32,
-                },
+        if history == "retired_ledger":
+            connection.execute(text(f"DELETE FROM {LEDGER}"))
+            connection.execute(
+                text(
+                    f"INSERT INTO {LEDGER} (version, checksum) "
+                    "VALUES ('035_telemetry_log.sql', 'retired')"
+                )
             )
-        )
-        connection.execute(
-            insert(CollectionConfiguration).values(
-                id=1,
-                revision=7,
-                document={
-                    "sources": [],
-                    "default_policy": {"mode": "off", "interval_seconds": 10},
-                },
-                ingress_status={},
-                collection_status={},
-                updated_by="operator",
-            )
-        )
-        connection.execute(
-            insert(Telemetry).values(
-                charger_id="existing",
-                timestamp=datetime.now(UTC),
-                type="temperature",
-                value=24.5,
-                data_source="mqtt",
-            )
-        )
-        for table in (
-            "system_configuration",
-            "system_revisions",
-            "system_collection_configuration",
-            "remembered_sessions",
-        ):
-            connection.execute(text(f"DROP TABLE {table}"))
-        remove_pipeline_schema(connection)
-        rewind_ledger(connection, "004_system_catalogue.sql" if ledger else None)
-        if not ledger:
-            restore_retired_schema(connection)
+        elif history == "empty_ledger":
+            connection.execute(text(f"DELETE FROM {LEDGER}"))
+        elif history == "no_ledger":
+            connection.execute(text(f"DROP TABLE {LEDGER}"))
+        else:
+            for table in reversed(inspect(connection).get_table_names()):
+                connection.execute(text(f"DROP TABLE {table} CASCADE"))
+            connection.execute(text("CREATE TABLE unrelated (id integer)"))
     with disposable_database.begin() as connection:
-        assert migration_status(connection)["pending"] == migrations_from(
-            "004_system_catalogue.sql"
-        )
-        assert apply_migrations(connection)["applied"] == migrations_from(
-            "004_system_catalogue.sql"
-        )
-        assert (
-            connection.scalar(
-                text("SELECT revision FROM collection_configuration WHERE id=1")
-            )
-            == 7
-        )
-        assert (
-            connection.scalar(
-                text("SELECT value FROM telemetry WHERE charger_id='existing'")
-            )
-            == 24.5
-        )
-        assert connection.scalar(
-            text("SELECT launch_config FROM services WHERE id='existing-service'")
-        ) == {
-            "display_name": "Existing monitor",
-            "training_window_size": 32,
-        }
-        assert (
-            connection.scalar(
-                text("SELECT count(*) FROM system_collection_configuration")
-            )
-            == 1
-        )
-        assert connection.scalar(text("SELECT count(*) FROM system_configuration")) == 1
-        assert not inspect(connection).has_table("model_registry")
-        assert "stateful_set_name" not in {
-            column["name"] for column in inspect(connection).get_columns("services")
-        }
-        connection.execute(
-            insert(Telemetry).values(
-                charger_id="existing",
-                timestamp=datetime.now(UTC),
-                type="temperature",
-                value=30,
-                data_source="mqtt",
-            )
-        )
-        assert apply_migrations(connection)["applied"] == []
-        assert sorted(
-            connection.scalars(
-                text("SELECT value FROM telemetry WHERE charger_id='existing'")
-            )
-        ) == [24.5, 30]
+        before = sorted(inspect(connection).get_table_names())
+        with pytest.raises(RetiredSchemaError, match="reset it"):
+            migration_status(connection)
+        with pytest.raises(RetiredSchemaError):
+            apply_migrations(connection)
+    with disposable_database.begin() as connection:
+        assert sorted(inspect(connection).get_table_names()) == before
 
 
 def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
@@ -533,7 +134,7 @@ def test_failed_migration_rolls_back_ddl_and_ledger_and_lock_blocks_competitors(
     with disposable_database.begin() as connection:
         apply_migrations(connection)
     migrations = migration_files() | {
-        "006_failure.sql": "CREATE TABLE release_probe (id integer); SELECT 1 / 0;"
+        "001_failure.sql": "CREATE TABLE release_probe (id integer); SELECT 1 / 0;"
     }
     with (
         pytest.raises(Exception, match="division by zero"),

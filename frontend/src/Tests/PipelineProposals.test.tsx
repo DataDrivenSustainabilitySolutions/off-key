@@ -117,7 +117,8 @@ describe("proposals", () => {
     expect(open.textContent).toContain("The bearing ran hot twice in October and nothing watched it.");
     expect(open.textContent).toContain("Proposed by Night shift agent");
     expect(screen.queryByRole("button", { name: "Review Fan current" })).toBeNull();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show decided proposals" }));
+    expect(screen.getByRole("button", { name: "Waiting 1" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
     const decided = await screen.findByRole("button", { name: "Review Fan current" });
     expect(decided.textContent).toContain("Declined by admin@example.com: Alarms too often at night");
     expect(vi.mocked(pipelinesApi.proposals).mock.calls.map((call) => call[0])).toEqual(["open", undefined]);
@@ -154,6 +155,54 @@ describe("proposals", () => {
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} />);
     await screen.findByRole("button", { name: "Review Pump vibration" });
     expect(screen.queryByRole("button", { name: "Decline Pump vibration" })).toBeNull();
+  });
+
+  it("starts a proposal from the list, live or in shadow, and accepts it", async () => {
+    const onStarted = vi.fn();
+    render(<PipelineProposalList onReview={() => {}} onBack={() => {}} onStarted={onStarted} canDecide />);
+    fireEvent.click(await screen.findByRole("button", { name: "Start Pump vibration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start in shadow" }));
+    await waitFor(() => expect(pipelinesApi.decideProposal).toHaveBeenCalledWith("p1", { status: "accepted" }));
+    expect(pipelinesApi.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      display_name: "Pump vibration", bindings: { value: "current" }, replace_monitor_id: null, shadow: true }));
+    expect(screen.queryByRole("button", { name: "Decline Pump vibration" })).toBeNull();
+    vi.mocked(pipelinesApi.activation).mockResolvedValue({ ...activation, phase: "succeeded" });
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("service"), { timeout: 5000 });
+  });
+
+  it("starts nothing and decides nothing when the start is cancelled or refused", async () => {
+    render(<PipelineProposalList onReview={() => {}} onBack={() => {}} canDecide />);
+    fireEvent.click(await screen.findByRole("button", { name: "Start Pump vibration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Decline Pump vibration" })).toBeTruthy();
+    vi.mocked(pipelinesApi.apply).mockRejectedValue(new ApiRequestError("No monitor place is free.", 409));
+    fireEvent.click(screen.getByRole("button", { name: "Start Pump vibration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
+    expect(await screen.findByText("No monitor place is free.")).toBeTruthy();
+    expect(pipelinesApi.decideProposal).not.toHaveBeenCalled();
+  });
+
+  it("says why a proposal cannot start from the list", async () => {
+    vi.mocked(pipelinesApi.capacity).mockResolvedValue({ running: 2, limit: 2 });
+    vi.mocked(pipelinesApi.proposals).mockResolvedValue([
+      summary(), summary({ id: "p3", name: "Fan current", missing_readings: ["gone"] }),
+      summary({ id: "p4", name: "Valve", replace_monitor_id: "running" }), summary({ id: "p5", name: "Pump", replace_monitor_id: "stopped" }),
+    ]);
+    const running = { id: "running", display_name: "Valve watch", shadow: true } as ActiveService;
+    render(<PipelineProposalList onReview={() => {}} onBack={() => {}} canDecide services={[running]} />);
+    const start = await screen.findByRole("button", { name: "Start Pump vibration" });
+    await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(true));
+    expect(start.getAttribute("aria-describedby") && document.getElementById(start.getAttribute("aria-describedby")!)?.textContent)
+      .toBe("No monitor place is free.");
+    expect((screen.getByRole("button", { name: "Start Fan current" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Its readings are gone. Review it to choose others.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Update with Pump" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("The service it replaces no longer runs. Review it to start it as a new one.")).toBeTruthy();
+    // An update needs no free place, and keeps the service it replaces in shadow.
+    vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ id: "p4", name: "Valve", replace_monitor_id: "running" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update with Valve" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update Valve watch" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ replace_monitor_id: "running", shadow: true })));
   });
 
   it("says how many monitor places are free, and warns when none is", async () => {

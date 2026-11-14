@@ -495,10 +495,14 @@ async def get_test(api: Api, args: TestRef):
         if metrics.get("scored_from") is None:
             answer["note"] = _unscored(run)
         elif run.get("alarm_count"):
-            alarmed = await api.get(
-                f"{path}/results", {"alarm": "true", "limit": ALARM_RESULTS}
-            )
-            answer["alarms"] = _episodes(alarmed.get("items", []))
+            try:
+                alarmed = await api.get(
+                    f"{path}/results", {"alarm": "true", "limit": ALARM_RESULTS}
+                )
+            except ApiRefusal:
+                alarmed = None
+            if alarmed is not None:
+                answer["alarms"] = _episodes(alarmed.get("items", []))
             if not metrics.get("labels_total"):
                 answer["note"] = (
                     "The dataset has no labels, so false_alarms counts every "
@@ -583,7 +587,11 @@ async def propose_design(api: Api, args: Proposal):
     it is tested, and say in the reason what the test showed."""
     made = await api.post("/v1/pipeline-proposals", _sent(args))
     if args.replace_monitor_id is None:
-        waiting = await api.get("/v1/pipeline-proposals", {"status": "open"})
+        try:
+            waiting = await api.get("/v1/pipeline-proposals", {"status": "open"})
+        except ApiRefusal:
+            # The proposal is made; a hint that cannot be read must not hide it.
+            return made
         room = _room(waiting.get("capacity"))
         if room is not None and room["free"] == 0:
             made["note"] = (

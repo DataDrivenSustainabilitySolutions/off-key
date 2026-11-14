@@ -598,6 +598,16 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
             "service-9",
         )
 
+        # The room to start is a hint: when it cannot be read, the proposal
+        # that was made still comes back.
+        stores.proposals.list.side_effect = [RuntimeError("busy")]
+        made = said(
+            await client.call_tool(
+                "propose_design", start | {"reason": "Catches the bearing fault."}
+            )
+        )
+        assert made["id"] == "p1" and "note" not in made
+        stores.proposals.list.side_effect = None
         waiting = said(await client.call_tool("list_proposals", {"status": "open"}))
         assert [item["id"] for item in waiting["items"]] == ["p1"]
         assert stores.proposals.list.await_args.args == ("open",)

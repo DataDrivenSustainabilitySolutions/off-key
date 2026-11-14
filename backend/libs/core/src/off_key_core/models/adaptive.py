@@ -256,6 +256,50 @@ ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = {
 }
 
 
+# The settings a detector's warm-up follows, where Aberrant ties it to one:
+# the first set of them names the observations it keeps before it scores.
+_WARMUP_SETTINGS: dict[str, tuple[str, ...]] = {
+    "aberrant_half_space_trees": ("window_size",),
+    "aberrant_stream_random_histogram_forest": ("window_size",),
+    "aberrant_asd_isolation_forest": ("window_size", "max_samples"),
+    "aberrant_random_cut_forest": ("warmup_samples", "sample_size"),
+    "aberrant_x_stream": ("init_sample_size", "window_size"),
+}
+# A seasonal model has seen a cycle twice before it scores.
+_WARMUP_SEASONS = {"aberrant_seasonal_residual_detector": 2}
+
+
+def detector_warmup(model_type: str, params: dict[str, Any]) -> int:
+    """The observations a streaming detector learns before it can score, as
+    Aberrant counts them for these settings; 0 where that is not known here."""
+    definition = ADAPTIVE_MODELS_BY_TYPE.get(model_type)
+    if definition is None:
+        return 0
+    warmup = definition["default_capabilities"].get("warmup") or {}
+    if warmup.get("unit") != "events":
+        return 0
+    names = _WARMUP_SETTINGS.get(model_type)
+    if names:
+        defaults = definition.get("default_parameters", {})
+        # A setting given wins over a default of an earlier one.
+        for source in (params, defaults):
+            for name in names:
+                value = source.get(name)
+                if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                    return value
+        return int(warmup.get("minimum") or 0)
+    settings = definition.get("default_parameters", {}) | {
+        key: value for key, value in params.items() if value is not None
+    }
+    seasons = _WARMUP_SEASONS.get(model_type)
+    season = settings.get("season_length")
+    if seasons and isinstance(season, int) and season > 0:
+        return seasons * season
+    # Elsewhere the warm-up follows the settings in ways not mirrored here;
+    # RADAR checks it when the run starts.
+    return 0
+
+
 def detector_component(model_type: str) -> str:
     """The pipeline component of a streaming detector's model type."""
     own = model_type in PRETRAINED_FORECASTERS or model_type in RULE_DETECTORS

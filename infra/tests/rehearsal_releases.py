@@ -1,10 +1,10 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the first build whose monitors read the stored telemetry
-log, in a leased worker pool with one API service and per-reading hold timing.
-It keeps shadow runs, a layout with switched-off steps and notes, and titles in
-the design. It carries migrations through 035 and Aberrant 1.5.0 numerics, and
-proves no compatibility with earlier schemas.
+The reference is the first build on the schema baseline. Its monitors read
+the stored telemetry log, in a leased worker pool with one API service and
+per-reading hold timing. It keeps shadow runs, a layout with switched-off steps
+and notes, and titles in the design. It carries the baseline ledger and
+Aberrant 1.5.0 numerics, and proves no compatibility with earlier schemas.
 """
 
 import argparse
@@ -343,15 +343,6 @@ def validate_compatible_source(source, project):
     """A binary rollback never bypasses a changed migration or numeric contract."""
     compatibility = [
         Path("backend/libs/core/src/off_key_core/models/adaptive_catalog.json"),
-        # Migration 005's checksum covers these converter modules too.
-        *(
-            Path("backend/libs/core/src/off_key_core/db") / name
-            for name in (
-                "catalogue_upgrade.py",
-                "catalogue_v1.py",
-                "catalogue_v1_models.py",
-            )
-        ),
     ]
     migrations = Path("backend/libs/core/src/off_key_core/db/migrations")
     compatibility.extend(

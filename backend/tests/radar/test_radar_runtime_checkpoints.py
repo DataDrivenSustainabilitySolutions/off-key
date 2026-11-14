@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
-from off_key_core.db.migrate import apply_migrations, migration_status
+from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
@@ -24,7 +24,7 @@ from off_key_mqtt_radar.runtime_checkpoint import (
 )
 from off_key_mqtt_radar.service import RadarService
 from pydantic import ValidationError
-from sqlalchemy import insert, inspect, text
+from sqlalchemy import insert, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -395,43 +395,6 @@ async def test_checkpoint_and_pending_evidence_roll_back_together(
     finally:
         await engine.dispose()
         clear_radar_runtime_settings_cache()
-
-
-@pytest.mark.parametrize("ledger", [True, False])
-def test_checkpoint_migration_adopts_existing_database_and_drops_the_path_table(
-    disposable_database, ledger
-):
-    # Imported here: this module also runs as a standalone replacement process.
-    from tests.support.schema_baselines import (
-        remove_pipeline_schema,
-        restore_retired_schema,
-        rewind_ledger,
-    )
-
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        # Recreate the pre-checkpoint schema under review, including absence of
-        # pipeline tables introduced by a later release. Keeping those tables
-        # while erasing their ledger would simulate a corrupt migration history.
-        remove_pipeline_schema(connection)
-        connection.execute(text("DROP TABLE radar_runtime_checkpoints"))
-        restore_retired_schema(connection)
-        connection.execute(
-            text("CREATE TABLE radar_model_checkpoints (checkpoint_path text)")
-        )
-        connection.execute(
-            text("INSERT INTO radar_model_checkpoints VALUES ('preserved.pkl')")
-        )
-        rewind_ledger(connection, "008_" if ledger else None)
-    with disposable_database.begin() as connection:
-        assert (
-            "008_radar_runtime_checkpoints.sql"
-            in migration_status(connection)["pending"]
-        )
-        apply_migrations(connection)
-        # Migration 014 retires the file-era table along with file checkpoints.
-        assert not inspect(connection).has_table("radar_model_checkpoints")
-        assert apply_migrations(connection)["applied"] == []
 
 
 async def _replacement_probe():

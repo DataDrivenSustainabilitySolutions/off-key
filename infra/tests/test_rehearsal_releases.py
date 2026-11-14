@@ -224,10 +224,7 @@ class RehearsalReleaseTests(unittest.TestCase):
     ):
         paths = [
             "backend/libs/core/src/off_key_core/models/adaptive_catalog.json",
-            "backend/libs/core/src/off_key_core/db/migrations/010_monitoring_pipelines.sql",
-            "backend/libs/core/src/off_key_core/db/catalogue_upgrade.py",
-            "backend/libs/core/src/off_key_core/db/catalogue_v1.py",
-            "backend/libs/core/src/off_key_core/db/catalogue_v1_models.py",
+            "backend/libs/core/src/off_key_core/db/migrations/000_baseline.sql",
         ]
 
         def lock(aberrant, fastapi):
@@ -264,7 +261,7 @@ class RehearsalReleaseTests(unittest.TestCase):
             locked.write_text(lock("1.3.0", "0.143.0"))
             (
                 current
-                / "backend/libs/core/src/off_key_core/db/migrations/011_future.sql"
+                / "backend/libs/core/src/off_key_core/db/migrations/001_future.sql"
             ).write_text("new schema")
             with self.assertRaisesRegex(ValueError, "different migration ledger"):
                 validate_compatible_source(source, current)

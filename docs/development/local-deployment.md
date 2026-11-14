@@ -331,13 +331,13 @@ catalogs.
 
 ## Upgrade this iteration
 
-The generic catalogue is the only active format. The packaged migration action
-converts existing database configuration once without deleting sensor measurements
-or latest values; recording and retention keep their existing behaviour. Preserve the
-local database volume and private `.env`. Stop application writers before applying
-migrations, then rebuild/recreate the API, TACTIC, collector and DB sync; also build
-the RADAR runtime image before starting monitors. Never use a database reset to
-upgrade a saved installation.
+This release starts the schema baseline: a local database created before it is
+refused and has to start empty. Keep the private `.env`, remove the database
+volume (run `make local-stop`, then `docker volume rm` the project's
+`postgres_data` volume), then rebuild and start the services as for a first run, including the
+RADAR runtime image, and set up the administrator again. Later releases apply
+their migrations to the baseline database: stop application writers before
+applying them, then rebuild/recreate the API, TACTIC, collector and DB sync.
 
 A source's catalogue for local import belongs under the ignored
 `infra/stack/state/`. It contains configuration only; MQTT passwords and private

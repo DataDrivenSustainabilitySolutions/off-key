@@ -44,12 +44,9 @@ passed on Linux 3.12 and 3.14 (1,347 tests each); structured diagnostics and sav
 rehearsal and rollback verification are in progress. No production deployment has
 been changed.
 
-The migration fixture in `backend/tests/radar/fixtures/aberrant-1.3-checkpoint.json`
-was captured from the production Dockerfile at `b5c6dd3c`, with the frozen 1.3.0
-dependency lock. `tests/support/capture_aberrant13_checkpoint.py` documents its
-reproduction. The authenticated old state is rejected before deserialization;
-its saved configuration remains unchanged while the new detector completes a
-fresh warm-up and calibration. The fixture uses a public disposable test key.
+A captured 1.3.0 checkpoint fixture checked that authenticated old state was
+rejected before deserialization and that its monitor learned afresh. The schema
+baseline retired it with every database that could hold such a checkpoint.
 
 The first rehearsal exposed Docker's 256-event history limit after the longer
 staged rollout. Rehearsal now streams route ownership events throughout the

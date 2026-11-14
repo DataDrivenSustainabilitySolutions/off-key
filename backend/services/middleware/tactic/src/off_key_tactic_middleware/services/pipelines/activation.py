@@ -47,7 +47,6 @@ from off_key_core.schemas.pipelines import (
     PipelineReadingMetadata,
 )
 from off_key_core.schemas.radar import (
-    FormMonitorConfig,
     PerformanceConfig,
     RadarOperationalStatus,
     RadarStartConfig,
@@ -173,37 +172,6 @@ class PipelineActivations:
     ):
         """Run a setup-form monitor as a pipeline, also while the workbench is off."""
         return await self._submit(request, performance=performance, workbench=False)
-
-    async def form_launch(
-        self, request: PipelineApplyRequest, form: FormMonitorConfig
-    ) -> tuple[RadarStartConfig, PipelineBindingMetadata]:
-        """Snapshot a saved form monitor as a design for its release restart."""
-        revision, _, definition = await self._snapshot(
-            request, description=FORM_DESCRIPTION
-        )
-        performance, topics, bindings, snapshot = await self._bindings(
-            request, definition, form.performance_config
-        )
-        launch = RadarStartConfig(
-            container_name=form.container_name,
-            display_name=request.display_name,
-            mqtt_topics=topics,
-            performance_config=performance,
-            pipeline=PipelineExecutionConfig(
-                definition=definition,
-                bindings=bindings,
-                revision_id=revision.id,
-                # The release reserves the run that replaces this placeholder.
-                run_id=str(uuid4()),
-                fingerprint=execution_fingerprint(definition, bindings),
-            ),
-        )
-        metadata = await self._binding_metadata(
-            bindings,
-            snapshot,
-            await monitoring_collection_fingerprint(self.session, topics),
-        )
-        return launch, metadata
 
     async def _submit(
         self,

@@ -48,17 +48,12 @@ from off_key_tactic_middleware.services.orchestration.reconciliation import (
 from off_key_tactic_middleware.services.orchestration.workload_identity import (
     radar_workload_name,
 )
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tests.support.env import DATABASE_ENVIRONMENT, set_environment
 from tests.support.form_pipeline import form_launch
 from tests.support.radar_pool import RUNTIME, running_pool
-from tests.support.schema_baselines import (
-    remove_pipeline_schema,
-    restore_retired_schema,
-    rewind_ledger,
-)
 
 # A runtime no replica runs: its workloads wait for room, as on a full pool.
 ELSEWHERE = "registry/radar:elsewhere"
@@ -406,40 +401,6 @@ async def test_pending_configuration_failure_is_visible_without_releasing_claim(
         assert monitor.container_id is None
         assert monitor.operational_stage == "failed"
         assert monitor.operational_status["error"] == "RuntimeError"
-
-
-@pytest.mark.parametrize("ledger", [True, False])
-def test_lifecycle_migration_adopts_existing_attached_and_stopped_rows(
-    disposable_database, ledger
-):
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        connection.execute(
-            text("""
-            INSERT INTO services (id, container_id, container_name, mqtt_topic,
-                status, operational_stage, operational_status)
-            VALUES ('active', 'attached', 'active', '[]', true, 'starting', '{}'),
-                   ('inactive', null, 'inactive', '[]', false, 'stopped', '{}');
-            ALTER TABLE services DROP COLUMN desired_state;
-            ALTER TABLE services DROP COLUMN lifecycle_version;
-            ALTER TABLE services DROP COLUMN config_fingerprint;
-            ALTER TABLE services DROP COLUMN collection_fingerprint;
-        """)
-        )
-        remove_pipeline_schema(connection)
-        restore_retired_schema(connection)
-        rewind_ledger(connection, "009_radar_lifecycle_intent.sql" if ledger else None)
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        assert connection.execute(
-            text(
-                "SELECT id, desired_state, lifecycle_version, container_id "
-                "FROM services ORDER BY id"
-            )
-        ).all() == [
-            ("active", "running", 1, "attached"),
-            ("inactive", "stopped", 1, None),
-        ]
 
 
 @pytest.mark.asyncio

@@ -4,11 +4,11 @@ import hashlib
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from ..utils.mqtt_topics import mqtt_topic_filters_overlap, validate_mqtt_topic_filter
 from .collection_policy import CollectionPolicy
-from .collection_rules import CollectionRule, legacy_rules
+from .collection_rules import CollectionRule
 from .public_names import public
 from .system import EntityId, SystemDocument, SystemModel, SystemStream
 
@@ -40,20 +40,6 @@ class SystemCollectionDefinition(SystemModel):
     rules: list[CollectionRule] = Field(default_factory=list, max_length=4096)
     registration_clock: int = Field(default=0, ge=0)
     registered_at: dict[str, int] = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def read_legacy_policies(cls, value):
-        if (
-            isinstance(value, dict)
-            and "rules_version" not in value
-            and "document" in value
-        ):
-            value = dict(value)
-            document = SystemDocument.model_validate(value["document"])
-            value["rules"] = legacy_rules(document)
-            value["registered_at"] = {stream.id: 0 for stream in document.streams}
-        return value
 
     def watched_by(self, topics: list[str] | None) -> list[str]:
         """Catalogue readings whose accepted topic one of these filters takes."""

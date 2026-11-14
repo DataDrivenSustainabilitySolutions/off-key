@@ -17,6 +17,26 @@ has its own hostname, database, broker, networks and secrets. Never enable it
 on an installation containing private data: its catalogue, measurements,
 monitoring evidence, pipelines and Dojo datasets become public.
 
+## Cloudflare entry check
+
+The hosted demo uses a Cloudflare WAF custom rule named **Demo entry
+verification**, with expression `(http.host eq "demo.aberration.app")` and action
+**Managed Challenge**. This applies to the entire demo hostname, including its
+API. After a visitor passes the check, Cloudflare's clearance cookie permits
+subsequent requests. Reload an already-open demo page if its background requests
+encounter the new challenge. Automated clients without clearance are challenged.
+The rule does not match production hostnames and needs no application widget key.
+
+The demo inventory lists its URL in `release_public_challenge_urls`. Deployment
+still requires database, application and worker readiness, then the external
+probe must receive HTTP 403 with `cf-mitigated: challenge`. A plain access-denied
+response or an unprotected success response fails that check. Configure the rule
+before deploying this inventory; installations without an entry challenge should
+leave that list empty. Production's ordinary public-route checks are unchanged.
+
+See [Cloudflare clearance](https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/)
+and [challenge-response detection](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/).
+
 ## Public feeds
 
 The initial catalogue contains three sources, three devices and twelve numeric

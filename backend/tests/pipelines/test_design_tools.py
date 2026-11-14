@@ -710,3 +710,24 @@ def test_a_design_of_rules_is_told_its_calibration_window_is_what_it_waits_for()
         [*rule, {"op": "set_settings", "calibration_window_size": 30}], *drawn()
     )
     assert "rule_calibration" not in {i.code for i in short.report.issues}
+
+
+def test_detectors_fitted_once_get_the_conformal_policy_back():
+    from tests.support.boundary_pipeline import boundary_definition
+
+    definition = boundary_definition(("forest",))
+    calibration = next(n for n in definition.nodes if n.kind == "calibration")
+    result = edited(
+        [
+            {
+                "op": "replace_step",
+                "id": calibration.id,
+                "component": "calibrate.fixed_split",
+            }
+        ],
+        definition.model_dump(mode="json"),
+        {"nodes": {}},
+    )
+    policy = next(n for n in result.definition.nodes if n.kind == "policy")
+    assert policy.component == "policy.martingale"
+    assert "calibration" not in {i.code for i in result.report.issues}

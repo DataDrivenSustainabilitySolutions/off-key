@@ -34,6 +34,7 @@ from ..schemas.pipeline_tools import (
     SetParams,
     SetSettings,
 )
+from ..schemas.pipeline_versions import streams
 from ..schemas.pipelines import (
     CanvasNote,
     CanvasPosition,
@@ -337,6 +338,7 @@ def _replace_step(design: _Design, edit: ReplaceStep) -> None:
 
 
 _THRESHOLD = "policy.quantile"
+_MARTINGALE = "policy.martingale"
 
 
 def _follow_calibration(design: _Design, calibration: str) -> None:
@@ -344,13 +346,21 @@ def _follow_calibration(design: _Design, calibration: str) -> None:
     freezes a threshold, an adapting method moves a boundary to exceed. When
     a new calibration step no longer fits the policy, the policy follows."""
     adapts = calibrator_id(calibration) is not None
+    # Detectors fitted once give p-values to the conformal policy instead.
+    frozen = _THRESHOLD
+    if not any(
+        streams(node.component)
+        for node in design.definition.nodes
+        if node.kind == "detector"
+    ):
+        frozen = _MARTINGALE
     for policy in design.definition.nodes:
         if policy.kind != "policy":
             continue
-        if adapts and policy.component == _THRESHOLD:
+        if adapts and policy.component in (_THRESHOLD, _MARTINGALE):
             target = EXCEEDANCE_RULE
         elif not adapts and policy.component == EXCEEDANCE_RULE:
-            target = _THRESHOLD
+            target = frozen
         else:
             continue
         component = design.component(target)

@@ -539,11 +539,12 @@ class ReleaseTests(unittest.TestCase):
             ).read_text()
         )
         self.assertEqual(retire[0]["include_tasks"], "stack_workers.yml")
-        self.assertIn("'docker', 'service', 'rm'", retire[1]["command"]["argv"])
-        retired = yaml.safe_load(
-            (ROOT / "ansible/roles/stack_deploy/tasks/retire.yml").read_text()
-        )
-        self.assertIn("socket-proxy", retired[1]["loop"])
+        # Before apply: backend convergence rejects the leftover proxy.
+        self.assertIn("_socket-proxy", retire[2]["set_fact"]["pre_pool_services"])
+        self.assertIn("'docker', 'service', 'rm'", retire[3]["command"]["argv"])
+        apply = (ROOT / "ansible/roles/stack_deploy/tasks/apply.yml").read_text()
+        # A removed service is never scaled back up.
+        self.assertIn("name not in (pre_pool_services | default([]))", apply)
 
     def test_application_setup_runs_after_the_release_completes(self):
         # Catalogue writes are fenced while a release is open, and a step that

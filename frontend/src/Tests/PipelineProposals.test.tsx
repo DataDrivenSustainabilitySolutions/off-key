@@ -180,6 +180,20 @@ describe("proposals", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     expect(await screen.findByText("No monitor place is free.")).toBeTruthy();
     expect(pipelinesApi.decideProposal).not.toHaveBeenCalled();
+    // The row keeps its controls, so the start can be tried again once there is room.
+    vi.mocked(pipelinesApi.apply).mockResolvedValue(activation);
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
+    await waitFor(() => expect(pipelinesApi.decideProposal).toHaveBeenCalledExactlyOnceWith("p1", { status: "accepted" }));
+  });
+
+  it("accepts the proposal when an interrupted start is recovered", async () => {
+    vi.mocked(pipelinesApi.apply).mockRejectedValueOnce(new ApiRequestError("Gateway timeout", 504));
+    render(<PipelineProposalList onReview={() => {}} onBack={() => {}} canDecide />);
+    fireEvent.click(await screen.findByRole("button", { name: "Start Pump vibration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Recover start request" }));
+    await waitFor(() => expect(pipelinesApi.decideProposal).toHaveBeenCalledExactlyOnceWith("p1", { status: "accepted" }));
+    expect(pipelinesApi.apply).toHaveBeenCalledTimes(2);
   });
 
   it("says why a proposal cannot start from the list", async () => {

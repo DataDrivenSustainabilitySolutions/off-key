@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, FlaskConical, Play, TriangleAlert, User } from "lucide-react";
 import toast from "react-hot-toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -88,17 +88,25 @@ function StartProposal({ proposal, blocked, replaced, onStarted, onChoosing }: {
       const full = await pipelinesApi.proposal(proposal.id);
       await apply.session.submit({ definition: full.definition, layout: full.layout, bindings: full.bindings,
         display_name: full.name, idempotency_key: crypto.randomUUID(), replace_monitor_id: full.replace_monitor_id, shadow });
-      // Starting the design accepts it; someone who decided it meanwhile keeps the last word.
-      if (apply.session.getSnapshot().operationId)
-        void pipelinesApi.decideProposal(proposal.id, { status: "accepted" }).catch(() => undefined);
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setLoading(false); }
   };
 
-  if (apply.request || apply.operationId || apply.error)
+  // Starting the design accepts it, also when an interrupted request is recovered. Someone who
+  // decided it meanwhile keeps the last word.
+  const accepted = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!apply.operationId || accepted.current === apply.operationId) return;
+    accepted.current = apply.operationId;
+    void pipelinesApi.decideProposal(proposal.id, { status: "accepted" }).catch(() => undefined);
+  }, [apply.operationId, proposal.id]);
+
+  // A refused start leaves no request behind; the controls stay, with the reason, to try again.
+  if (apply.request || apply.operationId)
     return <PipelineApplyStatus apply={apply} onReset={() => { apply.session.reset(); setChoosing(false); }} />;
+  const shown = error || apply.error;
   return <>
-    {error && <p role="alert" className="pl-field-error">{error}</p>}
+    {shown && <p role="alert" className="pl-field-error">{shown}</p>}
     {choosing
       ? <div className="pl-proposal-start" role="group" aria-label={`Start ${proposal.name}`}>
         {update

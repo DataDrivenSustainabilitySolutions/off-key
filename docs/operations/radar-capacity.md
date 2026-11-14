@@ -62,8 +62,15 @@ to promise safety for arbitrary models.
 
 A replica renews its leases every poll. A replica that cannot renew for half the
 lease (`RADAR_POOL_LEASE_SECONDS`, default 30 s) kills all its children, so a row
-never runs twice: once the lease expires another replica claims it. A replica
+never runs twice: once the lease expires another replica claims it. A watchdog
+checks this apart from the poll, and every database call times out after a
+quarter of the lease, so a hung connection fences the replica too. A replica
 that stops cleanly stops its children and releases their rows, so another
 replica takes them at once. Deleting a monitor sets the row's intent to stop;
 the row is removed only after the pool confirms the child has ended, and the
 lease keeps being renewed until then.
+
+A release prepares each active monitor on the target RADAR image before it
+stops the old one. The running pool still runs the previous image, so the
+release starts a preflight-only replica of the target image
+(`RADAR_POOL_KINDS=preflight`) for that step and removes it afterwards.

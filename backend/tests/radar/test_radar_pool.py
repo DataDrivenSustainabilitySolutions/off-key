@@ -283,6 +283,44 @@ async def test_a_replica_that_cannot_renew_stops_its_children_before_the_lease_e
         assert pool.children == {}
 
 
+@pytest.mark.asyncio
+async def test_a_replica_whose_renewal_hangs_still_stops_its_children_in_time(
+    pool_database,
+):
+    engine, sessions = pool_database
+    manager = RadarWorkloadManager(sessions)
+    async with running_pool(engine, lease_seconds=1.0) as pool:
+        workload = await submit(manager)
+        await state_of(sessions, workload.id, "running")
+        child = pool.children[workload.id].process
+        hung = asyncio.Event()
+
+        async def hangs(*_args, **_kwargs):
+            await hung.wait()
+
+        pool.renew = hangs
+        try:
+            # The poll is stuck in renew; only the watchdog can fence.
+            await eventually(lambda: _returned(child), within=5)
+            assert pool.children == {}
+            assert pool.healthy is False
+        finally:
+            hung.set()
+
+
+@pytest.mark.asyncio
+async def test_a_preflight_only_replica_leaves_monitors_to_the_pool(pool_database):
+    engine, sessions = pool_database
+    manager = RadarWorkloadManager(sessions)
+    async with running_pool(engine, kinds=("preflight",)) as pool:
+        monitor = await submit(manager)
+        job = await submit(manager, "preflight-one", kind="preflight", restart=False)
+        await state_of(sessions, job.id, "running")
+        await asyncio.sleep(0.3)
+        assert list(pool.children) == [job.id]
+        assert (await row(sessions, monitor.id)).state == "pending"
+
+
 async def _returned(process):
     return process.returncode is not None
 

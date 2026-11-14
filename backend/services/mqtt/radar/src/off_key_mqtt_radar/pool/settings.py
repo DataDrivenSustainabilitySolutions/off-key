@@ -32,6 +32,12 @@ class RadarPoolSettings(BaseSettings):
     RADAR_POOL_MAX_RESTARTS: int = Field(default=5, ge=1, le=100)
     RADAR_POOL_RESTART_WINDOW_SECONDS: float = Field(default=900.0, ge=60)
     RADAR_POOL_HEALTH_PORT: int = Field(default=8030, ge=1, le=65535)
+    # Workload kinds this replica claims, comma-separated.
+    RADAR_POOL_KINDS: str = "monitor,preflight"
+
+    @property
+    def kinds(self) -> tuple[str, ...]:
+        return tuple(k.strip() for k in self.RADAR_POOL_KINDS.split(",") if k.strip())
 
     @model_validator(mode="after")
     def validate_lease_window(self) -> "RadarPoolSettings":
@@ -40,6 +46,8 @@ class RadarPoolSettings(BaseSettings):
             raise ValueError(
                 "RADAR_POOL_LEASE_SECONDS must be at least four polls long"
             )
+        if not self.kinds or not set(self.kinds) <= {"monitor", "preflight"}:
+            raise ValueError("RADAR_POOL_KINDS names only monitor and preflight")
         return self
 
     def options(self) -> PoolOptions:
@@ -53,4 +61,5 @@ class RadarPoolSettings(BaseSettings):
             restart_backoff_seconds=self.RADAR_POOL_RESTART_BACKOFF_SECONDS,
             max_restarts=self.RADAR_POOL_MAX_RESTARTS,
             restart_window_seconds=self.RADAR_POOL_RESTART_WINDOW_SECONDS,
+            kinds=self.kinds,
         )

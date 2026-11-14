@@ -55,6 +55,8 @@ async def main() -> None:
         max_overflow=0,
         pool_pre_ping=True,
         hide_parameters=True,
+        # A hung call fails well before the lease; the watchdog fences anyway.
+        connect_args={"command_timeout": settings.RADAR_POOL_LEASE_SECONDS / 4},
     )
     pool = RadarPool(engine, settings.options(), stopping.is_set)
     server = await serve_health(pool, settings.RADAR_POOL_HEALTH_PORT)

@@ -10,8 +10,10 @@ Each poll the worker, in order:
 3. claims pending rows, and rows whose lease expired, up to its capacity.
 
 A worker that cannot renew for half a lease kills every child, so no child
-outlives the lease another worker may claim. RADAR fences its own checkpoint
-writes as well, so a second copy of a monitor cannot overwrite the first.
+outlives the lease another worker may claim. A watchdog task checks this apart
+from the poll, so a database call that hangs instead of failing still fences.
+RADAR fences its own checkpoint writes as well, so a second copy of a monitor
+cannot overwrite the first.
 """
 
 import asyncio
@@ -62,6 +64,9 @@ class PoolOptions:
     restart_backoff_seconds: float
     max_restarts: int
     restart_window_seconds: float
+    # A release runs a preflight-only replica of the target image before the
+    # pool itself is replaced.
+    kinds: tuple[str, ...] = ("monitor", "preflight")
 
 
 @dataclass
@@ -103,6 +108,7 @@ _CLAIM = text("""
         SELECT id, state AS previous_state, worker_id AS previous_worker
         FROM radar_workloads
         WHERE runtime = :runtime
+          AND kind IN :kinds
           AND desired = 'run'
           AND (
               (state = 'pending' AND (not_before IS NULL OR not_before <= now()))
@@ -130,7 +136,7 @@ _CLAIM = text("""
     RETURNING w.id, w.kind, w.module, w.environment, w.memory_limit_bytes,
               w.restart, w.attempts, candidate.previous_state,
               candidate.previous_worker
-""")
+""").bindparams(bindparam("kinds", expanding=True))
 
 _RENEW = text("""
     UPDATE radar_workloads
@@ -180,13 +186,25 @@ class RadarPool:
             self.options.runtime,
             self.options.capacity,
         )
+        watchdog = asyncio.create_task(self.watch_lease())
         try:
             while not self.stopping():
                 await self.tick()
                 await asyncio.sleep(self.options.poll_seconds)
         finally:
-            await self.drain()
+            try:
+                await self.drain()
+            finally:
+                watchdog.cancel()
             logger.info("event=radar_pool.stopped worker=%s", self.options.worker_id)
+
+    async def watch_lease(self) -> None:
+        """Fence even while a database call hangs instead of failing."""
+        while True:
+            await asyncio.sleep(self.options.poll_seconds / 2)
+            if self.children and self.lease_at_risk():
+                self.healthy = False
+                self.kill_all()
 
     async def drain(self) -> None:
         """End every child and hand its row back, renewing while they end."""
@@ -329,6 +347,7 @@ class RadarPool:
                     _CLAIM,
                     {
                         "runtime": self.options.runtime,
+                        "kinds": list(self.options.kinds),
                         "limit": free,
                         "worker": self.options.worker_id,
                         "lease": self.options.lease_seconds,

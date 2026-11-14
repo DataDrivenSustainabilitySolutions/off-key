@@ -493,6 +493,34 @@ class ReleaseTests(unittest.TestCase):
             (ROOT / "ansible/roles/stack_deploy/tasks/replaced.yml").read_text()
         )
 
+    def test_release_preflights_run_on_a_target_image_replica_before_monitors_stop(
+        self,
+    ):
+        # The running pool runs the previous RADAR image, so it can never claim
+        # a preflight pinned to the target image.
+        tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_deploy/tasks/maintenance.yml").read_text()
+        )
+        actions = [
+            step.get("vars", {}).get("monitor_action")
+            for step in tasks
+            if step.get("include_tasks") == "monitor_job.yml"
+        ]
+        self.assertNotIn("capture", actions)
+        preflight = next(step for step in tasks if "always" in step)
+        names = [step["name"] for step in preflight["block"]]
+        self.assertEqual(names[-1], "Stop active monitors with a durable restart plan")
+        replica = next(step for step in preflight["block"] if "command" in step)
+        argv = replica["command"]["argv"]
+        self.assertIn("mqtt_radar_image", argv)
+        self.assertIn("off_key_mqtt_radar.pool", argv)
+        self.assertIn("RADAR_POOL_KINDS': 'preflight'", str(preflight["block"]))
+        removal = preflight["always"][0]["command"]["argv"]
+        self.assertEqual(removal[:3], ["docker", "rm", "--force"])
+        Environment().parse(
+            (ROOT / "ansible/roles/stack_deploy/tasks/maintenance.yml").read_text()
+        )
+
     def test_application_setup_runs_after_the_release_completes(self):
         # Catalogue writes are fenced while a release is open, and a step that
         # always fails inside the release would leave it unrecoverable by retry.

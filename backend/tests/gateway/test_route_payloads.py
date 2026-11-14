@@ -97,3 +97,43 @@ def test_system_revisions_are_newest_first_with_isoformat_times():
     query = str(session.scalars.call_args.args[0])
     assert "ORDER BY system_revisions.revision DESC" in query
     assert "LIMIT" in query
+
+
+def test_recording_preview_answers_every_count_not_only_the_renamed_fields():
+    """The app reads affected_monitors before it saves a recording change."""
+    from off_key_api_gateway.providers import get_system_service
+    from off_key_core.schemas.system_collection import SystemCollectionPreview
+
+    preview = SystemCollectionPreview(
+        revision=4,
+        collection_revision=5,
+        selected_readings=1,
+        sampled_rows_per_day_ceiling=86400,
+        original_rate_readings=0,
+        affected_monitors=[{"id": "m1"}],
+        changed_readings=1,
+        starting_readings=1,
+        bindings={"r1": {"connection_id": "b1", "policy": {"mode": "off"}}},
+    )
+    system = SimpleNamespace(preview_collection=AsyncMock(return_value=preview))
+    app = gateway_app(member("admin"), overrides={get_system_service: lambda: system})
+    with TestClient(app) as http:
+        response = http.post(
+            "/v1/recording/preview",
+            json={
+                "expected_revision": 4,
+                "expected_collection_revision": 5,
+                "rule_changes": [
+                    {
+                        "scope": {"kind": "broker", "broker_id": "b1"},
+                        "policy": {"mode": "sample", "interval_seconds": 1},
+                    }
+                ],
+            },
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["affected_monitors"] == [{"id": "m1"}]
+    assert body["sampled_rows_per_day_ceiling"] == 86400
+    assert body["starting_readings"] == 1
+    assert body["bindings"]["r1"]["broker_id"] == "b1"

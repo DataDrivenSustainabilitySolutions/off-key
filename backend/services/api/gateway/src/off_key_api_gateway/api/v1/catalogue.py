@@ -258,7 +258,9 @@ async def preview_recording(
     Answers how many readings would start, stop or change rate, the expected
     rows per day and the running monitors the change would affect.
     """
-    return await system.preview_collection(change)
+    # A dict keeps the counts: RecordingPreview names only the renamed fields,
+    # and FastAPI drops a returned model's other fields.
+    return (await system.preview_collection(change)).model_dump(mode="json")
 
 
 @recording_router.post("/status", response_model=RecordingStatus)

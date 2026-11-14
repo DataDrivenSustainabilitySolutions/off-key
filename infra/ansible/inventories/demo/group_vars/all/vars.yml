@@ -13,7 +13,7 @@ public_site_enabled: false
 admin_ingress_enabled: false
 observability_enabled: false
 broker_route_enabled: false
-tactic_radar_max_active_monitors: "6"
+tactic_radar_max_active_monitors: "10"
 radar_pool_capacity: "6"
 stack_replaced_services: []
 stack_retired_secret_keys: []

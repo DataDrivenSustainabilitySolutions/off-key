@@ -1526,7 +1526,7 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The reference is immutable commit
-`REFSHA`, the first build on the schema baseline. Its monitors read the stored
+`d44f4783fa0a256bc213b49515a4a161cacb1bf9`, the first build on the schema baseline. Its monitors read the stored
 telemetry log, RADAR runs in a leased worker pool and readings have per-reading
 hold timing. Its layout holds switched-off steps and notes, and a step's title
 lives in the design, as in the current release. The rehearsal still switches

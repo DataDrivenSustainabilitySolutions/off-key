@@ -539,6 +539,7 @@ export type PipelineProposalSummary = {
   decided_at: string | null;
   decision_note: string | null;
   created_at: string;
+  missing_readings?: Array<string>;
 };
 
 export type PipelineProposalView = {
@@ -554,6 +555,7 @@ export type PipelineProposalView = {
   decided_at: string | null;
   decision_note: string | null;
   created_at: string;
+  missing_readings?: Array<string>;
   definition: PipelineDefinition;
   layout: PipelineLayout;
   bindings: Record<string, string>;

@@ -200,6 +200,43 @@ async def test_an_agent_proposes_and_a_member_decides(library):
 
 
 @pytest.mark.asyncio
+async def test_an_open_proposal_names_readings_the_catalogue_lost(library, monkeypatch):
+    """A source removed after the proposal leaves it unable to start as made."""
+
+    class Stream:
+        def __init__(self, reading):
+            self.definition = type("Reading", (), {"id": reading})
+
+    recorded = ["reading-2"]
+    catalog = type(
+        "Catalog", (), {"streams": lambda self, selected_only: map(Stream, recorded)}
+    )
+    snapshot = type("Snapshot", (), {"catalog": catalog()})
+    monkeypatch.setattr(
+        proposal_service, "read_collection_runtime", AsyncMock(return_value=snapshot)
+    )
+    async with library() as session:
+        service = PipelineProposals(session)
+        admin = await admin_of(session)
+        gone = await service.create(proposal(), admin)
+        kept = await service.create(
+            proposal(name="Fan current", bindings={"value": "reading-2"}), admin
+        )
+        listed = {item.name: item for item in (await service.list("open")).items}
+        assert listed["Pump vibration"].missing_readings == ["reading-1"]
+        assert listed["Fan current"].missing_readings == []
+        assert (await service.get(gone.id)).missing_readings == ["reading-1"]
+        # Once decided, a proposal no longer starts, so nothing is missing.
+        await service.decide(
+            gone.id, PipelineProposalDecision(status="declined"), admin
+        )
+        assert (await service.get(gone.id)).missing_readings == []
+        # An unreadable catalogue leaves the marker out instead of failing.
+        proposal_service.read_collection_runtime.side_effect = RuntimeError("down")
+        assert (await service.get(kept.id)).missing_readings == []
+
+
+@pytest.mark.asyncio
 async def test_only_its_author_withdraws_a_proposal(library):
     async with library() as session:
         service = PipelineProposals(session)

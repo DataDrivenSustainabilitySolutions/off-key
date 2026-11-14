@@ -146,6 +146,7 @@ class TelemetryLogReader:
     async def _run(self) -> None:
         delay = self.poll_seconds
         while not self._shutdown.is_set():
+            read_at = time.time()
             try:
                 rows = await self._read()
             except Exception as error:
@@ -163,9 +164,13 @@ class TelemetryLogReader:
                 if self._shutdown.is_set():
                     return
                 await self._hand_over(row)
+            if not rows:
+                # Caught up: follow the wall clock as of this read. Only the
+                # collector's batch in flight, seconds old, can still commit
+                # with an earlier receipt time.
+                self.clock.advance(read_at)
             self.caught_up = len(rows) < self.batch_size
             if self.caught_up:
-                self.clock.advance(time.time())
                 await self._pause(self.poll_seconds)
 
     async def _read(self) -> list[Any]:

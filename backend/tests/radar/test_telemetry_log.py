@@ -226,3 +226,23 @@ async def test_read_failures_report_the_log_unavailable(log_database):
         assert log.get_health_status()["reason"] == "log_unavailable"
     finally:
         await log.stop()
+
+
+async def test_a_reading_logged_during_a_short_batch_keeps_its_receipt_time(
+    log_database,
+):
+    """Only an empty read moves the clock to the wall clock; a reading that
+    commits while the batch before it is processed is judged when received."""
+    log = reader(log_database, ["telemetry/a/x"])
+    await log.place(0)
+    await append(log_database, [("a", "x", 0, 1.0)])
+    clocks = []
+
+    async def handle(message):
+        if not clocks:
+            await append(log_database, [("a", "x", 2, 2.0)])
+        clocks.append((log.clock(), message.timestamp.timestamp()))
+
+    log.set_message_handler(handle)
+    await drain(log, clocks, 2)
+    assert [clock for clock, _ in clocks] == [received for _, received in clocks]

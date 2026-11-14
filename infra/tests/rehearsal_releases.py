@@ -1,8 +1,8 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the release that added per-reading hold timing. It also keeps
-shadow runs, a layout with switched-off steps and notes, and titles in the
-design. It carries migrations through 033 and Aberrant 1.5.0 numerics, and
+The reference is the first build with one API service, which also has
+per-reading hold timing. It keeps shadow runs, a layout with switched-off steps
+and notes, and titles in the design. It carries migrations through 033 and Aberrant 1.5.0 numerics, and
 proves no compatibility with earlier schemas.
 """
 
@@ -22,7 +22,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "730e91b9b30a6122ef073a4dae55fec0293df437"
+COMPATIBLE_REVISION = "48b8eb008103d95d541bf19a95fc1deae6ab3e36"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

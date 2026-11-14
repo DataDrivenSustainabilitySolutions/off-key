@@ -80,7 +80,10 @@ class _Edit(PipelineModel):
 
 class AddStep(_Edit):
     """Add a step. With ``after`` and ``before`` it goes on the connection
-    between the two; with one of them it is connected on that side only."""
+    between the two. With one of them, a step that hands its features on goes
+    into the one connection on that side, so ``after: input`` puts it between
+    the input and the step that followed it; where that side has several
+    connections, or none, it is connected on that side only."""
 
     op: Literal["add_step"]
     component: str = Field(
@@ -238,5 +241,12 @@ class DesignEditResult(PipelineModel):
     added: list[str] = Field(
         default_factory=list,
         description="Ids of the steps and notes the edits added, in their order.",
+    )
+    also: list[str] = Field(
+        default_factory=list,
+        description=(
+            "What the edits changed beyond the steps they named, such as the "
+            "alarm policy that follows a new calibration step."
+        ),
     )
     report: PipelineValidationReport

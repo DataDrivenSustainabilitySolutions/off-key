@@ -2,7 +2,6 @@
 
 import pytest
 from off_key_core.models.pipeline_edits import (
-    CARD_HEIGHT,
     CARD_WIDTH,
     GAP_X,
     EditError,
@@ -262,19 +261,70 @@ def test_a_second_step_of_a_kind_is_numbered_and_stands_clear():
     first, second, third = (step(result, f"prepare_smooth_{n}") for n in (1, 2, 3))
     assert (first.label, second.label, third.label) == (None, "Smooth 2", "Slow")
     places = result.layout.nodes
-    # Branches from one step stand below each other, clear of the cards there.
-    assert places["prepare_smooth_1"].x == places["prepare_smooth_2"].x == COLUMN
-    assert places["prepare_smooth_1"].y - places["detector"].y >= CARD_HEIGHT
-    assert places["prepare_smooth_2"].y - places["prepare_smooth_1"].y >= CARD_HEIGHT
     # Without a neighbour a step goes right of the rightmost card.
     assert places["prepare_smooth_3"].x == max(place.x for place in places.values())
-    # A step before another takes its single input over.
-    assert ("prepare_despike_1", "detector") in links(result)
+    # One neighbour with one connection on that side: the step goes into it,
+    # so the chain stays whole instead of ending in a dead end.
+    assert {
+        ("input", "prepare_smooth_2"),
+        ("prepare_smooth_2", "prepare_smooth_1"),
+        ("prepare_smooth_1", "prepare_despike_1"),
+        ("prepare_despike_1", "detector"),
+    } <= set(links(result))
     assert ("input", "detector") not in links(result)
-    assert places["prepare_despike_1"].x == places["detector"].x - COLUMN
-    # The branches end nowhere, which the report says and the edit allows.
+    assert places["prepare_smooth_2"].x < places["prepare_smooth_1"].x
+    assert places["prepare_despike_1"].x < places["detector"].x
+    # Only the step with no neighbour ends nowhere.
     assert not result.report.valid
-    assert {issue.code for issue in result.report.issues} >= {"disconnected"}
+    assert {
+        issue.node_id for issue in result.report.issues if issue.code == "disconnected"
+    } == {"prepare_smooth_3"}
+
+
+def test_one_neighbour_with_several_connections_starts_a_branch():
+    definition, layout = drawn()
+    result = edited(
+        [
+            {
+                "op": "add_step",
+                "component": "prepare.smooth",
+                "id": "a",
+                "after": "input",
+            },
+            {"op": "connect", "source": "input", "target": "detector"},
+        ],
+        definition,
+        layout,
+    )
+    assert ("input", "a") in links(result)
+    result = edited(
+        [
+            {
+                "op": "add_step",
+                "component": "prepare.despike",
+                "id": "b",
+                "after": "input",
+            }
+        ],
+        result.definition.model_dump(mode="json"),
+        result.layout.model_dump(mode="json"),
+    )
+    assert ("input", "b") in links(result)
+    assert not any(edge.source == "b" for edge in result.definition.edges)
+    # A step that does not hand its features on is only connected on its side.
+    result = edited(
+        [
+            {
+                "op": "add_step",
+                "component": "detector:aberrant_online_isolation_forest",
+                "id": "second",
+                "after": "input",
+            }
+        ],
+        *drawn(),
+    )
+    assert ("input", "second") in links(result)
+    assert ("input", "detector") in links(result)
 
 
 def chain():
@@ -580,3 +630,83 @@ def test_a_request_names_its_edits_and_bounds_them():
     ):
         with pytest.raises(ValidationError):
             DesignEditRequest.model_validate(broken)
+
+
+def test_a_new_calibration_step_brings_the_policy_that_fits_it():
+    result = edited(
+        [{"op": "replace_step", "id": "calibrate", "component": "calibrate.split"}],
+        *drawn(),
+    )
+    policy = step(result, "policy")
+    assert policy.component == "policy.exceedance"
+    assert result.report.valid
+    assert result.also and "policy" in result.also[0]
+    # And back: the fixed split freezes a threshold again.
+    back = edited(
+        [
+            {
+                "op": "replace_step",
+                "id": "calibrate",
+                "component": "calibrate.fixed_split",
+            }
+        ],
+        result.definition.model_dump(mode="json"),
+        result.layout.model_dump(mode="json"),
+    )
+    assert step(back, "policy").component == "policy.quantile"
+    assert back.report.valid
+    # A step that is not the calibration leaves the policy alone.
+    plain = edited(
+        [
+            {
+                "op": "replace_step",
+                "id": "detector",
+                "component": "detector:aberrant_half_space_trees",
+            }
+        ],
+        *drawn(),
+    )
+    assert plain.also == []
+    assert step(plain, "policy").component == "policy.quantile"
+
+
+def test_a_detector_that_keeps_a_sample_needs_a_training_window_as_long():
+    result = edited(
+        [
+            {
+                "op": "add_step",
+                "component": "adaptive.min_max_scaler",
+                "after": "input",
+                "params": {"clip": True},
+            },
+            {
+                "op": "replace_step",
+                "id": "detector",
+                "component": "detector:aberrant_half_space_trees",
+            },
+            {"op": "set_settings", "training_window_size": 120},
+        ],
+        *drawn(),
+    )
+    issues = [i for i in result.report.issues if i.code == "training_window"]
+    assert len(issues) == 1 and issues[0].node_id == "detector"
+    assert "250" in issues[0].message and "120" in issues[0].message
+    smaller = edited(
+        [{"op": "set_params", "id": "detector", "params": {"window_size": 100}}],
+        result.definition.model_dump(mode="json"),
+        result.layout.model_dump(mode="json"),
+    )
+    assert "training_window" not in {i.code for i in smaller.report.issues}
+
+
+def test_a_design_of_rules_is_told_its_calibration_window_is_what_it_waits_for():
+    rule = [
+        {"op": "replace_step", "id": "detector", "component": "rule.score"},
+    ]
+    long = edited(rule, *drawn())
+    codes = {i.code: i.severity for i in long.report.issues}
+    assert codes.get("rule_calibration") == "warning"
+    short = edited(
+        [*rule, {"op": "set_settings", "calibration_window_size": 30}], *drawn()
+    )
+    assert "rule_calibration" not in {i.code for i in short.report.issues}

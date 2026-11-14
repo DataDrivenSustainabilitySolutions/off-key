@@ -413,9 +413,9 @@ the design starts empty) and up to 100 `edits`, made in order:
 
 | `op` | Fields | What it does |
 | --- | --- | --- |
-| `add_step` | `component`, optional `id`, `params`, `label`, `after`, `before` | Adds a step. With `after` and `before` it goes on the connection between the two; with one of them it is connected on that side |
+| `add_step` | `component`, optional `id`, `params`, `label`, `after`, `before` | Adds a step. With `after` and `before` it goes on the connection between the two. With one of them, a step that hands its features on goes into the single connection on that side; where there are several, or none, it is connected on that side only |
 | `remove_step` | `id`, optional `reconnect` | Removes a step and its connections. A transform with one input hands that input on, unless `reconnect` is false |
-| `replace_step` | `id`, `component`, optional `params` | Makes a step another component; its id and connections stay |
+| `replace_step` | `id`, `component`, optional `params` | Makes a step another component; its id and connections stay. A new calibration step brings the alarm policy that fits it, which `also` names |
 | `set_params` | `id`, `params`, optional `unset` | Changes the named settings; those in `unset` return to their defaults |
 | `set_label` | `id`, `label` | Titles a step; `null` takes the title away |
 | `connect`, `disconnect` | `source`, `target` | Adds or removes a connection. A single input takes a new connection in place of the one it had |
@@ -435,7 +435,7 @@ the design starts empty) and up to 100 `edits`, made in order:
 ```
 
 The answer has the changed `definition` with the defaults of every setting, the
-`layout`, the ids the edits `added`, and the `report` that `/pipelines/validate`
+`layout`, the ids the edits `added`, what they changed `also` beyond the steps they named, and the `report` that `/pipelines/validate`
 would give for the result. Either every edit is made or none: an edit that
 cannot be made, such as one naming a step the design does not have, answers
 HTTP 422 with its place in the list, as in `Edit 2 (remove_step): The design

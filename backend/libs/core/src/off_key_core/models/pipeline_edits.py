@@ -44,6 +44,7 @@ from ..schemas.pipelines import (
     PipelineLayout,
     PipelineNode,
 )
+from .pipeline_calibration import EXCEEDANCE_RULE, calibrator_id
 from .pipeline_catalog import pipeline_components
 from .pipeline_compiler import validate_pipeline
 from .pipeline_reports import bounded_validation_report
@@ -80,6 +81,7 @@ class _Design:
     layout: PipelineLayout
     components: dict[str, PipelineComponent]
     added: list[str] = field(default_factory=list)
+    also: list[str] = field(default_factory=list)
 
     def step(self, identifier: str) -> PipelineNode:
         for node in self.definition.nodes:
@@ -242,11 +244,32 @@ def _link(design: _Design, edit: AddStep) -> PipelineEdge | None:
     for neighbour in (edit.after, edit.before):
         if neighbour is not None:
             design.step(neighbour)
-    if edit.after is None or edit.before is None:
+    if edit.after is None and edit.before is None:
         return None
+    if edit.after is None or edit.before is None:
+        return _single_link(design, edit)
     if edit.after == edit.before:
         raise EditError("A step goes between two different steps")
     return design.edge(edit.after, edit.before)
+
+
+def _single_link(design: _Design, edit: AddStep) -> PipelineEdge | None:
+    """With one neighbour named, a step that hands its features on goes into
+    the one connection on that side, so that it does not end in a dead end."""
+    component = design.component(edit.component)
+    if component.kind in _SEVERAL:
+        # A merge or a calibration step joins branches; it is not spliced in.
+        return None
+    if component.input_type is None or component.input_type != component.output_type:
+        return None
+    edges = design.definition.edges
+    if edit.after is not None:
+        candidates = [edge for edge in edges if edge.source == edit.after]
+    elif edit.before is not None:
+        candidates = design.incoming(edit.before)
+    else:
+        return None
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _add_step(design: _Design, edit: AddStep) -> None:
@@ -309,6 +332,37 @@ def _replace_step(design: _Design, edit: ReplaceStep) -> None:
     node.contract_version = component.contract_version
     node.params = edit.params
     _forget(design, node.id)
+    if component.kind == "calibration":
+        _follow_calibration(design, component.id)
+
+
+_THRESHOLD = "policy.quantile"
+
+
+def _follow_calibration(design: _Design, calibration: str) -> None:
+    """A calibration step and its alarm policy go together: the fixed split
+    freezes a threshold, an adapting method moves a boundary to exceed. When
+    a new calibration step no longer fits the policy, the policy follows."""
+    adapts = calibrator_id(calibration) is not None
+    for policy in design.definition.nodes:
+        if policy.kind != "policy":
+            continue
+        if adapts and policy.component == _THRESHOLD:
+            target = EXCEEDANCE_RULE
+        elif not adapts and policy.component == EXCEEDANCE_RULE:
+            target = _THRESHOLD
+        else:
+            continue
+        component = design.component(target)
+        old = design.component(policy.component).label
+        policy.component = component.id
+        policy.contract_version = component.contract_version
+        policy.params = {}
+        _forget(design, policy.id)
+        design.also.append(
+            f"The alarm policy {policy.id!r} became {component.label} in place of "
+            f"{old}, which does not work with the new calibration step."
+        )
 
 
 def _set_params(design: _Design, edit: SetParams) -> None:
@@ -466,5 +520,6 @@ def edit_design(request: DesignEditRequest) -> DesignEditResult:
         definition=validation.definition,
         layout=design.layout,
         added=design.added,
+        also=design.also,
         report=bounded_validation_report(validation, include_definition=False),
     )

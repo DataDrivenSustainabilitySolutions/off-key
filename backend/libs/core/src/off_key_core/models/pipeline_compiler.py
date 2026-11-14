@@ -19,6 +19,7 @@ from ..schemas.pipelines import (
     PipelineValidation,
 )
 from ..utils.json_budget import fits_json_budget
+from .adaptive import detector_warmup
 from .pipeline_calibration import (
     CALIBRATORS,
     EXCEEDANCE_RULE,
@@ -478,6 +479,26 @@ def _validate_model(compilation: _Compilation) -> None:
         errors = adaptive_input_errors(detector, compilation.features[detector.id])
         for code, message in errors:
             compilation.error(code, message, detector.id)
+        _validate_warmup(compilation, detector)
+
+
+def _validate_warmup(compilation: _Compilation, detector: PipelineNode) -> None:
+    """A detector that keeps a sample before it scores needs a training window
+    at least as long, or the run stops at its start."""
+    needed = detector_warmup(
+        detector.component.removeprefix("detector:"), detector.params
+    )
+    window = compilation.definition.settings.training_window_size
+    if needed > window:
+        compilation.error(
+            "training_window",
+            f"{_label(compilation, detector.id)} needs a warm-up of at least "
+            f"{needed:,} updates before it scores, but the training window has "
+            f"{window:,}. Raise the training window to at least {needed:,}, or "
+            "make the detector's sample smaller.",
+            detector.id,
+            blocks_features=False,
+        )
 
 
 def _fits_once(compilation: _Compilation) -> bool:
@@ -623,8 +644,33 @@ def _validate_calibration_window(
         )
 
 
+_RULE_CALIBRATION = 60
+
+
+def _validate_rule_calibration(compilation: _Compilation) -> None:
+    """A design of rules alone learns nothing, so its calibration window is
+    all it waits for, and what it sees there sets the threshold."""
+    detectors = [
+        node for node in compilation.definition.nodes if node.kind == "detector"
+    ]
+    if not detectors or any(node.component != RULE_DETECTOR for node in detectors):
+        return
+    window = compilation.definition.settings.calibration_window_size
+    if window <= _RULE_CALIBRATION:
+        return
+    compilation.warning(
+        "rule_calibration",
+        f"A rule learns nothing, yet it scores only after the calibration window "
+        f"of {window:,} observations, and a rule that holds there raises the "
+        "threshold to its own score, so it cannot alarm above it later. A short "
+        f"window, such as {_RULE_CALIBRATION // 2}, starts it sooner.",
+        detectors[0].id,
+    )
+
+
 def _validate_learning(compilation: _Compilation) -> None:
     """What may be combined follows from how each step learns."""
+    _validate_rule_calibration(compilation)
     modes = _learned(compilation)
     _validate_branches(compilation, modes)
     if not _validate_calibration(compilation):

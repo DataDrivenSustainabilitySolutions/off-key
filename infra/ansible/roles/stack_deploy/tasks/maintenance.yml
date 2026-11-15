@@ -42,6 +42,12 @@
   delay: 2
   until: release_database_ready.rc == 0
 
+- name: Reset the database to an empty one when the operator asks
+  include_tasks: reset_database.yml
+  when:
+    - release_database.rc == 0
+    - release_reset_database | default('') | length > 0
+
 - name: Inspect the target schema migration requirements
   include_tasks: job.yml
   vars:
@@ -49,6 +55,21 @@
     release_job_image: "{{ db_sync_image }}"
     release_job_module: off_key_core.db.migrate
     release_job_arguments: [status]
+    release_job_may_fail: true
+
+- name: Refuse a database from before the schema baseline, changing nothing (deploy again with reset_database)
+  fail:
+    msg: >-
+      The {{ stack_name }} database predates the schema baseline and cannot be
+      upgraded. Nothing was stopped or changed. Deploy again with
+      RESET_DATABASE={{ stack_name }} to back it up and start from an empty
+      database.
+  when: release_job_output.reset_required | default(false)
+
+- name: Stop before any writer when the migration preflight fails
+  fail:
+    msg: The migration preflight failed; nothing was stopped or changed.
+  when: release_job_result.rc != 0
 
 - name: Keep the migration preflight result
   set_fact:
@@ -141,7 +162,7 @@
         release_job_module: off_key_core.db.migrate
         release_job_arguments: [apply]
 
-- name: Adopt and validate the migration ledger when no upgrade is required
+- name: Validate the migration ledger when no upgrade is required
   include_tasks: job.yml
   vars:
     release_job_service: db-sync

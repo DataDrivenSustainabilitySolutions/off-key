@@ -6,9 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from off_key_core.db.collection_runtime import read_collection_runtime
-from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import (
-    DeploymentMaintenance,
     MonitoringPipeline,
     MonitoringService,
     PipelineActivation,
@@ -49,7 +47,6 @@ from off_key_tactic_middleware.services.pipelines.preflight import (
     PreflightRejected,
 )
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tests.support.pipeline_database import published_design
 
@@ -277,36 +274,6 @@ async def test_run_history_and_layout_survive_service_and_checkpoint_removal(
         assert retained.run.id == run.id
         assert retained.history[0].revision_id == revision.id
         assert retained.layout.nodes["input"].x == 100
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "pipeline_tables",
-    [False, True],
-    ids=["before-pipelines", "before-lifecycle-states"],
-)
-async def test_release_reservation_before_pipeline_schema_upgrades(
-    disposable_database, pipeline_tables
-):
-    with disposable_database.begin() as connection:
-        MonitoringService.__table__.create(connection)
-        DeploymentMaintenance.__table__.create(connection)
-        if pipeline_tables:
-            connection.exec_driver_sql(
-                migration_files()["010_monitoring_pipelines.sql"]
-            )
-    engine = create_async_engine(
-        disposable_database.url.set(drivername="postgresql+asyncpg")
-    )
-    try:
-        sessions = async_sessionmaker(engine, expire_on_commit=False)
-        async with sessions() as session:
-            assert (await reserve(session, "a" * 40))["phase"] == "quiescing"
-            assert (await reserve(session, "a" * 40))["phase"] == "quiescing"
-            with pytest.raises(ValueError, match="different release"):
-                await reserve(session, "b" * 40)
-    finally:
-        await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -619,44 +586,3 @@ async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
         )
         assert design.description == "Created by the monitoring setup form"
         assert (await PipelineLibrary(session).list()).items == []
-
-
-@pytest.mark.asyncio
-async def test_release_converts_a_saved_form_monitor_or_retires_it(pipeline_database):
-    from off_key_core.db.models import PipelineRevision
-    from off_key_tactic_middleware.services.pipelines.forms import (
-        UnconvertibleFormMonitor,
-        convert_saved_form_monitor,
-    )
-
-    async with pipeline_database() as session:
-        catalog = (await read_collection_runtime(session)).catalog
-        topics = {
-            stream.definition.id: stream.accepted_topic
-            for stream in catalog.streams(selected_only=True)
-        }
-        # Saved by the setup form before every monitor ran as a pipeline.
-        saved = {
-            "container_name": "radar-device",
-            "display_name": "Device",
-            "mqtt_topics": [topics["temperature"], topics["current"]],
-            "monitoring": {"strategy": "static_baseline"},
-            "performance_config": {"hold_intervals": 4},
-            "pipeline": None,
-        }
-        launch, metadata = await convert_saved_form_monitor(session, saved)
-
-        assert launch.container_name == "radar-device"
-        assert launch.performance_config.hold_intervals == 4
-        assert {item.reading_id for item in launch.pipeline.bindings} == {
-            "current",
-            "temperature",
-        }
-        assert launch.monitoring.strategy == "static_baseline"
-        revision = await session.get(PipelineRevision, launch.pipeline.revision_id)
-        assert revision is not None
-        assert metadata.collection_fingerprint
-        with pytest.raises(UnconvertibleFormMonitor, match="Select these topics"):
-            await convert_saved_form_monitor(
-                session, saved | {"mqtt_topics": ["telemetry/device/unknown"]}
-            )

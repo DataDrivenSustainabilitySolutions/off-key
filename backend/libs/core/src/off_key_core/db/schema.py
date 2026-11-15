@@ -1,4 +1,4 @@
-"""Bootstrap the supported schema without upgrading historical data."""
+"""Bootstrap the current schema and check that an existing one still matches it."""
 
 from sqlalchemy import (
     CheckConstraint,
@@ -15,36 +15,17 @@ from .models import Base
 from .retention import reconcile_retention_policies
 
 
-def validate_existing_schema(
-    connection: Connection,
-    *,
-    tables=None,
-    excluded_columns=None,
-    retired_columns=None,
-    excluded_constraints=None,
-) -> None:
-    """Reject obsolete table shapes before executing any bootstrap DDL.
-
-    ``excluded_columns`` are declared columns a pending migration adds;
-    ``retired_columns`` are undeclared ones a pending migration drops;
-    ``excluded_constraints`` are declared constraints a pending migration adds.
-    """
+def validate_existing_schema(connection: Connection) -> None:
+    """Reject a table shape the ORM does not declare before any bootstrap DDL."""
     inspector = inspect(connection)
     existing = set(inspector.get_table_names())
-    for table in Base.metadata.sorted_tables if tables is None else tables:
+    for table in Base.metadata.sorted_tables:
         if table.name not in existing:
             continue
-        retired = (retired_columns or {}).get(table.name, ())
         columns = {
-            column["name"]: column
-            for column in inspector.get_columns(table.name)
-            if column["name"] not in retired
+            column["name"]: column for column in inspector.get_columns(table.name)
         }
-        declared = [
-            column
-            for column in table.columns
-            if column.name not in (excluded_columns or {}).get(table.name, ())
-        ]
+        declared = list(table.columns)
         expected = {column.name for column in declared}
         compatible = set(columns) == expected and all(
             columns[column.name]["nullable"] == column.nullable
@@ -76,7 +57,6 @@ def validate_existing_schema(
                 constraint, CheckConstraint | ForeignKeyConstraint | UniqueConstraint
             )
             and constraint.name
-            and constraint.name not in (excluded_constraints or ())
         )
         if not compatible:
             raise RuntimeError(
@@ -95,8 +75,7 @@ def bootstrap_schema(connection: Connection) -> None:
     for table in Base.metadata.sorted_tables:
         for index in table.indexes:
             index.create(connection, checkfirst=True)
-    # Members always need these two roles; migration 021 adds them to older
-    # databases and a fresh one gets them here.
+    # Members always need these two roles.
     for role, name in BUILT_IN_ROLES.items():
         connection.execute(
             text(

@@ -1,4 +1,4 @@
-"""Scope ownership, future admission and legacy compatibility regressions."""
+"""Scope ownership and future admission regressions."""
 
 from unittest.mock import AsyncMock
 
@@ -147,23 +147,6 @@ def test_disabling_future_admission_preserves_current_members():
     assert modes(value)["power"] == "off"
 
 
-def test_legacy_active_selections_survive_but_default_off_is_not_an_exception():
-    value = definition()
-    value.document.streams[0].policy = CollectionPolicy(
-        mode="sample", interval_seconds=7
-    )
-    legacy = SystemCollectionDefinition.model_validate(
-        {"document": value.document.model_dump(), "bindings": value.bindings}
-    )
-    apply_rule_edits(legacy, [edit(scope())])
-    assert modes(legacy)["temperature-1"] == "sample"
-    assert modes(legacy)["power"] == "original"
-    restored = SystemCollectionDefinition.model_validate(legacy.model_dump())
-    assert (
-        restored.rules == legacy.rules
-    )  # Materialized parents must not become leaf overrides.
-
-
 @pytest.mark.parametrize(
     ("prefix", "topic", "matches"),
     [
@@ -199,7 +182,7 @@ def test_restore_preserves_admission_boundary():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("operation", "mode"), [("set", "sample"), ("inherit", "off")])
-async def test_full_legacy_catalogue_avoids_quadratic_leaf_matching(
+async def test_a_full_catalogue_avoids_quadratic_leaf_matching(
     monkeypatch, operation, mode
 ):
     doc = SystemDocument.model_validate(
@@ -218,9 +201,23 @@ async def test_full_legacy_catalogue_avoids_quadratic_leaf_matching(
             ],
         }
     )
-    legacy = SystemCollectionDefinition(document=doc, bindings=build_bindings(doc))
+    # Every reading records under its own rule, registered from the start.
+    catalog = SystemCollectionDefinition(
+        document=doc,
+        bindings=build_bindings(doc),
+        rules=[
+            CollectionRule(
+                scope=CollectionRuleScope(
+                    kind="reading", connection_id="b", reading_id=stream.id
+                ),
+                policy=stream.policy,
+            )
+            for stream in doc.streams
+        ],
+        registered_at={stream.id: 0 for stream in doc.streams},
+    )
     runtime = CollectionRuntimeSnapshot(
-        revision=1, catalog=legacy, ingress={}, collection={}
+        revision=1, catalog=catalog, ingress={}, collection={}
     )
     monkeypatch.setattr(
         collection_module, "read_collection_runtime", AsyncMock(return_value=runtime)

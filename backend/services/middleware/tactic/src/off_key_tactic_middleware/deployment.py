@@ -21,12 +21,7 @@ from .services.orchestration.radar_status import (
     RUNTIME_STATUS_STALE_AFTER_SECONDS,
     heartbeat_age_seconds,
 )
-from .services.pipelines.forms import (
-    UnconvertibleFormMonitor,
-    convert_saved_form_monitor,
-)
 from .services.pipelines.release import (
-    is_saved_form_monitor,
     normalize_saved_launch,
     prepare_release_monitors,
     record_release_run,
@@ -66,9 +61,7 @@ async def prepare_operation(session, workloads, revision: str):
             "replacement_id": None,
             "previous_config": service.launch_config,
         }
-        if restart and is_saved_form_monitor(service.launch_config):
-            snapshot |= await _converted_form_monitor(session, service)
-        elif restart:
+        if restart:
             snapshot["config"] = normalize_saved_launch(
                 service.launch_config
             ).model_dump(mode="json")
@@ -84,45 +77,19 @@ async def prepare_operation(session, workloads, revision: str):
     return operation
 
 
-async def _converted_form_monitor(session, service) -> dict:
-    """Restart a form monitor as a pipeline, or retire it when that cannot work."""
-    try:
-        async with session.begin_nested():
-            config, metadata = await convert_saved_form_monitor(
-                session, service.launch_config
-            )
-    except UnconvertibleFormMonitor as exc:
-        # Its readings left the catalogue; the monitor stops and keeps history.
-        return {"retired": str(exc)[:500]}
-    return {
-        "config": config.model_dump(mode="json"),
-        "binding_metadata": metadata.model_dump(mode="json"),
-    }
-
-
 async def reserve(session, revision: str) -> dict:
-    """Gate mutations before deployment quiesces writers or applies migration 010."""
+    """Gate mutations before deployment quiesces writers or applies migrations."""
     await lock_collection_configuration(session)
     if (
         await session.scalar(text("SELECT to_regclass('deployment_maintenance')"))
         is None
     ):
-        if await session.scalar(text("SELECT to_regclass('services')")) is not None:
-            raise ValueError(
-                "Initialize the deployment maintenance schema before reserving "
-                "an existing database"
-            )
-        # A fresh cluster has no application intent or writers to arbitrate.
-        # The infrastructure applies migrations before begin creates its gate.
+        # A fresh, empty database has no application intent or writers to
+        # arbitrate. The infrastructure installs the schema before begin
+        # creates its gate.
         await session.commit()
         return {"phase": "uninitialized"}
-    if (
-        await session.scalar(
-            text("SELECT to_regclass('monitoring_pipeline_activations')")
-        )
-        is not None
-    ):
-        await require_no_pipeline_activation(session)
+    await require_no_pipeline_activation(session)
     operation = await session.get(DeploymentMaintenance, 1)
     if operation is not None and operation.phase != "complete":
         if operation.revision != revision:
@@ -175,11 +142,7 @@ async def begin(session, orchestration, revision: str) -> dict:
     operation.phase = "stopped"
     operation.updated_at = datetime.now(UTC)
     await session.commit()
-    return {
-        "phase": operation.phase,
-        "monitors": len(operation.monitors),
-        "retired": [m["previous_id"] for m in operation.monitors if m.get("retired")],
-    }
+    return {"phase": operation.phase, "monitors": len(operation.monitors)}
 
 
 async def stop_release_monitor(session, orchestration, monitor, revision):

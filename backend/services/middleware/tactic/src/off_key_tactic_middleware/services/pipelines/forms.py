@@ -7,19 +7,16 @@ from off_key_core.models.pipelines import form_inputs
 from off_key_core.schemas.pipelines import (
     PipelineActivationView,
     PipelineApplyRequest,
-    PipelineBindingMetadata,
 )
 from off_key_core.schemas.radar import (
     FormMonitorConfig,
     MonitorSetup,
-    RadarStartConfig,
 )
 from pydantic import ValidationError as PydanticValidationError
 
-from ...domain import DomainError, ValidationError
+from ...domain import ValidationError
 from .activation import PipelineActivations
 from .library import legacy_definition
-from .release import saved_form_monitor
 
 
 def _numeric_readings(snapshot) -> dict:
@@ -92,26 +89,3 @@ async def start_form_monitor(session, setup: MonitorSetup) -> PipelineActivation
     return await PipelineActivations(session).apply_form(
         request, config.performance_config
     )
-
-
-class UnconvertibleFormMonitor(ValueError):
-    """A saved form monitor whose configuration or readings no longer exist."""
-
-
-async def convert_saved_form_monitor(
-    session, launch: dict
-) -> tuple[RadarStartConfig, PipelineBindingMetadata]:
-    """The pipeline launch that replaces a monitor saved by the setup forms.
-
-    A release restarts the monitor from this launch, so it learns again.
-    """
-    try:
-        config = saved_form_monitor(launch)
-        readings = _numeric_readings(await read_collection_runtime(session))
-        request = _form_request(config, readings)
-        return await PipelineActivations(session).form_launch(request, config)
-    except (ValidationError, PydanticValidationError) as exc:
-        raise UnconvertibleFormMonitor(str(exc)) from exc
-    except DomainError as exc:
-        # For example unapplied collection; the release waits instead.
-        raise ValueError(str(exc)) from exc

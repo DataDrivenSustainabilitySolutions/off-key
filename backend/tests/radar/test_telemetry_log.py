@@ -163,13 +163,19 @@ async def test_a_large_backlog_is_read_in_batches_without_loss(log_database):
     await log.place(0)
     await append(log_database, [("a", "x", offset, offset) for offset in range(50)])
     handled = []
+    sampled = []
 
     async def handle(message):
-        handled.append(message.get_json_payload()["value"])
+        value = message.get_json_payload()["value"]
+        handled.append(value)
+        if message.sample:
+            sampled.append(value)
 
     log.set_message_handler(handle)
     await drain(log, handled, 50)
     assert handled == [float(offset) for offset in range(50)]
+    # The last reading of each read refreshes the monitor's observation.
+    assert sampled == [float(offset) for offset in (*range(6, 50, 7), 49)]
 
 
 async def test_positions_become_visible_in_commit_order(log_database):

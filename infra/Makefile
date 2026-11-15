@@ -6,6 +6,8 @@ INVENTORY ?= inventories/prod/hosts.yml
 REVISION ?= latest
 BOOTSTRAP ?= false
 CONFIRM ?= false
+# Erases the database after a backup; set to the stack name to confirm.
+RESET_DATABASE ?=
 SERVICES ?= postgres,emqx
 export ANSIBLE_CONFIG := $(abspath ansible/ansible.cfg)
 export OFFKEY_RELEASE_REVISION := $(REVISION)
@@ -17,9 +19,9 @@ provision-prod:
 	$(ANSIBLE) -i $(INVENTORY) provision.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e persistence_switch_confirm=$(CONFIRM)
 # Runs Ansible from this machine; the root Makefile deploy-prod dispatches CI instead.
 deploy-prod:
-	$(ANSIBLE) -i $(INVENTORY) deploy.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e persistence_switch_confirm=$(CONFIRM)
+	$(ANSIBLE) -i $(INVENTORY) deploy.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e release_reset_database=$(RESET_DATABASE) -e persistence_switch_confirm=$(CONFIRM)
 deploy-demo:
-	$(ANSIBLE) -i inventories/demo/hosts.yml deploy.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e persistence_switch_confirm=$(CONFIRM)
+	$(ANSIBLE) -i inventories/demo/hosts.yml deploy.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e release_reset_database=$(RESET_DATABASE) -e persistence_switch_confirm=$(CONFIRM)
 initialize-demo:
 	$(ANSIBLE) -i inventories/demo/hosts.yml bootstrap-demo.yml $(VAULT)
 update-labels-prod:

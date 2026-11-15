@@ -19,9 +19,12 @@
          + release_job_arguments }}
   register: release_job_result
   changed_when: release_job_arguments[0] != 'status'
+  # A preflight reports its own refusal; the caller explains it without the
+  # configuration this task keeps out of the log.
+  failed_when: release_job_result.rc != 0 and not (release_job_may_fail | default(false))
   no_log: true
 
 - name: Read the release job result without exposing service configuration
   set_fact:
-    release_job_output: "{{ release_job_result.stdout_lines | last | from_json }}"
+    release_job_output: "{{ release_job_result.stdout_lines | last | default('{}') | from_json }}"
   no_log: true

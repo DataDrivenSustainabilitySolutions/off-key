@@ -8,7 +8,6 @@ from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import (
     Charger,
     CollectionBinding,
-    CollectionConfiguration,
     MonitoringPipeline,
     MonitoringService,
     PipelineActivation,
@@ -43,7 +42,6 @@ from off_key_tactic_middleware.services.catalogue.system import SystemService
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from tests.support.legacy_catalogue import legacy_catalog
 from tests.support.system_document import (
     AsyncSessionAdapter,
     create_sqlite_tables,
@@ -60,7 +58,6 @@ def session(tmp_path, monkeypatch):
             SystemConfiguration.__table__,
             SystemRevision.__table__,
             SystemCollectionConfiguration.__table__,
-            CollectionConfiguration.__table__,
             Charger.__table__,
             CollectionBinding.__table__,
             MonitoringService.__table__,
@@ -90,24 +87,6 @@ def change(snapshot, mode="sample", interval=2):
         stream_ids=["temperature-1"],
         policy=CollectionPolicy(mode=mode, interval_seconds=interval),
     )
-
-
-@pytest.mark.asyncio
-async def test_archived_catalogue_never_drives_runtime(session):
-    session.add(
-        CollectionConfiguration(
-            id=1,
-            revision=7,
-            document=legacy_catalog().model_dump(mode="json"),
-            updated_by="operator",
-        )
-    )
-    await session.flush()
-    snapshot = await SystemService(session).read()
-    assert snapshot.document.streams == []
-    assert snapshot.runtime.bindings == {}
-    assert snapshot.runtime.collection_revision == 0
-    assert snapshot.storage_origin == "empty"
 
 
 @pytest.mark.asyncio

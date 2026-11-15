@@ -214,8 +214,7 @@ Template names and descriptions are separate from the service name. A template
 can be saved without choosing readings or starting monitoring. Subsequent saves
 use its expected version; a concurrent edit preserves the local work and offers
 Save as new template. Applied service snapshots do not appear in this library.
-Migration 013 adds `monitoring_pipelines.is_template`, preserving all existing
-designs as templates.
+`monitoring_pipelines.is_template` tells templates from designs.
 
 **Apply monitoring** validates the graph and sends a typed
 `POST /v1/pipelines/apply` request with its definition, layout, bindings,
@@ -364,7 +363,7 @@ score. The live inspector lists them for the policy, and the chart tooltip lists
 an evidence row's `detector_results`.
 
 A block is a named chain of `transform` steps that the library keeps
-(`monitoring_pipeline_blocks`, migration `031_pipeline_blocks.sql`) and the
+(`monitoring_pipeline_blocks`) and the
 editor copies into a design. No design, revision or run refers to a block, so
 the compiler, RADAR and activation know nothing of blocks, and deleting one
 changes nothing that runs. `PipelineBlockCreate` bounds a block to
@@ -842,7 +841,7 @@ adapting thresholds and consecutive counts go on. Each service asks
 adaptive and mixed services on the score threshold and the boundary service on
 its judgement. While the stage is muting, a fired alarm is not raised: the
 result is no anomaly, the context carries `alarm_muted`, and the evidence row
-keeps `alarm` false and `muted` true (migration `030_evidence_muted.sql`). Those
+keeps `alarm` false and `muted` true. Those
 rules judge every observation anew, so an alarm that still stands when the mute
 ends is raised then. A martingale tracker fires once, where its statistic
 crosses the threshold, so `MartingaleTrackerController.update(p_value,
@@ -969,8 +968,8 @@ it (`_expect`), because a pretrained step fetches a forecast its service missed
 while it scores. The key is absent before a forecast exists and outside the
 operational phase.
 
-Evidence stores the entries as `forecasts` (migration 026;
-`_normalize_forecasts` in `result_records.py` keeps an interval only whole), and
+Evidence stores the entries as `forecasts`
+(`_normalize_forecasts` in `result_records.py` keeps an interval only whole), and
 the catalogue API returns them with each evidence row. In the charts,
 `buildDetectorInputSeries` puts each forecast on the line of the feature it was
 made for, which it finds by `detector_id` and `target` among the row's
@@ -1196,7 +1195,7 @@ compared method to the alarms of a replay whose design has that step.
 
 A monitor never has a comparison; only `Replay` sets one. Each result carries
 `method_alarms`, one bit per method in the plan's order, stored in
-`dojo_run_results.method_alarms` (migration 027) and null before the run is
+`dojo_run_results.method_alarms` and null before the run is
 operational. A method that raises leaves the comparison and the worker writes
 the reason to `calibration_comparison.failed` when the run ends; such a method
 keeps the counts of what it found and gets no share or rate, which would be
@@ -1311,10 +1310,10 @@ doubles plus the lists an adaptive run collects, and each adaptive copy of a
 learned step's state. Preflight builds every detector and reports a failure on
 its node. Results carry each detector's `detector_id`, `score` and `surprise` in
 their context, and `processed_features` holds each detector's features under its
-ID. Evidence stores them as `detector_results` (migration 015), while `p_value`
+ID. Evidence stores them as `detector_results`, while `p_value`
 or `anomaly_score` holds the fused value. Runs with one detector write an empty
 list and keep their results, checkpoints and diagnostics. `detector_inputs`
-(migration 017) keeps the features each detector scored, after every step before
+keeps the features each detector scored, after every step before
 it, so charts can plot derived features: one entry with a null `detector_id` for
 a single detector, or one per detector ID for a combined policy, at most 64
 features each.
@@ -1527,12 +1526,11 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The reference is immutable commit
-`dc5d5a7c46f1e109efcdcc04e5577f4f27caeacc`, the first build whose monitors read the
-stored telemetry log. It runs RADAR in a leased worker pool and has per-reading
-hold timing and migration 035.
-Its layout holds switched-off steps and notes, and a step's title lives in the
-design, as in the current release. The rehearsal still switches between
-different application binaries.
+`d44f4783fa0a256bc213b49515a4a161cacb1bf9`, the first build on the schema baseline. Its monitors read the stored
+telemetry log, RADAR runs in a leased worker pool and readings have per-reading
+hold timing. Its layout holds switched-off steps and notes, and a step's title
+lives in the design, as in the current release. The rehearsal still switches
+between different application binaries.
 It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
@@ -1541,26 +1539,10 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-`9954e815` has monitors subscribe to the broker and no migration 035;
-`932f831f` runs RADAR as one Swarm service per monitor and has no migration 034;
-`730e91b9` serves the API from TACTIC;
-`05659351` has no migration 033;
-`14f26c36` refuses a layout with switched-off steps
-or notes, and returns a title on each card's place; `197cc239` has no migration 032;
-`efe30f4a` has no migration 031;
-`f02a9201` has no migration 030;
-`535b29cd` has neither migration 028 nor 029;
-`934f8f93` has no migration 027; `cbe2d839` before it
-has no migration 026, `ad919d98` returns a design with its lane and without
-its calibration step, where the current release returns it as the editor
-reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
-has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
-1.4.0, so the rehearsal accepts none of them.
-Releases before
-migration 035 refuse a database that has applied it. Rolling back past
-this schema boundary means restoring a verified
-backup, as
-[recovery](../operations/recovery.md) describes.
+Every earlier build predates the baseline: it records the retired migrations
+001–035, which this release refuses, and cannot read a baseline database either.
+Rolling back past the baseline means restoring a verified backup onto a release
+from before it, as [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.5.0; migration from
 earlier versions is checked separately and incompatible checkpoints relearn. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can

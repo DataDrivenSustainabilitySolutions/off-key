@@ -10,7 +10,6 @@ import pytest
 from fastapi import HTTPException
 from off_key_api_gateway.api.access import signed_in_member
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE, Permission
-from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import MemberRole, RememberedSession, User
 from off_key_core.schemas.members import (
     MemberInvitation,
@@ -31,7 +30,7 @@ from off_key_tactic_middleware.services.accounts.remembered_sessions import (
     RememberedSessionService,
 )
 from off_key_tactic_middleware.services.accounts.users import UserService
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from tests.support.env import set_auth_env
 from tests.support.membership import PASSWORD, bootstrap
@@ -483,36 +482,6 @@ async def test_expired_links_and_last_administrator_race(member_database):
                 MemberUpdate(role="admin", is_active=False),
                 remaining[0],
             )
-
-
-@pytest.mark.asyncio
-async def test_membership_migration_preserves_existing_accounts(member_database):
-    engine, sessions = member_database
-    admin_id = await bootstrap(sessions)
-    async with engine.begin() as connection:
-        for column in (
-            "is_active",
-            "session_version",
-            "invitation_expires_at",
-            "reset_token_hash",
-            "reset_token_expires_at",
-        ):
-            await connection.execute(text(f"ALTER TABLE users DROP COLUMN {column}"))
-        await connection.execute(
-            text("UPDATE users SET verification_token = 'legacy-link'")
-        )
-    migration = migration_files()["001_membership.sql"]
-    async with engine.begin() as connection:
-        raw = await connection.get_raw_connection()
-        await raw.driver_connection.execute(migration)
-        await raw.driver_connection.execute(migration)
-    async with sessions() as session:
-        user = await session.get(User, admin_id)
-        assert user.email == "admin@example.com"
-        assert user.is_verified and user.is_active and user.role == ADMIN_ROLE
-        assert user.session_version == 0
-        assert user.verification_token is None
-        assert user.hashed_password.startswith("$2")
 
 
 @pytest.mark.asyncio

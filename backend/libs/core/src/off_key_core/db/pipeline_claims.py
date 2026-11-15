@@ -30,7 +30,6 @@ async def pending_activations(session):
 
 
 async def require_no_pipeline_activation(session) -> None:
-    # Release reservation runs before migrations add newer activation columns.
     pending = (
         select(PipelineActivation.id)
         .where(PipelineActivation.phase.not_in(TERMINAL_ACTIVATION_PHASES))

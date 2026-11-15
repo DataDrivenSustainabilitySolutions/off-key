@@ -322,14 +322,20 @@ else:
             "tactic_image": "tactic@sha256:old",
             "release": {"application_revision": target},
         }
-        for phase in ("complete", "quiescing"):
+        # A requested database reset always takes the complete cutover.
+        cases = [("complete", "", True), ("quiescing", "", False)]
+        cases.append(("complete", "stack", False))
+        for phase, reset, expected in cases:
             ansible(
                 "playbook",
                 "-i",
                 "localhost,",
                 playbook,
                 "-e",
-                json.dumps(variables | {"expected_static": phase == "complete"}),
+                json.dumps(
+                    variables
+                    | {"expected_static": expected, "release_reset_database": reset}
+                ),
                 env=os.environ
                 | {
                     "PATH": str(self.directory) + os.pathsep + os.environ["PATH"],

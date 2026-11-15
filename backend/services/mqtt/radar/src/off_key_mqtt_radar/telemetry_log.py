@@ -160,10 +160,10 @@ class TelemetryLogReader:
             self._failing_since = None
             delay = self.poll_seconds
             self.last_read_at = time.monotonic()
-            for row in rows:
+            for index, row in enumerate(rows, start=1):
                 if self._shutdown.is_set():
                     return
-                await self._hand_over(row)
+                await self._hand_over(row, last=index == len(rows))
             if not rows:
                 # Caught up: follow the wall clock as of this read. Only the
                 # collector's batch in flight, seconds old, can still commit
@@ -185,7 +185,7 @@ class TelemetryLogReader:
             )
             return list(result.all())
 
-    async def _hand_over(self, row: Any) -> None:
+    async def _hand_over(self, row: Any, *, last: bool = False) -> None:
         received = row.timestamp.astimezone(UTC)
         self.clock.advance(received.timestamp())
         self.coverage.record_received()
@@ -197,6 +197,7 @@ class TelemetryLogReader:
             timestamp=received,
             received_monotonic=self.clock(),
             log_seq=row.log_seq,
+            sample=last,
         )
         await self.handler(message)
         self.cursor = row.log_seq

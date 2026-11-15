@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from off_key_core.db.migrate import apply_migrations, migration_status
+from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import Anomaly, AnomalyIdentity, MonitoringEvidence
 from off_key_core.schemas.system import SystemDocument, SystemSnapshot
 from off_key_mqtt_radar.config.config import RadarConfig
@@ -11,15 +11,10 @@ from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.models import AnomalyResult
 from off_key_tactic_middleware.repositories.data import AnomalyRepository
 from off_key_tactic_middleware.services.data.alarms import AlarmService
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tests.support.form_pipeline import form_radar_config
-from tests.support.schema_baselines import (
-    remove_pipeline_schema,
-    restore_retired_schema,
-    rewind_ledger,
-)
 
 pytestmark = pytest.mark.radar_integration
 
@@ -114,79 +109,3 @@ async def test_independent_monitor_alarms_survive_retries_and_independent_deleti
             assert await repository.get_by_anomaly_id(anomaly_id=first_id) is None
     finally:
         await engine.dispose()
-
-
-@pytest.mark.parametrize("ledger", [True, False])
-def test_monitor_identity_migration_preserves_historical_public_ids(
-    disposable_database, ledger
-):
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-        # Recreate the exact supported pre-007 identity shape, including the old
-        # insert trigger. No application writers are active during this upgrade.
-        connection.exec_driver_sql("""
-            ALTER TABLE anomaly_identity DROP CONSTRAINT fk_anomaly_identity_anomaly;
-            ALTER TABLE anomaly_identity DROP CONSTRAINT uq_anomaly_identity_target;
-            ALTER TABLE anomalies DROP CONSTRAINT pk_anomaly;
-            ALTER TABLE anomaly_identity DROP COLUMN service_id;
-            ALTER TABLE anomalies DROP COLUMN service_id;
-            ALTER TABLE anomalies ADD CONSTRAINT pk_anomaly
-                PRIMARY KEY (charger_id, timestamp, telemetry_type);
-            ALTER TABLE anomaly_identity ADD CONSTRAINT uq_anomaly_identity_target
-                UNIQUE (charger_id, timestamp, telemetry_type);
-            ALTER TABLE anomaly_identity ADD CONSTRAINT fk_anomaly_identity_anomaly
-                FOREIGN KEY (charger_id, timestamp, telemetry_type)
-                REFERENCES anomalies (charger_id, timestamp, telemetry_type)
-                ON DELETE CASCADE;
-            CREATE OR REPLACE FUNCTION off_key_sync_anomaly_identity()
-            RETURNS TRIGGER AS $$
-            BEGIN
-                INSERT INTO anomaly_identity (charger_id, timestamp, telemetry_type)
-                VALUES (NEW.charger_id, NEW.timestamp, NEW.telemetry_type)
-                ON CONFLICT (charger_id, timestamp, telemetry_type) DO NOTHING;
-                RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql;
-            INSERT INTO anomalies
-                (charger_id, timestamp, telemetry_type, anomaly_type, anomaly_value)
-            VALUES ('historical', now() - interval '1 day', '__multivariate__',
-                'ml_conformal_static_multivariate', 0.001);
-            UPDATE anomaly_identity SET anomaly_id = 'preserved-public-id';
-        """)
-        remove_pipeline_schema(connection)
-        restore_retired_schema(connection)
-        rewind_ledger(
-            connection, "007_monitor_anomaly_identity.sql" if ledger else None
-        )
-
-    with disposable_database.begin() as connection:
-        assert (
-            "007_monitor_anomaly_identity.sql"
-            in migration_status(connection)["pending"]
-        )
-        apply_migrations(connection)
-        assert connection.execute(
-            text("SELECT anomaly_id, service_id FROM anomaly_identity")
-        ).one() == ("preserved-public-id", "")
-        assert connection.scalar(text("SELECT count(*) FROM anomalies")) == 1
-        connection.exec_driver_sql("""
-            INSERT INTO anomalies
-                (charger_id, timestamp, telemetry_type, service_id,
-                    anomaly_type, anomaly_value)
-            SELECT charger_id, timestamp, telemetry_type, monitor,
-                anomaly_type, anomaly_value
-            FROM anomalies CROSS JOIN unnest(ARRAY['monitor-a', 'monitor-b']) monitor
-            WHERE service_id = '';
-        """)
-        assert connection.scalar(text("SELECT count(*) FROM anomalies")) == 3
-        assert connection.scalar(text("SELECT count(*) FROM anomaly_identity")) == 3
-        assert apply_migrations(connection)["applied"] == []
-        assert (
-            connection.scalar(
-                text(
-                    "SELECT service_id FROM anomaly_identity "
-                    "WHERE anomaly_id = 'preserved-public-id'"
-                )
-            )
-            == ""
-        )

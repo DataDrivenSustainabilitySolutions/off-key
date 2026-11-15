@@ -164,6 +164,22 @@ limits apply per gateway process; edge rate limits can add a deployment-wide
 budget. The initial retention is fourteen days with a two-GB telemetry ceiling: long
 enough for a week of calibration and for a test on the last days of history.
 
+## Reset the demo database
+
+The demo's database is its own. A release from the schema baseline on refuses one
+created before it, as [production](production.md#schema-baseline-and-database-reset)
+does, so reset it once from a clean checkout of the tested SHA:
+
+```sh
+make -C infra deploy-demo REVISION=<tested-full-SHA> BOOTSTRAP=true RESET_DATABASE=off-key-demo
+```
+
+The release backs the database up to `/opt/stacks/off-key-demo/.backup/resets/`
+on the demo worker, starts it empty and emails a new administrator invitation.
+Accept it at the demo hostname, then run `make -C infra initialize-demo` to
+recreate the viewer and the empty catalogue, and configure the showcased
+monitors and datasets again.
+
 ## Local rehearsal
 
 Use a separate project and private environment file; do not apply the demo overlay

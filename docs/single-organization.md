@@ -57,18 +57,16 @@ revoking it and each service a key starts are logged as security events.
    SMTP. The development default is Mailpit, which captures mail rather than
    delivering it. Real organization invitations and password recovery require
    a working SMTP relay. Use authenticated TLS and certificate validation.
-3. For an existing database, take a backup and pause the API, TACTIC, and db-sync
-   during the upgrade. Apply migrations only through the packaged migration
-   workflow described in
-   [Collection](operations/system-collection.md#upgrade-from-the-previous-runtime);
-   fresh databases are initialized by db-sync automatically. The membership
-   migration preserves verified accounts, password hashes, roles, favorites, and
-   telemetry; obsolete verification links are invalidated, and every existing login
-   session must sign in again.
+3. Fresh databases are initialized by db-sync automatically. For an existing
+   database, take a backup and pause the API, TACTIC, and db-sync during the
+   upgrade, and apply migrations only through the packaged migration workflow
+   described in [Collection](operations/system-collection.md#upgrades). A
+   database from before the schema baseline cannot be upgraded and starts empty
+   instead.
 4. Start matching versions of all application services, then check readiness.
-   Do not mix old and new API/TACTIC versions. The old schema checker rejects the
-   added columns, so rolling back requires a coordinated database restore or a
-   separately reviewed reverse migration.
+   Do not mix old and new API/TACTIC versions. The schema checker rejects
+   columns it does not declare, so rolling back requires a coordinated database
+   restore or a separately reviewed reverse migration.
 5. Initialize the first administrator by email:
 
    ```sh

@@ -8,7 +8,7 @@ from off_key_core.schemas.radar import (
     MonitorSetup,
     PerformanceConfig,
 )
-from off_key_tactic_middleware.domain import ConflictError, ValidationError
+from off_key_tactic_middleware.domain import ValidationError
 from off_key_tactic_middleware.services.pipelines import forms
 
 
@@ -32,12 +32,6 @@ def submitted(monkeypatch):
         async def apply_form(self, request, performance):
             calls.append((request, performance))
             return SimpleNamespace(id="activation", service_id="service")
-
-        async def form_launch(self, request, saved):
-            if saved.container_name == "unapplied":
-                raise ConflictError("Wait for the collection configuration")
-            calls.append((request, saved))
-            return "launch", "metadata"
 
     async def snapshot(_session):
         streams = [
@@ -123,43 +117,3 @@ async def test_setup_reports_an_unsupported_feature_count_without_topics(submitt
 
     assert "telemetry/" not in str(error.value)
     assert submitted == []
-
-
-@pytest.mark.asyncio
-async def test_saved_form_monitor_converts_to_the_equivalent_pipeline(submitted):
-    saved = form(display_name="Pump").model_dump(mode="json")
-
-    assert await forms.convert_saved_form_monitor(None, saved) == (
-        "launch",
-        "metadata",
-    )
-    [(request, parsed)] = submitted
-    assert request.bindings == {"input_1": "reading-l1", "input_2": "reading-l2"}
-    assert parsed.container_name == "radar-c1-1"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "saved",
-    [
-        {"mqtt_topics": ["telemetry/c1/L9"]},
-        {"monitoring": {"strategy": "unsupported"}},
-    ],
-)
-async def test_saved_form_monitor_without_its_readings_is_retired(submitted, saved):
-    launch = form().model_dump(mode="json") | saved
-
-    with pytest.raises(forms.UnconvertibleFormMonitor):
-        await forms.convert_saved_form_monitor(None, launch)
-    assert submitted == []
-
-
-@pytest.mark.asyncio
-async def test_unapplied_collection_blocks_the_release_instead_of_retiring(
-    submitted,
-):
-    saved = form(container_name="unapplied").model_dump(mode="json")
-
-    with pytest.raises(ValueError, match="Wait") as error:
-        await forms.convert_saved_form_monitor(None, saved)
-    assert not isinstance(error.value, forms.UnconvertibleFormMonitor)

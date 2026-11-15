@@ -17,6 +17,9 @@ just to make a newer release run; complete them as described below.
    rerun failed main checks if needed, and manually dispatch **the same tested SHA**.
    Use the original bootstrap setting. Completed migrations validate their checksums;
    completed monitor stops/restarts are resumed without creating duplicate workers.
+   After a [database reset](production.md#schema-baseline-and-database-reset),
+   retry without `RESET_DATABASE`: the database is already empty or on the
+   baseline, and the reset's backup stays where it was saved.
 4. Verify the public app, catalog and monitors. Reenable automatic deployment only
    when the release succeeds and its operation is complete.
 

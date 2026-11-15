@@ -73,9 +73,6 @@ from .table_contracts import (
 )
 from .workloads import RadarWorkload as RadarWorkload
 
-# Migration 023 adds this check; databases adopted before it lack it.
-DESIRED_STATE_CHECK = "ck_services_desired_state"
-
 
 class User(Base):
     __tablename__ = "users"
@@ -99,7 +96,7 @@ class User(Base):
     reset_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # The role's id; migration 021 turned the former user/admin enum into it.
+    # The role's id, a reference into member_roles.
     role: Mapped[str] = mapped_column(
         Text, ForeignKey("member_roles.id"), default=MEMBER_ROLE, nullable=False
     )
@@ -142,32 +139,6 @@ class MemberRole(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
-
-
-class CollectionConfiguration(Base):
-    __tablename__ = "collection_configuration"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    document: Mapped[Any] = mapped_column(JSONB, nullable=False)
-    ingress_status: Mapped[Any] = mapped_column(JSONB, nullable=False, default=dict)
-    collection_status: Mapped[Any] = mapped_column(JSONB, nullable=False, default=dict)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
-    __table_args__ = (CheckConstraint("id = 1", name="collection_singleton"),)
-
-
-class CollectionRevision(Base):
-    __tablename__ = "collection_revisions"
-
-    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
-    document: Mapped[Any] = mapped_column(JSONB, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class CollectionBinding(Base):
@@ -263,10 +234,11 @@ class Telemetry(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     # Position in the telemetry log, in commit order; RADAR reads by it.
-    log_seq: Mapped[int | None] = mapped_column(
+    log_seq: Mapped[int] = mapped_column(
         BigInteger,
         TELEMETRY_LOG_SEQUENCE,
         server_default=TELEMETRY_LOG_SEQUENCE.next_value(),
+        nullable=False,
     )
 
     # The primary key serves upserts; TimescaleDB adds its own time index.
@@ -336,7 +308,7 @@ class MonitoringService(Base):
     __table_args__ = (
         CheckConstraint(
             "desired_state IN ('running', 'stopped', 'deleted')",
-            name=DESIRED_STATE_CHECK,
+            name="ck_services_desired_state",
         ),
     )
 

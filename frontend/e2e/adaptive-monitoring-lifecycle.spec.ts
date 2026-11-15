@@ -98,11 +98,26 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const topics = { L1: inputs.L1, L2: inputs.L2 };
       const expectedReadings = [l1Reading, l2Reading].sort();
       await publishCycle(activePublisher, topics, 0);
-      const readJson = async <T>(path: string) => {
-        const response = await api.get(path, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        return (await response.json()) as T;
+      // Monitor and evidence reads share one per-minute API budget with the
+      // page itself, so a poll can meet 429: wait out the window and read again.
+      // Any other failure names its status instead of failing on the error body.
+      const readJson = async <T>(path: string): Promise<T> => {
+        for (;;) {
+          const response = await api.get(path, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          if (response.status() === 429) {
+            const retryAfter = Number(response.headers()["retry-after"]);
+            await new Promise((resolve) =>
+              setTimeout(resolve, (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 5) * 1_000),
+            );
+            continue;
+          }
+          if (!response.ok()) {
+            throw new Error(`GET ${path} returned ${response.status()}: ${await response.text()}`);
+          }
+          return (await response.json()) as T;
+        }
       };
       const measurementsPath = (readingId: string) =>
         `/v1/readings/${encodeURIComponent(readingId)}/measurements`;
@@ -210,7 +225,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
                 (status?.message_count ?? 0) >= publishedCycles.length * 2,
             };
           },
-          { timeout: 120_000 },
+          { timeout: 120_000, intervals: [1_000] },
         )
         .toEqual({
           operational: true,
@@ -237,7 +252,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
                   Date.parse(lastPublishedCycle.L2),
             );
           },
-          { timeout: 120_000 },
+          { timeout: 120_000, intervals: [1_000] },
         )
         .toBe(true);
 
@@ -302,7 +317,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
             );
             return heldEvidence !== undefined;
           },
-          { timeout: 120_000 },
+          { timeout: 120_000, intervals: [1_000] },
         )
         .toBe(true);
       expect(heldEvidence!.strategy).toBe("adaptive_stream");
@@ -346,7 +361,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
             );
             return delayedEvidence !== undefined;
           },
-          { timeout: 120_000 },
+          { timeout: 120_000, intervals: [1_000] },
         )
         .toBe(true);
       expect(Date.parse(delayedEvidence!.timestamp)).toBe(

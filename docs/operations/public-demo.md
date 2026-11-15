@@ -110,8 +110,11 @@ deployment selection alone deliberately does not overwrite saved configuration.
 
 ## Deploy and activate
 
-The demo deploys only from the **Deploy Production** workflow with *stack*
-`demo` (`make deploy-demo REVISION=<SHA>` dispatches it). Its encrypted vault and
+The demo deploys from the **Deploy Production** workflow, separately from
+production. A manual run with *stack* `demo` releases any tested revision
+(`make deploy-demo REVISION=<SHA>` dispatches it). After a green main, the same
+run releases production and then the demo, each behind its own switch; a demo
+failure leaves production untouched and opens no production release issue. Its encrypted vault and
 inventory live as secrets of the `production` GitHub environment, so no laptop
 holds the copy a release depends on.
 
@@ -143,8 +146,7 @@ holds the copy a release depends on.
    the frontend and API. Persistence works as in [production](production.md);
    with a single node, node-local volumes stay with the stack.
 5. Run **Deploy Production** with *stack* `demo`, with a full main SHA that passed CI, `action: deploy` and
-   `bootstrap` checked. Leave `bootstrap` unchecked on later releases. The demo
-   never deploys automatically.
+   `bootstrap` checked. Leave `bootstrap` unchecked on later releases.
 6. Accept the first-administrator invitation at the demo hostname and choose
    your password. Then run **Deploy Production** with *stack* `demo`, `action: initialize`. This
    creates the server-only viewer and seeds an empty catalogue with recording
@@ -157,6 +159,11 @@ holds the copy a release depends on.
    inventory and release the landing page. An empty value hides the link until
    the deployment is ready. It can also remove the link independently of the
    demo stack. The rendered Demo link remains visible on narrow screens.
+9. Add the `production` environment variable `DEMO_AUTO_DEPLOY_ENABLED` with
+   value `true`. From then on every green main releases the demo too, but only
+   when its runtime files changed since its last verified release. Set it to
+   anything else to keep the demo manual; production's `AUTO_DEPLOY_ENABLED`
+   is independent of it.
 
 The demo viewer is a dedicated `demo-viewer` member. Its sole permission is
 `use_dojo`, which the current API requires for Dojo reads as well as writes.

@@ -369,6 +369,42 @@ class CDTests(unittest.TestCase):
             steps["Create private deployment configuration"]["run"],
         )
 
+    def test_a_green_main_releases_production_then_the_demo_on_separate_switches(
+        self,
+    ):
+        workflow = yaml.load(
+            (ROOT.parent / ".github/workflows/deploy-production.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        job = workflow["jobs"]["deploy"]
+        strategy = job["strategy"]
+        # Production goes first, one stack at a time, and a failure of either
+        # never cancels the other.
+        self.assertEqual(strategy["fail-fast"], "false")
+        self.assertEqual(strategy["max-parallel"], "1")
+        self.assertIn('\'["prod", "demo"]\'', strategy["matrix"]["stack"])
+        self.assertIn("format('[\"{0}\"]', inputs.stack)", strategy["matrix"]["stack"])
+        self.assertEqual(job["concurrency"]["group"], "offkey-production")
+        self.assertEqual(job["env"]["STACK"], "${{ matrix.stack }}")
+        steps = {step.get("name", ""): step for step in job["steps"]}
+        gate = steps["Recheck eligibility after waiting for the deployment slot"]
+        self.assertEqual(
+            gate["env"]["DEMO_AUTO_DEPLOY_ENABLED"],
+            "${{ vars.DEMO_AUTO_DEPLOY_ENABLED }}",
+        )
+        self.assertIn(
+            'if [ "$STACK" = demo ]; then enabled=$DEMO_AUTO_DEPLOY_ENABLED; fi',
+            gate["run"],
+        )
+        demo = steps["Deploy the public demo and verify it"]
+        # An automatic run releases the demo only when its runtime files changed.
+        self.assertIn(
+            'elif [ "$GITHUB_EVENT_NAME" = workflow_run ] && ! demo_changed; then',
+            demo["run"],
+        )
+        self.assertIn('deployment-needed.yml "${vault[@]}"', demo["run"])
+        self.assertEqual(demo["env"]["ACTION"], "${{ inputs.action || 'deploy' }}")
+
     def test_documentation_and_test_commits_cannot_hide_unreleased_runtime_changes(
         self,
     ):

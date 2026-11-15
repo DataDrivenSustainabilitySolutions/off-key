@@ -101,8 +101,14 @@
 - name: Require recovery of a different interrupted release
   assert:
     that: (release_maintenance_record.content | b64decode | from_json).revision == release.application_revision
-    fail_msg: A different release is incomplete. Retry that revision or complete recovery before changing releases.
-  when: release_maintenance_stat.stat.exists
+    fail_msg: >-
+      A different release is incomplete. Retry that revision, complete recovery,
+      or reset this stack's database (RESET_DATABASE={{ stack_name }}) to discard it.
+  # A reset erases the database the interrupted operation was changing, so its
+  # record no longer describes anything; the reset release replaces it.
+  when:
+    - release_maintenance_stat.stat.exists
+    - release_reset_database | default('') != stack_name
 
 - name: Require one application and infrastructure commit
   assert:

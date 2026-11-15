@@ -452,6 +452,63 @@ class ReleaseTests(unittest.TestCase):
             self.assertNotIn("fixture-token", failed.stdout + failed.stderr)
             self.assertFalse(Path((root / "docker-config-path").read_text()).exists())
 
+    def test_only_a_reset_of_this_stack_discards_a_different_interrupted_release(
+        self,
+    ):
+        names = {
+            "Check for a pending production operation",
+            "Read the pending operation",
+            "Require recovery of a different interrupted release",
+        }
+        tasks = [
+            task
+            for task in yaml.safe_load(
+                (ROOT / "ansible/roles/stack_prepare/tasks/release.yml").read_text()
+            )
+            if task.get("name") in names
+        ]
+        self.assertEqual(len(tasks), 3)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "release-maintenance.json").write_text(
+                json.dumps({"revision": "b" * 40})
+            )
+            for reset, passes in (
+                ("", False),
+                ("off-key-demo", False),
+                ("off-key", True),
+            ):
+                with self.subTest(reset=reset):
+                    playbook = root / "guard.yml"
+                    playbook.write_text(
+                        yaml.safe_dump(
+                            [
+                                {
+                                    "hosts": "localhost",
+                                    "gather_facts": False,
+                                    "become": False,
+                                    "vars": {
+                                        "stack_name": "off-key",
+                                        "stack_dir": str(root),
+                                        "release_reset_database": reset,
+                                        "release": {"application_revision": "a" * 40},
+                                    },
+                                    "tasks": tasks,
+                                }
+                            ]
+                        )
+                    )
+                    result = ansible(
+                        "playbook",
+                        "-i",
+                        "localhost,",
+                        "-c",
+                        "local",
+                        str(playbook),
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode == 0, passes, result.stdout)
+
     def test_readiness_tasks_are_valid_jinja_templates(self):
         for name in (
             "verify.yml",

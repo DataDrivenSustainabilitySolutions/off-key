@@ -62,8 +62,7 @@
     msg: >-
       The {{ stack_name }} database predates the schema baseline and cannot be
       upgraded. Nothing was stopped or changed. Deploy again with
-      RESET_DATABASE={{ stack_name }} to back it up and start from an empty
-      database.
+      RESET_DATABASE={{ stack_name }} to start from an empty database.
   when: release_job_output.reset_required | default(false)
 
 - name: Stop before any writer when the migration preflight fails

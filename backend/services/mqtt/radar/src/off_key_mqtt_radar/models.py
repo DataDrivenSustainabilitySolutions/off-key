@@ -73,9 +73,10 @@ class MQTTMessage:
     received_monotonic: float | None = None
     # The reading's telemetry log position, when it came from the log.
     log_seq: int | None = None
-    # The last reading of a log read: its step refreshes the diagnostic
-    # observation however recently the last one was sampled, so a burst read
-    # from the log never leaves the observation on the burst's first step.
+    # Its step refreshes the diagnostic observation however recently the last
+    # one was sampled: the last reading of a full log read, and every reading
+    # of the log's tail, so a burst never leaves the observation on its first
+    # step.
     sample: bool = False
 
     def get_json_payload(self) -> dict[str, Any]:

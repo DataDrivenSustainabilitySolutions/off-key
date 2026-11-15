@@ -509,6 +509,81 @@ class ReleaseTests(unittest.TestCase):
                     )
                     self.assertEqual(result.returncode == 0, passes, result.stdout)
 
+    def test_an_unreadable_frontend_service_names_its_cause(self):
+        names = [
+            "Require the deploy user to reach Docker on the Swarm manager",
+            "Require the inventory's manager to be a Swarm manager",
+            "Require the deployed frontend image to be readable",
+        ]
+        tasks = [
+            task
+            for task in yaml.safe_load(
+                (ROOT / "ansible/roles/stack_prepare/tasks/release.yml").read_text()
+            )
+            if task.get("name") in names
+        ]
+        self.assertEqual([task["name"] for task in tasks], names)
+        with patch.dict(
+            sys.modules, {"check_application": load_script("check_application")}
+        ):
+            failed_tasks = load_script("failed_tasks").failed_tasks
+        cases = (
+            (0, "", []),
+            (1, "Error response from daemon: No such service: off-key_frontend", []),
+            (
+                1,
+                "permission denied while trying to connect to the Docker daemon socket",
+                names[:1],
+            ),
+            (
+                1,
+                "Cannot connect to the Docker daemon at unix:///var/run/docker.sock.",
+                names[:1],
+            ),
+            (
+                1,
+                "Error response from daemon: This node is not a swarm manager.",
+                names[1:2],
+            ),
+            (1, "Error response from daemon: something else", names[2:]),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "read.yml"
+            for rc, stderr, expected in cases:
+                with self.subTest(stderr=stderr):
+                    playbook.write_text(
+                        yaml.safe_dump(
+                            [
+                                {
+                                    "hosts": "localhost",
+                                    "gather_facts": False,
+                                    "become": False,
+                                    "vars": {
+                                        "deployed_frontend": {
+                                            "rc": rc,
+                                            "stderr": stderr,
+                                        }
+                                    },
+                                    "tasks": tasks,
+                                }
+                            ]
+                        )
+                    )
+                    result = ansible(
+                        "playbook",
+                        "-i",
+                        "localhost,",
+                        "-c",
+                        "local",
+                        str(playbook),
+                        check=False,
+                    )
+                    self.assertEqual(
+                        failed_tasks(result.stdout.splitlines()),
+                        expected,
+                        result.stdout,
+                    )
+
     def test_readiness_tasks_are_valid_jinja_templates(self):
         for name in (
             "verify.yml",

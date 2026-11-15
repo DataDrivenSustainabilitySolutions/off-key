@@ -224,14 +224,18 @@ def exercise_graph(client, entity, service_id, run_id, batch):
             assert state["phase"] != "failed", state
             learning = state.get("adaptive_learning", {})
             observation = state.get("observation")
+            # Each log read refreshes the observation, so a score-ready sample
+            # can appear before the run has learned from every paced frame;
+            # wait for enough of them instead of judging the first sample.
             if (
                 learning.get("state") == "operational"
+                and learning.get("model_updates", 0) >= 8
                 and observation is not None
+                and observation["sequence_number"] >= 8
                 and observation["passes"]["score"]["detector"]["state"] == "ready"
             ):
                 assert learning["ready"]
-                assert learning["model_updates"] >= 8
-                assert state["sequence_number"] >= observation["sequence_number"] >= 8
+                assert state["sequence_number"] >= observation["sequence_number"]
                 assert state["nodes"]["detector"]["score_count"] > 0
                 assert len(observation["input_timestamps"]) == 2
                 score = observation["passes"]["score"]

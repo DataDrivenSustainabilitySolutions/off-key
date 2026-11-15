@@ -145,6 +145,8 @@ Only after step 7 succeeds, change `AUTO_DEPLOY_ENABLED` to `true` in the produc
 environment. Future runtime changes merged into main deploy automatically after all
 release checks pass. Documentation changes skip deployment; the comparison starts
 at the last verified release, so an earlier runtime change cannot be skipped.
+The [public demo](public-demo.md) follows on its own switch,
+`DEMO_AUTO_DEPLOY_ENABLED`, once its first manual release succeeded.
 
 Old images are removed on their own as well: each verified release removes the
 superseded ones from the nodes, and the weekly **GHCR Retention** workflow lists the

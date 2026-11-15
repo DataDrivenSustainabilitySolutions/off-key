@@ -1,6 +1,8 @@
 name: Deploy Production
 
-# Also deploys the public demo (off-key-demo) on the same Swarm, manually only.
+# Also deploys the public demo (off-key-demo) on the same Swarm. After a green
+# main, production and then the demo each release on their own switch, and a
+# demo failure never changes production; a dispatch releases one chosen stack.
 # Both stacks keep their encrypted vault and inventory only as secrets of the
 # production environment, so no machine holds a copy a release depends on.
 on:
@@ -65,9 +67,16 @@ jobs:
   deploy:
     needs: eligibility
     if: needs.eligibility.outputs.ready == 'true'
+    strategy:
+      # One stack at a time, production first; each finishes whatever the other does.
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        stack: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.stack) || '["prod", "demo"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: production
+    # Both stacks share the Swarm and its image cleanup, so one release runs at a time.
     concurrency:
       group: offkey-production
       cancel-in-progress: false
@@ -81,7 +90,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       OFFKEY_RELEASE_REVISION: ${{ needs.eligibility.outputs.revision }}
-      STACK: ${{ inputs.stack || 'prod' }}
+      STACK: ${{ matrix.stack }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,9 +113,13 @@ jobs:
         id: release
         env:
           AUTO_DEPLOY_ENABLED: ${{ vars.AUTO_DEPLOY_ENABLED }}
+          DEMO_AUTO_DEPLOY_ENABLED: ${{ vars.DEMO_AUTO_DEPLOY_ENABLED }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_run ] && [ "$AUTO_DEPLOY_ENABLED" != true ]; then
-            echo 'Automatic deployment is disabled until the first controlled cutover succeeds.'
+          # Each stack has its own switch, so the demo can stay manual while production releases.
+          enabled=$AUTO_DEPLOY_ENABLED
+          if [ "$STACK" = demo ]; then enabled=$DEMO_AUTO_DEPLOY_ENABLED; fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ] && [ "$enabled" != true ]; then
+            echo "Automatic $STACK deployment is disabled until its first controlled release succeeds."
             echo 'ready=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -126,7 +139,7 @@ jobs:
           OFFKEY_DEMO_VAULT: ${{ secrets.OFFKEY_DEMO_VAULT }}
           OFFKEY_DEMO_INVENTORY: ${{ secrets.OFFKEY_DEMO_INVENTORY }}
           # The demo vault may have its own password; production's unlocks it otherwise.
-          OFFKEY_VAULT_PASSWORD: ${{ (inputs.stack == 'demo' && secrets.OFFKEY_DEMO_VAULT_PASSWORD) || secrets.OFFKEY_VAULT_PASSWORD }}
+          OFFKEY_VAULT_PASSWORD: ${{ (matrix.stack == 'demo' && secrets.OFFKEY_DEMO_VAULT_PASSWORD) || secrets.OFFKEY_VAULT_PASSWORD }}
           OFFKEY_DEPLOY_SSH_KEY: ${{ secrets.OFFKEY_DEPLOY_SSH_KEY }}
           OFFKEY_DEPLOY_KNOWN_HOSTS: ${{ secrets.OFFKEY_DEPLOY_KNOWN_HOSTS }}
         run: python3 infra/scripts/prepare_ci_secrets.py "$STACK"
@@ -147,9 +160,9 @@ jobs:
       - name: Deploy the public demo and verify it
         if: steps.release.outputs.ready == 'true' && env.STACK == 'demo'
         env:
-          ACTION: ${{ inputs.action }}
-          BOOTSTRAP: ${{ inputs.bootstrap }}
-          RESET_DATABASE: ${{ inputs.reset_database }}
+          ACTION: ${{ inputs.action || 'deploy' }}
+          BOOTSTRAP: ${{ inputs.bootstrap || false }}
+          RESET_DATABASE: ${{ inputs.reset_database || '' }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
           ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
           ANSIBLE_CALLBACKS_ENABLED: ansible.posix.profile_tasks
@@ -165,10 +178,19 @@ jobs:
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
           vault=(-i inventories/demo/hosts.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password")
           log="$OFFKEY_DEPLOY_DIRECTORY/demo.log"
+          # An automatic run skips a demo whose runtime files match its last verified release.
+          demo_changed() {
+            uv run --frozen ansible-playbook deployment-needed.yml "${vault[@]}" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 \
+              || { echo 'Demo preflight failed; check its private inventory and the setup guide.'; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log"; exit 1; }
+            [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/demo-needed")" = yes ]
+          }
           # Logs stay private; a failure prints only the names of the failed tasks.
           if [ "$ACTION" = initialize ]; then
             uv run --frozen ansible-playbook bootstrap-demo.yml "${vault[@]}" > "$log" 2>&1 \
               || { echo 'Demo initialization failed.'; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$log"; exit 1; }
+          elif [ "$GITHUB_EVENT_NAME" = workflow_run ] && ! demo_changed; then
+            echo 'No runtime changes since the last verified demo release; the demo is unchanged.'
+            exit 0
           else
             uv run --frozen ansible-playbook deploy.yml "${vault[@]}" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "release_reset_database=$RESET_DATABASE" > "$log" 2>&1 \
               || { echo 'Demo release failed; inspect private server records and retry the attempted SHA.'; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$log"; exit 1; }

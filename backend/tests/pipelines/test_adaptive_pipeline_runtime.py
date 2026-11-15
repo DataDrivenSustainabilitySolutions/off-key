@@ -393,6 +393,27 @@ def test_live_values_come_from_real_score_pass_with_original_metadata(monkeypatc
     PipelineRuntimeState.model_validate(oversized)
 
 
+def test_a_burst_keeps_its_first_observation_until_the_next_is_requested(
+    monkeypatch,
+):
+    """A log read hands a monitor many readings within one sampling interval.
+    The last reading of the read asks for a sample, so the observation shows
+    the end of the burst rather than its first, warming-up step."""
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.pipelines.diagnostics.time.monotonic", lambda: 100.0
+    )
+    service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
+    for index in range(1, 7):
+        service.process_data_point(_point(index))
+    assert service.get_pipeline_state()["observation"]["sequence_number"] == 1
+
+    service.diagnostics.sample_next()
+    service.process_data_point(_point(7))
+    observation = service.get_pipeline_state()["observation"]
+    assert observation["sequence_number"] == 7
+    assert observation["phase"] == service.state.value
+
+
 def test_diagnostic_failure_does_not_replace_inference_result(monkeypatch):
     service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
 

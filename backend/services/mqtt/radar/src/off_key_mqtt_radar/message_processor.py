@@ -119,6 +119,7 @@ class MessageProcessor:
             AnomalyResult if processing succeeded, None if skipped
         """
         start_time = time.time()
+        self._request_sample(message)
 
         try:
             # Step 1: Parse payload
@@ -203,6 +204,14 @@ class MessageProcessor:
             self.error_count += 1
             self._record_coverage_drop("processing_error")
             return None
+
+    def _request_sample(self, message: MQTTMessage) -> None:
+        """Refresh the diagnostic observation on the last reading of a read."""
+        if not message.sample:
+            return
+        diagnostics = getattr(self.detector.primary_service, "diagnostics", None)
+        if diagnostics is not None:
+            diagnostics.sample_next()
 
     def _record_coverage_drop(self, reason: str) -> None:
         if self.coverage is not None:

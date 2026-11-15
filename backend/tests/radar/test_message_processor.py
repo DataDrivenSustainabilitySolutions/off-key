@@ -298,3 +298,19 @@ async def test_process_message_aligns_evidence_to_payload_event_timestamp():
     assert result.context["alignment"]["input_timestamps"] == {
         "voltage": event_time.timestamp()
     }
+
+
+def test_the_last_reading_of_a_log_read_requests_a_diagnostic_sample():
+    detector = MagicMock()
+    processor = _build_processor(required_sensors=set())
+    processor.detector = detector
+    diagnostics = detector.primary_service.diagnostics
+
+    processor.process_message_sync(
+        MQTTMessage(topic="telemetry/1/voltage", payload=b'{"value": 1.0}')
+    )
+    diagnostics.sample_next.assert_not_called()
+    processor.process_message_sync(
+        MQTTMessage(topic="telemetry/1/voltage", payload=b'{"value": 2.0}', sample=True)
+    )
+    diagnostics.sample_next.assert_called_once_with()

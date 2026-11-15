@@ -76,7 +76,30 @@
       - "{% raw %}{{.Spec.TaskTemplate.ContainerSpec.Image}}{% endraw %}"
   changed_when: false
   register: deployed_frontend
-  failed_when: deployed_frontend.rc != 0 and 'no such service:' not in deployed_frontend.stderr | lower
+  failed_when: false
+
+# The release log stays private and a failure prints only task names, so each
+# known cause of an unreadable service has its own named check.
+- name: Require the deploy user to reach Docker on the Swarm manager
+  assert:
+    that:
+      - "'permission denied' not in deployed_frontend.stderr | lower"
+      - "'cannot connect to the docker daemon' not in deployed_frontend.stderr | lower"
+    fail_msg: The inventory's deploy user cannot use Docker on its Swarm manager.
+    quiet: true
+
+- name: Require the inventory's manager to be a Swarm manager
+  assert:
+    that:
+      - "'not a swarm manager' not in deployed_frontend.stderr | lower"
+    fail_msg: The inventory's swarm_manager host is not a manager of the Swarm.
+    quiet: true
+
+- name: Require the deployed frontend image to be readable
+  assert:
+    that: deployed_frontend.rc == 0 or 'no such service:' in deployed_frontend.stderr | lower
+    fail_msg: Docker could not inspect the stack's frontend service.
+    quiet: true
 
 - name: Show the deployed and selected application versions
   debug:

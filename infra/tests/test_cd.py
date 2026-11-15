@@ -88,7 +88,7 @@ class CDTests(unittest.TestCase):
             original = Path.cwd()
             config = root / "infra/ansible/inventories/prod/group_vars/all"
             config.mkdir(parents=True)
-            values = dict.fromkeys(secrets.FILES, "synthetic-value") | {
+            values = dict.fromkeys(secrets.files("prod"), "synthetic-value") | {
                 "OFFKEY_PROD_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nfixture",
                 "OFFKEY_DEPLOY_DIRECTORY": str(root / "private"),
                 "GITHUB_ACTOR": "fixture-owner",
@@ -112,11 +112,52 @@ class CDTests(unittest.TestCase):
             finally:
                 os.chdir(original)
 
+    def test_the_demo_reads_its_own_vault_and_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = Path.cwd()
+            config = root / "infra/ansible/inventories/demo/group_vars/all"
+            config.mkdir(parents=True)
+            values = dict.fromkeys(secrets.files("demo"), "demo-value") | {
+                "OFFKEY_DEMO_VAULT": "$ANSIBLE_VAULT;1.1;AES256\ndemo",
+                "OFFKEY_PROD_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nproduction",
+                "OFFKEY_PROD_INVENTORY": "production-hosts",
+                "OFFKEY_DEPLOY_DIRECTORY": str(root / "private"),
+                "GITHUB_ACTOR": "fixture-owner",
+                "GH_TOKEN": "fixture-token",
+            }
+            try:
+                os.chdir(root)
+                with patch.dict(os.environ, values):
+                    secrets.main("demo")
+                self.assertIn("demo", (config / "vault.yml").read_text())
+                self.assertEqual(
+                    (root / "infra/ansible/inventories/demo/hosts.yml").read_text(),
+                    "demo-value\n",
+                )
+                self.assertFalse(
+                    (root / "infra/ansible/inventories/prod/hosts.yml").exists()
+                )
+            finally:
+                os.chdir(original)
+
+    def test_a_demo_without_its_inventory_writes_no_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = dict.fromkeys(secrets.files("demo"), "fixture") | {
+                "OFFKEY_DEMO_VAULT": "$ANSIBLE_VAULT;1.1;AES256\ndemo",
+                "OFFKEY_DEMO_INVENTORY": "",
+                "OFFKEY_DEPLOY_DIRECTORY": str(Path(directory) / "private"),
+            }
+            with patch.dict(os.environ, values), self.assertRaises(SystemExit):
+                secrets.main("demo")
+            self.assertFalse((Path(directory) / "private").exists())
+
     def test_materialized_configuration_never_dirties_the_release_checkout(self):
         # A release refuses uncommitted infrastructure changes, so every file
         # the workflow writes into the checkout must be ignored by git.
         written = [
-            f"infra/ansible/inventories/prod/{name}"
+            f"infra/ansible/inventories/{stack}/{name}"
+            for stack in ("prod", "demo")
             for name in ("hosts.yml", "group_vars/all/vault.yml")
         ]
         result = subprocess.run(
@@ -130,7 +171,7 @@ class CDTests(unittest.TestCase):
 
     def test_missing_or_plaintext_vault_writes_no_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
-            values = dict.fromkeys(secrets.FILES, "fixture") | {
+            values = dict.fromkeys(secrets.files("prod"), "fixture") | {
                 "OFFKEY_DEPLOY_DIRECTORY": str(Path(directory) / "private")
             }
             with patch.dict(os.environ, values), self.assertRaises(SystemExit):
@@ -224,7 +265,8 @@ class CDTests(unittest.TestCase):
             for step in workflow["jobs"]["deploy"]["steps"]
             if "deploy.yml" in step.get("run", "")
         ]
-        self.assertEqual(len(steps), 1)
+        # Production and the public demo each release from one step.
+        self.assertEqual(len(steps), 2)
         for step in steps:
             with self.subTest(step=step["name"]):
                 # The variable replaces ansible.cfg's ssh_args entirely.
@@ -298,11 +340,34 @@ class CDTests(unittest.TestCase):
         # A release's private log is kept after success and after failure.
         self.assertEqual(script.count('keep "$OFFKEY_DEPLOY_DIRECTORY/'), 2)
         alert = job["steps"][-1]
+        # A demo release never opens or closes production's release issue.
         self.assertEqual(
-            alert["if"], "always() && steps.release.outputs.ready == 'true'"
+            alert["if"],
+            "always() && steps.release.outputs.ready == 'true' && env.STACK == 'prod'",
         )
         self.assertIn("release_alert.py", alert["run"])
         self.assertEqual(alert["env"]["JOB_STATUS"], "${{ job.status }}")
+
+    def test_the_demo_releases_from_its_own_inventory_and_confirmation(self):
+        workflow = yaml.load(
+            (ROOT.parent / ".github/workflows/deploy-production.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        steps = {
+            step.get("name", ""): step for step in workflow["jobs"]["deploy"]["steps"]
+        }
+        demo = steps["Deploy the public demo and verify it"]
+        production = steps["Deploy only runtime changes and verify production"]
+        self.assertIn("env.STACK == 'demo'", demo["if"])
+        self.assertIn("env.STACK == 'prod'", production["if"])
+        self.assertIn("-i inventories/demo/hosts.yml", demo["run"])
+        self.assertIn('"$RESET_DATABASE" != off-key-demo', demo["run"])
+        self.assertIn("bootstrap-demo.yml", demo["run"])
+        self.assertNotIn("inventories/demo", production["run"])
+        self.assertIn(
+            'prepare_ci_secrets.py "$STACK"',
+            steps["Create private deployment configuration"]["run"],
+        )
 
     def test_documentation_and_test_commits_cannot_hide_unreleased_runtime_changes(
         self,

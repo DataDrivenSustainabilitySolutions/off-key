@@ -30,6 +30,9 @@ Under that environment's **Secrets**, create these exact names:
 | `OFFKEY_PROD_VAULT` | The complete existing **encrypted** production `vault.yml`, starting with `$ANSIBLE_VAULT;`. Paste raw text, without base64. |
 | `OFFKEY_VAULT_PASSWORD` | The password that unlocks that vault. |
 | `OFFKEY_PROD_INVENTORY` | A portable production `hosts.yml`, based on the example in `infra/ansible/inventories/prod/`. |
+| `OFFKEY_DEMO_VAULT` | The encrypted [public demo](public-demo.md) `vault.yml`, as for production. |
+| `OFFKEY_DEMO_INVENTORY` | The demo `hosts.yml`: the manager and the one worker labelled `offkey-demo=true`. |
+| `OFFKEY_DEMO_VAULT_PASSWORD` | Optional: the demo vault's password, when it differs from production's. |
 | `OFFKEY_DEPLOY_SSH_KEY` | A dedicated deployment private SSH key. |
 | `OFFKEY_DEPLOY_KNOWN_HOSTS` | Verified SSH host keys for every inventory address and port. |
 | `TS_OAUTH_CLIENT_ID` | The management Tailscale federated identity client ID from step 5. |
@@ -73,7 +76,7 @@ In the **management** tailnet, create `tag:offkey-ci`. Create a federated identi
 using GitHub's OIDC issuer `https://token.actions.githubusercontent.com`, the
 `auth_keys` scope, and permission to create ephemeral devices with that tag.
 Restrict trust to this repository's **production** environment and the deployment
-workflow on **main**. Use GitHub's numeric repository/owner IDs as additional
+workflow on **main**, which deploys the demo too. Use GitHub's numeric repository/owner IDs as additional
 immutable claims where supported. Copy the client ID and audience into step 3.
 
 A GitHub environment changes the default subject to

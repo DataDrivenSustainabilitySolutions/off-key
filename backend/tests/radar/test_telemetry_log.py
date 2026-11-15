@@ -178,6 +178,27 @@ async def test_a_large_backlog_is_read_in_batches_without_loss(log_database):
     assert sampled == [float(offset) for offset in (*range(6, 50, 7), 49)]
 
 
+async def test_every_reading_of_the_logs_tail_refreshes_the_observation(
+    log_database,
+):
+    """The tail's last reading may form no step, so its earlier steps sample too."""
+    log = reader(log_database, ["telemetry/a/x"], batch_size=7)
+    await log.place(0)
+    await append(log_database, [("a", "x", offset, offset) for offset in range(5)])
+    handled = []
+    sampled = []
+
+    async def handle(message):
+        value = message.get_json_payload()["value"]
+        handled.append(value)
+        if message.sample:
+            sampled.append(value)
+
+    log.set_message_handler(handle)
+    await drain(log, handled, 5)
+    assert sampled == handled == [float(offset) for offset in range(5)]
+
+
 async def test_positions_become_visible_in_commit_order(log_database):
     """A writer holding the lock delays every later position, so a reader never
     skips a smaller position that commits after a larger one."""

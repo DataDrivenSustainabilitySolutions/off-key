@@ -110,41 +110,47 @@ deployment selection alone deliberately does not overwrite saved configuration.
 
 ## Deploy and activate
 
-1. Use `infra/ansible/inventories/demo/`. Copy `hosts.yml.example` to the ignored
-   `hosts.yml`. This can target an existing Swarm; the stack is `off-key-demo`.
-   It shares production's non-secret defaults and image manifest, never its vault.
-   The whole demo runs on one worker. Choose the one with the most free CPU and
-   memory, list it as both backend and frontend node, and label it once from the
-   manager with `docker node update --label-add offkey-demo=true <worker>`.
-   Production's labels and nodes are left alone.
-2. Copy `group_vars/all/vault.yml.example` to the ignored `vault.yml`, fill it
-   with dedicated credentials and encrypt it with `ansible-vault`. Generate a
-   separate 32–72 byte viewer password, for example `openssl rand -hex 32`.
-   Generate separate broker certificates using the production PKI procedure.
-   Supply the administrator email, mail credentials, registry access and a
-   dedicated Cloudflare tunnel token.
-3. Configure that tunnel's public hostname `demo.aberration.app` to reach this
+The demo deploys only from the **Deploy Production** workflow with *stack*
+`demo` (`make deploy-demo REVISION=<SHA>` dispatches it). Its encrypted vault and
+inventory live as secrets of the `production` GitHub environment, so no laptop
+holds the copy a release depends on.
+
+1. Write the inventory from `infra/ansible/inventories/demo/hosts.yml.example`.
+   The stack is `off-key-demo` on production's Swarm and shares production's
+   non-secret defaults and image manifest, never its vault. The whole demo runs
+   on one worker: list the manager and that worker, with names that match
+   `docker node ls`, and label the worker once from the manager with
+   `docker node update --label-add offkey-demo=true <worker>`. Production's
+   labels and nodes are left alone. Store the file as the `OFFKEY_DEMO_INVENTORY`
+   secret. The runner reaches the nodes over the tailnet with production's deploy
+   key and known hosts, so the worker must already be one of production's nodes.
+2. Fill `group_vars/all/vault.yml.example` with dedicated credentials and encrypt
+   it with `ansible-vault`, using the production vault password or one stored as
+   `OFFKEY_DEMO_VAULT_PASSWORD`. Generate a separate 32–72 byte viewer password,
+   for example `openssl rand -hex 32`, and separate broker certificates using the
+   production PKI procedure. Supply the administrator email, mail credentials,
+   registry access and a dedicated Cloudflare tunnel token. Store the encrypted
+   file as the `OFFKEY_DEMO_VAULT` secret.
+3. GitHub never returns a secret's value. Keep one recovery copy of the
+   encrypted vault, the inventory and the vault password in the password
+   manager, and change all copies together. Delete the local working files.
+4. Configure the tunnel's public hostname `demo.aberration.app` to reach this
    stack's Traefik: service type HTTP, URL `traefik:80`. The demo's networks are
    its own, so that name reaches the demo's Traefik. The demo ingress exposes only
    the frontend and API. Persistence works as in [production](production.md);
    with a single node, node-local volumes stay with the stack.
-4. Deploy from a clean, committed checkout whose SHA has passed the normal image
-   and release checks:
-
-   ```sh
-   make -C infra deploy-demo REVISION=<tested-full-SHA> BOOTSTRAP=true
-   ```
-
-   Omit `BOOTSTRAP=true` on later releases. No new automatic deployment workflow
-   is enabled by this feature.
-5. Accept the first-administrator invitation at the demo hostname and choose
-   your password. Then run `make -C infra initialize-demo`. This creates the
-   server-only viewer and seeds an empty catalogue with recording enabled.
-   Subsequent releases also run this idempotent initialization after admin setup.
-6. Sign in and configure the monitors and datasets to showcase. Verify the same
+5. Run **Deploy Production** with *stack* `demo`, with a full main SHA that passed CI, `action: deploy` and
+   `bootstrap` checked. Leave `bootstrap` unchecked on later releases. The demo
+   never deploys automatically.
+6. Accept the first-administrator invitation at the demo hostname and choose
+   your password. Then run **Deploy Production** with *stack* `demo`, `action: initialize`. This
+   creates the server-only viewer and seeds an empty catalogue with recording
+   enabled. Subsequent releases also run this idempotent initialization after
+   admin setup.
+7. Sign in and configure the monitors and datasets to showcase. Verify the same
    pages in a signed-out browser, including fresh measurements and unavailable
    feed states. Public visitors cannot create monitors or upload datasets.
-7. Set `demo_base_url: https://demo.aberration.app` in the **production** non-secret
+8. Set `demo_base_url: https://demo.aberration.app` in the **production** non-secret
    inventory and release the landing page. An empty value hides the link until
    the deployment is ready. It can also remove the link independently of the
    demo stack. The rendered Demo link remains visible on narrow screens.
@@ -168,15 +174,12 @@ enough for a week of calibration and for a test on the last days of history.
 
 The demo's database is its own. A release from the schema baseline on refuses one
 created before it, as [production](production.md#schema-baseline-and-database-reset)
-does, so reset it once from a clean checkout of the tested SHA:
+does, so reset it once: run **Deploy Production** with *stack* `demo`, the tested SHA, `action: deploy`,
+`bootstrap` checked and `reset_database: off-key-demo`.
 
-```sh
-make -C infra deploy-demo REVISION=<tested-full-SHA> BOOTSTRAP=true RESET_DATABASE=off-key-demo
-```
-
-The release backs the database up to `/opt/stacks/off-key-demo/.backup/resets/`
-on the demo worker, starts it empty and emails a new administrator invitation.
-Accept it at the demo hostname, then run `make -C infra initialize-demo` to
+The release starts the database empty, without a backup, and emails a new
+administrator invitation.
+Accept it at the demo hostname, run **Deploy Production** with *stack* `demo`, `action: initialize` to
 recreate the viewer and the empty catalogue, and configure the showcased
 monitors and datasets again.
 

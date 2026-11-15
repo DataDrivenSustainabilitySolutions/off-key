@@ -103,18 +103,13 @@ make deploy-prod REVISION=<full SHA> RESET_DATABASE=off-key
 ```
 
 or, in the **Deploy Production** workflow, type `off-key` in *reset_database*.
-The release stops every writer, saves a validated custom-format backup to
-`<stack_dir>/.backup/resets/<UTC time>/database.dump` with its checksum on the
-database node, drops and recreates the database with TimescaleDB, and then
-deploys as on a new cluster. Every account, monitor, design, proposal, dataset,
-alarm and reading is gone; the administrator invitation is emailed again at the
-end of the release. Each reset keeps its own backup, so a retry never replaces
-the backup of the data with one of the empty database. Restore it with the
-[recovery](recovery.md) procedure if it is needed again; the restored data only
-runs on a release from before the baseline.
+The release stops every writer, drops and recreates the database with
+TimescaleDB, and then deploys as on a new cluster. It keeps no backup of the
+data: every account, monitor, design, proposal, dataset, alarm and reading is
+gone. The administrator invitation is emailed again at the end of the release.
 
-The [demo](public-demo.md#reset-the-demo-database) resets the same way from its
-own inventory.
+The [demo](public-demo.md#reset-the-demo-database) resets the same way, from the
+same workflow with *stack* `demo`.
 
 ## Checks before production
 

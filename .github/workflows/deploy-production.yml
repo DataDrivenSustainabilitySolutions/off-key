@@ -1,5 +1,8 @@
 name: Deploy Production
 
+# Also deploys the public demo (off-key-demo) on the same Swarm, manually only.
+# Both stacks keep their encrypted vault and inventory only as secrets of the
+# production environment, so no machine holds a copy a release depends on.
 on:
   # CI holds every release gate, so its completion is the only automatic trigger.
   workflow_run:
@@ -12,12 +15,22 @@ on:
         description: Full tested main commit SHA (retry or rollback)
         required: true
         type: string
+      stack:
+        description: prod, or the public demo
+        default: prod
+        type: choice
+        options: [prod, demo]
+      action:
+        description: deploy releases the revision; initialize (demo only) finishes first-run setup after the administrator accepted the invitation
+        default: deploy
+        type: choice
+        options: [deploy, initialize]
       bootstrap:
         description: Controlled first deployment; stop old writers and capture existing monitors
         default: false
         type: boolean
       reset_database:
-        description: Erase the database after a backup and start empty; type the stack name (off-key) to confirm
+        description: Erase the stack's database and start empty; type the stack name (off-key or off-key-demo) to confirm
         default: ""
         type: string
 
@@ -68,6 +81,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       OFFKEY_RELEASE_REVISION: ${{ needs.eligibility.outputs.revision }}
+      STACK: ${{ inputs.stack || 'prod' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -108,11 +122,14 @@ jobs:
         if: steps.release.outputs.ready == 'true'
         env:
           OFFKEY_PROD_VAULT: ${{ secrets.OFFKEY_PROD_VAULT }}
-          OFFKEY_VAULT_PASSWORD: ${{ secrets.OFFKEY_VAULT_PASSWORD }}
           OFFKEY_PROD_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
+          OFFKEY_DEMO_VAULT: ${{ secrets.OFFKEY_DEMO_VAULT }}
+          OFFKEY_DEMO_INVENTORY: ${{ secrets.OFFKEY_DEMO_INVENTORY }}
+          # The demo vault may have its own password; production's unlocks it otherwise.
+          OFFKEY_VAULT_PASSWORD: ${{ (inputs.stack == 'demo' && secrets.OFFKEY_DEMO_VAULT_PASSWORD) || secrets.OFFKEY_VAULT_PASSWORD }}
           OFFKEY_DEPLOY_SSH_KEY: ${{ secrets.OFFKEY_DEPLOY_SSH_KEY }}
           OFFKEY_DEPLOY_KNOWN_HOSTS: ${{ secrets.OFFKEY_DEPLOY_KNOWN_HOSTS }}
-        run: python3 infra/scripts/prepare_ci_secrets.py
+        run: python3 infra/scripts/prepare_ci_secrets.py "$STACK"
       - name: Connect the ephemeral runner to the management tailnet
         if: steps.release.outputs.ready == 'true'
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4
@@ -127,9 +144,40 @@ jobs:
         with:
           version: "0.13.8"
           enable-cache: false
-      - name: Deploy only runtime changes and verify production
-        if: steps.release.outputs.ready == 'true'
+      - name: Deploy the public demo and verify it
+        if: steps.release.outputs.ready == 'true' && env.STACK == 'demo'
         env:
+          ACTION: ${{ inputs.action }}
+          BOOTSTRAP: ${{ inputs.bootstrap }}
+          RESET_DATABASE: ${{ inputs.reset_database }}
+          ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
+          ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+          ANSIBLE_CALLBACKS_ENABLED: ansible.posix.profile_tasks
+        run: |
+          set -euo pipefail
+          umask 077
+          # Only the demo's stack name confirms its reset; anything else never reaches Ansible.
+          if [ -n "$RESET_DATABASE" ] && { [ "$RESET_DATABASE" != off-key-demo ] || [ "$ACTION" != deploy ]; }; then
+            echo "A demo reset_database must be off-key-demo, with action deploy."
+            exit 1
+          fi
+          cd infra/ansible
+          export ANSIBLE_CONFIG="$PWD/ansible.cfg"
+          vault=(-i inventories/demo/hosts.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password")
+          log="$OFFKEY_DEPLOY_DIRECTORY/demo.log"
+          # Logs stay private; a failure prints only the names of the failed tasks.
+          if [ "$ACTION" = initialize ]; then
+            uv run --frozen ansible-playbook bootstrap-demo.yml "${vault[@]}" > "$log" 2>&1 \
+              || { echo 'Demo initialization failed.'; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$log"; exit 1; }
+          else
+            uv run --frozen ansible-playbook deploy.yml "${vault[@]}" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "release_reset_database=$RESET_DATABASE" > "$log" 2>&1 \
+              || { echo 'Demo release failed; inspect private server records and retry the attempted SHA.'; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$log"; exit 1; }
+          fi
+          python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$log"
+      - name: Deploy only runtime changes and verify production
+        if: steps.release.outputs.ready == 'true' && env.STACK == 'prod'
+        env:
+          ACTION: ${{ inputs.action || 'deploy' }}
           BOOTSTRAP: ${{ inputs.bootstrap || false }}
           RESET_DATABASE: ${{ inputs.reset_database || '' }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
@@ -140,6 +188,10 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          if [ "$ACTION" != deploy ]; then
+            echo "Only the demo has an initialize action." | tee "$OFFKEY_RELEASE_OUTCOME/production.failed"
+            exit 1
+          fi
           # Only the stack name confirms a reset; anything else never reaches Ansible.
           if [ -n "$RESET_DATABASE" ] && [ "$RESET_DATABASE" != off-key ]; then
             echo "reset_database must be empty or the stack name, off-key." | tee "$OFFKEY_RELEASE_OUTCOME/production.failed"
@@ -168,10 +220,10 @@ jobs:
       - name: Remove all temporary production material
         if: always()
         run: |
-          rm -f infra/ansible/inventories/prod/hosts.yml infra/ansible/inventories/prod/group_vars/all/vault.yml
+          rm -f infra/ansible/inventories/{prod,demo}/hosts.yml infra/ansible/inventories/{prod,demo}/group_vars/all/vault.yml
           rm -rf "$OFFKEY_DEPLOY_DIRECTORY"
       - name: Keep a failed release visible in an issue until a release completes
-        if: always() && steps.release.outputs.ready == 'true'
+        if: always() && steps.release.outputs.ready == 'true' && env.STACK == 'prod'
         env:
           GH_REPO: ${{ github.repository }}
           JOB_STATUS: ${{ job.status }}

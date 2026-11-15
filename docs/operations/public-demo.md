@@ -131,9 +131,12 @@ holds the copy a release depends on.
    production PKI procedure. Supply the administrator email, mail credentials,
    registry access and a dedicated Cloudflare tunnel token. Store the encrypted
    file as the `OFFKEY_DEMO_VAULT` secret.
-3. GitHub never returns a secret's value. Keep one recovery copy of the
-   encrypted vault, the inventory and the vault password in the password
-   manager, and change all copies together. Delete the local working files.
+3. GitHub never returns a secret's value. Keep the encrypted vault, the
+   inventory and the vault password in the password manager, and change a value
+   only through that copy: `make -C infra vault-edit STACK=demo VAULT_FILE=<copy>`
+   opens it with `ansible-vault edit` and uploads the result;
+   `make -C infra inventory-upload STACK=demo INVENTORY_FILE=<copy>` replaces the
+   inventory. Production works the same with `STACK=prod`.
 4. Configure the tunnel's public hostname `demo.aberration.app` to reach this
    stack's Traefik: service type HTTP, URL `traefik:80`. The demo's networks are
    its own, so that name reaches the demo's Traefik. The demo ingress exposes only

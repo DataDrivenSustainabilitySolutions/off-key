@@ -1,4 +1,4 @@
-.PHONY: setup check-deploy provision-prod deploy-prod update-labels-prod invite-admin-prod backup-stack-prod restore-stack-prod backup-broker-route-prod
+.PHONY: setup check-deploy vault-edit inventory-upload provision-prod deploy-prod update-labels-prod invite-admin-prod backup-stack-prod restore-stack-prod backup-broker-route-prod
 UV := uv
 ANSIBLE := cd ansible && $(UV) run --frozen ansible-playbook
 VAULT ?= --ask-vault-pass
@@ -11,6 +11,21 @@ RESET_DATABASE ?=
 SERVICES ?= postgres,emqx
 export ANSIBLE_CONFIG := $(abspath ansible/ansible.cfg)
 export OFFKEY_RELEASE_REVISION := $(REVISION)
+# Both stacks' vault and inventory live only as production-environment secrets,
+# which GitHub never returns. Edit your own encrypted copy and upload it again.
+STACK ?= prod
+VAULT_SECRET = OFFKEY_$(shell echo $(STACK) | tr a-z A-Z)_VAULT
+INVENTORY_SECRET = OFFKEY_$(shell echo $(STACK) | tr a-z A-Z)_INVENTORY
+vault-edit:
+	@test "$(STACK)" = prod -o "$(STACK)" = demo || { echo 'STACK must be prod or demo'; exit 1; }
+	@test -f "$(VAULT_FILE)" || { echo 'VAULT_FILE must name your encrypted vault.yml copy'; exit 1; }
+	@head -c 14 "$(VAULT_FILE)" | grep -q '^\$$ANSIBLE_VAULT' || { echo '$(VAULT_FILE) is not an encrypted Ansible vault'; exit 1; }
+	cd ansible && $(UV) run --frozen ansible-vault edit $(abspath $(VAULT_FILE))
+	gh secret set $(VAULT_SECRET) --env production < $(abspath $(VAULT_FILE))
+inventory-upload:
+	@test "$(STACK)" = prod -o "$(STACK)" = demo || { echo 'STACK must be prod or demo'; exit 1; }
+	@test -f "$(INVENTORY_FILE)" || { echo 'INVENTORY_FILE must name the hosts.yml to upload'; exit 1; }
+	gh secret set $(INVENTORY_SECRET) --env production < $(abspath $(INVENTORY_FILE))
 setup:
 	$(UV) sync --frozen
 check-deploy:

@@ -10,7 +10,7 @@ ITERATIONS = 1000
 def mosquitto_password_file(logins):
     """Hash each {'username', 'password'} login into one password file line.
 
-    The salt derives from the login itself, so the same vault renders the same
+    The salt derives from the login with PBKDF2, so the same vault renders the same
     file and the content-addressed secret only changes when a login changes.
     The file stays inside a Swarm secret readable by the broker alone.
     """
@@ -21,9 +21,15 @@ def mosquitto_password_file(logins):
             raise ValueError(
                 "A Mosquitto username must be non-empty, without : or newlines"
             )
-        salt = hashlib.sha512(
-            f"off-key mosquitto\0{username}\0{password}".encode()
-        ).digest()
+        # A fast hash of the password would let the stored salt be guessed
+        # against more cheaply than the hash; PBKDF2 makes it cost the same.
+        salt = hashlib.pbkdf2_hmac(
+            "sha512",
+            password.encode(),
+            f"off-key mosquitto salt\0{username}".encode(),
+            ITERATIONS,
+            64,
+        )
         digest = hashlib.pbkdf2_hmac("sha512", password.encode(), salt, ITERATIONS, 64)
         lines.append(
             f"{username}:$7${ITERATIONS}${base64.b64encode(salt).decode()}"

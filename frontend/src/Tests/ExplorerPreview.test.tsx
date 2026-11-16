@@ -374,7 +374,7 @@ describe("explorer selected-object preview", () => {
     const { props } = fixture();
     render(<ExplorerPreview {...props} />);
     expect(screen.getByRole("status").textContent).toContain("Disconnected");
-    expect(screen.getByText("No value received yet")).toBeTruthy();
+    expect(screen.getByText(/No value received yet/)).toBeTruthy();
     expect(screen.getByText("Waiting for live values")).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Catalogue ancestry" }).textContent).toContain("Test system / North building / Room sensor / site / room / temperature");
@@ -385,9 +385,9 @@ describe("explorer selected-object preview", () => {
   it("plots only received samples with the active dark theme and responds to telemetry updates", () => {
     const { telemetry, props } = fixture();
     telemetry.accept(batch(), false);
-    render(<ExplorerPreview {...props} />);
+    const view = render(<ExplorerPreview {...props} />);
     expect(screen.getByRole("img").getAttribute("data-theme")).toBe("dark");
-    expect(screen.getByText("22")).toBeTruthy();
+    expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("22 °C");
     const first = lastChartProps();
     expect(first.option.backgroundColor).toBe("transparent");
     expect(first.option.series).toMatchObject([{ data: [[NOW, 22]] }]);
@@ -399,7 +399,7 @@ describe("explorer selected-object preview", () => {
       next.samples[0]!.sequence = 2;
       telemetry.accept(next, false);
     });
-    expect(screen.getByText("26")).toBeTruthy();
+    expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("26 °C");
     expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW, 26]] }]);
   });
 
@@ -449,8 +449,8 @@ describe("explorer selected-object preview", () => {
     render(<ExplorerPreview {...props} />);
     expect(screen.getByRole("status").textContent).toContain("Unavailable");
     expect(screen.getByRole("alert").textContent).toBe("Broker access is not configured.");
-    expect(screen.getByText("Readings").previousElementSibling?.textContent).toBe("3");
-    expect(screen.getByText("MQTT topics").previousElementSibling?.textContent).toBe("3");
+    expect(screen.getByText("Readings").nextElementSibling?.textContent).toBe("3");
+    expect(screen.getByText("MQTT topics").nextElementSibling?.textContent).toBe("3");
   });
 
   it("replaces a stale reconnecting broker badge when its attempt times out", async () => {
@@ -477,7 +477,7 @@ describe("explorer selected-object preview", () => {
       await vi.advanceTimersByTimeAsync(20000);
     });
     expect(screen.getByRole("status").textContent).toContain("Unavailable");
-    expect(screen.getByRole("status").textContent).toContain("Live connection inactive");
+    expect(screen.getByText("Live connection inactive")).toBeTruthy();
     expect(screen.queryByText("Reconnecting")).toBeNull();
     expect(screen.getByRole("alert").textContent).toContain("network or VPN access");
     expect(api.release).toHaveBeenCalledWith("test-lease");

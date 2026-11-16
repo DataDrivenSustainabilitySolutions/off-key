@@ -22,8 +22,8 @@ button.source-broker > span:last-child { grid-column: 2; grid-row: 1 / 3; align-
 .source-check-mark--positive { color: var(--ex-accent); }
 .source-check-mark--warning { color: hsl(var(--warning)); }
 .source-check-mark--danger { color: hsl(var(--destructive)); }
-.source-recording { padding: 22px 0; margin: 20px 0; border-top: 1px solid hsl(var(--border)); border-bottom: 1px solid hsl(var(--border)); font-size: 13px; }
-.source-recording .ex-preview-section-heading { margin-bottom: 16px; }
+.source-recording { padding: 0 0 18px; margin: 0 0 20px; border-bottom: 1px solid hsl(var(--border)); font-size: 13px; }
+.source-recording .ex-preview-section-heading { margin-bottom: 12px; }
 .source-recording .ex-preview-section-heading > span { color: hsl(var(--muted-foreground)); font-size: 12px; }
 .source-recording-choice { display: inline-flex; flex-wrap: wrap; border: 1px solid hsl(var(--border)); border-radius: var(--radius); overflow: hidden; }
 .source-recording-option { display: inline-flex; align-items: center; min-height: 36px; border-left: 1px solid hsl(var(--border)); }

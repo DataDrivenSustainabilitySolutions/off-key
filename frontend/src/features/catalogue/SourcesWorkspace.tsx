@@ -139,7 +139,9 @@ export function SourcesWorkspace() {
       <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
         canEdit={system.canEdit} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
         onAppearanceChange={appearance => system.save(setSourceAppearance(document, selected, appearance), system.revision ?? 0)}
-        runtime={runtime} connectionStatusOnly pageTitle collectionControls={configuration}
+        runtime={runtime} connectionStatusOnly pageTitle
+        facts={scope && !system.canEdit ? configuration : undefined}
+        collectionControls={scope && !system.canEdit ? undefined : configuration}
         connectionCheck={selectedBroker && !selectedState ? checkProblem(brokerChecks.checks[selectedBroker]) : undefined} />
     </Suspense> : <section aria-label="Broker overview" className="source-overview">
       <p className="ex-muted">Record a broker to keep its readings, also while you are signed out.</p>

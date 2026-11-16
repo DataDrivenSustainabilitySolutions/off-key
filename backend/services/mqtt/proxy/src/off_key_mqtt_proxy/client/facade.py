@@ -6,12 +6,8 @@ and message handling through dedicated components. Provides a clean, simple
 API while delegating responsibilities to specialized managers.
 """
 
-import asyncio
-import json
 from collections.abc import Callable
-from typing import Any
 
-import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
 
 from ..config.config import MQTTConfig
@@ -46,8 +42,6 @@ class MQTTClient:
         self.message_handler = MessageHandler(
             max_queue_size=config.max_message_queue_size
         )
-
-        self._pending_publishes: list[mqtt.MQTTMessageInfo] = []
 
     @property
     def state(self) -> ConnectionState:
@@ -110,65 +104,11 @@ class MQTTClient:
 
         return await self.subscription_manager.unsubscribe(topic)
 
-    async def publish(
-        self, topic: str, payload: dict[str, Any], qos: int = 0, retain: bool = False
-    ) -> bool:
-        """
-        Publish message to MQTT topic
-
-        Args:
-            topic: MQTT topic to publish to
-            payload: Message payload dictionary
-            qos: Quality of Service level
-            retain: Retain message flag
-
-        Returns:
-            True if publish successful, False otherwise
-        """
-        if not self.is_connected:
-            logger.warning(f"Cannot publish to {topic}: not connected")
-            return False
-
-        client = self.connection_manager.client
-        if not client:
-            logger.error("No MQTT client available for publishing")
-            return False
-
-        try:
-            payload_json = json.dumps(payload)
-            result = client.publish(topic, payload_json, qos, retain)
-
-            if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                if qos:
-                    self._pending_publishes = [
-                        item
-                        for item in self._pending_publishes
-                        if not item.is_published()
-                    ]
-                    self._pending_publishes.append(result)
-                logger.debug("Published message to %s", topic)
-                return True
-            logger.error(f"Failed to publish to {topic}: {result.rc}")
-            return False
-
-        except Exception as e:
-            logger.error(f"Error publishing to {topic}: {e}")
-            return False
-
-    async def drain_publishes(self) -> None:
-        while self._pending_publishes:
-            self._pending_publishes = [
-                info for info in self._pending_publishes if not info.is_published()
-            ]
-            if self._pending_publishes:
-                await asyncio.sleep(0.05)
-
     async def _on_connected(self) -> None:
         """Called when connection is established"""
         client = self.connection_manager.client
         if client is None:
             raise RuntimeError("MQTT connected without a client")
-        self._pending_publishes.clear()
         self.subscription_manager.set_client(client)
         self.message_handler.set_client(client)
         # The collection loop restores the current catalog after a reconnect.

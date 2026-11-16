@@ -3,6 +3,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from functools import partial
 from types import SimpleNamespace
 
 import pytest
@@ -17,10 +18,8 @@ from off_key_core.schemas.collection_rules import (
 )
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
 from off_key_core.schemas.system_collection import SystemCollectionChange
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy import proxy as proxy_module
 from off_key_mqtt_proxy.config.config import MQTTSettings
-from off_key_mqtt_radar.topic_parser import TopicParser
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.services.catalogue import (
     system_collection as collection_module,
@@ -30,7 +29,6 @@ from off_key_tactic_middleware.services.catalogue import (
 )
 from off_key_tactic_middleware.services.catalogue.system import SystemService
 from off_key_tactic_middleware.services.catalogue.system_live import SystemLiveService
-from paho.mqtt.client import CallbackAPIVersion, Client
 from paho.mqtt.publish import multiple, single
 from sqlalchemy import func, select
 
@@ -214,20 +212,12 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
     collector = proxy_module.MQTTProxyService()
     ingress = ingress_module.SystemIngress()
     viewer = SystemLiveService(settings)
-    accepted = []
-    client = Client(
-        CallbackAPIVersion.VERSION2, client_id="generic-integration-detector"
-    )
-    client.on_connect = lambda client, *args: client.subscribe("telemetry/#")
-    client.on_message = lambda client, userdata, message: accepted.append(
-        (message.topic, json.loads(message.payload))
-    )
-    await asyncio.to_thread(client.connect, "127.0.0.1", 28883)
-    client.loop_start()
 
     async def rows():
         async with sessions() as session:
             return await session.scalar(select(func.count()).select_from(Telemetry))
+
+    recorded = partial(recorded_log, sessions)
 
     async def publish(value):
         await asyncio.to_thread(
@@ -259,7 +249,7 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         for value in range(3):
             await publish(20 + value)
             await asyncio.sleep(0.2)
-        assert await rows() == 0 and accepted == []
+        assert await rows() == 0
         assert viewer.snapshot(0)["samples"]
         await viewer.release(1, lease["lease_id"])
         assert not viewer.workers
@@ -296,12 +286,9 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
             await publish(25 + value)
             await asyncio.sleep(0.25)
         await until(lambda: has_rows(rows))
-        assert accepted
-        topic, payload = accepted[-1]
-        binding = TopicMetadataExtractor().extract(topic)
-        assert binding and TopicParser.extract_charger_id(topic) == binding.charger_id
-        assert TopicParser.extract_sensor_type(topic) == binding.telemetry_type
-        assert isinstance(payload["value"], (int, float))
+        charger_id, kind, value = (await recorded())[-1]
+        assert charger_id and kind
+        assert isinstance(value, float)
         assert await rows() <= 3
         async with sessions() as session:
             states = list(await session.scalars(select(CollectionState)))
@@ -325,11 +312,11 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
             )
             assert snapshot.runtime.bindings["voltage"]["policy"]["mode"] == "off"
             assert snapshot.runtime.bindings["voltage"]["policy_origin"]["needs_review"]
-            voltage_topic = snapshot.runtime.bindings["voltage"]["accepted_topic"]
+            voltage_key = snapshot.runtime.bindings["voltage"]["telemetry_key"]
         await until(lambda: collection_applied(sessions, ingress))
         await publish(31)
         await asyncio.sleep(1.2)
-        assert all(topic != voltage_topic for topic, _ in accepted)
+        assert all(kind != voltage_key for _, kind, _ in await recorded())
         async with sessions.begin() as session:
             snapshot = await SystemService(session).read()
             await SystemService(session).apply_collection(
@@ -353,9 +340,7 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         await until(lambda: collection_applied(sessions, ingress))
         await publish(32)
 
-        await until(
-            lambda: voltage_recorded(sessions, snapshot, voltage_topic, accepted)
-        )
+        await until(lambda: voltage_recorded(sessions, voltage_key, recorded))
         await policy(["voltage"], "off")
         await until(lambda: collection_applied(sessions, ingress))
         # Browser is closed; the selected collector remains active.
@@ -382,33 +367,39 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         assert await rows() == before
         # Unselected fields sharing the same topic never become detector inputs.
         assert all(
-            TopicMetadataExtractor().extract(topic).telemetry_type
+            kind
             in {
                 saved.runtime.bindings["temperature"]["telemetry_key"],
                 saved.runtime.bindings["voltage"]["telemetry_key"],
             }
-            for topic, _ in accepted
+            for _, kind, _ in await recorded()
         )
     finally:
         await viewer.close()
         await ingress.stop()
         await collector.stop()
-        client.disconnect()
-        await asyncio.to_thread(client.loop_stop)
 
 
-async def voltage_recorded(sessions, snapshot, voltage_topic, accepted):
+async def recorded_log(sessions):
+    """Detectors read the stored telemetry log, so it is their view of the data."""
+    async with sessions() as session:
+        result = await session.execute(
+            select(Telemetry.charger_id, Telemetry.type, Telemetry.value).order_by(
+                Telemetry.log_seq
+            )
+        )
+        return [tuple(row) for row in result]
+
+
+async def voltage_recorded(sessions, voltage_key, recorded):
     async with sessions() as session:
         state = await session.scalar(
-            select(CollectionState).where(
-                CollectionState.sensor_key
-                == snapshot.runtime.bindings["voltage"]["telemetry_key"]
-            )
+            select(CollectionState).where(CollectionState.sensor_key == voltage_key)
         )
         return (
             state is not None
             and state.value == 230
-            and any(topic == voltage_topic for topic, _ in accepted)
+            and any(kind == voltage_key for _, kind, _ in await recorded())
         )
 
 

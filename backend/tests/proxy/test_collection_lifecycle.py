@@ -36,7 +36,6 @@ def proxy(monkeypatch):
         set_message_handler=MagicMock(),
         subscribe=AsyncMock(return_value=True),
         unsubscribe=AsyncMock(return_value=True),
-        drain_publishes=AsyncMock(),
         subscription_manager=SimpleNamespace(
             generation=1,
             get_all_topics=lambda: set(),
@@ -49,26 +48,23 @@ def proxy(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_new_policy_waits_for_database_and_publish_drain(proxy):
+async def test_new_policy_waits_for_database_drain(proxy):
     snapshot = CollectionRuntimeSnapshot(
         revision=1, catalog=catalog(), ingress={}, collection={}
     )
     release = asyncio.Event()
-    publish_started = asyncio.Event()
+    drain_started = asyncio.Event()
 
     async def drain():
+        drain_started.set()
         await release.wait()
 
-    async def drain_publishes():
-        publish_started.set()
-
     proxy.database_writer.drain.side_effect = drain
-    proxy.mqtt_client.drain_publishes.side_effect = drain_publishes
     proxy.buffer.configure(snapshot.catalog, now=0)
     proxy.buffer.receive(message(snapshot.catalog, 1))
     task = asyncio.create_task(proxy._apply(snapshot))
     async with asyncio.timeout(1):
-        await publish_started.wait()
+        await drain_started.wait()
     assert proxy.state["status"] == "applying"
     assert not proxy.get_readiness_status()["ready"]
     assert proxy.buffer.take(now=100) == []
@@ -76,7 +72,7 @@ async def test_new_policy_waits_for_database_and_publish_drain(proxy):
     release.set()
     await task
     assert proxy.state["status"] == "prepared"
-    proxy.mqtt_client.drain_publishes.assert_awaited_once()
+    proxy.database_writer.drain.assert_awaited_once()
     assert not proxy.get_readiness_status()["ready"]
 
 
@@ -146,13 +142,11 @@ async def test_label_revision_preserves_admission_samples_and_deadlines(
     read.return_value = renamed
     proxy._apply = AsyncMock(wraps=proxy._apply)
     proxy.database_writer.drain.reset_mock()
-    proxy.mqtt_client.drain_publishes.reset_mock()
     proxy.mqtt_client.subscribe.reset_mock()
     proxy.mqtt_client.unsubscribe.reset_mock()
     await proxy._refresh_configuration()
     proxy._apply.assert_not_awaited()
     proxy.database_writer.drain.assert_not_awaited()
-    proxy.mqtt_client.drain_publishes.assert_not_awaited()
     proxy.mqtt_client.subscribe.assert_not_awaited()
     proxy.mqtt_client.unsubscribe.assert_not_awaited()
     assert proxy.revision == proxy._prepared_revision == 4
@@ -285,17 +279,15 @@ async def test_state_commit_timestamp_advances_only_after_commit(proxy):
 
 
 @pytest.mark.asyncio
-async def test_lost_owner_cannot_publish_or_queue_observations(proxy):
+async def test_lost_owner_cannot_write_observations(proxy):
     configuration = catalog("original")
     proxy.buffer.configure(configuration, now=0)
     proxy.buffer.receive(message(configuration, 42))
     proxy.ownership = SimpleNamespace(fence=AsyncMock(side_effect=WorkerOwnershipLost))
     proxy.database_writer.write_record = AsyncMock()
-    proxy.mqtt_client.publish = AsyncMock()
     with pytest.raises(WorkerOwnershipLost):
         await proxy._emit()
     proxy.database_writer.write_record.assert_not_awaited()
-    proxy.mqtt_client.publish.assert_not_awaited()
     assert proxy.diagnostics.last_state_write_at is None
 
 

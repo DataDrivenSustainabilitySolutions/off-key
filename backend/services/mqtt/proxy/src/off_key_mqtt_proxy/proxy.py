@@ -1,4 +1,4 @@
-"""Apply catalog collection policy before persistence and accepted MQTT output."""
+"""Apply catalog collection policy before writing the telemetry log."""
 
 import asyncio
 import signal
@@ -81,9 +81,7 @@ class MQTTProxyService:
         self.state = {"revision": snapshot.revision, "status": COLLECTION_APPLYING}
         await self._save_status(snapshot.revision)
         async with asyncio.timeout(self.config.graceful_shutdown_timeout):
-            async with asyncio.TaskGroup() as drains:
-                drains.create_task(self.database_writer.drain())
-                drains.create_task(self.mqtt_client.drain_publishes())
+            await self.database_writer.drain()
         # This is a cache, not history. Rebuild it from the selected bindings so
         # removed or remapped sensors cannot expose values from an earlier revision.
         async with self.session_factory() as session:
@@ -196,17 +194,8 @@ class MQTTProxyService:
         async with self.session_factory() as session:
             if self.ownership is not None:
                 await self.ownership.fence(session)
-            try:
-                await self._emit_observations(session, observations)
-                async with asyncio.timeout(self.config.graceful_shutdown_timeout):
-                    await self.mqtt_client.drain_publishes()
-                await session.commit()
-            except BaseException:
-                # Close transport before releasing the fence if an acknowledgement
-                # is uncertain, so an abandoned publisher cannot keep sending.
-                if self.ownership is not None:
-                    await self.mqtt_client.disconnect()
-                raise
+            await self._emit_observations(session, observations)
+            await session.commit()
         self.diagnostics.last_state_write_at = datetime.now(UTC)
 
     async def _emit_observations(self, session, observations) -> None:
@@ -220,17 +209,11 @@ class MQTTProxyService:
                     observation.received_at,
                 )
             if observation.stream.value_type == "number" and not observation.snapshot:
-                # Bounded DB writer applies backpressure before publishing downstream.
+                # The bounded writer applies backpressure; detectors read the log.
                 async with asyncio.timeout(self.config.graceful_shutdown_timeout):
                     await self.database_writer.write_record(
                         observation.telemetry_record()
                     )
-                message = observation.message()
-                if not await self.mqtt_client.publish(
-                    message.topic, message.payload, qos=1
-                ):
-                    self.buffer.count("publish_failed")
-                    raise RuntimeError("Broker refused accepted telemetry")
             states[(observation.stream.charger_id, observation.stream.key)] = {
                 "charger_id": observation.stream.charger_id,
                 "sensor_key": observation.stream.key,

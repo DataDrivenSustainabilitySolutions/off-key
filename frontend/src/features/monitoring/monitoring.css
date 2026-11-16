@@ -41,7 +41,6 @@
 .mn-detail-header h1 { font-size: var(--text-title1); font-weight: var(--heading-weight); line-height: var(--leading-title1); letter-spacing: var(--heading-tracking); margin: 0; overflow-wrap: anywhere; }
 .ex-main-content > :is(.mn-detail,.mn-create,.pl-setup):first-child { margin-top: 0; }
 .mn-detail-header small { display: block; color: var(--ex-muted); margin-top: 6px; font-size: var(--text-caption); }
-.mn-detail-actions { display: flex; gap: 5px; flex-shrink: 0; }
 .mn-summary { display: flex; flex-wrap: wrap; gap: 22px 40px; border-bottom: 1px solid var(--ex-line); padding-bottom: 24px; margin: 0; }
 .mn-summary > div { display: flex; flex-direction: column; gap: 6px; }
 .mn-summary dt { color: var(--ex-muted); font-size: var(--text-caption); }

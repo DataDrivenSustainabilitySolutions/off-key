@@ -477,7 +477,7 @@ describe("explorer selected-object preview", () => {
       await vi.advanceTimersByTimeAsync(20000);
     });
     expect(screen.getByRole("status").textContent).toContain("Unavailable");
-    expect(screen.getByText("Live connection inactive")).toBeTruthy();
+    expect(screen.getByText("Broker connection")).toBeTruthy();
     expect(screen.queryByText("Reconnecting")).toBeNull();
     expect(screen.getByRole("alert").textContent).toContain("network or VPN access");
     expect(api.release).toHaveBeenCalledWith("test-lease");

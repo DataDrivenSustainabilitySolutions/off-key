@@ -64,7 +64,9 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 .ex-search-hint { padding: 6px 16px; margin: 0; color: var(--ex-muted); font-size: var(--text-caption); }
 .ex-main { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .ex-main-content { width: 100%; max-width: 1320px; margin: 0 auto; padding: 40px 48px 48px; }
-.ex-workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ex-workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; min-height: 38px; }
+.ex-workspace-back { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0; color: hsl(var(--muted-foreground)); font-size: 13px; }
+.ex-workspace-back:hover { color: hsl(var(--foreground)); }
 .ex-workspace-heading h1 { font-size: var(--text-title1); font-weight: var(--heading-weight); line-height: var(--leading-title1); letter-spacing: var(--heading-tracking); margin: 0; }
 .ex-breadcrumb ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0 0 12px; padding: 0; list-style: none; font-size: var(--text-caption); color: var(--ex-muted); }
 .ex-breadcrumb li { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -123,10 +125,13 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 .ex-shell .sp-inline-name input,.ex-dialog .sp-inline-name input { color: var(--ex-ink); background: hsl(var(--card)); border: 1px solid var(--ex-accent); border-radius: var(--radius-control); padding: 3px 6px; max-width: 100%; font: inherit; }
 .ex-shell .sp-inline-name-error,.ex-dialog .sp-inline-name-error { color: hsl(var(--destructive)); font-size: var(--text-caption); font-weight: 400; }
 .ex-shell .sp-inline-name-status,.ex-dialog .sp-inline-name-status { font-size: var(--text-caption); color: var(--ex-muted); }
-.ex-preview { margin: 30px 0 0; max-width: 780px; animation: ex-fade 150ms ease-out; }
+.ex-preview { margin: 30px 0 0; animation: ex-fade 150ms ease-out; }
 /* On its own page a source uses the content width, so its chart has room; text keeps a readable measure. */
-.ex-preview--page { max-width: none; }
-.ex-preview--page > :is(.ex-preview-details, .ex-preview-error, .source-recording > p) { max-width: 780px; }
+.ex-preview > :is(.ex-preview-details, .ex-preview-error, .source-recording > p) { max-width: 780px; }
+/* Shared by the source header on every tab and by service details. */
+.mn-detail-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.ex-preview-host { margin-top: 28px; }
+.ex-preview-host > .mn-services { margin-top: 0; }
 .ex-preview-header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
 .ex-preview-identity { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
 .ex-preview-header--reading,.ex-preview-header--reading .ex-preview-identity { align-items: center; }
@@ -134,8 +139,7 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 .ex-preview-identity > div { min-width: 0; }
 .ex-preview-icon { padding: 12px; background: var(--ex-side); border: 1px solid var(--ex-line); border-radius: var(--radius); color: var(--ex-accent); display: flex; }
 .ex-preview-kind { font-size: var(--text-caption); color: var(--ex-muted); }
-.ex-preview-title { font-size: var(--text-title2); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); margin: 3px 0 0; overflow-wrap: anywhere; }
-.ex-preview-title--page { font-size: var(--text-title1); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); line-height: var(--leading-title1); }
+.ex-preview-title { font-size: var(--text-title1); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); line-height: var(--leading-title1); margin: 3px 0 0; overflow-wrap: anywhere; }
 .ex-preview-trail { font-size: var(--text-caption); color: var(--ex-muted); overflow-wrap: anywhere; margin: 22px 0 18px; line-height: 1.9; }
 .ex-preview-parent { margin: 4px 0 0; color: var(--ex-muted); font-size: var(--text-caption); overflow-wrap: anywhere; }
 /* One row of what is happening now, laid out like a monitoring service's summary. */

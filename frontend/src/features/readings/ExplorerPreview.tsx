@@ -25,21 +25,18 @@ type Props = {
   onRename: (kind: SystemEntityKind, id: string, label: string) => Promise<void>;
   onEdit: (kind: SystemEntityKind, id: string) => void;
   onAppearanceChange?: (appearance: SourceAppearance | undefined) => Promise<boolean>;
-  collectionControls?: ReactNode;
-  /** Short facts, such as recording settings someone may not change, shown beside the status. */
-  facts?: ReactNode;
   runtime?: SystemRuntime;
-  connectionStatusOnly?: boolean;
   /** Why the last check of an unrecorded broker could not connect; it stands in for the live view's own error. */
   connectionCheck?: string;
-  /** The preview stands in for the page heading. */
-  pageTitle?: boolean;
   favourite?: boolean;
   onFavourite?: (id: string) => void;
-  /** Keep the definition one click away where the page is about something else, such as monitoring. */
-  collapseDefinition?: boolean;
   /** Header actions of the hosting page, before the favourite star. */
   actions?: ReactNode;
+  /**
+   * The hosting tab's own part, such as recording settings or monitoring services. It follows the
+   * shared header and chart, so a source looks the same, and stays in place, on every tab.
+   */
+  children?: ReactNode;
 };
 
 const phases: Record<LiveStatus["phase"], string> = {
@@ -77,8 +74,8 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, facts, runtime, connectionStatusOnly = false, connectionCheck, pageTitle = false, favourite, onFavourite,
-  collapseDefinition = false, actions, onAppearanceChange,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, runtime, connectionCheck, favourite, onFavourite,
+  actions, onAppearanceChange, children,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
   const streamsById = useMemo(() => new Map(document.readings.map((stream) => [stream.id, stream])), [document.readings]);
@@ -125,9 +122,10 @@ export default function ExplorerPreview({
   </nav>;
   const title = isReading ? stream?.label ?? node.label : node.label;
   const kind = isReading ? "Reading" : node.kind === "connection" ? "Broker"
-    : node.kind === "device" ? "Entity" : node.kind === "topic" ? polled ? "Request path" : "Topic path" : "System";
+    : node.kind === "device" ? "Device" : node.kind === "topic" ? polled ? "Request path" : "Topic path" : "System";
   const iconKind = node.entityKind ?? node.kind;
-  const Title = pageTitle ? "h1" : "h2";
+  // A broker's status is its connection; everything below a broker reports how it is recorded.
+  const connectionStatusOnly = node.kind === "connection";
   const editable = canEdit && !saving && !!node.entityKind && !!node.objectId;
   const recorded = stream ? runtime?.latest_readings?.[stream.id] : undefined;
   const useRecorded = recorded && (!snapshot?.receivedAt || epochMilliseconds(recorded.received_at) > snapshot.receivedAt);
@@ -193,20 +191,20 @@ export default function ExplorerPreview({
     </div>}
   </>;
   return (
-    <section className={`ex-preview${pageTitle ? " ex-preview--page" : ""}`} aria-label={`${kind} preview`}>
+    <section className="ex-preview" aria-label={`${kind} preview`}>
       <header className={`ex-preview-header${isReading ? " ex-preview-header--reading" : ""}`}>
         <div className="ex-preview-identity">
           {(canEdit || saving) && onAppearanceChange && (node.objectId || node.kind === "topic")
             ? <IconPicker key={node.key} kind={iconKind} label={title} value={node.appearance} color={node.color}
               badge disabled={saving || !canEdit} onChange={onAppearanceChange} />
             : <span className="ex-preview-icon"><SourceIcon kind={iconKind} appearance={node.appearance} color={node.color} size={22} /></span>}
-          <div>{!isReading && <span className="ex-preview-kind">{kind} preview</span>}
-            <Title className={`ex-preview-title${pageTitle ? " ex-preview-title--page" : ""}`}>
+          <div>{!isReading && <span className="ex-preview-kind">{kind}</span>}
+            <h1 className="ex-preview-title">
               {canEdit && node.entityKind && node.objectId ? <InlineName key={node.key} value={title}
                 onSave={(name) => onRename(node.entityKind!, node.objectId!, name)}
                 editable={editable} disabledReason={saving ? "Saving changes…" : undefined}
                 saveError={error} ariaLabel={`Rename ${kind.toLowerCase()}`} /> : title}
-            </Title>
+            </h1>
             {isReading && parent && <p className="ex-preview-parent">{parent.label}</p>}
           </div>
         </div>
@@ -226,7 +224,6 @@ export default function ExplorerPreview({
           <span>{showStatusDetail ? statusDetail : "Status"}</span>
           <strong className={`mn-state mn-state--${tone}`} role="status">{label}</strong>
         </div>
-        {facts}
         {!stream && <>
           <div className="ex-preview-fact"><span>Readings</span><strong>{number.format(related.length)}</strong></div>
           <div className="ex-preview-fact"><span>{addresses}</span><strong>{number.format(topicCount)}</strong></div>
@@ -234,18 +231,16 @@ export default function ExplorerPreview({
         </>}
       </div>
       {problem && <p className="ex-preview-error" role="alert">{problem}</p>}
-      {collectionControls}
       {stream && <>
         {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
             readingConnection?.host, readingConnection?.port, readingConnection?.tls, readingConnection?.transport])}
           stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache} />}
       </>}
-      {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Source details">
+      {children && <div className="ex-preview-host">{children}</div>}
+      <section className="ex-preview-details is-collapsible" aria-label="Source details">
         <details><summary>Source details</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{isReading && trail}{details}</details>
-      </section> : <section className="ex-preview-details" aria-label="Source details">
-        <div className="ex-preview-section-heading"><h3>Source details</h3>{edit}</div>{isReading && trail}{details}
-      </section>}
+      </section>
     </section>
   );
 }

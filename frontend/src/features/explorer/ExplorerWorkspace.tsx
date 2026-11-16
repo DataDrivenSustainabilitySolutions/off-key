@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo } from "react";
-import { ArrowLeft, Info, Plus } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -11,7 +11,7 @@ import { monitoringNavigationKey, resetView } from "@/domain/monitoring/monitori
 import { buildMonitoringIndex, readingTargetId, serviceName, servicesForScope } from "@/domain/monitoring/serviceModel";
 import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 import { useCatalogue } from "../workspace/catalogue-context";
-import { SourceScope } from "../workspace/SourceScope";
+import { WorkspaceBack } from "../workspace/WorkspaceBack";
 import { CopyToDojo } from "../dojo/CopyToDojo";
 import { useDesignTest } from "../dojo/designTest";
 import { DesignTestContext } from "../pipelines/designTest";
@@ -32,7 +32,7 @@ export function ExplorerWorkspace() {
   const designTest = useDesignTest();
   const [params, setParams] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
-    favourites: starred, toggleFavourite, openEditor, sectionHref } = useCatalogue();
+    favourites: starred, toggleFavourite, openEditor } = useCatalogue();
   const requestedService = params.get("service");
   const requestedReading = params.get("reading") ?? undefined;
   const requestedStream = requestedReading ? document.readings.find(stream => stream.id === requestedReading) : undefined;
@@ -52,12 +52,12 @@ export function ExplorerWorkspace() {
     [monitoring.services, monitoringIndex, streamIds]);
   const selectedService = monitoring.services.find(service => service.id === requestedService);
   const favourites = useMemo(() => new Set(starred.filter(item => item.kind === "monitor").map(item => item.id)), [starred]);
-  const preview = selected && (selected.entityKind === "stream" || params.has("entity") || params.get("inspect") === "source");
+  // A selected source shows the same header as on Sources; the services that use it follow.
+  const preview = !!selected;
   const previewReadings = useMemo(() => {
     const ids = new Set(streamIds ?? []);
     return document.readings.filter(stream => ids.has(stream.id));
   }, [document.readings, streamIds]);
-  const readingDetail = selected?.entityKind === "stream" && !creating && !requestedService && !pipelineView;
   // Service detail and setup carry their own breadcrumb and heading.
   const ownHeading = !loadingCreation && !(selectionMissing && !pipelineView)
     && (pipelineView || creating && manageMonitors || !!requestedService && !!selectedService);
@@ -123,37 +123,30 @@ export function ExplorerWorkspace() {
     if (requestedService) return <div className="mn-empty"><p>{monitoring.error || (!monitoring.ready ? "Loading service…" : "Service not found.")}</p>
       <button onClick={closeView}><ArrowLeft size={14} aria-hidden="true" />All services</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
     </div>;
-    return <>
-      {preview && <Suspense fallback={<p className="ex-muted" role="status">Opening preview…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
+    const services = isAuthenticated && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices}
+      index={monitoringIndex} ready={monitoring.ready} error={monitoring.error} favourites={favourites}
+      serviceHref={id => withCatalogueSource(`/?service=${encodeURIComponent(id)}`, selected)}
+      onFavourite={id => toggleFavourite("monitor", id)} onOpen={openService} onRetry={() => void monitoring.reload()} />;
+    if (!preview) return services;
+    return <Suspense fallback={<p className="ex-muted" role="status">Opening source…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
         index={index} document={document} telemetry={telemetry} historyCache={history} canEdit={system.canEdit} saving={system.saving}
         error={system.error} onRename={rename} onEdit={openEditor}
         onAppearanceChange={appearance => system.save(setSourceAppearance(document, selected, appearance), system.revision ?? 0)}
-        runtime={system.snapshot?.runtime} collapseDefinition favourite={starred.some(item => item.kind === "reading" && item.id === selected.objectId)}
+        runtime={system.snapshot?.runtime} favourite={starred.some(item => item.kind === "reading" && item.id === selected.objectId)}
         onFavourite={id => toggleFavourite("reading", id)}
-        actions={<CopyToDojo compact scope={selectedLabel ?? selected.label} readings={previewReadings} />}
-        collectionControls={selected.entityKind !== "stream" && !!streamIds?.length && <p className="ex-muted">
-          Recording enabled for {streamIds.filter(id => {
-            const policy = system.snapshot?.runtime.bindings?.[id]?.policy;
-            return policy && policy.mode !== "off";
-          }).length} of {streamIds.length} readings</p>} />
-      </Suspense>}
-      {isAuthenticated && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices}
-        index={monitoringIndex} ready={monitoring.ready} error={monitoring.error} favourites={favourites}
-        serviceHref={id => withCatalogueSource(`/?service=${encodeURIComponent(id)}`, selected)}
-        onFavourite={id => toggleFavourite("monitor", id)} onOpen={openService} onRetry={() => void monitoring.reload()} />}
-    </>;
+        actions={<CopyToDojo compact scope={selectedLabel ?? selected.label} readings={previewReadings} />}>
+        {services}
+      </Preview>
+    </Suspense>;
   };
 
   return <main className="ex-main-content" aria-label="Monitoring workspace">
-    {!ownHeading && <><div className="ex-workspace-heading"><h1>Monitoring</h1>
+    {!ownHeading && <><div className="ex-workspace-heading">
+      {/* A selected source carries the page title, as on Sources; the heading row keeps only the way back. */}
+      {(selected || selectionMissing) && !creating && !requestedService ? <WorkspaceBack label="Monitoring" /> : <h1>Monitoring</h1>}
       <div className="ex-workspace-actions">
-        {readingDetail && <SourceScope compact />}
-        {selected && !creating && !requestedService && <>
-          {!preview && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
-            <button className="ex-collection-action" onClick={() => changeView({ inspect: "source" })}><Info size={15} aria-hidden="true" />Inspect source</button></>}
-          {preview && selected.entityKind !== "stream" && <button className="ex-collection-action" onClick={closeView}><Info size={15} aria-hidden="true" />Hide source details</button>}
-          {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
-        </>}
+        {selected && !creating && !requestedService && liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry}
+          canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} preview />}
         {openProposals > 0 && <button className="ex-collection-action" onClick={() => changeView({ view: "proposals" })}>
           Proposals <span className="mn-filter-count">{openProposals}</span>
         </button>}
@@ -162,7 +155,7 @@ export function ExplorerWorkspace() {
         </button>}
       </div>
     </div>
-    {!readingDetail && <SourceScope />}</>}
+    </>}
     {system.status === "sign-in-required" && <p className="ex-banner">Sign in to load the catalogue. <Link to="/login">Sign in</Link></p>}
     {system.error && <p className="ex-banner ex-error" role="alert">{system.error}<button onClick={() => void system.refresh()}>Retry</button></p>}
     {renderView()}

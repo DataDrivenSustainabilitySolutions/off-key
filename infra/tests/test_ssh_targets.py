@@ -81,18 +81,24 @@ class SshTargetTests(unittest.TestCase):
             ssh.describe(
                 "manager", demo["manager"], set(), trusted, prod, "production"
             ),
-            "SSH target manager (swarm_manager): deploy@100.64.0.1 port 22; "
-            "known-hosts entry: no; same as production: no, production uses "
-            "deploy@netcup-vps port 22",
+            "SSH target manager (swarm_manager): known-hosts entry: no; "
+            "same as production: no, the address differs",
         )
         self.assertEqual(
             ssh.describe(
                 "worker", demo["worker"], trusted, trusted, prod, "production"
             ),
-            "SSH target worker (swarm_backend, swarm_frontend): deploy@100.64.0.2 "
-            "port 2222; known-hosts entry: yes; host key: matches; "
+            "SSH target worker (swarm_backend, swarm_frontend): "
+            "known-hosts entry: yes; host key: matches; "
             "same as production: yes",
         )
+        prod["worker"] = dict(prod["worker"], user="root", port=22)
+        printed = ssh.describe(
+            "worker", demo["worker"], trusted, trusted, prod, "production"
+        )
+        self.assertIn("same as production: no, the user and port differ", printed)
+        for private in ("100.64", "deploy", "root", "2222", "netcup-vps"):
+            self.assertNotIn(private, printed)
         self.assertIn(
             "host key: differs",
             ssh.describe(

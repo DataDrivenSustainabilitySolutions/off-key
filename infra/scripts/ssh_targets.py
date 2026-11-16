@@ -1,11 +1,11 @@
-"""Show where a release connects over SSH and whether the runner trusts each host.
+"""Check each inventory host's SSH target against what the runner trusts.
 
 A release that cannot reach a host prints only the failed task's name and cause.
-This names each inventory host's SSH target, whether the known-hosts file has an
-entry for exactly that address and port, whether the key the host presents now
-matches it, and, given another stack's inventory, whether the target is the same
-there. Addresses are management-tailnet addresses; no key material or other
-configuration is printed.
+For each inventory host this says whether the known-hosts file has an entry for
+exactly its address and port, whether the key the host presents now matches it,
+and, given another stack's inventory, which of user, address and port differ
+there. The workflow log is public, so only host names and match results are
+printed: never an address, user, port or key.
 """
 
 import argparse
@@ -91,10 +91,7 @@ def describe(
     other_name: str,
 ) -> str:
     groups = ", ".join(target["groups"]) or "no group"
-    line = (
-        f"SSH target {host} ({groups}): {target['user']}@{target['address']} "
-        f"port {target['port']}; known-hosts entry: "
-    )
+    line = f"SSH target {host} ({groups}): known-hosts entry: "
     line += "unreadable" if trusted is None else ("yes" if trusted else "no")
     if presented is None:
         line += "; host key: no answer"
@@ -105,12 +102,14 @@ def describe(
         if match is None:
             line += f"; not in the {other_name} inventory"
         else:
-            same = all(match[key] == target[key] for key in ("address", "port", "user"))
+            differ = [
+                key for key in ("user", "address", "port") if match[key] != target[key]
+            ]
             line += f"; same as {other_name}: " + (
-                "yes"
-                if same
-                else f"no, {other_name} uses {match['user']}@{match['address']} "
-                f"port {match['port']}"
+                f"no, the {' and '.join(differ)} "
+                + ("differs" if len(differ) == 1 else "differ")
+                if differ
+                else "yes"
             )
     if target.get("own_key"):
         line += "; sets its own ansible_ssh_private_key_file, which the runner lacks"

@@ -106,3 +106,19 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell, .app-sidebar-chevron { transition: none; }
 }
+
+/* The catalogue selection on Reporting and the Dojo. */
+.ex-selected-source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 14px; font-size: var(--text-caption); }
+.app-page-content > .ex-selected-source { margin-top: 0; }
+.ex-selected-source > small { margin-right: -6px; color: var(--ex-muted); font-size: var(--text-caption); }
+.ex-selected-source-name { display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 100%; }
+.ex-selected-source-name > .source-identity { gap: 6px; font-weight: 500; overflow-wrap: anywhere; }
+.ex-shell .ex-selected-source-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ex-accent); }
+.ex-shell .ex-selected-source-link:hover { text-decoration: underline; }
+.ex-shell .ex-selected-source-clear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-control); color: var(--ex-muted); flex: none; }
+.ex-shell .ex-selected-source-clear:hover:not(:disabled) { background: var(--ex-hover); color: var(--ex-ink); }
+@media (max-width: 760px) {
+  .ex-selected-source { row-gap: 0; }
+  .ex-shell .ex-selected-source-link { min-height: 44px; }
+  .ex-shell .ex-selected-source-clear { width: 44px; height: 44px; }
+}

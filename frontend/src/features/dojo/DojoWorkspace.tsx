@@ -1,12 +1,9 @@
 import { useMemo } from "react";
-import { Activity, X } from "lucide-react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { SourceIcon } from "@/components/source-icons/SourceIcon";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import type { DatasetView } from "@/types/dojo.generated";
 import { useCatalogue } from "../workspace/catalogue-context";
-import { catalogueSelectionLabel, withCatalogueSource } from "../workspace/catalogue-navigation";
-import { detailsHref, selectedSource } from "../workspace/reporting-scope";
+import { SelectedSourceBar } from "../workspace/SelectedSourceBar";
 import { DatasetDetail } from "./DatasetDetail";
 import { DatasetList } from "./DatasetList";
 import { useDojoAccess } from "./access";
@@ -18,7 +15,7 @@ export function DojoWorkspace() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const allowed = useDojoAccess();
-  const { selected, document, selectSource, streamIds } = useCatalogue();
+  const { selected, document } = useCatalogue();
   const datasetId = params.get("dataset");
   useDocumentTitle(!allowed ? "Access denied" : datasetId ? "Dataset" : "Datasets", "Dojo");
   const href = (next: Record<string, string | null>) => {
@@ -36,18 +33,6 @@ export function DojoWorkspace() {
   // Choosing a source in the catalogue keeps the Dojo open: it picks what “Copy recorded
   // readings” starts from. Its readings page stays one link away.
   const scoped = selected && selected.kind !== "root" ? selected : undefined;
-  // The same readings page Reporting links to, when the selection belongs to one device or broker.
-  const source = scoped && selectedSource(streamIds, document);
-  const scopeLabel = scoped && (catalogueSelectionLabel(document, scoped) ?? scoped.label);
-  const selection = scoped && <div className="dj-scope" aria-label="Selected source">
-    <small>Selected</small>
-    <span className="dj-scope-source"><span className="source-identity" title={scopeLabel}>
-      <SourceIcon kind={scoped.entityKind ?? scoped.kind} appearance={scoped.appearance} size={14} />{scopeLabel}</span>
-    <button type="button" className="dj-scope-clear" aria-label="Clear selection" title="Clear selection" onClick={() => selectSource(null)}>
-      <X size={14} aria-hidden="true" /></button></span>
-    {source && <Link className="dj-scope-link" to={withCatalogueSource(detailsHref(source), scoped)}>
-      <Activity size={14} aria-hidden="true" />{source.kind === "device" ? "Device readings" : "Broker readings"}</Link>}
-  </div>;
   const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null }));
 
   return <main className="ex-main-content" aria-label="Dojo workspace">
@@ -59,6 +44,6 @@ export function DojoWorkspace() {
           { replace: true })}
         onDeleted={() => navigate(href({ dataset: null, tab: null }), { replace: true })} />
       : <DatasetList datasetHref={id => href({ dataset: id, tab: null })} onCreated={open}
-        scope={scoped?.label} readings={readings} selection={selection} />}
+        scope={scoped?.label} readings={readings} selection={<SelectedSourceBar />} />}
   </main>;
 }

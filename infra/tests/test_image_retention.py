@@ -158,7 +158,7 @@ class NodeImagePruneTests(unittest.TestCase):
         plays = yaml.safe_load((ROOT / "ansible/deploy.yml").read_text())
         cleanup = plays[-1]
         self.assertEqual(cleanup["hosts"], "swarm_manager:swarm_worker")
-        self.assertIn("Verify and record", json.dumps(plays[-2]))
+        self.assertTrue(any("Verify and record" in json.dumps(p) for p in plays[:-1]))
         for task in cleanup["tasks"]:
             self.assertTrue(task["ignore_errors"])
         self.assertTrue(Path(ROOT / "scripts/prune_images.py").exists())

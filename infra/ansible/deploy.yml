@@ -56,6 +56,16 @@
             argv: [docker, logout, ghcr.io]
           changed_when: false
 
+# Archived WAL is only restorable from a base backup, so every backend node gets
+# the weekly base-backup timer while postgres_wal_archive is on, and loses it when
+# the flag is turned off. The first base backup is taken right away.
+- name: Schedule PostgreSQL base backups for point-in-time restore
+  hosts: swarm_backend
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - postgres_wal
+
 # Runs only after the release above was verified and recorded. Cleanup never fails a
 # verified release: an unreachable node or a Docker error is reported, not fatal.
 - name: Remove superseded application images from every node

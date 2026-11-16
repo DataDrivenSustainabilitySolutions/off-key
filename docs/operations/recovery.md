@@ -110,6 +110,55 @@ starting an older application. Restoring a database loses writes newer than the
 backup. Select a reviewed recovery procedure and reconcile the maintenance records
 with the actually restored database; do not pretend this is a routine code rollback.
 
+## Point-in-time restore of PostgreSQL
+
+With `postgres_wal_archive: true` (it requires `persist_postgres: true`), PostgreSQL
+archives every WAL segment, zstd-compressed, to the `postgres_wal_archive` volume
+on its node, at the latest every `postgres_wal_archive_timeout_seconds` (300 s).
+A systemd timer on the backend nodes (`offkey-<stack>-postgres-base-backup`) takes
+a base backup into the same volume every Sunday at 03:30 and once when it is first
+installed. It keeps the newest `postgres_base_backup_keep` (2) and deletes archived
+WAL older than the oldest one kept. Together they restore the database to any
+moment since the oldest kept base backup, not just to the last dump.
+
+The archive sits on the same node as the data. It protects against mistakes,
+corruption and a bad migration, not against losing the node: copy the volume
+off-node (or use `backup-stack-prod`) for that.
+
+To restore to a moment `T` (UTC), on the node that runs postgres:
+
+1. Stop every writer, then the database:
+   `docker service scale off-key_api=0 off-key_tactic=0 off-key_mqtt-proxy=0 off-key_mqtt-radar=0 off-key_dojo-worker=0 off-key_db-sync=0`,
+   then `docker service scale off-key_postgres=0` and wait until its task has stopped.
+2. Copy the current data aside before changing it:
+   `docker run --rm -v off-key_postgres_data:/from -v /var/backups/offkey-before-pitr:/to <postgres image> cp -a /from/. /to/`.
+3. Pick the newest base backup that ended **before** `T`
+   (`docker run --rm -v off-key_postgres_wal_archive:/a <postgres image> ls /a/base`)
+   and unpack it with recovery settings. `infra/scripts/postgres_pitr_prepare.sh`
+   empties the data volume only with `CONFIRM=erase-data`:
+
+   ```sh
+   docker run --rm --entrypoint sh \
+     -e BASE=<backup> -e TARGET='2026-11-16 12:53:56+00' -e CONFIRM=erase-data \
+     -v "$PWD/postgres_pitr_prepare.sh:/prepare.sh:ro" \
+     -v off-key_postgres_data:/var/lib/postgresql/data \
+     -v off-key_postgres_wal_archive:/var/lib/postgresql/wal-archive \
+     <postgres image> /prepare.sh
+   ```
+
+4. `docker service scale off-key_postgres=1` and follow its log until
+   `archive recovery complete`. Transactions that committed after `T` are not
+   restored. Check the data, then remove the three recovery lines from
+   `postgresql.auto.conf` (PostgreSQL has already deleted `recovery.signal`).
+5. Scale the writers back to their usual replica counts.
+
+Unlike the dump restore below, a point-in-time restore keeps sessions that existed
+at `T`. Raise session versions or ask members to sign in again if the restore
+undoes an account change that mattered, such as a revoked session.
+
+Turning `postgres_wal_archive` off restarts postgres without archiving and removes
+the timer; the archive volume and its contents stay until you delete them.
+
 ## Existing backup and restore tools
 
 With private local inventory/vault and a verified management SSH connection:

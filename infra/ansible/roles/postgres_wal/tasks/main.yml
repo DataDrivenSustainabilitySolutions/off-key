@@ -1,0 +1,96 @@
+---
+# Installs (or removes) the base-backup timer on every backend node. Swarm may
+# place postgres on any of them; the script exits without a backup on a node
+# that does not run the task, so only the node holding the data takes one.
+- name: Require persistent PostgreSQL data for WAL archiving
+  assert:
+    that: persist_postgres | default(false) | bool
+    fail_msg: postgres_wal_archive needs persist_postgres, or the archive outlives no data.
+  when: postgres_wal_archive | bool
+  run_once: true
+  delegate_to: localhost
+
+- name: Install the base backup script
+  when: postgres_wal_archive | bool
+  become: true
+  block:
+    - name: Create the script directory
+      file:
+        path: "{{ postgres_wal_script | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy the base backup script
+      copy:
+        src: "{{ playbook_dir }}/../scripts/postgres_base_backup.py"
+        dest: "{{ postgres_wal_script }}"
+        mode: "0755"
+
+    - name: Write the base backup service
+      copy:
+        dest: "/etc/systemd/system/{{ postgres_wal_unit }}.service"
+        mode: "0644"
+        content: |
+          # Managed by the off-key postgres_wal role.
+          [Unit]
+          Description=off-key PostgreSQL base backup ({{ stack_name }})
+          After=docker.service
+          Requires=docker.service
+
+          [Service]
+          Type=oneshot
+          ExecCondition=/bin/sh -c 'test -n "$(docker ps -q --filter label=com.docker.swarm.service.name={{ stack_name }}_postgres)"'
+          ExecStart=/usr/bin/python3 {{ postgres_wal_script }} {{ stack_name }} --keep {{ postgres_base_backup_keep | int }}
+      register: postgres_wal_service
+
+    - name: Write the base backup timer
+      copy:
+        dest: "/etc/systemd/system/{{ postgres_wal_unit }}.timer"
+        mode: "0644"
+        content: |
+          # Managed by the off-key postgres_wal role.
+          [Unit]
+          Description=Weekly off-key PostgreSQL base backup ({{ stack_name }})
+
+          [Timer]
+          OnCalendar={{ postgres_base_backup_schedule }}
+          Persistent=true
+          RandomizedDelaySec=10m
+
+          [Install]
+          WantedBy=timers.target
+      register: postgres_wal_timer
+
+    - name: Enable the base backup timer
+      systemd:
+        name: "{{ postgres_wal_unit }}.timer"
+        enabled: true
+        state: started
+        daemon_reload: "{{ postgres_wal_service.changed or postgres_wal_timer.changed }}"
+
+    # Archived WAL is useless until a base backup exists to roll it forward from.
+    - name: Take the first base backup when the timer is new
+      systemd:
+        name: "{{ postgres_wal_unit }}.service"
+        state: started
+      when: postgres_wal_timer.changed
+
+- name: Remove the base backup timer when archiving is off
+  when: not (postgres_wal_archive | bool)
+  become: true
+  block:
+    - name: Stop and disable the timer if it exists
+      systemd:
+        name: "{{ postgres_wal_unit }}.timer"
+        enabled: false
+        state: stopped
+      failed_when: false
+
+    - name: Remove the units and the script
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/etc/systemd/system/{{ postgres_wal_unit }}.timer"
+        - "/etc/systemd/system/{{ postgres_wal_unit }}.service"
+        - "{{ postgres_wal_script }}"

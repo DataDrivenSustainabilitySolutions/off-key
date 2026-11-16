@@ -23,8 +23,27 @@ services:
 {% if persist_postgres | default(false) | bool %}
 
   postgres:
+{% if postgres_wal_archive | default(false) | bool %}
+    # Continuous WAL archiving for point-in-time restore (docs/operations/recovery.md).
+    # The entrypoint starts as root, so it can hand the archive volume to postgres
+    # before the image's own entrypoint drops privileges. A segment is written to a
+    # temporary name and renamed, so a crash never leaves a truncated archive file;
+    # an existing name fails the command, as PostgreSQL's documentation requires.
+    entrypoint: ["sh", "-ec", "install -d -o postgres -g postgres -m 0700 /var/lib/postgresql/wal-archive/wal /var/lib/postgresql/wal-archive/base && exec docker-entrypoint.sh \"$$@\"", "postgres-wal"]
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /var/lib/postgresql/wal-archive/wal/%f.zst && zstd -q -f -o /var/lib/postgresql/wal-archive/wal/%f.zst.part %p && mv /var/lib/postgresql/wal-archive/wal/%f.zst.part /var/lib/postgresql/wal-archive/wal/%f.zst
+      - -c
+      - archive_timeout={{ postgres_wal_archive_timeout_seconds | default(300) | int }}
+{% endif %}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+{% if postgres_wal_archive | default(false) | bool %}
+      - postgres_wal_archive:/var/lib/postgresql/wal-archive
+{% endif %}
     deploy:
       update_config:
         order: stop-first
@@ -48,6 +67,9 @@ services:
 volumes:
 {% if persist_postgres | default(false) | bool %}
   postgres_data:
+{% if postgres_wal_archive | default(false) | bool %}
+  postgres_wal_archive:
+{% endif %}
 {% endif %}
 {% if persist_emqx_data | default(false) | bool %}
   emqx_data:

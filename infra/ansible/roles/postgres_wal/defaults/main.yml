@@ -1,0 +1,9 @@
+---
+# Continuous WAL archiving is opt-in: set postgres_wal_archive: true (with
+# persist_postgres: true) in the inventory. See docs/operations/recovery.md.
+postgres_wal_archive: false
+# systemd OnCalendar expression for base backups, and how many complete ones to keep.
+postgres_base_backup_schedule: "Sun *-*-* 03:30:00"
+postgres_base_backup_keep: 2
+postgres_wal_script: /usr/local/lib/offkey/postgres_base_backup.py
+postgres_wal_unit: "offkey-{{ stack_name }}-postgres-base-backup"

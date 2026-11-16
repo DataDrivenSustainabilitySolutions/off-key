@@ -32,8 +32,20 @@ Dependabot ignore rule below is removed.
 ## Updates
 
 Dependabot ignores `emqx/emqx` from 5.9.0 on, so it only proposes 5.8.x
-patches. 5.8.9 (December 2025) is the last Apache 2.0 release. A newer EMQX needs a licence decision first, or a move to another open-source
+patches. 5.8.9 (December 2025) is the last open-source `emqx/emqx` image.
+A newer EMQX needs a licence decision first, or a move to another open-source
 broker.
+
+## Support horizon
+
+EMQ ended maintenance of the open-source 5.8 edition on 28 February 2026, so
+5.8.9 gets no further official images, bug fixes or Debian base-image updates.
+EMQ still maintains the `release-58` branch for its Enterprise 5.8 builds
+(`e5.8.10`, `e5.8.11`, ...) until August 2027. On that branch the broker core
+stays Apache 2.0 and only the Enterprise app folders are BSL, so an
+open-source image could be built from it with the `emqx` profile. Fixes made
+after 5.8.9 reach off-key only through such a build or through a move to
+another broker.
 
 EMQX does not support downgrades, so a data directory written by 6.x is not
 reused by 5.8. The local stack keeps EMQX data in the `local_emqx58_data` volume

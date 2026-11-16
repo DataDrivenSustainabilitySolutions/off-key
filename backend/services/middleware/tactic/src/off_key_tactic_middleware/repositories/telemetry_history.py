@@ -1,5 +1,6 @@
 """Bounded chart views calculated from recorded measurements, never extrema."""
 
+import typing
 from datetime import UTC, datetime, timedelta
 from math import ceil, log10
 from typing import Literal
@@ -10,10 +11,12 @@ from off_key_core.schemas.devices import (
     MeasurementHistory,
     MeasurementSummary,
 )
-from sqlalchemy import func, select
+from sqlalchemy import Float, cast, func, select
+from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 
-RAW_HISTORY_LIMIT = 10_000
+# Original readings per mean bucket: a pixel column is about a third of a bucket.
+RAW_COLUMNS_PER_BUCKET = 3
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
@@ -93,18 +96,24 @@ async def read_history(
     # Sparse views recover every original timestamp. An explicit averaging
     # window still applies to sparse numeric series.
     if view == "raw" or (window_ms is None and count <= buckets * 2):
+        span_ms = (end - start).total_seconds() * 1000
+        columns = buckets * RAW_COLUMNS_PER_BUCKET
+        # Four readings per column draw the same line as every reading would.
+        if view == "raw" and count > columns * 4:
+            column_ms = history_interval(span_ms, columns, None)
+            result.column_ms = column_ms
+            result.points = await _thinned_readings(session, conditions, column_ms)
+            return result
         rows = await session.execute(
             select(Telemetry.timestamp, Telemetry.value)
             .where(*conditions)
-            .order_by(Telemetry.timestamp.desc())
-            .limit(RAW_HISTORY_LIMIT)
+            .order_by(Telemetry.timestamp)
         )
         result.points = [
             MeasurementBucket(timestamp=time.isoformat(), value=value)
-            for time, value in reversed(rows.all())
+            for time, value in rows.all()
             if value is not None
         ]
-        result.truncated = count > RAW_HISTORY_LIMIT
         return result
 
     interval_ms = history_interval(
@@ -141,3 +150,46 @@ async def read_history(
             )
         )
     return result
+
+
+async def _thinned_readings(
+    session: AsyncSession, conditions: tuple, column_ms: int
+) -> list[MeasurementBucket]:
+    """Each column's first, last, lowest and highest original reading (M4).
+
+    Columns start at the epoch, so the client can tell them apart. Every point is
+    a real reading with its own time and value: a line through them covers the
+    same pixels as one through every reading, and no spike is lost. One hashed
+    aggregation finds all four, without sorting the range: arrays compare
+    element by element, so ``[time, value]`` picks by time and ``[value, time]``
+    by value, the earliest reading winning a tie.
+    """
+    column = func.date_bin(
+        timedelta(milliseconds=column_ms), Telemetry.timestamp, EPOCH
+    )
+    time = cast(func.extract("epoch", Telemetry.timestamp), Float)
+    value = cast(Telemetry.value, Float)
+    rows = await session.execute(
+        select(
+            func.min(array([time, value])),
+            func.max(array([time, value])),
+            func.min(array([value, time])),
+            func.max(array([value, -time])),
+        )
+        .where(*conditions)
+        .group_by(column)
+    )
+    # Each row holds four [time, value] or [value, time] pairs.
+    columns = typing.cast(list[tuple[list[float], ...]], rows.all())
+    readings: dict[float, float] = {}
+    for first, last, low, high in columns:
+        readings[first[0]] = first[1]
+        readings[last[0]] = last[1]
+        readings[low[1]] = low[0]
+        readings[-high[1]] = high[0]
+    return [
+        MeasurementBucket(
+            timestamp=datetime.fromtimestamp(seconds, UTC).isoformat(), value=reading
+        )
+        for seconds, reading in sorted(readings.items())
+    ]

@@ -83,6 +83,8 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   [currentHistory, stored.overview, inspection, monitoring.binding, telemetry, numeric, preference, buckets]);
   const visibleHistory = currentHistory ?? presentation;
   const meanShown = visibleHistory?.representation === "mean";
+  // A thinned raw view holds only some of the window's readings, like means hold none.
+  const partial = meanShown || Boolean(visibleHistory?.column_ms);
   // Evidence and alarms name the catalogue reading the chart draws.
   const readingId = stream.id;
   // The services already watch this reading; the first running one owns the chart.
@@ -91,16 +93,16 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     && (!service || item.monitor_id === service.id)), [monitoring.evidence, service, readingId]);
   const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, readingId),
     [service?.id, monitoring.anomalies, evidence, readingId]);
-  // Means stand for samples that are not loaded, so a detector result cannot be matched to
-  // one. Every result of the window then counts: Auto shows the same detection as Raw.
+  // Means and thinned readings stand for samples that are not loaded, so a detector result
+  // cannot be matched to one. Every result of the window then counts: Auto shows the same detection as Raw.
   const telemetryTimes = useMemo(() => {
     const times = normalizedHistory.map(([time]) => time);
-    if (!meanShown) return times;
+    if (!partial) return times;
     const scored = evidence.flatMap(row => { const time = getEvidenceTimeForSensor(row, readingId); return time === undefined ? [] : [time]; });
     return [...new Set([...times, ...scored])].sort((left, right) => left - right);
-  }, [normalizedHistory, meanShown, evidence, readingId]);
-  const detectionTimes = useMemo(() => meanShown ? telemetryTimes.filter(time => time >= cutoff) : undefined,
-    [meanShown, telemetryTimes, cutoff]);
+  }, [normalizedHistory, partial, evidence, readingId]);
+  const detectionTimes = useMemo(() => partial ? telemetryTimes.filter(time => time >= cutoff) : undefined,
+    [partial, telemetryTimes, cutoff]);
   const collectedTimes = useMemo(() => monitoring.telemetry.map((point) => epochMilliseconds(point.timestamp))
     .filter((time) => time >= cutoff), [monitoring.telemetry, cutoff]);
   const panes = useDetectorPanes({ telemetryType: readingId, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
@@ -213,7 +215,6 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     {model.secondarySeries.length > 0 && <TelemetryChartSummary model={model} timeZone={timeZone} showTelemetry={false} />}
     <TelemetryEventDetails groups={events} timeZone={timeZone} unit={stream.unit} />
     {hasValues && stored.loading && <p className="ex-preview-note" role="status">Loading {preference.mode === "raw" ? "raw readings" : "history"}…</p>}
-    {visibleHistory?.truncated && <p className="ex-preview-note" role="status">Showing the latest {visibleHistory.points.length.toLocaleString()} of {visibleHistory.sample_count.toLocaleString()} raw readings in this range. Zoom in to inspect earlier readings.</p>}
     {!stored.loading && visibleHistory && visibleHistory.points.length > 0 && <HistoryValues key={visibleHistory.representation}
       history={visibleHistory} unit={stream.unit} />}
     {stored.error && <p className="ex-preview-note" role="status">{stored.error}</p>}

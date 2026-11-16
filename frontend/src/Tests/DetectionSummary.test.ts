@@ -127,7 +127,7 @@ describe("a summarised chart", () => {
 
   it("gives a value with no line to either side a dot, and a single value none of its own", () => {
     // A burst of five samples, then two that each stand alone between pauses.
-    const display = { representation: "raw" as const, interval_ms: 0, sample_count: 7, extent: null, truncated: false,
+    const display = { representation: "raw" as const, interval_ms: 0, sample_count: 7, extent: null,
       points: [0, 100, 200, 300, 400, 60_000, 120_000].map((offset, index) => ({ timestamp: new Date(START + offset).toISOString(), value: index })) };
     const built = option({ readings: [reading({ presentation: display })] });
     expect(seriesOf(built, "history-dot:reading:voltage")).toMatchObject({ type: "scatter", silent: true,

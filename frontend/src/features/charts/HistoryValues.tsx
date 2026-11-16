@@ -18,9 +18,11 @@ export function HistoryValues({ history, unit }: { history: TelemetryHistory; un
   const end = points.length - current * PAGE;
   const visible = points.slice(Math.max(0, end - PAGE), end).reverse();
   const readings = means ? history.sample_count : points.length;
+  const thinned = !means && !!history.column_ms;
   const suffix = unit ? ` (${unit})` : "";
   return <details className="ex-history-values"><summary>Values · {readings.toLocaleString()} {readings === 1 ? "reading" : "readings"}
-    {means && ` · ${intervalLabel(history.interval_ms)} means`}</summary>
+    {means && ` · ${intervalLabel(history.interval_ms)} means`}
+    {thinned && ` of ${history.sample_count.toLocaleString()} · first, last, lowest and highest per ${intervalLabel(history.column_ms!)}; zoom in for every reading`}</summary>
     <table><thead><tr>{means ? <>
       <th scope="col">Interval from (UTC)</th><th scope="col">Mean{suffix}</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Readings</th>
     </> : <><th scope="col">Measured at (UTC)</th><th scope="col">Value{suffix}</th></>}</tr></thead>

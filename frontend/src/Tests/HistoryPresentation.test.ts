@@ -56,6 +56,23 @@ describe("history presentation", () => {
     expect(display.filter(point => point.summary).map(point => point.summary!.count)).not.toContain(3);
   });
 
+  it("draws a thinned raw view as one line and breaks it only at a real pause", () => {
+    // Readings every 100 ms; each 1 s column keeps its first, lowest, highest and last.
+    const column = (second: number) => [0, 100, 800, 900].map((offset, index) =>
+      ({ timestamp: new Date(START + second * 1000 + offset).toISOString(), value: [1, 0, 9, 2][index]! }));
+    const history = { representation: "raw" as const, interval_ms: 0, sample_count: 50, extent: null, column_ms: 1000,
+      points: [0, 1, 2, 5].flatMap(column) };
+    const display = historyChartData(history);
+    // 700 ms inside a column joins two kept readings, not two neighbours; seconds 3 and 4 hold none.
+    expect(display.filter(point => point.value[1] === null)).toHaveLength(1);
+    expect(display.findIndex(point => point.value[1] === null)).toBe(12);
+    // Thinned overview readings outside an inspected window keep their own columns.
+    const detail = { ...history, column_ms: 0, points: Array.from({ length: 10 }, (_, index) =>
+      ({ timestamp: new Date(START + 5000 + index * 100).toISOString(), value: index })) };
+    const combined = combineHistory(history, detail, { startMs: START + 5000, endMs: START + 6000 });
+    expect(historyChartData(combined).filter(point => point.value[1] === null)).toHaveLength(1);
+  });
+
   it("chooses one readable interval for a span, as the server does", () => {
     expect(historyInterval(3_600_000, 300)).toBe(15_000);
     expect(historyInterval(3_600_000, 300, 60_000)).toBe(60_000);

@@ -156,10 +156,14 @@ With `view=auto`, dense ranges return epoch-aligned bucket means calculated from
 the original measurements, plus `minimum`, `maximum`, `count`, `start` and `end`.
 Sparse ranges return original samples. `window_ms` optionally sets a minimum
 averaging interval (1–86,400,000 ms); wider ranges may require a larger interval.
-`view=raw` always returns original samples, capped at the newest 10,000. Both
-views use an envelope with `representation` (`raw` or `mean`), `points`,
-`interval_ms`, `sample_count`, `extent` and `truncated`. Counts and extent describe
-the whole requested range, including samples omitted by the raw cap. Empty
+`view=raw` always returns original samples across the whole range. Where the
+range holds more than four per pixel column (three columns per bucket), it keeps
+each epoch-aligned column's first, last, lowest and highest sample and reports
+the column width as `column_ms`; a line through them covers the same pixels as
+every sample would, and no spike is lost. `column_ms` is 0 when every sample is
+returned. Both views use an envelope with `representation` (`raw` or `mean`),
+`points`, `interval_ms`, `sample_count`, `extent` and `column_ms`. Counts and
+extent describe the whole requested range. Empty
 buckets are omitted. Without `view`, the response remains the legacy list of
 bucket extrema.
 

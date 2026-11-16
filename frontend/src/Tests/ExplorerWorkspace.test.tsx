@@ -395,7 +395,7 @@ describe("service-centred monitoring workspace", () => {
     saved.runtime.ingress = { sources: { broker: { state: "connected" } } };
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? saved
       : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false }
-      : endpoint.includes("/measurements/buckets?") ? { representation: "raw", points: [], interval_ms: 0, sample_count: 0, extent: null, truncated: false } : []);
+      : endpoint.includes("/measurements/buckets?") ? { representation: "raw", points: [], interval_ms: 0, sample_count: 0, extent: null } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).getByRole("status").textContent).toContain("Recording");

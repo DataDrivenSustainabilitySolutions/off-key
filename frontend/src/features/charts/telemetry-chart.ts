@@ -509,8 +509,9 @@ export const buildMonitoringChartOption = ({
     if (display) historyBands.push(...historyBandSeries(reading.id, display, reading.color, index));
     dots.push(...loneDots(reading.id, reading.name, display?.map(point => point.value) ?? reading.data, reading.color, index, 5));
     // A mean speaks for its own interval; a recorded sample as far as its line would bridge.
+    // A thinned raw view keeps a few readings per column; each still speaks across its column.
     reach.set(reading.id, reading.presentation?.representation === "mean" ? reading.presentation.interval_ms
-      : getPauseLimit(valueTimes(display?.map(point => point.value) ?? reading.data)));
+      : Math.max(reading.presentation?.column_ms ?? 0, getPauseLimit(valueTimes(display?.map(point => point.value) ?? reading.data))));
     // Consecutive alarm results are one episode: a soft band from its first to its last
     // result, and a line where it began. A single result is that line alone.
     const alarmSpans = (reading.alarmSpans ?? []).reduce<Array<[number, number]>>((joined, [start, end]) => {

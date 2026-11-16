@@ -6,6 +6,8 @@ export interface HistoryPoint extends TelemetryDataPoint {
   count?: number;
   start?: string;
   end?: string;
+  /** Client-side only: the column width of the raw view this reading came from. */
+  column_ms?: number;
 }
 
 export interface TelemetryHistory {
@@ -14,7 +16,11 @@ export interface TelemetryHistory {
   interval_ms: number;
   sample_count: number;
   extent: [string, string] | null;
-  truncated: boolean;
+  /**
+   * Raw views only. Above zero, each column of this width (counted from the epoch)
+   * holds just its first, last, lowest and highest reading. Zero: every reading.
+   */
+  column_ms?: number;
 }
 
 export interface HistoryPreference {

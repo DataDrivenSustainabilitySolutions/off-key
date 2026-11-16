@@ -13,6 +13,7 @@ from off_key_core.db.models import (
 from off_key_core.db.retention import read_storage_status
 from off_key_core.db.schema import bootstrap_schema
 from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -358,6 +359,109 @@ async def test_anomaly_retention_and_storage_cap(disposable_database, monkeypatc
             )
             await connection.execute(
                 delete(Telemetry).where(Telemetry.charger_id == "retention-cap")
+            )
+        get_telemetry_settings.cache_clear()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_opt_in_telemetry_compression_keeps_the_log_readable(
+    disposable_database, monkeypatch
+):
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
+
+    async def bootstrap(**env):
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        get_telemetry_settings.cache_clear()
+        async with engine.begin() as connection:
+            await connection.run_sync(bootstrap_schema)
+
+    async def policy(connection):
+        return await connection.scalar(
+            text(
+                "SELECT config ->> 'compress_after' FROM timescaledb_information.jobs "
+                "WHERE hypertable_name = 'telemetry' "
+                "AND proc_name = 'policy_compression'"
+            )
+        )
+
+    now = datetime.now(UTC)
+    try:
+        await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="")
+        async with engine.connect() as connection:
+            assert await policy(connection) is None
+
+        await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="48")
+        await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="72")
+        async with engine.begin() as connection:
+            assert await policy(connection) in {"72 hours", "72:00:00"}
+            await connection.execute(
+                insert(Telemetry),
+                [
+                    {
+                        "charger_id": "compression-test",
+                        "timestamp": now - timedelta(days=age),
+                        "type": "temperature",
+                        "value": age,
+                        "data_source": "test",
+                    }
+                    for age in (5, 4, 0)
+                ],
+            )
+            compressed = await connection.scalar(
+                text(
+                    "SELECT count(compress_chunk(chunk)) FROM show_chunks("
+                    "'telemetry', older_than => INTERVAL '3 days') AS chunk"
+                )
+            )
+            assert compressed == 2
+
+        async with engine.begin() as connection:
+            # A detector replaying its stream reads compressed rows in log order.
+            rows = await connection.execute(
+                select(Telemetry.value, Telemetry.log_seq)
+                .where(
+                    Telemetry.charger_id == "compression-test",
+                    Telemetry.type == "temperature",
+                    Telemetry.log_seq > 0,
+                )
+                .order_by(Telemetry.log_seq)
+            )
+            assert [value for value, _ in rows] == [5, 4, 0]
+            # A late reading still lands in a compressed chunk, and upserts work.
+            late = {
+                "charger_id": "compression-test",
+                "timestamp": now - timedelta(days=4, hours=1),
+                "type": "temperature",
+                "value": 41,
+                "data_source": "test",
+            }
+            statement = postgres_insert(Telemetry).values(late)
+            await connection.execute(
+                statement.on_conflict_do_update(
+                    index_elements=["charger_id", "timestamp", "type"],
+                    set_={"value": statement.excluded.value},
+                )
+            )
+            assert (
+                await connection.scalar(
+                    select(func.count()).where(
+                        Telemetry.charger_id == "compression-test"
+                    )
+                )
+                == 4
+            )
+
+        await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="")
+        async with engine.connect() as connection:
+            assert await policy(connection) is None
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(
+                delete(Telemetry).where(Telemetry.charger_id == "compression-test")
             )
         get_telemetry_settings.cache_clear()
         await engine.dispose()

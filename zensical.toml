@@ -32,6 +32,7 @@ nav = [
     { "GitHub setup" = "operations/github-setup.md" },
     { "Production releases" = "operations/production.md" },
     { "EMQX version and license" = "operations/emqx-license.md" },
+    { "TimescaleDB license" = "operations/timescaledb-license.md" },
     { "Public demo" = "operations/public-demo.md" },
     { "Worker observability" = "operations/observability.md" },
     { "Recovery" = "operations/recovery.md" },

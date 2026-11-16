@@ -12,6 +12,9 @@ class TelemetrySettings(BaseSettings):
     TELEMETRY_RETENTION_DAYS: int = 14
     # Optional ceiling on telemetry and monitoring evidence storage; unset disables.
     TELEMETRY_STORAGE_CAP_GB: float | None = None
+    # Compress telemetry chunks once they are this many hours old; unset disables.
+    # Uses TimescaleDB native compression (Timescale License, like retention jobs).
+    TELEMETRY_COMPRESS_AFTER_HOURS: int | None = None
 
     @field_validator("TELEMETRY_RETENTION_DAYS")
     @classmethod
@@ -31,6 +34,25 @@ class TelemetrySettings(BaseSettings):
         if value is not None and not 0.1 <= value <= 100_000:
             raise ValueError("Telemetry storage cap must be between 0.1 and 100000 GB")
         return value
+
+    @field_validator("TELEMETRY_COMPRESS_AFTER_HOURS", mode="before")
+    @classmethod
+    def blank_compression_is_unset(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("TELEMETRY_COMPRESS_AFTER_HOURS")
+    @classmethod
+    def validate_compress_after(cls, value: int | None) -> int | None:
+        if value is not None and not 24 <= value <= 8760:
+            raise ValueError(
+                "Telemetry compression must start between 24 and 8760 hours"
+            )
+        return value
+
+    @property
+    def compress_after(self) -> str | None:
+        hours = self.TELEMETRY_COMPRESS_AFTER_HOURS
+        return None if hours is None else f"{hours} hours"
 
     @property
     def retention_days(self) -> int:

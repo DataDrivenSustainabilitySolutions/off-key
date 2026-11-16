@@ -228,6 +228,7 @@ ask the service which models it holds for the composer.
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
 | `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry, monitoring evidence and anomalies; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
 | `TELEMETRY_STORAGE_CAP_GB` | empty | Optional storage ceiling for telemetry and monitoring evidence, `0.1–100000` GB (decimal). Every 15 minutes, while over the cap, the oldest completed daily chunk is dropped, even if it is inside the retention window. Empty disables the cap. Restart/redeploy DB Sync after changing it. |
+| `TELEMETRY_COMPRESS_AFTER_HOURS` | empty | Compress telemetry chunks once they are this many hours old, `24–8760`; empty turns compression off and removes the policy (chunks already compressed stay compressed and readable). Each (entity, reading) stream is one compressed segment ordered by time. Needs TimescaleDB's Community edition; see [TimescaleDB license](../operations/timescaledb-license.md). Restart/redeploy DB Sync after changing it. |
 | `LOG_LEVEL` | `INFO` | Standard log-level token |
 | `LOG_FORMAT` | `simple` | `simple` writes text lines that end with any `extra=` context as `key=value` pairs; `json` writes one object per line with that context under `extra` |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |

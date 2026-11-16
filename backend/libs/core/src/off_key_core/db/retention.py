@@ -18,6 +18,12 @@ ANOMALY_RETENTION_PROC = "off_key_anomaly_retention"
 ANOMALY_RETENTION_SCHEDULE = "1 hour"
 STORAGE_CAP_PROC = "off_key_storage_cap"
 STORAGE_CAP_SCHEDULE = "15 minutes"
+# Readings arrive per (entity, reading) stream and are read per stream, so each
+# stream is its own compressed segment, ordered by time within it. The primary
+# key (charger_id, timestamp, type) is covered, as compression requires.
+COMPRESSED_TABLE = "telemetry"
+COMPRESS_SEGMENT_BY = "charger_id, type"
+COMPRESS_ORDER_BY = "timestamp DESC"
 
 # anomaly_identity references anomalies, which blocks drop_chunks, so anomaly
 # retention deletes rows and lets the foreign key cascade.
@@ -159,6 +165,84 @@ def _reconcile_chunk_interval(connection: Connection, table: str) -> None:
         )
 
 
+def reconcile_compression(connection: Connection, compress_after: str | None) -> None:
+    """Keep telemetry's compression policy in line with the setting.
+
+    Turning the setting off removes the policy; chunks already compressed stay
+    compressed and remain readable. Decompress them by hand if needed.
+    """
+    job = (
+        connection.execute(
+            text(
+                """
+                SELECT job_id,
+                       CAST(config ->> 'compress_after' AS interval)
+                           = CAST(CAST(:after AS text) AS interval) AS matches
+                FROM timescaledb_information.jobs
+                WHERE hypertable_schema = 'public'
+                  AND hypertable_name = :table AND proc_name = 'policy_compression'
+                """
+            ),
+            {"table": COMPRESSED_TABLE, "after": compress_after or "0"},
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if compress_after is None:
+        if job is not None:
+            connection.execute(
+                text("SELECT remove_compression_policy(to_regclass(:table))"),
+                {"table": f"public.{COMPRESSED_TABLE}"},
+            )
+            logger.info("Compression policy removed for %s", COMPRESSED_TABLE)
+        return
+    if job is not None and job["matches"]:
+        return
+    license_mode = connection.scalar(text("SHOW timescaledb.license"))
+    if license_mode != "timescale":
+        raise RuntimeError(
+            "Telemetry compression needs TimescaleDB's Community edition "
+            f"(timescaledb.license = timescale); this server runs {license_mode!r}. "
+            "Unset TELEMETRY_COMPRESS_AFTER_HOURS or change the edition."
+        )
+    enabled = connection.scalar(
+        text(
+            """
+            SELECT compression_enabled FROM timescaledb_information.hypertables
+            WHERE hypertable_schema = 'public' AND hypertable_name = :table
+            """
+        ),
+        {"table": COMPRESSED_TABLE},
+    )
+    if not enabled:
+        connection.execute(
+            text(
+                f"ALTER TABLE public.{COMPRESSED_TABLE} SET ("
+                "timescaledb.compress, "
+                f"timescaledb.compress_segmentby = '{COMPRESS_SEGMENT_BY}', "
+                f"timescaledb.compress_orderby = '{COMPRESS_ORDER_BY}')"
+            )
+        )
+    if job is not None:
+        connection.execute(
+            text("SELECT remove_compression_policy(to_regclass(:table))"),
+            {"table": f"public.{COMPRESSED_TABLE}"},
+        )
+    connection.execute(
+        text(
+            """
+            SELECT add_compression_policy(
+                to_regclass(:table), CAST(CAST(:after AS text) AS interval)
+            )
+            """
+        ),
+        {"table": f"public.{COMPRESSED_TABLE}", "after": compress_after},
+    )
+    logger.info(
+        "Compression policy applied for %s: %s", COMPRESSED_TABLE, compress_after
+    )
+
+
 def reconcile_retention_policies(connection: Connection) -> None:
     """Apply the configured duration without replacing existing jobs or schedules."""
     settings = get_telemetry_settings()
@@ -233,6 +317,7 @@ def reconcile_retention_policies(connection: Connection) -> None:
         STORAGE_CAP_SCHEDULE,
         None if cap is None else {"max_bytes": cap, "tables": list(RETENTION_TABLES)},
     )
+    reconcile_compression(connection, settings.compress_after)
 
 
 async def read_storage_status(session: AsyncSession) -> StorageStatus:

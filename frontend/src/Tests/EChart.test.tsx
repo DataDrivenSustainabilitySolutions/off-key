@@ -15,6 +15,7 @@ const echartsMock = vi.hoisted(() => {
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
     getOption: ReturnType<typeof vi.fn>;
+    getModel: ReturnType<typeof vi.fn>;
     handlers: Map<string, (payload: unknown) => void>;
   }> = [];
   const init = vi.fn(() => {
@@ -34,6 +35,7 @@ const echartsMock = vi.hoisted(() => {
         xAxis: [{ min: 1_000, max: 2_000 }],
         legend: [{ selected: { Voltage: false } }],
       })),
+      getModel: vi.fn(() => undefined),
       handlers,
     };
     instances.push(instance);
@@ -45,6 +47,7 @@ const echartsMock = vi.hoisted(() => {
 vi.mock("echarts/core", () => ({
   init: echartsMock.init,
   use: echartsMock.register,
+  format: { getTextRect: (text: string) => ({ width: text.length * 7 }) },
 }));
 vi.mock("echarts/charts", () => ({ LineChart: {}, ScatterChart: {} }));
 vi.mock("echarts/components", () => ({
@@ -234,5 +237,37 @@ describe("EChart lifecycle", () => {
 
     unmount();
     expect(echartsMock.instances[1]?.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("moves every pane and the slider to fit the widest value label, and keeps that gutter on updates", () => {
+    const withLabels = (labels: string[]) => ({
+      eachComponent: (_type: string, visit: (axis: unknown) => void) => visit({
+        get: () => undefined,
+        axis: { getViewLabels: () => labels.map(formattedLabel => ({ formattedLabel })), getLabelModel: () => ({ getFont: () => "12px sans-serif" }) },
+      }),
+    });
+    const panes = (id: string) => ({
+      ...option(id),
+      grid: [{ left: 44, top: 26 }, { left: 44, top: 242 }],
+      dataZoom: [{ id: "inside", type: "inside" }, { id: "slider", type: "slider", startValue: 1_000 }],
+    }) as TelemetryChartOption;
+    const { rerender } = render(<EChart option={panes("telemetry")} resolvedTheme="light" accessibleDescription="Rate" />);
+    const instance = echartsMock.instances[0]!;
+    instance.getModel.mockReturnValue(withLabels(["5.1M", "-100.25K"]));
+
+    act(() => instance.handlers.get("finished")?.(undefined));
+    // "-100.25K" is 56 wide here, with the label margin and edge padding: 72.
+    expect(instance.setOption).toHaveBeenLastCalledWith({
+      grid: [{ left: 72 }, { left: 72 }],
+      dataZoom: [{ id: "slider", left: 72 }],
+    }, { lazyUpdate: true });
+    const calls = instance.setOption.mock.calls.length;
+    act(() => instance.handlers.get("finished")?.(undefined));
+    expect(instance.setOption).toHaveBeenCalledTimes(calls);
+
+    rerender(<EChart option={panes("telemetry")} resolvedTheme="light" accessibleDescription="Rate" />);
+    const updated = instance.setOption.mock.lastCall?.[0] as { grid: Array<{ left: number; top: number }>; dataZoom: unknown[] };
+    expect(updated.grid).toEqual([{ left: 72, top: 26 }, { left: 72, top: 242 }]);
+    expect(updated.dataZoom).toEqual([{ id: "inside", type: "inside" }, { id: "slider", type: "slider", startValue: 1_000, left: 72 }]);
   });
 });

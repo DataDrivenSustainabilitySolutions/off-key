@@ -26,6 +26,8 @@ type Props = {
   onEdit: (kind: SystemEntityKind, id: string) => void;
   onAppearanceChange?: (appearance: SourceAppearance | undefined) => Promise<boolean>;
   collectionControls?: ReactNode;
+  /** Short facts, such as recording settings someone may not change, shown beside the status. */
+  facts?: ReactNode;
   runtime?: SystemRuntime;
   connectionStatusOnly?: boolean;
   /** Why the last check of an unrecorded broker could not connect; it stands in for the live view's own error. */
@@ -75,7 +77,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, connectionCheck, pageTitle = false, favourite, onFavourite,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, facts, runtime, connectionStatusOnly = false, connectionCheck, pageTitle = false, favourite, onFavourite,
   collapseDefinition = false, actions, onAppearanceChange,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
@@ -191,7 +193,7 @@ export default function ExplorerPreview({
     </div>}
   </>;
   return (
-    <section className="ex-preview" aria-label={`${kind} preview`}>
+    <section className={`ex-preview${pageTitle ? " ex-preview--page" : ""}`} aria-label={`${kind} preview`}>
       <header className={`ex-preview-header${isReading ? " ex-preview-header--reading" : ""}`}>
         <div className="ex-preview-identity">
           {(canEdit || saving) && onAppearanceChange && (node.objectId || node.kind === "topic")
@@ -205,35 +207,40 @@ export default function ExplorerPreview({
                 editable={editable} disabledReason={saving ? "Saving changes…" : undefined}
                 saveError={error} ariaLabel={`Rename ${kind.toLowerCase()}`} /> : title}
             </Title>
+            {isReading && parent && <p className="ex-preview-parent">{parent.label}</p>}
           </div>
         </div>
         <div className="mn-detail-actions">{actions}{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
       </header>
-      {isReading ? parent && <p className="ex-preview-parent">{parent.label}</p> : trail}
-      <div className="ex-preview-status" role="status">
-        <strong className={`mn-state mn-state--${tone}`}>{label}</strong>
-        {showStatusDetail && <span>{statusDetail}</span>}
-      </div>
-      {problem && <p className="ex-preview-error" role="alert">{problem}</p>}
-      {collectionControls}
-      {stream ? <>
-        <div className="ex-preview-value">
-          <span>Latest value</span>
+      {!isReading && trail}
+      {/* What is happening now, in one row: the latest value, the connection and the recording. */}
+      <div className="ex-preview-facts">
+        {stream && <div className="ex-preview-fact ex-preview-value">
+          <span>Latest value · {!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained"
+            : <RelativeTime value={receivedAt} mode="elapsed" fallback="No value received yet" />}</span>
           <strong>{latest == null ? "—" : typeof latest === "number" ? number.format(latest) : String(latest)}
             {latest != null && stream.unit && <small> {stream.unit}</small>}
           </strong>
-          <span>{!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained value"
-            : <RelativeTime value={receivedAt} mode="elapsed" fallback="No value received yet" />}</span>
+        </div>}
+        <div className="ex-preview-fact ex-preview-status">
+          <span>{showStatusDetail ? statusDetail : "Status"}</span>
+          <strong className={`mn-state mn-state--${tone}`} role="status">{label}</strong>
         </div>
+        {facts}
+        {!stream && <>
+          <div className="ex-preview-fact"><span>Readings</span><strong>{number.format(related.length)}</strong></div>
+          <div className="ex-preview-fact"><span>{addresses}</span><strong>{number.format(topicCount)}</strong></div>
+          {snapshot?.isAggregate && <div className="ex-preview-fact"><span>Arrivals / second</span><strong>{number.format(snapshot.rate)}</strong></div>}
+        </>}
+      </div>
+      {problem && <p className="ex-preview-error" role="alert">{problem}</p>}
+      {collectionControls}
+      {stream && <>
         {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
             readingConnection?.host, readingConnection?.port, readingConnection?.tls, readingConnection?.transport])}
           stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache} />}
-      </> : <div className="ex-preview-metrics">
-        <div><strong>{number.format(related.length)}</strong><span>Readings</span></div>
-        <div><strong>{number.format(topicCount)}</strong><span>{addresses}</span></div>
-        {snapshot?.isAggregate && <div><strong>{number.format(snapshot.rate)}</strong><span>Arrivals / second</span></div>}
-      </div>}
+      </>}
       {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Source details">
         <details><summary>Source details</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{isReading && trail}{details}</details>
       </section> : <section className="ex-preview-details" aria-label="Source details">

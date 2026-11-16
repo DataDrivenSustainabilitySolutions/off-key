@@ -80,6 +80,12 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
     return policy && policy.mode !== "off" && (!parent || !sameRate(policy, parent)) ? policyLabel(policy).toLowerCase() : undefined;
   };
   const streams = new Map(document.readings.map(stream => [stream.id, stream]));
+  // Without write controls the settings are one fact, shown beside the connection status.
+  if (!canEdit) return <section className="ex-preview-fact source-recording-fact" aria-label="Recording configuration">
+    <span>Recording</span>
+    <strong role={collectionPending ? collectionFailed ? "alert" : "status" : undefined}>{collectionPending
+      ? collectionFailed ? "Settings could not be applied" : "Applying settings…" : summary || "Off"}</strong>
+  </section>;
   return <section className="source-recording" aria-label="Recording configuration">
     <div className="ex-preview-section-heading"><h3>Recording</h3>{summary && <span>{summary}</span>}</div>
     {!busy && collectionPending && <p className="ex-muted" role={collectionFailed ? "alert" : "status"}>

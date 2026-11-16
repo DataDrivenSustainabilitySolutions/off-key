@@ -17,7 +17,7 @@ import {
   MarkPointComponent,
   TooltipComponent,
 } from "echarts/components";
-import { init, use as registerEChartsModules, type EChartsType } from "echarts/core";
+import { format as echartsFormat, init, use as registerEChartsModules, type EChartsType } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 
 import type { ResolvedTheme } from "@/components/theme-provider";
@@ -26,6 +26,7 @@ import {
   resolveChartThemeColors,
 } from "./echarts-theme";
 import type { TelemetryChartOption } from "./telemetry-chart";
+import { valueAxisGutter } from "./axis-labels";
 
 registerEChartsModules([
   LineChart,
@@ -114,6 +115,46 @@ const resizeChart = (chart: EChartsType, container: HTMLElement) => {
   chart.resize({ width: "auto", silent: true });
 };
 
+/** The parts of ECharts' model that show which value labels an axis draws. */
+interface ValueAxisModel {
+  get: (path: string[]) => unknown;
+  axis?: {
+    getViewLabels?: () => Array<{ formattedLabel: string }>;
+    getLabelModel?: () => { getFont?: () => string };
+  };
+}
+interface ChartWithModel {
+  getModel?: () => { eachComponent?: (type: string, visit: (axis: ValueAxisModel) => void) => void } | undefined;
+}
+
+/** The width of the widest value label each y axis draws now, at the font it draws in. */
+const valueLabelWidths = (chart: EChartsType): number[] => {
+  const widths: number[] = [];
+  (chart as unknown as ChartWithModel).getModel?.()?.eachComponent?.("yAxis", axisModel => {
+    if (axisModel.get(["show"]) === false || axisModel.get(["axisLabel", "show"]) === false) return;
+    const font = axisModel.axis?.getLabelModel?.()?.getFont?.();
+    for (const { formattedLabel } of axisModel.axis?.getViewLabels?.() ?? []) {
+      widths.push(echartsFormat.getTextRect(formattedLabel, font).width);
+    }
+  });
+  return widths;
+};
+
+const asList = <T,>(value: T | T[] | undefined): T[] => Array.isArray(value) ? value : value ? [value] : [];
+
+/** Every pane, and the zoom slider under them, starts where the value labels end, so the panes' times line up. */
+const withGutter = (option: TelemetryChartOption, left: number): TelemetryChartOption => ({
+  ...option,
+  grid: asList(option.grid).map(grid => ({ ...grid, left })),
+  dataZoom: asList(option.dataZoom).map(zoom => zoom.type === "slider" ? { ...zoom, left } : zoom),
+});
+
+/** Only the gutter, so a zoom the reader made stays where it is. */
+const gutterOnly = (option: TelemetryChartOption, left: number): TelemetryChartOption => ({
+  grid: asList(option.grid).map(() => ({ left })),
+  dataZoom: asList(option.dataZoom).filter(zoom => zoom.type === "slider").map(zoom => ({ id: zoom.id, left })),
+});
+
 export function EChart({
   option,
   resolvedTheme,
@@ -127,6 +168,8 @@ export function EChart({
   const initialThemeRef = useRef(resolvedTheme);
   const viewportCallbackRef = useRef(onViewportChange);
   const axisIdsRef = useRef<string | undefined>(undefined);
+  const optionRef = useRef(option);
+  const gutterRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     viewportCallbackRef.current = onViewportChange;
@@ -149,6 +192,17 @@ export function EChart({
       if (viewport) viewportCallbackRef.current?.(...viewport);
     };
     chart.on("datazoom", handleDataZoom);
+    // Value labels are only known once ECharts has chosen the ticks. When they no longer
+    // fit the gutter, or leave it needlessly wide, the panes move to fit them.
+    const fitGutter = () => {
+      const widths = valueLabelWidths(chart);
+      if (!widths.length) return;
+      const gutter = valueAxisGutter(widths);
+      if (gutter === gutterRef.current) return;
+      gutterRef.current = gutter;
+      chart.setOption(gutterOnly(optionRef.current, gutter), { lazyUpdate: true });
+    };
+    chart.on("finished", fitGutter);
 
     const resizeObserver =
       typeof ResizeObserver === "undefined"
@@ -159,10 +213,12 @@ export function EChart({
     return () => {
       resizeObserver?.disconnect();
       chart.off("datazoom", handleDataZoom);
+      chart.off("finished", fitGutter);
       chart.dispose();
       chartRef.current = undefined;
       appliedThemeRef.current = undefined;
       axisIdsRef.current = undefined;
+      gutterRef.current = undefined;
     };
   }, []);
 
@@ -182,7 +238,9 @@ export function EChart({
     // ECharts retains component indices when merging stable axis IDs. Replacing
     // the axis set must rebuild those indices before series refer to them.
     const axesChanged = axisIdsRef.current !== undefined && axisIdsRef.current !== axisIds;
-    chartRef.current?.setOption(option, {
+    optionRef.current = option;
+    const gutter = gutterRef.current;
+    chartRef.current?.setOption(gutter === undefined ? option : withGutter(option, gutter), {
       lazyUpdate: true,
       ...(axesChanged ? { notMerge: true } : {}),
       replaceMerge: ["series", "grid", "xAxis", "yAxis", "dataZoom"],

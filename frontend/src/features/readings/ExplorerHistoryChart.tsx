@@ -23,7 +23,7 @@ import { useNavigationDraft } from "@/lib/navigation-draft";
 import { readingHistoryKey } from "@/domain/readings/readingHistoryCache";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import { HistoryViewControls } from "@/features/charts/HistoryViewControls";
-import { RawHistoryValues } from "@/features/charts/RawHistoryValues";
+import { HistoryValues } from "@/features/charts/HistoryValues";
 import { useHistoryWidth } from "@/features/charts/use-history-width";
 import { combineHistory, DEFAULT_HISTORY_PREFERENCE, historyInterval, intervalLabel, presentHistory } from "@/features/charts/history-presentation";
 import { summarizeDetection } from "@/features/charts/detection-summary";
@@ -214,7 +214,8 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     <TelemetryEventDetails groups={events} timeZone={timeZone} unit={stream.unit} />
     {hasValues && stored.loading && <p className="ex-preview-note" role="status">Loading {preference.mode === "raw" ? "raw readings" : "history"}…</p>}
     {visibleHistory?.truncated && <p className="ex-preview-note" role="status">Showing the latest {visibleHistory.points.length.toLocaleString()} of {visibleHistory.sample_count.toLocaleString()} raw readings in this range. Zoom in to inspect earlier readings.</p>}
-    {preference.mode === "raw" && !stored.loading && visibleHistory?.representation === "raw" && <RawHistoryValues points={visibleHistory.points} unit={stream.unit} />}
+    {!stored.loading && visibleHistory && visibleHistory.points.length > 0 && <HistoryValues key={visibleHistory.representation}
+      history={visibleHistory} unit={stream.unit} />}
     {stored.error && <p className="ex-preview-note" role="status">{stored.error}</p>}
     {monitoring.error && <p className="ex-preview-note" role="status">{monitoring.error}</p>}
   </section>;

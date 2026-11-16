@@ -431,7 +431,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emqx: ["5.8.7", "6.3.2"]
+        # Production EMQX only: 5.9+ is not open source (docs/operations/emqx-license.md).
+        emqx: ["5.8.7"]
     env:
       EMQX_TEST_IMAGE: emqx/emqx:${{ matrix.emqx }}
       OFFKEY_COLLECTION_INTEGRATION: "1"

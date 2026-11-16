@@ -1,22 +1,33 @@
 services:
-  emqx-main:
+  # The broker reads its password file after dropping to the mosquitto user, so
+  # these secrets belong to that user (uid 1883) and no one else can read them.
+  mosquitto:
     configs:
-      - source: emqx_security_cfg
-        target: /opt/emqx/etc/base.hocon
+      - source: mosquitto_cfg
+        target: /mosquitto/config/mosquitto.conf
     secrets:
-      - source: emqx_server_cert
-        target: emqx_server_cert.pem
-      - source: emqx_server_key
-        target: emqx_server_key.pem
-      - source: emqx_auth_users
-        target: emqx_auth_users.json
+      - source: mqtt_server_cert
+        target: mqtt_server_cert.pem
+        uid: "1883"
+        gid: "1883"
+        mode: 0400
+      - source: mqtt_server_key
+        target: mqtt_server_key.pem
+        uid: "1883"
+        gid: "1883"
+        mode: 0400
+      - source: mosquitto_passwords
+        target: mosquitto_passwords
+        uid: "1883"
+        gid: "1883"
+        mode: 0400
 
   # Live views, broker checks and the composer's model list run in the API; the
   # worker records sources and submits RADAR workloads. Both read the same credentials.
   api:
     secrets: &domain_secrets
-      - source: emqx_ca_cert
-        target: EMQX_CA_CERT
+      - source: mqtt_ca_cert
+        target: MQTT_CA_CERT
       - source: mqtt_proxy_password
         target: SYSTEM_COLLECTION_MQTT_API_KEY
       # Asked which models the forecast service holds, for the composer.
@@ -32,10 +43,10 @@ services:
 
   mqtt-proxy:
     environment:
-      MQTT_CA_FILE: /run/secrets/EMQX_CA_CERT
+      MQTT_CA_FILE: /run/secrets/MQTT_CA_CERT
     secrets:
-      - source: emqx_ca_cert
-        target: EMQX_CA_CERT
+      - source: mqtt_ca_cert
+        target: MQTT_CA_CERT
       - source: mqtt_proxy_password
         target: MQTT_APIKEY
 
@@ -59,9 +70,9 @@ services:
         target: FORECAST_API_TOKEN
 
 configs:
-  emqx_security_cfg:
-    name: ${CONFIG_NAME_PREFIX}emqx_security_cfg_${EMQX_SECURITY_CFG_HASH}
-    file: ./emqx-security.hocon
+  mosquitto_cfg:
+    name: ${CONFIG_NAME_PREFIX}mosquitto_cfg_${MOSQUITTO_CONFIG_HASH}
+    file: ./mosquitto.conf
 
 # Shared declarations; each service above mounts only the credentials it needs.
 secrets:

@@ -85,7 +85,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       authToken = await accessToken(page);
       expect(authToken).toBeTruthy();
       // Inject broker envelopes for precise delayed timestamps; the separate
-      // ingress spec exercises actual scalar messages through EMQX sources.
+      // ingress spec exercises actual scalar messages through the internal broker.
       const inputs = await addTestCharger(
         api,
         authToken!,

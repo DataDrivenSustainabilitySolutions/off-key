@@ -10,9 +10,8 @@
 # These are needed by stack_prepare and stack_deploy, which cannot see another role's vars/.
 
 persistence_any_enabled: >-
-  {{ (persist_postgres   | default(false) | bool)
-     or (persist_emqx_data | default(false) | bool)
-     or (persist_emqx_log  | default(false) | bool) }}
+  {{ (persist_postgres       | default(false) | bool)
+     or (persist_mosquitto_data | default(false) | bool) }}
 
 # Logs and Grafana are served behind the oauth2-gated grafana.<domain>.
 observability_active: "{{ observability_enabled | default(false) | bool }}"

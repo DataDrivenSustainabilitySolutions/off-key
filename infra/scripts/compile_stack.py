@@ -53,6 +53,11 @@ def compile_stack(model):
         for port in service.get("ports", []):
             if "published" in port:
                 port["published"] = int(port["published"])
+        # Compose prints file modes as octal strings ("0400"); Swarm wants numbers.
+        for key in ("configs", "secrets"):
+            for item in service.get(key, []):
+                if isinstance(item, dict) and isinstance(item.get("mode"), str):
+                    item["mode"] = int(item["mode"], 8)
     return model
 
 

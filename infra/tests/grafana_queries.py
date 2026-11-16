@@ -141,11 +141,12 @@ def verify_queries(directory, stack, request):
             },
         ),
         ("postgres", "fresh", 10, "ERROR: synthetic database error"),
+        # Mosquitto writes plain lines; Loki detects their Warning:/Error: level.
         (
-            "emqx-main",
+            "mosquitto",
             "fresh",
             10,
-            {"level": "warning", "message": "synthetic disconnect"},
+            "2026-01-01T00:00:00: Warning: synthetic persistence write failure",
         ),
         (
             "tactic",

@@ -15,7 +15,7 @@ class RehearsalNetworkingTests(unittest.TestCase):
         )["services"]["docs"]
         services = {
             name: {}
-            for name in ("frontend", "api", "tactic", "emqx-main", "smtp-fixture")
+            for name in ("frontend", "api", "tactic", "mosquitto", "smtp-fixture")
         }
         services["docs"] = deepcopy(production)
         model = {"services": services}

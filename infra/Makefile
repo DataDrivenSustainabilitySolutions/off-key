@@ -8,7 +8,7 @@ BOOTSTRAP ?= false
 CONFIRM ?= false
 # Erases the database after a backup; set to the stack name to confirm.
 RESET_DATABASE ?=
-SERVICES ?= postgres,emqx
+SERVICES ?= postgres,mosquitto
 export ANSIBLE_CONFIG := $(abspath ansible/ansible.cfg)
 export OFFKEY_RELEASE_REVISION := $(REVISION)
 # Both stacks' vault and inventory live only as production-environment secrets,

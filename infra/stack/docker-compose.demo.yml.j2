@@ -13,25 +13,23 @@ services:
       - source: demo_viewer_password
         target: DEMO_VIEWER_PASSWORD
   demo-broker:
-    image: "${EMQX_IMAGE}"
-    environment:
-      EMQX_NODE__COOKIE: "{{ emqx_node_cookie }}"
+    image: "${MOSQUITTO_IMAGE}"
     configs:
       - source: demo_broker_config
-        target: /opt/emqx/etc/base.hocon
+        target: /mosquitto/config/mosquitto.conf
     networks: [demo-source-network]
     healthcheck:
-      test: [CMD, emqx, ctl, status]
+      test: [CMD, mosquitto_sub, -h, 127.0.0.1, -t, $$SYS/broker/version, -C, '1', -W, '3']
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 10s
     deploy:
       replicas: 1
       placement:
         constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       resources:
-        limits: {cpus: '0.5', memory: 512M}
+        limits: {cpus: '0.5', memory: 128M}
       restart_policy: {condition: any}
   demo-relay:
     image: "${MQTT_PROXY_IMAGE}"

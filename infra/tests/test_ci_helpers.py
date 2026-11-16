@@ -28,13 +28,13 @@ class CiHelperTests(unittest.TestCase):
     def test_release_image_prints_each_named_production_image(self):
         images = json.loads(RELEASE.read_text())["release"]["images"]
         result = subprocess.run(
-            [sys.executable, SCRIPTS / "release_image.py", "postgres", "emqx"],
+            [sys.executable, SCRIPTS / "release_image.py", "postgres", "mosquitto"],
             capture_output=True,
             text=True,
             check=True,
         )
         self.assertEqual(
-            result.stdout.splitlines(), [images["postgres"], images["emqx"]]
+            result.stdout.splitlines(), [images["postgres"], images["mosquitto"]]
         )
 
     def test_release_image_fails_for_an_unknown_image(self):

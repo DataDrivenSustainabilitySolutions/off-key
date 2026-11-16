@@ -1,15 +1,17 @@
 name: offkey-collection-test
 services:
-  emqx:
-    image: ${EMQX_TEST_IMAGE:-emqx/emqx:5.8.9}
+  # The internal broker at the production version (MOSQUITTO_TEST_IMAGE in CI).
+  mosquitto:
+    image: ${MOSQUITTO_TEST_IMAGE:-eclipse-mosquitto:2.1.2-alpine}
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     healthcheck:
-      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:18083/status']
+      test: ['CMD', 'mosquitto_sub', '-h', '127.0.0.1', '-t', '$$SYS/broker/version', '-C', '1', '-W', '3']
       interval: 2s
-      timeout: 2s
+      timeout: 5s
       retries: 30
     ports:
       - '127.0.0.1:28883:1883'
-      - '127.0.0.1:28083:18083'
   charger-a:
     image: eclipse-mosquitto:2
     volumes:

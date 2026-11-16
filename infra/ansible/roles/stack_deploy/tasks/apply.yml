@@ -51,7 +51,7 @@
         stack_resume_replicas: >-
           {% set replicas = {} %}
           {% for name, service in stack_compose_model.services.items() %}
-          {% if name not in ['postgres', 'emqx-main', 'frontend'] and service.deploy.mode | default('replicated') != 'global' %}
+          {% if name not in ['postgres', 'mosquitto', 'frontend'] and service.deploy.mode | default('replicated') != 'global' %}
           {% set _ = replicas.update({stack_name ~ '_' ~ name: service.deploy.replicas | default(1)}) %}
           {% endif %}
           {% endfor %}

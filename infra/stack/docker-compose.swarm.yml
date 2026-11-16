@@ -205,22 +205,12 @@ services:
       update_config:
         order: start-first
 
-  emqx-main:
-    image: "${EMQX_IMAGE:-emqx/emqx:5.8.9}"
-    # The container hostname MUST equal the host part of EMQX_NODE_NAME. `emqx ctl` reaches
-    # the running broker over Erlang distribution to node emqx@emqx-main; without a matching
-    # hostname that lookup fails with "Node 'emqx@emqx-main' not responding to pings", which
-    # breaks `emqx ctl status` and `emqx ctl data export`. MQTT listeners
-    # keep working regardless (they use the network alias), which is why this stays hidden
-    # until you run a ctl command. In Swarm the alias below does NOT set the hostname, so it
-    # is set explicitly here. Do NOT change the node name once /opt/emqx/data is persisted —
-    # mnesia lives in data/mnesia/<node name> and a rename orphans it.
-    hostname: emqx-main.internal
-    environment:
-      - "EMQX_NODE_NAME=emqx@emqx-main.internal"
-      - "EMQX_HOST=emqx-main.internal"
-      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main.internal]"
+  # The internal message bus (Eclipse Mosquitto). Clients dial emqx-main, the
+  # DNS name in the broker certificate, so that alias stays until the certificate
+  # is reissued; see docs/operations/mqtt-broker.md. One replica only: stop-first
+  # updates keep two brokers from ever answering on the alias together.
+  mosquitto:
+    image: "${MOSQUITTO_IMAGE:-eclipse-mosquitto:2.1.2-alpine}"
     networks:
       emqx-network:
         aliases:
@@ -231,6 +221,8 @@ services:
         constraints: ["${BACKEND_CONSTRAINT:-node.labels.backend == true}"]
       restart_policy:
         condition: any
+      update_config:
+        order: stop-first
 
 # A node-local cache of downloaded weights: a task rescheduled to another backend
 # node downloads what it needs again. Deliberately no driver_opts (see the

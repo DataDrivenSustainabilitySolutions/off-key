@@ -9,18 +9,18 @@ from support import ROOT
 
 REPOSITORY = ROOT.parent
 RELEASE = ROOT / "ansible/inventories/prod/group_vars/all/release.yml"
-PLATFORM = ("postgres", "socket_proxy", "tailscale", "gost", "emqx")
+PLATFORM = ("postgres", "socket_proxy", "tailscale", "gost", "mosquitto")
 COMPOSE_FILES = (
     "docker-compose.yml",
-    "docker-compose.cluster.yml",
     "dev/local/compose.yml",
     "infra/stack/docker-compose.swarm.yml",
     "backend/tests/collection_integration/compose.yml",
 )
 # (file, platform image) -> the deliberately different repository:tag, and why.
 ALLOWED_DRIFT = {}
-# EMQX 5.9 and later is BSL 1.1, not open source (docs/operations/emqx-license.md).
-FIRST_NON_FOSS_EMQX = (5, 9)
+# The internal broker's service. Other eclipse-mosquitto services are source
+# brokers standing in for third-party ones, and keep their own version.
+INTERNAL_BROKER = "mosquitto"
 DEFAULT = re.compile(r"^\$\{[A-Z0-9_]+:-(.+)\}$")
 
 
@@ -54,8 +54,10 @@ def release_images():
     return {key: repository_and_tag(images[key]) for key in PLATFORM}
 
 
-def platform_key(repository, release):
+def platform_key(service, repository, release):
     for key, (expected, _) in release.items():
+        if key == "mosquitto" and service != INTERNAL_BROKER:
+            continue
         if repository == expected or repository.endswith("/" + expected):
             return key
     return None
@@ -77,7 +79,7 @@ class PlatformPinTests(unittest.TestCase):
         for path in COMPOSE_FILES:
             for service, image in compose_images(path):
                 repository, tag = repository_and_tag(image)
-                key = platform_key(repository, release)
+                key = platform_key(service, repository, release)
                 if key is None:
                     continue
                 seen.add((path, key))
@@ -89,54 +91,25 @@ class PlatformPinTests(unittest.TestCase):
                         self.assertEqual(f"{repository}:{tag}", drift)
         self.assertLessEqual(set(ALLOWED_DRIFT), seen, "stale ALLOWED_DRIFT entry")
 
-    def test_collection_matrix_tests_the_production_emqx(self):
-        workflow = yaml.safe_load((REPOSITORY / ".github/workflows/ci.yml").read_text())
-        job = workflow["jobs"]["collection"]
-        matrix = {str(tag) for tag in job["strategy"]["matrix"]["emqx"]}
-        self.assertEqual(matrix, {release_images()["emqx"][1]})
-
-    def test_every_emqx_pin_stays_open_source(self):
-        workflow = yaml.safe_load((REPOSITORY / ".github/workflows/ci.yml").read_text())
-        tags = {
-            "release.yml": release_images()["emqx"][1],
-            "ci.yml": workflow["jobs"]["collection"]["strategy"]["matrix"]["emqx"],
-        }
+    def test_every_stack_runs_the_internal_broker_as_mosquitto(self):
         for path in COMPOSE_FILES:
-            for service, image in compose_images(path):
-                repository, tag = repository_and_tag(image)
-                if repository.endswith("emqx/emqx"):
-                    tags[f"{path}:{service}"] = tag
-        flat = [
-            (where, str(tag))
-            for where, value in tags.items()
-            for tag in (value if isinstance(value, list) else [value])
-        ]
-        self.assertGreater(len(flat), 4)
-        for where, tag in flat:
-            with self.subTest(where=where, tag=tag):
-                version = re.match(r"^(\d+)\.(\d+)\.\d+$", tag)
-                self.assertIsNotNone(version, "pin EMQX to an exact release")
-                self.assertLess(
-                    (int(version.group(1)), int(version.group(2))),
-                    FIRST_NON_FOSS_EMQX,
-                    "EMQX 5.9+ is BSL 1.1; see docs/operations/emqx-license.md",
+            with self.subTest(path=path):
+                images = dict(compose_images(path))
+                # dev/local/compose.yml overlays docker-compose.yml's broker.
+                if path != "dev/local/compose.yml":
+                    self.assertIn(INTERNAL_BROKER, images)
+                self.assertFalse(
+                    [image for image in images.values() if "emqx" in image],
+                    "EMQX 5.9+ is BSL 1.1; the internal broker is Mosquitto",
                 )
 
-    def test_dependabot_never_proposes_a_bsl_emqx(self):
-        config = yaml.safe_load((REPOSITORY / ".github/dependabot.yml").read_text())
-        compose = [
-            update
-            for update in config["updates"]
-            if update["package-ecosystem"] == "docker-compose"
-        ]
-        self.assertTrue(compose)
-        for update in compose:
-            rules = [
-                rule
-                for rule in update.get("ignore", [])
-                if rule.get("dependency-name") == "emqx/emqx"
-            ]
-            self.assertEqual([rule.get("versions") for rule in rules], [[">= 5.9.0"]])
+    def test_collection_suite_tests_the_production_broker(self):
+        workflow = yaml.safe_load((REPOSITORY / ".github/workflows/ci.yml").read_text())
+        steps = "\n".join(
+            step.get("run", "") for step in workflow["jobs"]["collection"]["steps"]
+        )
+        self.assertIn("release_image.py mosquitto", steps)
+        self.assertIn('MOSQUITTO_TEST_IMAGE=$image" >> "$GITHUB_ENV"', steps)
 
 
 if __name__ == "__main__":

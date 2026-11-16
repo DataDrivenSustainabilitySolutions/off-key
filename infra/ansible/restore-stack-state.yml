@@ -5,7 +5,7 @@
 #   uv run ansible-playbook -i inventories/prod/hosts.yml restore-stack-state.yml \
 #     --ask-vault-pass -e restore_from=20260807T120000Z -e restore_services=postgres
 #
-# restore_services is a comma-separated subset of: postgres, emqx.
+# restore_services is a comma-separated subset of: postgres, mosquitto.
 
 - import_playbook: validate-inventory.yml
 
@@ -13,7 +13,7 @@
   hosts: swarm_manager[0]
   gather_facts: false
   vars:
-    restore_services: postgres,emqx
+    restore_services: postgres,mosquitto
   any_errors_fatal: true
   tasks:
     - name: Run the recovery workflow

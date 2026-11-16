@@ -1,7 +1,6 @@
 ---
-# The managed mounts. `kind` selects the backup/restore strategy; `none` means the path is
-# reconstructible and is mounted for convenience only (EMQX file logs — Swarm already
-# captures stdout via `docker service logs`).
+# The managed mounts. `kind` selects the backup/restore strategy; `none` would mark a path
+# that is reconstructible and mounted for convenience only.
 #
 # Both services are constrained to node.labels.backend == true in the base compose, so
 # their volumes and containers live on a backend node, not the manager. Which node is
@@ -16,19 +15,12 @@ persistence_mounts:
     enabled: "{{ persist_postgres | default(false) | bool }}"
     restore: "{{ persist_postgres_restore | default(persistence_restore_on_switch) | bool }}"
 
-  - service: emqx-main
-    volume:  emqx_data
-    path:    /opt/emqx/data
-    kind:    emqx
-    enabled: "{{ persist_emqx_data | default(false) | bool }}"
-    restore: "{{ persist_emqx_restore | default(persistence_restore_on_switch) | bool }}"
-
-  - service: emqx-main
-    volume:  emqx_log
-    path:    /opt/emqx/log
-    kind:    none
-    enabled: "{{ persist_emqx_log | default(false) | bool }}"
-    restore: false
+  - service: mosquitto
+    volume:  mosquitto_data
+    path:    /mosquitto/data
+    kind:    mosquitto
+    enabled: "{{ persist_mosquitto_data | default(false) | bool }}"
+    restore: "{{ persist_mosquitto_restore | default(persistence_restore_on_switch) | bool }}"
 
 # Node-side staging area for dumps before they are pulled to the control host.
 persistence_stage_dir: "{{ stack_dir }}/.backup/{{ persistence_run_ts }}"

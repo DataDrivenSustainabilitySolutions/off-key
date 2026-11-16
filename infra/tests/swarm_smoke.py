@@ -195,7 +195,7 @@ def expose_rehearsal_ports(model):
         ("frontend", 5173, 5173, "host"),
         ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000")), "host"),
         ("tactic", 8001, 8001, "host"),
-        ("emqx-main", 8883, 8883, "host"),
+        ("mosquitto", 8883, 8883, "host"),
         ("smtp-fixture", 8025, 8025, "host"),
     ):
         model["services"][service]["ports"] = [
@@ -319,7 +319,6 @@ def prepare(directory):
         stack_name=STACK,
         jwt_secret="synthetic-smoke-signing-secret-123456789",
         postgres_password="synthetic-smoke-database-password",
-        emqx_dashboard_password="synthetic-smoke-dashboard-password",
         emqx_ca_cert=(directory / "ca.crt").read_text(),
         emqx_server_cert=(directory / "broker.crt").read_text(),
         emqx_server_key=(directory / "broker.key").read_text(),

@@ -1,0 +1,100 @@
+---
+# Mosquitto keeps its retained snapshots in memory and writes them to
+# mosquitto.db every autosave interval, on shutdown and on SIGUSR1. The backup
+# asks for a fresh write, waits for it and copies that file, so it works whether
+# the data directory is a volume or the container's writable layer.
+- name: Discover the running mosquitto task and container
+  include_role:
+    name: swarm_task
+  vars:
+    svc: mosquitto
+
+# BusyBox find compares whole seconds, so the request waits one second after
+# the mark: a database saved in the same second as the mark would not count.
+- name: mosquitto | mark the moment before asking for a fresh database
+  command:
+    argv:
+      - docker
+      - exec
+      - "{{ svc_container }}"
+      - sh
+      - -c
+      - touch /tmp/offkey-backup-requested && sleep 1
+  delegate_to: "{{ svc_node }}"
+  changed_when: false
+
+- name: mosquitto | ask the broker to write its in-memory database
+  command:
+    argv: [docker, kill, --signal, USR1, "{{ svc_container }}"]
+  delegate_to: "{{ svc_node }}"
+  changed_when: true
+
+- name: mosquitto | wait for a database written after the request
+  command:
+    argv:
+      - docker
+      - exec
+      - "{{ svc_container }}"
+      - find
+      - /mosquitto/data/mosquitto.db
+      - -newer
+      - /tmp/offkey-backup-requested
+  delegate_to: "{{ svc_node }}"
+  register: mosquitto_fresh_database
+  until: mosquitto_fresh_database.rc == 0 and mosquitto_fresh_database.stdout | trim | length > 0
+  retries: 12
+  delay: 5
+  changed_when: false
+
+- name: mosquitto | create staging directory on the node
+  file:
+    path: "{{ persistence_stage_dir }}"
+    state: directory
+    mode: "0700"
+  become: true
+  delegate_to: "{{ svc_node }}"
+
+- name: mosquitto | copy the database out of the container
+  shell: >-
+    umask 077;
+    docker exec {{ svc_container | quote }} cat /mosquitto/data/mosquitto.db
+    > {{ (persistence_stage_dir ~ '/mosquitto.db') | quote }}
+  args: {executable: /bin/bash}
+  become: true
+  delegate_to: "{{ svc_node }}"
+  changed_when: true
+
+- name: mosquitto | protect the control-host backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  loop:
+    - "{{ persistence_backup_dir }}"
+    - "{{ persistence_backup_dir }}/mosquitto"
+    - "{{ persistence_backup_dir }}/mosquitto/{{ persistence_run_ts }}"
+
+- name: mosquitto | pull the database to the control host
+  fetch:
+    src: "{{ persistence_stage_dir }}/mosquitto.db"
+    dest: "{{ persistence_backup_dir }}/mosquitto/{{ persistence_run_ts }}/"
+    flat: true
+  become: true
+  delegate_to: "{{ svc_node }}"
+
+- name: mosquitto | complete the backup only after the database was fetched
+  include_tasks: complete_backup.yml
+  vars:
+    backup_service: mosquitto
+    backup_directory: "{{ persistence_backup_dir }}/mosquitto/{{ persistence_run_ts }}"
+    backup_filenames: [mosquitto.db]
+
+# The control host keeps the backup; the node's copy was only for the transfer.
+- name: mosquitto | remove the staged database from the node
+  file:
+    path: "{{ persistence_stage_dir }}"
+    state: absent
+  become: true
+  delegate_to: "{{ svc_node }}"

@@ -9,10 +9,9 @@
 #
 # Load balancing is Docker's built-in mesh: each service `url` is the stack-qualified
 # service name, which resolves to the Swarm VIP over the shared overlay. Traefik must share
-# a network with each target (public-network: frontend/oauth2-proxy, app-network: api,
-# emqx-network: emqx-main).
+# a network with each target (public-network: frontend/oauth2-proxy, app-network: api).
 #
-# AUTH: emqx./traefik. sit behind oauth2-proxy via a forwardAuth middleware (oauth2-proxy
+# AUTH: traefik. and grafana. sit behind oauth2-proxy via a forwardAuth middleware (oauth2-proxy
 # is never in the data path — only the /oauth2/auth sub-request). oauth2-proxy's public endpoints
 # (callback, sign-in) live on a dedicated `auth.{{ ingress_base_domain }}` host, routed
 # UNauthenticated so the GitHub callback can complete; the shared
@@ -65,13 +64,6 @@ http:
       entryPoints: [web]
       service: oauth2-proxy
 
-
-    emqx:
-      rule: "Host(`emqx.{{ ingress_base_domain }}`)"
-      entryPoints: [web]
-      middlewares: [oauth-errors, oauth-auth]
-      service: emqx
-
     # Traefik's own dashboard (api@internal), behind the same oauth2 gate.
     traefik-dashboard:
       rule: "Host(`traefik.{{ ingress_base_domain }}`)"
@@ -109,10 +101,6 @@ http:
         servers:
           - url: "http://{{ stack_name }}_api:8000"
 {% if admin_ingress_enabled | default(true) | bool %}
-    emqx:
-      loadBalancer:
-        servers:
-          - url: "http://{{ stack_name }}_emqx-main:18083"
     oauth2-proxy:
       loadBalancer:
         servers:

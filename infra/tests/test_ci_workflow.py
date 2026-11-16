@@ -133,9 +133,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertEqual(
             self.jobs["backend"]["strategy"]["matrix"]["python"], ["3.12", "3.14"]
         )
-        self.assertEqual(
-            self.jobs["collection"]["strategy"]["matrix"]["emqx"], ["5.8.9"]
-        )
+        self.assertNotIn("strategy", self.jobs["collection"])
 
     def test_mocked_browser_rejects_a_changed_build_before_extracting_it(self):
         step = next(

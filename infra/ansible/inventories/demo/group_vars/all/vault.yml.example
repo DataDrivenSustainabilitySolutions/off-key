@@ -2,8 +2,6 @@
 # Each secret belongs to the DEMO installation. Never copy the production vault.
 jwt_secret: CHANGE_ME_generate_a_different_random_32_byte_secret
 postgres_password: CHANGE_ME
-emqx_dashboard_password: CHANGE_ME
-emqx_node_cookie: TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX
 emqx_ca_cert: |
   -----BEGIN CERTIFICATE-----
   TEST_ONLY_REPLACE_WITH_DEMO_CA_CERTIFICATE

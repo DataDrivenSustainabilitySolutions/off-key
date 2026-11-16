@@ -57,17 +57,12 @@ services:
       - "127.0.0.1:${LOCAL_MAILPIT_PORT:-8026}:8025"
       - "127.0.0.1:${LOCAL_SMTP_PORT:-1026}:1025"
 
-  emqx-main:
+  mosquitto:
     volumes: !override
-      # Renamed when local EMQX moved from 6.x back to 5.8: a 6.x data
-      # directory does not boot on 5.8, so the old volume is left untouched.
-      - local_emqx58_data:/opt/emqx/data
+      - ./dev/mosquitto/internal.conf:/mosquitto/config/mosquitto.conf:ro
+      - local_mosquitto_data:/mosquitto/data
     ports:
       - "127.0.0.1:${LOCAL_MQTT_PORT:-1885}:1883"
-      - "127.0.0.1:${LOCAL_MQTT_WS_PORT:-8085}:8083"
-      - "127.0.0.1:${LOCAL_MQTT_WSS_PORT:-8086}:8084"
-      - "127.0.0.1:${LOCAL_MQTT_TLS_PORT:-8885}:8883"
-      - "127.0.0.1:${LOCAL_EMQX_PORT:-18084}:18083"
 
   source-broker:
     ports:
@@ -154,4 +149,4 @@ services:
 
 volumes:
   local_mailpit_data:
-  local_emqx58_data:
+  local_mosquitto_data:

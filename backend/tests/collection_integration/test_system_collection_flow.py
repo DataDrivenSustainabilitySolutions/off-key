@@ -1,4 +1,4 @@
-"""Real generic MQTT -> EMQX -> opt-in collector -> history integration."""
+"""Real generic MQTT -> internal Mosquitto -> opt-in collector -> history test."""
 
 import asyncio
 import json

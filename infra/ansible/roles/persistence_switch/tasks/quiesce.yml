@@ -34,7 +34,7 @@
   vars:
     writers: >-
       {{ persistence_service_specs.stdout | from_json
-         | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_emqx-main'])
+         | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_mosquitto'])
          | rejectattr('Spec.Name', 'in', persistence_observability_services.stdout_lines)
          | selectattr('Spec.Mode.Replicated', 'defined') | list }}
   no_log: true

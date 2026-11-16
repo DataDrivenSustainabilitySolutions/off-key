@@ -540,7 +540,7 @@ else:
     assert args[:4] == ["service", "ls", "--format", "{{.Name}}"], args
     assert args[5] == "label=com.docker.stack.namespace=off-key", args
     print("\n".join([
-        "off-key_postgres", "off-key_emqx-main", "off-key_cloudflared",
+        "off-key_postgres", "off-key_mosquitto", "off-key_cloudflared",
         "off-key_traefik", "off-key_landing", "off-key_frontend", "off-key_api",
         "off-key_tactic", "off-key_db-sync", "off-key_mqtt-proxy", "off-key_retired",
         "off-key_grafana", "off-key_alloy",
@@ -551,7 +551,7 @@ else:
             database = {"POSTGRES_HOST": "postgres", "POSTGRES_DB": "postgres"}
             services = {
                 "postgres": {"environment": {"POSTGRES_DB": "postgres"}},
-                "emqx-main": {"environment": {}},
+                "mosquitto": {"environment": {}},
                 "cloudflared": {},
                 "traefik": {},
                 "landing": {},

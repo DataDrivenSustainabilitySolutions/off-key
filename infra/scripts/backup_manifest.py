@@ -22,7 +22,7 @@ def validate_names(service, names):
             )
         )
     else:
-        valid = len(names) == 1 and re.fullmatch(r"emqx-export-.+\.tar\.gz", names[0])
+        valid = names == ["mosquitto.db"]
     if not valid:
         raise ValueError(f"Invalid {service} backup artifact list")
 
@@ -38,7 +38,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("create", "verify"))
     parser.add_argument("directory", type=Path)
-    parser.add_argument("service", choices=("postgres", "emqx"))
+    parser.add_argument("service", choices=("postgres", "mosquitto"))
     parser.add_argument("timestamp")
     parser.add_argument("files", nargs="*")
     args = parser.parse_args()

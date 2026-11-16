@@ -30,7 +30,7 @@
   command:
     argv:
       - "{{ ansible_playbook_python }}"
-      - "{{ playbook_dir }}/../scripts/validate-emqx-pki.py"
+      - "{{ playbook_dir }}/../scripts/validate-mqtt-pki.py"
     stdin: >-
       {{ {'ca_cert': emqx_ca_cert, 'server_cert': emqx_server_cert,
           'server_key': emqx_server_key} | to_json }}
@@ -54,37 +54,6 @@
     content: >-
       {{ release | combine({'infrastructure_revision': infrastructure_revision.stdout,
          'attempted_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ')}) | to_nice_json }}
-
-- name: Inspect existing production MQTT client secret references
-  command:
-    argv: [docker, service, inspect, "{{ stack_name }}_{{ item.service }}"]
-  loop:
-    - {service: mqtt-proxy, target: MQTT_APIKEY, key: mqtt_proxy_password}
-  register: existing_mqtt_clients
-  changed_when: false
-  failed_when: false
-  no_log: true
-
-- name: Require broker user rotation before changing MQTT client passwords
-  assert:
-    that:
-      - >-
-        current_secret_name == '' or
-        current_secret_name == deployment_secret_names[item.item.key] or
-        (mqtt_passwords_rotated_in_emqx | default(false) | bool)
-    fail_msg: >-
-      MQTT client password changed in the vault, but EMQX bootstrap users are not
-      updated on redeploy. Update the corresponding EMQX user first, then rerun
-      with -e mqtt_passwords_rotated_in_emqx=true.
-  vars:
-    container_spec: >-
-      {{ (item.stdout | from_json)[0].Spec.TaskTemplate.ContainerSpec if item.rc == 0 else {} }}
-    current_secret_name: >-
-      {{ container_spec.Secrets | default([]) |
-         selectattr('File.Name', 'equalto', item.item.target) |
-         map(attribute='SecretName') | first | default('') }}
-  loop: "{{ existing_mqtt_clients.results | default([]) }}"
-  no_log: true
 
 - name: Create content-addressed deployment secrets
   include_tasks: secrets.yml

@@ -37,7 +37,7 @@ tactic_radar_workload_lifecycle: persistent
 # Swarm stack) -> services. aberration.app serves the public landing page;
 # dashboard.aberration.app serves the frontend, with /api/* -> api:8000
 # (prefix stripped by the api-strip middleware).
-# The emqx. and traefik. dashboards are protected by oauth2-proxy; publishing either
+# The traefik. and grafana. dashboards are protected by oauth2-proxy; publishing either
 # requires the auth. hostname for login. These are browser-facing values: the public
 # hostname, never an internal service name. Frontend and API share the dashboard origin.
 #
@@ -57,7 +57,7 @@ docs_hostname:                        "docs.aberration.app"
 docs_base_url:                        "https://{{ docs_hostname }}"
 
 # ── oauth2-proxy (ingress auth) ───────────────────────────────────────────────
-# GitHub OAuth gate in front of emqx./traefik. Secrets (client id/secret, cookie secret)
+# GitHub OAuth gate in front of traefik./grafana. Secrets (client id/secret, cookie secret)
 # live in vault.yml; these are the non-secret knobs. See docs/operations/production.md.
 #
 # Access gate: GitHub ORG membership and/or an explicit username allowlist. At least ONE of
@@ -125,7 +125,10 @@ broker_route_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tails
 # manager; keep that file while a rollback past broker routes stays possible.
 broker_route_legacy_exports_file: ambibox.exports
 # Stopped before the release starts, so the node identity never runs twice.
-stack_replaced_services: [tailscale-ambibox, mqtt-tailscale-bridge]
+# emqx-main is the EMQX broker the mosquitto service replaced; both answer on the
+# emqx-main alias, so the old one must be gone before the new one starts. Its data
+# volumes stay on the node for a rollback (docs/operations/mqtt-broker.md).
+stack_replaced_services: [tailscale-ambibox, mqtt-tailscale-bridge, emqx-main]
 # Releases before broker routes required the manager in the private hosts.yml
 # group ambibox_nfs; see "Rolling back past the broker route release" in
 # docs/operations/recovery.md.
@@ -149,19 +152,15 @@ stack_retired_files: [docker-compose.ambibox.yml]
 # Prod persists everything: with no volume, ANY change to a value in .env rewrites the
 # service spec, Swarm recreates the task, and the database starts empty.
 
-persist_postgres:  true
-persist_emqx_data: true
-persist_emqx_log:  true
+persist_postgres:       true
+persist_mosquitto_data: true
 
 # Restore the backup taken at the moment of the flip. Per-service override available as
 # persist_<service>_restore.
 persistence_restore_on_switch: true
 
-# ── EMQX ─────────────────────────────────────────────────────────────────────
-
-emqx_dashboard_username: ddss
-
-# ── MQTT — internal EMQX listener (TLS, username/password auth) ─────────────
+# ── MQTT — internal Mosquitto listener (TLS, username/password auth) ────────
+# emqx-main is the broker's network alias and the DNS name in its certificate.
 
 mqtt_broker_host:               emqx-main
 mqtt_broker_port:               "8883"
@@ -184,7 +183,7 @@ mqtt_retry_jitter_magnitude:    "0.2"
 mqtt_health_monitor_interval:   "30.0"
 
 # ── RADAR ─────────────────────────────────────────────────────────────────────
-# TACTIC configures each worker; this is the EMQX user workers log in as.
+# TACTIC configures each worker; this is the broker user workers log in as.
 
 radar_mqtt_username:          offkey-radar
 

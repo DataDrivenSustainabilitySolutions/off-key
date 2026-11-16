@@ -138,7 +138,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Follow the data path:** source broker → TACTIC ingress → internal EMQX → MQTT proxy → TimescaleDB and accepted topics. Source retry logs, broker warnings and writer errors identify the failing hop.\n\nCollection counters and storage capacity are not exported to Loki. Successful write detail is DEBUG-only; these panels report **failure signals and slow-write samples**, not ingest throughput, data completeness or disk space."
+        "content": "**Follow the data path:** source broker → TACTIC ingress → internal Mosquitto → MQTT proxy → TimescaleDB and accepted topics. Source retry logs, broker warnings and writer errors identify the failing hop.\n\nCollection counters and storage capacity are not exported to Loki. Successful write detail is DEBUG-only; these panels report **failure signals and slow-write samples**, not ingest throughput, data completeness or disk space."
       },
       "transparent": true
     },
@@ -298,7 +298,7 @@
       "id": 5,
       "type": "stat",
       "title": "Broker errors",
-      "description": "Error-level messages from EMQX or the source broker route. Worker collection excludes manager-hosted services.",
+      "description": "Error-level messages from the internal broker or the source broker route. Worker collection excludes manager-hosted services.",
       "gridPos": {
         "x": 12,
         "y": 6,
@@ -317,7 +317,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(emqx-main|emqx-worker|broker-route)`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(emqx-main|emqx-worker|broker-route)`} [$__range])))",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|emqx-main|broker-route)`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|emqx-main|broker-route)`} [$__range])))",
           "queryType": "instant",
           "legendFormat": "{{service}}"
         }
@@ -544,7 +544,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(emqx-main|emqx-worker|broker-route)`} | detected_level=~\"warn|warning|error|critical|fatal|panic\" | drop msg [$__interval]))",
+          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|emqx-main|broker-route)`} | detected_level=~\"warn|warning|error|critical|fatal|panic\" | drop msg [$__interval]))",
           "queryType": "range",
           "legendFormat": "{{service}}"
         }

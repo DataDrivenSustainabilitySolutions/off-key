@@ -59,11 +59,6 @@ updates:
 
   - package-ecosystem: "docker-compose"
     directory: "/"
-    ignore:
-      # EMQX 5.9+ is BSL 1.1, not open source: stay on 5.8.x patches.
-      # See docs/operations/emqx-license.md.
-      - dependency-name: "emqx/emqx"
-        versions: [">= 5.9.0"]
     schedule:
       interval: "weekly"
       day: "monday"

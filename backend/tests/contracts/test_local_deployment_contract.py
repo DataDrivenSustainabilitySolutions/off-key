@@ -57,7 +57,7 @@ def test_init_preserves_private_configuration(launcher):
         for key in (
             "JWT_SECRET",
             "POSTGRES_PASSWORD",
-            "EMQX_DASHBOARD_PASSWORD",
+            "EMAIL_PASSWORD",
         )
     ]
     assert len(set(secrets)) == len(secrets)

@@ -53,10 +53,6 @@ PORTS = {
     "LOCAL_MAILPIT_PORT": 8026,
     "LOCAL_SMTP_PORT": 1026,
     "LOCAL_MQTT_PORT": 1885,
-    "LOCAL_MQTT_WS_PORT": 8085,
-    "LOCAL_MQTT_WSS_PORT": 8086,
-    "LOCAL_MQTT_TLS_PORT": 8885,
-    "LOCAL_EMQX_PORT": 18084,
     "LOCAL_SOURCE_MQTT_PORT": 1886,
 }
 
@@ -119,8 +115,6 @@ def initialize(args: argparse.Namespace) -> None:
         "JWT_SECRET",
         "POSTGRES_PASSWORD",
         "EMAIL_PASSWORD",
-        "EMQX_DASHBOARD_PASSWORD",
-        "EMQX_NODE_COOKIE",
     ):
         values[key] = secrets.token_hex(32)
     for key, service in (

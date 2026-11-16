@@ -1,5 +1,5 @@
 """Long-lived selected subscriptions and polls forward raw envelopes through
-internal EMQX.
+the internal broker.
 
 Admission, sampling, persistence and accepted detector output remain exclusively
 owned by mqtt-proxy. No view lease or browser connection controls this worker.

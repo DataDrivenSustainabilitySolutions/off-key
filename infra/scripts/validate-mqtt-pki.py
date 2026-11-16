@@ -1,4 +1,4 @@
-"""Validate vaulted EMQX PEM material before changing the production stack."""
+"""Validate the vaulted MQTT broker PEM material before changing the production stack."""
 
 import json
 import sys

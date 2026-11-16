@@ -272,7 +272,7 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
-      emqx-main:
+      mosquitto:
         condition: service_healthy
       source-broker:
         condition: service_started
@@ -345,30 +345,26 @@ services:
     networks:
       - app-network
 
-  emqx-main:
-    image: emqx/emqx:5.8.9 # Apache-2.0; 5.9+ is BSL 1.1, see docs/operations/emqx-license.md
-    hostname: emqx-main
-    environment:
-      # Local single-node default. See docker-compose.cluster.yml for two-node mode.
-      - "EMQX_NODE_NAME=emqx@emqx-main"
-      - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}"
-      - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
-      - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
-      # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761
-      # Only works on fresh boot (no data volume!)
-      - "EMQX_DASHBOARD__DEFAULT_USERNAME=${EMQX_DASHBOARD_USERNAME:-admin}"
-      - "EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD must be set}"
+  # Internal message bus. Clients still dial emqx-main, the name the production
+  # broker certificate carries; see docs/operations/mqtt-broker.md.
+  mosquitto:
+    image: eclipse-mosquitto:2.1.2-alpine
+    command: ["mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
+    volumes:
+      - ./dev/mosquitto/internal.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
     healthcheck:
-      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:18083/status" ]
+      test: ["CMD", "mosquitto_sub", "-h", "127.0.0.1", "-t", "$$SYS/broker/version", "-C", "1", "-W", "3"]
       interval: 5s
-      timeout: 25s
+      timeout: 5s
       retries: 5
-      start_period: 60s
     networks:
-      - emqx-network
-      - app-network
-    # volumes:
-    #   - $PWD/emqx1_data:/opt/emqx/data
+      emqx-network:
+        aliases:
+          - emqx-main
+      app-network:
+        aliases:
+          - emqx-main
 
   broker-route:
     # Development SOCKS endpoint stands in for a deployment's broker route sidecar.
@@ -398,4 +394,5 @@ networks:
 
 volumes:
   postgres_data:
+  mosquitto_data:
   forecast_models:

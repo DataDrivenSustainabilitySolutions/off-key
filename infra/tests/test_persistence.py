@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 import yaml
-from persistence_fixture import DOCKER, EMQX_DOCKER
+from persistence_fixture import DOCKER, MOSQUITTO_DOCKER
 from support import ROOT, ansible, run
 
 
@@ -508,17 +508,17 @@ class PersistenceTests(unittest.TestCase):
                         any("pg_restore" in command for command in commands)
                     )
 
-    def test_emqx_requires_a_successful_fresh_export_even_without_a_volume(self):
-        for mode in ("fresh", "stale", "unready"):
+    def test_mosquitto_requires_a_freshly_written_database_even_without_a_volume(self):
+        for mode in ("fresh", "stale", "unsignalled"):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                fixture = EMQX_DOCKER
+                fixture = MOSQUITTO_DOCKER
                 (root / "docker").write_text(f"#!{sys.executable}\n" + fixture)
                 (root / "docker").chmod(0o755)
                 (root / "state.json").write_text(
                     json.dumps(
                         {
-                            "replicas": {"off-key_emqx-main": 1},
+                            "replicas": {"off-key_mosquitto": 1},
                             "deployed": False,
                         }
                     )
@@ -534,7 +534,7 @@ class PersistenceTests(unittest.TestCase):
                                     {
                                         "include_role": {
                                             "name": "persistence_switch",
-                                            "tasks_from": "backup_emqx",
+                                            "tasks_from": "backup_mosquitto",
                                         }
                                     }
                                 ],
@@ -568,17 +568,18 @@ class PersistenceTests(unittest.TestCase):
                     env=env,
                     check=False,
                 )
-                archive = root / "backups/emqx/fixture/emqx-export-fresh.tar.gz"
+                database = root / "backups/mosquitto/fixture/mosquitto.db"
                 if mode == "fresh":
                     self.assertEqual(
                         result.returncode, 0, result.stdout + result.stderr
                     )
-                    self.assertTrue(archive.exists())
+                    self.assertEqual(database.read_text(), "fixture database\n")
+                    self.assertTrue((database.parent / "manifest.json").exists())
                 else:
                     self.assertNotEqual(
                         result.returncode, 0, result.stdout + result.stderr
                     )
-                    self.assertFalse(list((root / "backups").glob("**/*.tar.gz")))
+                    self.assertFalse(list((root / "backups").glob("**/mosquitto.db")))
 
     def test_public_restore_initialises_defaults_and_validates_before_stopping_services(
         self,
@@ -663,7 +664,8 @@ class PersistenceTests(unittest.TestCase):
                 str(playbook),
                 "-e",
                 json.dumps(
-                    variables | {"restore_from": timestamp, "restore_services": "emqx"}
+                    variables
+                    | {"restore_from": timestamp, "restore_services": "mosquitto"}
                 ),
                 env=env,
                 check=False,
@@ -874,12 +876,12 @@ class PersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "stack").mkdir()
-            (root / "docker").write_text(f"#!{sys.executable}\n" + EMQX_DOCKER)
+            (root / "docker").write_text(f"#!{sys.executable}\n" + MOSQUITTO_DOCKER)
             (root / "docker").chmod(0o755)
             initial = {
                 "replicas": {
                     "off-key_postgres": 1,
-                    "off-key_emqx-main": 1,
+                    "off-key_mosquitto": 1,
                     "off-key_api": 1,
                     "radar-runtime": 2,
                 },
@@ -910,7 +912,7 @@ class PersistenceTests(unittest.TestCase):
                 "postgres_user": "fixture",
                 "stack_dir": str(root / "stack"),
                 "persist_postgres": True,
-                "persist_emqx_data": True,
+                "persist_mosquitto_data": True,
                 "persistence_backup_dir": str(root / "backups"),
             }
             env = os.environ | {
@@ -952,8 +954,8 @@ class PersistenceTests(unittest.TestCase):
             pending = root / "stack/recovery-pending.json"
             original_plan = pending.read_text()
             plan = json.loads(original_plan)
-            self.assertEqual(plan["services"], ["emqx", "postgres"])
-            self.assertEqual(sorted(plan["backup_paths"]), ["emqx", "postgres"])
+            self.assertEqual(plan["services"], ["mosquitto", "postgres"])
+            self.assertEqual(sorted(plan["backup_paths"]), ["mosquitto", "postgres"])
             self.assertEqual(plan["phase"], "restore")
             mounts = {
                 "off-key_postgres": [
@@ -963,11 +965,11 @@ class PersistenceTests(unittest.TestCase):
                         "Target": "/var/lib/postgresql/data",
                     }
                 ],
-                "off-key_emqx-main": [
+                "off-key_mosquitto": [
                     {
                         "Type": "volume",
-                        "Source": "off-key_emqx_data",
-                        "Target": "/opt/emqx/data",
+                        "Source": "off-key_mosquitto_data",
+                        "Target": "/mosquitto/data",
                     }
                 ],
             }
@@ -998,7 +1000,9 @@ class PersistenceTests(unittest.TestCase):
             }
 
             def retry(
-                timestamp=plan["timestamp"], services="postgres,emqx", **environment
+                timestamp=plan["timestamp"],
+                services="postgres,mosquitto",
+                **environment,
             ):
                 return ansible(
                     "playbook",
@@ -1016,7 +1020,7 @@ class PersistenceTests(unittest.TestCase):
 
             for timestamp, services in (
                 (plan["timestamp"], "postgres"),
-                ("20260807T120000Z", "postgres,emqx"),
+                ("20260807T120000Z", "postgres,mosquitto"),
             ):
                 before = (root / "commands.jsonl").read_text()
                 rejected = retry(timestamp, services)
@@ -1065,24 +1069,30 @@ class PersistenceTests(unittest.TestCase):
                 completed.returncode, 0, completed.stdout + completed.stderr
             )
             final = json.loads((root / "state.json").read_text())
-            self.assertTrue(final["emqx_restored"])
+            self.assertTrue(final["mosquitto_restored"])
             self.assertEqual(final["replicas"], initial["replicas"] | {"radar-new": 0})
             self.assertFalse(pending.exists())
 
-    def test_log_only_cutover_preserves_ephemeral_emqx_data(self):
+    def test_broker_data_cutover_restores_retained_snapshots_into_the_new_volume(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            fixture = EMQX_DOCKER.replace(
-                "off-key_postgres\\noff-key_api", "off-key_emqx-main\\noff-key_api"
-            ).replace("name == 'off-key_postgres'", "name == 'off-key_emqx-main'")
-            fixture = fixture.replace(
-                "/var/lib/postgresql/data", "/opt/emqx/log"
-            ).replace("off-key_postgres_data", "off-key_emqx_log")
+            # The postgres-shaped fixture, with the broker as the stateful service.
+            fixture = MOSQUITTO_DOCKER.replace(
+                "off-key_postgres\\noff-key_api", "off-key_mosquitto\\noff-key_api"
+            ).replace("name == 'off-key_postgres'", "name == 'off-key_mosquitto'")
+            fixture = (
+                fixture.replace("/var/lib/postgresql/data", "/mosquitto/data")
+                .replace("off-key_postgres_data", "off-key_mosquitto_data")
+                .replace(
+                    "state['replicas']['off-key_postgres']",
+                    "state['replicas']['off-key_mosquitto']",
+                )
+            )
             (root / "docker").write_text(f"#!{sys.executable}\n" + fixture)
             (root / "docker").chmod(0o755)
             initial = {
                 "replicas": {
-                    "off-key_emqx-main": 1,
+                    "off-key_mosquitto": 1,
                     "off-key_api": 1,
                     "radar-runtime": 2,
                 },
@@ -1091,7 +1101,7 @@ class PersistenceTests(unittest.TestCase):
             (root / "state.json").write_text(json.dumps(initial))
             replacement = {
                 "replicas": {
-                    "off-key_emqx-main": 1,
+                    "off-key_mosquitto": 1,
                     "off-key_api": 0,
                     "radar-runtime": 0,
                 },
@@ -1130,7 +1140,7 @@ class PersistenceTests(unittest.TestCase):
                 "persistence_switch_confirm": True,
                 "stack_name": "off-key",
                 "stack_dir": str(root / "stack"),
-                "persist_emqx_log": True,
+                "persist_mosquitto_data": True,
                 "persistence_backup_dir": str(root / "backups"),
             }
             env = os.environ | {
@@ -1150,9 +1160,9 @@ class PersistenceTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertTrue(
-                json.loads((root / "state.json").read_text())["emqx_restored"]
-            )
+            final = json.loads((root / "state.json").read_text())
+            self.assertTrue(final["mosquitto_restored"])
+            self.assertEqual(final["replicas"]["off-key_mosquitto"], 1)
             self.assertEqual(
-                len(list((root / "backups/emqx").glob("*/emqx-export-fresh.tar.gz"))), 1
+                len(list((root / "backups/mosquitto").glob("*/mosquitto.db"))), 1
             )

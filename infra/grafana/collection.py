@@ -5,7 +5,8 @@ from .common import ERRORS, Dashboard, count, events, fields, level, series, ser
 
 def build():
     source = services("mqtt-proxy|tactic")
-    broker = services("emqx-main|emqx-worker|broker-route")
+    # emqx-main: the broker before Mosquitto, kept while its logs are retained.
+    broker = services("mosquitto|emqx-main|broker-route")
     database = services("postgres|db-sync")
     writer = services("mqtt-proxy")
     collection_failures = (
@@ -22,7 +23,7 @@ def build():
         "collection", "Source collection, MQTT transport and persistence diagnostics."
     )
     d.note(
-        "**Follow the data path:** source broker → TACTIC ingress → internal EMQX → MQTT proxy → "
+        "**Follow the data path:** source broker → TACTIC ingress → internal Mosquitto → MQTT proxy → "
         "TimescaleDB and accepted topics. Source retry logs, broker warnings and writer errors identify the failing hop.\n\n"
         "Collection counters and storage capacity are not exported to Loki. Successful write detail is DEBUG-only; "
         "these panels report **failure signals and slow-write samples**, not ingest throughput, data completeness or disk space."
@@ -42,7 +43,7 @@ def build():
             ),
             (
                 "Broker errors",
-                "Error-level messages from EMQX or the source broker route. Worker collection excludes manager-hosted services.",
+                "Error-level messages from the internal broker or the source broker route. Worker collection excludes manager-hosted services.",
                 count(level(broker, ERRORS), broker),
             ),
             (

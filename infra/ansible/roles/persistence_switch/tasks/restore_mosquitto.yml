@@ -1,0 +1,144 @@
+---
+# Mosquitto reads mosquitto.db only when it starts and writes its own copy when
+# it stops, so the database cannot be swapped under a running broker. The broker
+# stops, the verified file goes into its data volume with the broker's image, and
+# the broker starts again on the same node. Writers stay stopped throughout.
+- name: Discover the node running mosquitto
+  include_role:
+    name: swarm_task
+  vars:
+    svc: mosquitto
+
+- name: mosquitto | inspect the broker service's image
+  command:
+    argv: [docker, service, inspect, "{{ stack_name }}_mosquitto"]
+  register: mosquitto_service
+  changed_when: false
+
+- name: mosquitto | inspect the running broker's mounts
+  command:
+    argv: [docker, inspect, "{{ svc_container }}", --format, '{% raw %}{"mounts":{{json .Mounts}},"image_volumes":{{json .Config.Volumes}}}{% endraw %}']
+  delegate_to: "{{ svc_node }}"
+  register: mosquitto_running
+  changed_when: false
+
+- name: mosquitto | find the managed data volume
+  set_fact:
+    mosquitto_restore_volume: >-
+      {{ (mosquitto_running.stdout | from_json).mounts
+         | selectattr('Destination', 'equalto', '/mosquitto/data')
+         | selectattr('Type', 'equalto', 'volume')
+         | selectattr('Name', 'equalto', stack_name ~ '_mosquitto_data')
+         | map(attribute='Name') | first | default('') }}
+    mosquitto_restore_image: >-
+      {{ (mosquitto_service.stdout | from_json)[0].Spec.TaskTemplate.ContainerSpec.Image }}
+
+# Without the managed volume the next task starts with an empty directory, so a
+# restored file would not survive the restart this needs. Ingress republishes
+# every selected reading's snapshot with its next value.
+- name: mosquitto | report that an ephemeral broker has nothing to restore into
+  debug:
+    msg: >-
+      mosquitto keeps no data volume (persist_mosquitto_data is off), so its retained
+      snapshots were not restored. They return as sources publish again.
+  when: mosquitto_restore_volume | length == 0
+
+- name: mosquitto | restore the database into the data volume
+  when: mosquitto_restore_volume | length > 0
+  block:
+    - name: mosquitto | create the restore staging directory
+      file:
+        path: "{{ persistence_stage_dir }}/restore"
+        state: directory
+        mode: "0700"
+      become: true
+      delegate_to: "{{ svc_node }}"
+
+    - name: mosquitto | stage the verified database on the node
+      copy:
+        src: "{{ persistence_backup_paths.mosquitto }}/mosquitto.db"
+        dest: "{{ persistence_stage_dir }}/restore/mosquitto.db"
+        mode: "0600"
+      become: true
+      delegate_to: "{{ svc_node }}"
+
+    - name: mosquitto | stop the broker so it cannot overwrite the restored file
+      include_role:
+        name: swarm_scale
+      vars:
+        swarm_scale_replicas: "{{ {stack_name ~ '_mosquitto': 0} }}"
+
+    - name: mosquitto | confirm the broker has stopped
+      include_tasks: wait_stopped.yml
+      vars:
+        service_names: ["{{ stack_name }}_mosquitto"]
+
+    - name: mosquitto | place the database in the data volume
+      command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - --network
+          - none
+          - --user
+          - root
+          - --entrypoint
+          - sh
+          - --volume
+          - "{{ mosquitto_restore_volume }}:/mosquitto/data"
+          - --volume
+          - "{{ persistence_stage_dir }}/restore:/restore:ro"
+          - "{{ mosquitto_restore_image }}"
+          - -c
+          - >-
+            cp /restore/mosquitto.db /mosquitto/data/mosquitto.db.restoring &&
+            chown 1883:1883 /mosquitto/data/mosquitto.db.restoring &&
+            chmod 0600 /mosquitto/data/mosquitto.db.restoring &&
+            mv -f /mosquitto/data/mosquitto.db.restoring /mosquitto/data/mosquitto.db
+      become: true
+      delegate_to: "{{ svc_node }}"
+      changed_when: true
+
+    - name: mosquitto | start the broker on the restored database
+      include_role:
+        name: swarm_scale
+      vars:
+        swarm_scale_replicas: "{{ {stack_name ~ '_mosquitto': 1} }}"
+
+    - name: mosquitto | find the restarted broker
+      include_role:
+        name: swarm_task
+      vars:
+        svc: mosquitto
+
+    - name: mosquitto | require the restarted broker on the volume's node
+      assert:
+        that: svc_node == persistence_service_nodes.get('mosquitto', svc_node)
+        fail_msg: mosquitto restarted away from its data volume's node; writers remain stopped.
+
+    - name: mosquitto | wait for the broker to load the restored database
+      command:
+        argv: [docker, logs, "{{ svc_container }}"]
+      delegate_to: "{{ svc_node }}"
+      register: mosquitto_restore_log
+      until: >-
+        mosquitto_restore_log.rc == 0
+        and (mosquitto_restore_log.stdout ~ mosquitto_restore_log.stderr) is search('Restored [0-9]+ retained messages')
+        and (mosquitto_restore_log.stdout ~ mosquitto_restore_log.stderr) is search('mosquitto version [^ ]+ running')
+      retries: 24
+      delay: 5
+      changed_when: false
+
+    - name: mosquitto | report
+      debug:
+        msg: >-
+          {{ (mosquitto_restore_log.stdout ~ '\n' ~ mosquitto_restore_log.stderr).splitlines()
+             | select('search', 'Restored') | list }}
+  always:
+    - name: mosquitto | remove the staged database from the node
+      file:
+        path: "{{ persistence_stage_dir }}"
+        state: absent
+      become: true
+      delegate_to: "{{ svc_node }}"

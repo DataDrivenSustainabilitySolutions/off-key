@@ -29,17 +29,12 @@ services:
       update_config:
         order: stop-first
 {% endif %}
-{% if (persist_emqx_data | default(false) | bool) or (persist_emqx_log | default(false) | bool) %}
+{% if persist_mosquitto_data | default(false) | bool %}
 
-  emqx-main:
+  mosquitto:
     volumes:
-{% if persist_emqx_data | default(false) | bool %}
-      # mnesia: retained messages, auth/ACL, dashboard users, API keys, node identity
-      - emqx_data:/opt/emqx/data
-{% endif %}
-{% if persist_emqx_log | default(false) | bool %}
-      - emqx_log:/opt/emqx/log
-{% endif %}
+      # Retained snapshots. Logins and TLS come from secrets, so nothing else is kept.
+      - mosquitto_data:/mosquitto/data
     deploy:
       update_config:
         order: stop-first
@@ -49,9 +44,6 @@ volumes:
 {% if persist_postgres | default(false) | bool %}
   postgres_data:
 {% endif %}
-{% if persist_emqx_data | default(false) | bool %}
-  emqx_data:
-{% endif %}
-{% if persist_emqx_log | default(false) | bool %}
-  emqx_log:
+{% if persist_mosquitto_data | default(false) | bool %}
+  mosquitto_data:
 {% endif %}

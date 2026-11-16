@@ -134,29 +134,30 @@ state_file.write_text(json.dumps(state))
 """
 
 
-EMQX_DOCKER = DOCKER.replace(
+MOSQUITTO_DOCKER = DOCKER.replace(
     "elif a[0] == 'exec':",
-    """elif a[0] == 'exec' and 'emqx' in a:
-    if a[-2:] == ['ctl', 'status']:
-        if os.environ['EXPORT_MODE'] == 'unready':
-            sys.exit(1)
-        print('Node emqx@emqx-main.internal is started')
-    elif a[-3:] == ['ctl', 'data', 'export']:
-        state['exported'] = True
-    elif a[-4:-1] == ['ctl', 'data', 'import']:
-        assert state['replicas']['off-key_api'] == 0
-        state['emqx_restored'] = True
-    else:
-        sys.exit(2)
-elif a[0] == 'exec' and ('find' in a or 'sh' in a):
-    print('/opt/emqx/data/backup/stale.tar.gz')
-    if state.get('exported') and os.environ['EXPORT_MODE'] == 'fresh':
-        print('/opt/emqx/data/backup/emqx-export-fresh.tar.gz')
-elif a[0] == 'cp':
-    assert Path(a[1]).exists()
-elif a[0] == 'exec' and 'mkdir' in a:
-    pass
+    """elif a[0] == 'kill':
+    assert a[1:3] == ['--signal', 'USR1'], a
+    if os.environ['EXPORT_MODE'] == 'unsignalled':
+        sys.exit(1)
+    state['saved'] = True
+elif a[0] == 'exec' and any(v.startswith('touch ') for v in a):
+    state['saved'] = False
+elif a[0] == 'exec' and 'find' in a:
+    assert a[-3:] == ['/mosquitto/data/mosquitto.db', '-newer', '/tmp/offkey-backup-requested'], a
+    if state.get('saved') and os.environ['EXPORT_MODE'] == 'fresh':
+        print('/mosquitto/data/mosquitto.db')
 elif a[0] == 'exec' and 'cat' in a:
-    print('fixture archive')
+    assert a[-1] == '/mosquitto/data/mosquitto.db', a
+    print('fixture database')
+elif a[0] == 'run':
+    # The restore writes into the volume only while the broker and writers are stopped.
+    assert state['replicas']['off-key_mosquitto'] == 0, state
+    assert state['replicas']['off-key_api'] == 0, state
+    assert 'off-key_mosquitto_data:/mosquitto/data' in a, a
+    state['mosquitto_restored'] = True
+elif a[0] == 'logs':
+    print('Restored 2 retained messages')
+    print('mosquitto version 2.1.2 running')
 elif a[0] == 'exec':""",
 )

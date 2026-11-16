@@ -62,8 +62,8 @@
     that:
       - restore_from is match('^[0-9]{8}T[0-9]{6}([0-9]{6})?Z$')
       - persistence_restore_services | length > 0
-      - persistence_restore_services | difference(['postgres', 'emqx']) | length == 0
-    fail_msg: "Choose a backup timestamp and a comma-separated subset of postgres,emqx."
+      - persistence_restore_services | difference(['postgres', 'mosquitto']) | length == 0
+    fail_msg: "Choose a backup timestamp and a comma-separated subset of postgres,mosquitto."
 
 - name: Require the entire original recovery obligation on retries
   assert:

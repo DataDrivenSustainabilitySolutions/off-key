@@ -423,18 +423,12 @@ jobs:
         run: make -C infra check-deploy
 
   collection:
-    name: collection (${{ matrix.emqx }})
+    name: collection
     needs: [changes, lint]
     if: fromJSON(needs.changes.outputs.plan).collection
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        # Production EMQX only: 5.9+ is not open source (docs/operations/emqx-license.md).
-        emqx: ["5.8.9"]
     env:
-      EMQX_TEST_IMAGE: emqx/emqx:${{ matrix.emqx }}
       OFFKEY_COLLECTION_INTEGRATION: "1"
       COMPOSE_FILE: backend/tests/collection_integration/compose.yml
     steps:
@@ -446,10 +440,12 @@ jobs:
       - name: Set up the backend toolchain
         uses: ./.github/actions/setup-backend
 
-      - name: Use the production TimescaleDB image
+      - name: Use the production TimescaleDB and Mosquitto images
         run: |
           image="$(python3 .github/scripts/release_image.py postgres)"
           echo "POSTGRES_TEST_IMAGE=$image" >> "$GITHUB_ENV"
+          image="$(python3 .github/scripts/release_image.py mosquitto)"
+          echo "MOSQUITTO_TEST_IMAGE=$image" >> "$GITHUB_ENV"
 
       - name: Start isolated brokers and database
         run: docker compose up -d --wait --wait-timeout 120

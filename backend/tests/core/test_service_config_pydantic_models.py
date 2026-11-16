@@ -364,8 +364,8 @@ def test_mqtt_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
         MQTT_USE_TLS=True,
         MQTT_USE_AUTH=True,
         MQTT_USERNAME="offkey-proxy",
-        MQTT_CA_FILE="/run/secrets/EMQX_CA_CERT",
+        MQTT_CA_FILE="/run/secrets/MQTT_CA_CERT",
         _secrets_dir=tmp_path,
     )
     assert settings.config.mqtt_api_key == "proxy-password-123456"
-    assert settings.config.ca_file == "/run/secrets/EMQX_CA_CERT"
+    assert settings.config.ca_file == "/run/secrets/MQTT_CA_CERT"

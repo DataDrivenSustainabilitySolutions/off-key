@@ -139,7 +139,7 @@ def _run_one_hour(publishes: dict[str, tuple[float, float]], intervals: dict[str
         for observation in proxy.take(now=now[0]):
             accepted = observation.message()
             forwarded += 1
-            # 3. RADAR receives it (EMQX hop treated as instantaneous).
+            # 3. RADAR receives it (internal broker hop treated as instantaneous).
             processor.process_message_sync(
                 RadarMessage(
                     topic=accepted.topic,

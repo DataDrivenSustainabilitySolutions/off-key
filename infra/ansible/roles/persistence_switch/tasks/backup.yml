@@ -5,8 +5,8 @@
 - name: Back up postgres
   include_tasks: backup_postgres.yml
 
-- name: Back up EMQX
-  include_tasks: backup_emqx.yml
+- name: Back up the internal broker
+  include_tasks: backup_mosquitto.yml
 
 - name: Report the completed backup
   debug:

@@ -3,9 +3,8 @@
 # behaviour, so adding this role changes nothing until an inventory opts in.
 # Role defaults are the lowest-precedence source, so inventory group_vars always win.
 
-persist_postgres:  false
-persist_emqx_data: false
-persist_emqx_log:  false
+persist_postgres:       false
+persist_mosquitto_data: false
 
 # After a detected flip, restore the backup that was just taken. Per-service override:
 #   persist_postgres_restore: false

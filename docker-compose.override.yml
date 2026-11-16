@@ -63,13 +63,9 @@ services:
       - "8025:8025" # Web UI
       - "1025:1025" # SMTP port
 
-  emqx-main:
+  mosquitto:
     ports:
       - 1883:1883
-      - 8083:8083
-      - 8084:8084
-      - 8883:8883
-      - 18083:18083
 
   source-broker:
     container_name: source_broker

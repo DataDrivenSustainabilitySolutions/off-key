@@ -3,7 +3,7 @@
 # Merged on top of docker-compose.swarm.yml by the stack_deploy role via a second -f
 # (always — Traefik is the ingress). Kept out of the base file so the router lives on its
 # own, reviewable and committable independently. References the base's overlay networks
-# (public/app/emqx), which compose merges across -f files — so this file is NOT valid on its
+# (public/app), which compose merges across -f files — so this file is NOT valid on its
 # own, only as an overlay. See docs/operations/production.md
 # (Credentials, ingress and certificates).
 #
@@ -37,7 +37,6 @@ services:
     networks:
       - public-network
       - app-network
-      - emqx-network
     healthcheck:
       test: [ "CMD", "traefik", "healthcheck", "--ping" ]
       interval: 10s

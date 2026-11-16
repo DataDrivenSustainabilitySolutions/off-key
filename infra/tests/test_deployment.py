@@ -1,5 +1,6 @@
 """Integration checks for actual Ansible rendering and Docker config parsing."""
 
+import base64
 import hashlib
 import ipaddress
 import json
@@ -30,8 +31,7 @@ with patch.dict(sys.modules, {"check_application": load_script("check_applicatio
 
 MOUNTS = {
     "persist_postgres": ("postgres", "/var/lib/postgresql/data"),
-    "persist_emqx_data": ("emqx-main", "/opt/emqx/data"),
-    "persist_emqx_log": ("emqx-main", "/opt/emqx/log"),
+    "persist_mosquitto_data": ("mosquitto", "/mosquitto/data"),
 }
 
 
@@ -121,7 +121,7 @@ class DeploymentTests(unittest.TestCase):
             ("prod-moved", "prod", {"broker_route_nfs_addr": "100.100.10.99"}),
             ("prod-rotated", "prod", {"cloudflare_tunnel_token": TOKEN + "rotated"}),
             ("prod-ephemeral", "prod", all_off),
-            ("prod-mixed", "prod", all_off | {"persist_emqx_log": True}),
+            ("prod-mixed", "prod", all_off | {"persist_mosquitto_data": True}),
             ("prod-collection-disabled", "prod", {"mqtt_telemetry_enabled": "false"}),
             (
                 "prod-ingress-disabled",
@@ -254,7 +254,7 @@ class DeploymentTests(unittest.TestCase):
             "customRequestHeaders"
         ]
         self.assertEqual(headers, {"Cookie": "", "Authorization": ""})
-        for name in ("api", "oauth2", "emqx", "traefik-dashboard", "grafana"):
+        for name in ("api", "oauth2", "traefik-dashboard", "grafana"):
             if name in routes["routers"]:
                 self.assertNotIn(
                     "public-content", routes["routers"][name].get("middlewares", [])
@@ -310,7 +310,6 @@ class DeploymentTests(unittest.TestCase):
             "EMAIL_PASSWORD": {"api", "tactic"},
             "OAUTH2_PROXY_CLIENT_SECRET": {"oauth2-proxy"},
             "OAUTH2_PROXY_COOKIE_SECRET": {"oauth2-proxy"},
-            "EMQX_NODE__COOKIE": {"emqx-main"},
         }
         for case, result in self.results.items():
             services = result["config"]["services"]
@@ -486,16 +485,6 @@ class DeploymentTests(unittest.TestCase):
         # say which vault variable to add or correct; values never leave the run.
         same = "same-" + "s" * 32
         for overrides, variable in (
-            ({"emqx_node_cookie": ""}, "emqx_node_cookie"),
-            ({"emqx_node_cookie": "short-cookie"}, "emqx_node_cookie"),
-            (
-                {"emqx_node_cookie": "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX"},
-                "emqx_node_cookie",
-            ),
-            (
-                {"emqx_node_cookie": "cookie with spaces " + "x" * 32},
-                "emqx_node_cookie",
-            ),
             ({"emqx_server_key": ""}, "emqx_server_key"),
             (
                 {"mqtt_proxy_password": same, "mqtt_radar_password": same},
@@ -548,7 +537,6 @@ class DeploymentTests(unittest.TestCase):
                 "mqtt_proxy_password",
                 "mqtt_radar_password",
                 "radar_checkpoint_secret",
-                "emqx_node_cookie",
             },
             checked,
         )
@@ -592,7 +580,7 @@ class DeploymentTests(unittest.TestCase):
         expected = {
             "prod": set(MOUNTS),
             "prod-ephemeral": set(),
-            "prod-mixed": {"persist_emqx_log"},
+            "prod-mixed": {"persist_mosquitto_data"},
         }
         for name, enabled in expected.items():
             with self.subTest(case=name):
@@ -699,13 +687,13 @@ class DeploymentTests(unittest.TestCase):
             "cloudflared": {
                 "cloudflared_tunnel_token": "/run/secrets/cloudflared_tunnel_token",
             },
-            "emqx-main": {
-                "emqx_server_cert": "emqx_server_cert.pem",
-                "emqx_server_key": "emqx_server_key.pem",
-                "emqx_auth_users": "emqx_auth_users.json",
+            "mosquitto": {
+                "mqtt_server_cert": "mqtt_server_cert.pem",
+                "mqtt_server_key": "mqtt_server_key.pem",
+                "mosquitto_passwords": "mosquitto_passwords",
             },
             "mqtt-proxy": {
-                "emqx_ca_cert": "EMQX_CA_CERT",
+                "mqtt_ca_cert": "MQTT_CA_CERT",
                 "mqtt_proxy_password": "MQTT_APIKEY",
             },
             "mqtt-radar": {
@@ -717,7 +705,7 @@ class DeploymentTests(unittest.TestCase):
         }
         # Live views and broker checks run in the API, recording in the worker.
         expected["api"] = expected["tactic"] = {
-            "emqx_ca_cert": "EMQX_CA_CERT",
+            "mqtt_ca_cert": "MQTT_CA_CERT",
             "mqtt_proxy_password": "SYSTEM_COLLECTION_MQTT_API_KEY",
             "forecast_api_token": "FORECAST_API_TOKEN",
             "system_broker_routes": "SYSTEM_BROKER_ROUTES",
@@ -990,7 +978,7 @@ class DeploymentTests(unittest.TestCase):
         proxy = config["services"]["mqtt-proxy"]
         radar = config["services"]["mqtt-radar"]
         tactic = config["services"]["tactic"]
-        broker = config["services"]["emqx-main"]
+        broker = config["services"]["mosquitto"]
         self.assertEqual(proxy["environment"]["ENVIRONMENT"], "production")
         self.assertEqual(proxy["environment"]["MQTT_BROKER_PORT"], "8883")
         self.assertEqual(proxy["environment"]["MQTT_USE_TLS"], "true")
@@ -998,7 +986,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(proxy["environment"]["MQTT_USERNAME"], "offkey-proxy")
         self.assertNotIn("MQTT_APIKEY", proxy["environment"])
         self.assertEqual(
-            proxy["environment"]["MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
+            proxy["environment"]["MQTT_CA_FILE"], "/run/secrets/MQTT_CA_CERT"
         )
         # Monitors read the stored log; the pool holds no broker login.
         self.assertFalse(
@@ -1013,7 +1001,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotIn("SYSTEM_COLLECTION_MQTT_API_KEY", tactic["environment"])
         self.assertEqual(
             tactic["environment"]["SYSTEM_COLLECTION_MQTT_CA_FILE"],
-            "/run/secrets/EMQX_CA_CERT",
+            "/run/secrets/MQTT_CA_CERT",
         )
         self.assertEqual(
             tactic["environment"]["TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT"], "8883"
@@ -1025,19 +1013,38 @@ class DeploymentTests(unittest.TestCase):
             {secret["target"] for secret in radar["secrets"]},
             {"RADAR_CHECKPOINT_SECRET", "FORECAST_API_TOKEN"},
         )
+        # Only the broker user reads its key and logins; it drops root first.
+        # Docker prints the resolved mode as an octal string.
         self.assertEqual(
-            {secret["target"] for secret in broker["secrets"]},
             {
-                "emqx_server_cert.pem",
-                "emqx_server_key.pem",
-                "emqx_auth_users.json",
+                (
+                    secret["target"],
+                    secret["uid"],
+                    secret["gid"],
+                    int(secret["mode"], 8)
+                    if isinstance(secret["mode"], str)
+                    else secret["mode"],
+                )
+                for secret in broker["secrets"]
+            },
+            {
+                (target, "1883", "1883", 0o400)
+                for target in (
+                    "mqtt_server_cert.pem",
+                    "mqtt_server_key.pem",
+                    "mosquitto_passwords",
+                )
             },
         )
-        # Erlang distribution never falls back to the image's default cookie.
+        self.assertFalse(broker.get("environment"))
+        # Clients dial emqx-main, the DNS name the broker certificate carries.
+        self.assertEqual(broker["networks"]["emqx-network"]["aliases"], ["emqx-main"])
+        self.assertEqual(proxy["environment"]["MQTT_BROKER_HOST"], "emqx-main")
         self.assertEqual(
-            broker["environment"]["EMQX_NODE__COOKIE"],
-            self.results["prod"]["inputs"]["emqx_node_cookie"],
+            tactic["environment"]["TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST"],
+            "emqx-main",
         )
+        self.assertNotIn("emqx-main", config["services"])
         rendered = json.dumps(config)
         self.assertNotIn(
             self.results["prod"]["inputs"]["mqtt_proxy_password"], rendered
@@ -1087,17 +1094,12 @@ class DeploymentTests(unittest.TestCase):
                 self.assertEqual(
                     {secret["target"] for secret in controller["secrets"]},
                     {
-                        "EMQX_CA_CERT",
+                        "MQTT_CA_CERT",
                         # For the composer's list of forecast models.
                         "FORECAST_API_TOKEN",
                         "SYSTEM_BROKER_ROUTES",
                         "SYSTEM_COLLECTION_MQTT_API_KEY",
                     },
-                )
-                # The collection controller needs no EMQX management API.
-                self.assertNotIn(
-                    "EMQX_API_KEY__BOOTSTRAP_FILE",
-                    services["emqx-main"].get("environment", {}),
                 )
                 rendered = json.dumps(config)
                 for value in self.results[environment]["inputs"][
@@ -1144,6 +1146,45 @@ class DeploymentTests(unittest.TestCase):
                 with self.subTest(service=service, key=key):
                     self.assertRegex(code, rf"\b{re.escape(key)}\b")
 
+    def test_broker_logins_render_as_a_stable_mosquitto_password_file(self):
+        def logins(case):
+            material = self.results[case]["deployment_secret_material"]
+            return material["mosquitto_passwords"]
+
+        inputs = self.results["prod"]["inputs"]
+        expected = {
+            "offkey-proxy": inputs["mqtt_proxy_password"],
+            "offkey-radar": inputs["mqtt_radar_password"],
+        }
+        lines = logins("prod").splitlines()
+        self.assertEqual([line.split(":", 1)[0] for line in lines], list(expected))
+        for line in lines:
+            username, hashed = line.split(":", 1)
+            # mosquitto_passwd's sha512-pbkdf2 format: $7$iterations$salt$hash
+            _, kind, iterations, salt, digest = hashed.split("$")
+            self.assertEqual(kind, "7")
+            self.assertEqual(
+                base64.b64encode(
+                    hashlib.pbkdf2_hmac(
+                        "sha512",
+                        expected[username].encode(),
+                        base64.b64decode(salt),
+                        int(iterations),
+                        64,
+                    )
+                ).decode(),
+                digest,
+            )
+            self.assertNotIn(expected[username], line)
+        # A release with the same vault keeps the secret, so the broker keeps running.
+        self.assertEqual(logins("prod"), logins("prod-repeat"))
+        self.assertEqual(
+            self.results["prod"]["deployment_secret_names"]["mosquitto_passwords"],
+            self.results["prod-repeat"]["deployment_secret_names"][
+                "mosquitto_passwords"
+            ],
+        )
+
     def test_traefik_reaches_production_by_stack_qualified_names(self):
         result = self.results["prod"]
         urls = {
@@ -1154,7 +1195,8 @@ class DeploymentTests(unittest.TestCase):
             self.assertTrue(url.startswith("http://off-key_"), url)
         swarm = result["swarm_config"]
         configs = [config["name"] for config in swarm["configs"].values()]
-        self.assertTrue(any(name.startswith("emqx_security_cfg_") for name in configs))
+        self.assertTrue(any(name.startswith("mosquitto_cfg_") for name in configs))
+        self.assertNotIn("emqx", urls)
 
     def test_explicitly_disabled_collection_is_preserved(self):
         config = self.results["prod-collection-disabled"]["config"]

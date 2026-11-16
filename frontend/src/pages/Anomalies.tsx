@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, RefreshCw, Trash2, X } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { RefreshCw, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { PageShell } from '@/components/DashboardLayout';
 import { HelpTooltip } from '@/components/HelpTooltip';
@@ -9,8 +9,9 @@ import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useNow } from '@/hooks/use-now';
 import { dayKey, formatDay, formatExactDateTime } from '@/lib/format-time';
 import { useCatalogue } from '@/features/workspace/catalogue-context';
-import { catalogueSelectionLabel, withCatalogueSource } from '@/features/workspace/catalogue-navigation';
-import { detailsHref, selectedSource } from '@/features/workspace/reporting-scope';
+import { catalogueSelectionLabel } from '@/features/workspace/catalogue-navigation';
+import { selectedSource } from '@/features/workspace/reporting-scope';
+import { SelectedSourceBar } from '@/features/workspace/SelectedSourceBar';
 import { AnomalyRow } from '@/features/reporting/AnomalyRow';
 import { ReportingFilter } from '@/features/reporting/ReportingFilter';
 import { useAlarmEvents } from '@/features/reporting/useAlarmEvents';
@@ -26,7 +27,7 @@ const EMPTY_SELECTION = { key: '', all: false, ids: new Set<string>() };
 
 export default function AnomalyTable() {
   const { can } = useAuth();
-  const { streamIds, system, selected, selectionMissing, selectSource } = useCatalogue();
+  const { streamIds, system, selected, selectionMissing } = useCatalogue();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const reading = params.get('filterReading') ?? 'any';
@@ -91,10 +92,6 @@ export default function AnomalyTable() {
     <header className="rp-heading">
       <div className="rp-heading-main">
         <h1 className="app-page-title">Reporting</h1>
-        {(selected || selectionMissing) && <div className="rp-source-scope" aria-label="Selected source">
-          <span title={scopeLabel}>{scopeLabel}</span>
-          <Button variant="ghost" size="icon" aria-label="Show all sources" title="Show all sources" disabled={locked} onClick={() => selectSource(null)}><X size={13} /></Button>
-        </div>}
         <div className="rp-summary">
           <span>{page ? page.summary.devices : '—'} {page?.summary.devices === 1 ? 'device' : 'devices'}</span>
           <span>Latest · {page?.summary.latest ? <time dateTime={page.summary.latest} title={formatExactDateTime(page.summary.latest)}>
@@ -102,13 +99,12 @@ export default function AnomalyTable() {
         </div>
       </div>
       <div className="rp-heading-actions">
-        {scopedSource && <Button variant="ghost" size="sm" asChild><Link to={withCatalogueSource(detailsHref(scopedSource), selected)}>
-          <Activity size={14} />{scopedSource.kind === 'device' ? 'Device readings' : 'Broker readings'}</Link></Button>}
         <Button variant="ghost" size="icon" aria-label="Refresh" title={result ? `Refresh · Last updated ${formatExactDateTime(result.updatedAt)}` : 'Refresh'}
           onClick={() => void events.load()} disabled={busy || loadingOlder || locked}>
           <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /></Button>
       </div>
     </header>
+    <SelectedSourceBar disabled={locked} />
     {system.error && <p role="alert" className="rp-error">Catalogue status unavailable: {system.error}
       <Button variant="link" onClick={() => void system.refresh()}>Retry catalogue</Button></p>}
     {selectionMissing && <p role="alert" className="rp-error">This source is no longer available. Clear the signal scope to view other events.</p>}

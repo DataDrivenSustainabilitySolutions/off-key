@@ -173,7 +173,7 @@ describe("Dojo workspace", () => {
     const scope = await screen.findByLabelText("Selected source");
     within(scope).getByText("Pump 1");
     expect(within(scope).getByRole("link", { name: "Device readings" }).getAttribute("href")).toBe("/details/pump-1?source=pump");
-    fireEvent.click(within(scope).getByRole("button", { name: "Clear selection" }));
+    fireEvent.click(within(scope).getByRole("button", { name: "Show all sources" }));
     expect(selectSource).toHaveBeenCalledWith(null);
   });
 

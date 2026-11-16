@@ -8,15 +8,15 @@
   --rp-hover: hsl(var(--foreground) / .025);
   --rp-selected: hsl(var(--foreground) / .045);
 }
-.rp-page > .app-page-content { gap: 20px; padding-block: 24px 32px; }
-.rp-page .app-page-title { font-size: 25px; line-height: 32px; font-weight: 550; letter-spacing: -.035em; }
+.rp-page > .app-page-content { gap: 20px; padding-block: 40px 48px; }
+/* The same page title, at the same height, as Monitoring, Sources and the Dojo. */
+.rp-page .app-page-title { font-size: var(--text-title1); line-height: var(--leading-title1); font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
+.rp-heading { min-height: 38px; }
+@media (max-width: 1050px) { .rp-page > .app-page-content { padding-block: 32px 28px; } }
 .rp-heading, .rp-heading-main, .rp-heading-actions { display: flex; align-items: center; }
 .rp-heading { justify-content: space-between; gap: 16px; }
 .rp-heading-main { flex-wrap: wrap; gap: 8px 24px; min-width: 0; }
 .rp-heading-actions { gap: 6px; flex-shrink: 0; }
-.rp-source-scope { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; color: var(--rp-muted); font-size: 12px; }
-.rp-source-scope > span { max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rp-source-scope [data-slot="button"] { width: 28px; height: 28px; }
 .rp-heading-actions > button { color: var(--rp-muted); }
 .rp-heading-actions > button:hover { color: var(--rp-ink); }
 .rp-heading-actions [data-slot="button"][aria-label="Refresh"],
@@ -189,9 +189,7 @@
 
 @media (max-width: 760px) {
   .rp-page > .app-page-content { gap: 16px; padding-block: 20px 28px; }
-  .rp-page .app-page-title { font-size: 24px; line-height: 30px; }
   .rp-heading-main { align-items: flex-start; flex-direction: column; gap: 6px; }
-  .rp-source-scope [data-slot="button"] { width: 38px; height: 38px; }
   .rp-heading { align-items: flex-start; }
   .rp-summary { font-size: 11px; gap: 6px 12px; }
   .rp-summary > span + span { padding-left: 12px; }

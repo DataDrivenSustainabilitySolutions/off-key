@@ -3,14 +3,6 @@
 .dj-header h1 { font-size: var(--text-title1); font-weight: var(--heading-weight); line-height: var(--leading-title1); letter-spacing: var(--heading-tracking); margin: 0; overflow-wrap: anywhere; }
 .dj-header p { color: var(--ex-muted); font-size: var(--text-body); margin: 8px 0 0; max-width: 640px; }
 /* The catalogue selection that “Copy recorded readings” starts from, and a way to its readings. */
-.dj-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 14px; font-size: var(--text-caption); }
-.dj-scope > small { margin-right: -6px; color: var(--ex-muted); font-size: var(--text-caption); }
-.dj-scope-source { display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 100%; }
-.dj-scope-source > .source-identity { gap: 6px; font-weight: 500; overflow-wrap: anywhere; }
-.ex-shell .dj-scope-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ex-accent); }
-.ex-shell .dj-scope-link:hover { text-decoration: underline; }
-.ex-shell .dj-scope-clear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-control); color: var(--ex-muted); flex: none; }
-.ex-shell .dj-scope-clear:hover { background: var(--ex-hover); color: var(--ex-ink); }
 .dj-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ex-shell .dj-action { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--ex-line); border-radius: var(--radius-control); font-size: var(--text-control); color: var(--ex-ink); }
 .ex-shell .dj-action:hover:not(:disabled) { background: var(--ex-hover); }
@@ -74,9 +66,6 @@
 .dj-method-own { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--ex-line); border-radius: 999px; font-size: var(--text-caption); font-weight: 400; color: var(--ex-muted); }
 @media (max-width: 760px) {
   .ex-shell .dj-action,.ex-shell .dj-primary,.dj-back { min-height: 44px; }
-  .dj-scope { row-gap: 0; }
-  .ex-shell .dj-scope-link { min-height: 44px; }
-  .ex-shell .dj-scope-clear { width: 44px; height: 44px; }
   .dj-field :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea) { min-height: 44px; }
   .dj-labels li { grid-template-columns: 1fr; gap: 4px; }
   .dj-chart { height: 340px; }

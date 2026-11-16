@@ -26,7 +26,8 @@ dependencies = [
     "email-validator>=2.2.0",
     "psycopg2-binary>=2.9.10",
     "python-dotenv>=1.0.0",
-    "pyyaml>=6.0.3"
+    "pyyaml>=6.0.3",
+    "prometheus-client>=0.21",
 ]
 
 # Web services import the API docs router and mail helpers; RADAR and the MQTT

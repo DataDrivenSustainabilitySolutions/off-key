@@ -6,6 +6,7 @@ observability_files:
   - alloy-docker.cfg
   - alloy.alloy
   - loki.yml
+  - prometheus.yml
   - grafana-datasources.yml
   - grafana-dashboards.yml
   - grafana-dashboard-logs.json
@@ -17,6 +18,7 @@ observability_config_keys:
   ALLOY_DOCKER_CONFIG_HASH: alloy-docker.cfg
   ALLOY_CONFIG_HASH: alloy.alloy
   LOKI_CONFIG_HASH: loki.yml
+  PROMETHEUS_CONFIG_HASH: prometheus.yml
   GRAFANA_DATASOURCES_HASH: grafana-datasources.yml
   GRAFANA_DASHBOARDS_HASH: grafana-dashboards.yml
   GRAFANA_DASHBOARD_LOGS_HASH: grafana-dashboard-logs.json

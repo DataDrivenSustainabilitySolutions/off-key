@@ -10,6 +10,7 @@ from off_key_core.config.logs import (
     log_startup_logging_configuration,
 )
 from off_key_core.config.validation import validate_settings
+from off_key_core.metrics import start_metrics_server
 
 
 def start_service[T](
@@ -19,6 +20,7 @@ def start_service[T](
     context: str,
     *,
     after_env: Callable[[], T] | None = None,
+    metrics: bool = False,
 ) -> T | None:
     """Load the environment, configure logging, then validate settings.
 
@@ -32,4 +34,6 @@ def start_service[T](
     load_yaml_config(str(logging_yaml) if logging_yaml else None)
     log_startup_logging_configuration(name)
     validate_settings(settings, context=context)
+    if metrics:
+        start_metrics_server(name)
     return result

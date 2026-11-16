@@ -6,9 +6,11 @@ from pathlib import Path
 from off_key_core.config.bootstrap import start_service
 from off_key_core.config.logs import logger
 from off_key_core.utils.tasks import run_until_first_exit
+from prometheus_client import REGISTRY
 
 from .config.config import get_mqtt_settings
 from .health_api import run_health_api
+from .metrics import CollectionCollector
 from .proxy import MQTTProxyService
 
 
@@ -21,8 +23,10 @@ async def main():
             ("mqtt_proxy", lambda: get_mqtt_settings().config),
         ],
         context="MQTT proxy configuration",
+        metrics=True,
     )
     service = MQTTProxyService()
+    REGISTRY.register(CollectionCollector(service))
     settings = get_mqtt_settings()
 
     service_task = asyncio.create_task(

@@ -141,7 +141,11 @@ WantedBy=multi-user.target
     ).stdout.strip()
     if actual_uuid != uuid:
         raise ValueError("Mounted filesystem does not match the owned image")
-    for name, uid, gid in (("loki", 10001, 10001), ("grafana", 472, 0)):
+    for name, uid, gid in (
+        ("loki", 10001, 10001),
+        ("grafana", 472, 0),
+        ("prometheus", 65534, 65534),
+    ):
         directory = mount / name
         if directory.is_symlink():
             raise ValueError("Refusing a symlinked data directory")

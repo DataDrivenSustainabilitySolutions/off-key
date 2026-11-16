@@ -1,0 +1,22 @@
+# Off-key application metrics. Each service serves /metrics on METRICS_PORT
+# (9464) inside the application network; no proxy or Traefik route reaches it.
+# tasks.<service> resolves every task of a service, so each RADAR pool replica
+# is scraped on its own.
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: off-key
+    dns_sd_configs:
+      - names: [tasks.api, tasks.tactic, tasks.mqtt-proxy, tasks.mqtt-radar]
+        type: A
+        port: 9464
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        regex: tasks\.(.+)
+        target_label: service
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]

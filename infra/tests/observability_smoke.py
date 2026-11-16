@@ -56,7 +56,11 @@ def run_rehearsal(evidence_path):
         lab.start()
         manager, data, worker = (lab.engines[k] for k in ("manager", "data", "worker"))
         lab.load_images(
-            [images[k] for k in ("loki", "grafana", "alloy", "socket_proxy")], "data"
+            [
+                images[k]
+                for k in ("loki", "grafana", "prometheus", "alloy", "socket_proxy")
+            ],
+            "data",
         )
         lab.load_images([images[k] for k in ("alloy", "socket_proxy")], "worker")
         fixture_image = lab.content_ids[images["socket_proxy"]]
@@ -68,8 +72,13 @@ def run_rehearsal(evidence_path):
             "-p",
             "/srv/offkey-observability/loki",
             "/srv/offkey-observability/grafana",
+            "/srv/offkey-observability/prometheus",
         )
-        for directory, owner in (("loki", "10001:10001"), ("grafana", "472:0")):
+        for directory, owner in (
+            ("loki", "10001:10001"),
+            ("grafana", "472:0"),
+            ("prometheus", "65534:65534"),
+        ):
             lab.outer(
                 "exec",
                 node_names[0],

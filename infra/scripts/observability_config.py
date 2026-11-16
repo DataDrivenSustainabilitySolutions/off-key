@@ -44,6 +44,9 @@ class ObservabilitySettings(BaseModel):
     grafana: ServiceBudget = ServiceBudget(
         memory_mib=512, reserved_memory_mib=256, cpus=0.5, reserved_cpus=0.1
     )
+    prometheus: ServiceBudget = ServiceBudget(
+        memory_mib=512, reserved_memory_mib=256, cpus=0.5, reserved_cpus=0.1
+    )
     alloy: ServiceBudget = ServiceBudget(
         memory_mib=256, reserved_memory_mib=64, cpus=0.5, reserved_cpus=0.1
     )
@@ -75,7 +78,14 @@ class ObservabilitySettings(BaseModel):
             "OBSERVABILITY_DATA_ROOT": self.data_root,
             "OBSERVABILITY_STACK": self.stack_name,
         }
-        for name in ("loki", "grafana", "alloy", "alloy_docker", "log_canary"):
+        for name in (
+            "loki",
+            "grafana",
+            "prometheus",
+            "alloy",
+            "alloy_docker",
+            "log_canary",
+        ):
             budget = getattr(self, name)
             prefix = name.upper()
             values.update(

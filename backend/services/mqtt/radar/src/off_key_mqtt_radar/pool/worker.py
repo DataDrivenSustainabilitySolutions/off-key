@@ -178,6 +178,9 @@ class RadarPool:
         self.command = command or (lambda module: [sys.executable, "-m", module])
         self.last_renewed = time.monotonic()
         self.healthy = False
+        # Cumulative since the replica started, for the metrics collector.
+        self.crashes = 0
+        self.memory_kills = 0
 
     async def run_forever(self) -> None:
         logger.info(
@@ -335,6 +338,7 @@ class RadarPool:
                     limit,
                 )
                 child.killed_for_memory = True
+                self.memory_kills += 1
                 child.process.kill()
 
     async def claim(self) -> None:
@@ -443,6 +447,7 @@ class RadarPool:
         not_before = None
         hint = MEMORY_HINT if child.killed_for_memory else None
         if crash:
+            self.crashes += 1
             now = datetime.now(UTC)
             async with self.engine.connect() as connection:
                 previous = (

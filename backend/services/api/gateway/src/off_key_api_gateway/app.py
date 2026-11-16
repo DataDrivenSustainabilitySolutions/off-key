@@ -20,6 +20,7 @@ from off_key_core.config.logs import (
 from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.maintenance import DeploymentInProgressError
+from off_key_core.metrics import HttpMetricsMiddleware
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.config.system_live import get_system_live_settings
 from off_key_tactic_middleware.services.catalogue.broker_access import (
@@ -267,6 +268,7 @@ def build_app(
     app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(ClientRateLimitMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(HttpMetricsMiddleware, service="api-gateway")
     app.add_middleware(
         CORSMiddleware,
         # Keep defaults development-friendly via AppSettings; override in prod.
@@ -289,5 +291,6 @@ def create_app() -> FastAPI:
         Path(__file__).parent / "config" / "logging.yaml",
         VALIDATION_SPECS,
         context="API configuration",
+        metrics=True,
     )
     return build_app(get_app_settings())

@@ -5,9 +5,11 @@ import signal
 from pathlib import Path
 
 from off_key_core.config.bootstrap import start_service
+from prometheus_client import REGISTRY
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..config.runtime import get_radar_database_settings
+from .metrics import PoolCollector
 from .settings import RadarPoolSettings
 from .worker import RadarPool
 
@@ -43,6 +45,7 @@ async def main() -> None:
             ("database", get_radar_database_settings),
         ],
         context="RADAR pool configuration",
+        metrics=True,
     )
     settings = RadarPoolSettings()
     stopping = asyncio.Event()
@@ -59,6 +62,7 @@ async def main() -> None:
         connect_args={"command_timeout": settings.RADAR_POOL_LEASE_SECONDS / 4},
     )
     pool = RadarPool(engine, settings.options(), stopping.is_set)
+    REGISTRY.register(PoolCollector(pool))
     server = await serve_health(pool, settings.RADAR_POOL_HEALTH_PORT)
     try:
         await pool.run_forever()

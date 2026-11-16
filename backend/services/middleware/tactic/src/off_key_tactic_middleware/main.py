@@ -163,6 +163,7 @@ def main() -> None:
             ("system_live", get_system_live_settings),
         ],
         context="TACTIC worker configuration",
+        metrics=True,
     )
     config = get_tactic_settings().config
 

@@ -156,6 +156,42 @@ services:
       restart_policy: *restart
       update_config: *update
 
+  prometheus:
+    labels: *component
+    cap_drop: [ALL]
+    image: "${PROMETHEUS_IMAGE:-prom/prometheus:v3.16.0}"
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-4GB}
+      - --web.listen-address=:9090
+    environment: {GOMEMLIMIT: 384MiB, GOMAXPROCS: "1"}
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes: [prometheus-data:/prometheus]
+    # The application network carries only the scrape: each service serves
+    # /metrics on a port no proxy routes. Nothing here publishes a port.
+    networks: [observability-network, app-network]
+    logging: *bounded-logs
+    deploy:
+      replicas: 1
+      endpoint_mode: dnsrr
+      labels: {off-key.component: observability}
+      placement:
+        constraints: [node.role == worker, "node.hostname == ${OBSERVABILITY_NODE:?select the data worker}"]
+      resources:
+        limits:
+          memory: ${PROMETHEUS_MEMORY_LIMIT:-512M}
+          cpus: "${PROMETHEUS_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${PROMETHEUS_MEMORY_RESERVATION:-256M}
+          cpus: "${PROMETHEUS_CPU_RESERVATION:-0.1}"
+      restart_policy: *restart
+      update_config: *update
+
   log-canary:
     image: "${SOCKET_PROXY_IMAGE:?pin the canary runtime image}"
     entrypoint: [/bin/sh, -ec]
@@ -189,12 +225,22 @@ volumes:
   grafana-data:
     driver: local
     driver_opts: {type: none, o: bind, device: "${OBSERVABILITY_DATA_ROOT:?prepare bounded storage}/grafana"}
+  prometheus-data:
+    driver: local
+    driver_opts: {type: none, o: bind, device: "${OBSERVABILITY_DATA_ROOT:?prepare bounded storage}/prometheus"}
 
 networks:
   observability-network:
     driver: overlay
     internal: true
     driver_opts: {com.docker.network.driver.mtu: "1280"}
+  # The application stack's own network, declared exactly as in
+  # docker-compose.swarm.yml; stack deploy reuses it when it exists.
+  app-network:
+    driver: overlay
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+    attachable: true
 
 configs:
   alloy_docker_config:
@@ -206,6 +252,9 @@ configs:
   loki_config:
     name: loki_config_${LOKI_CONFIG_HASH}
     file: ./loki.yml
+  prometheus_config:
+    name: prometheus_config_${PROMETHEUS_CONFIG_HASH}
+    file: ./prometheus.yml
   grafana_datasources:
     name: grafana_datasources_${GRAFANA_DATASOURCES_HASH}
     file: ./grafana-datasources.yml

@@ -228,6 +228,7 @@ ask the service which models it holds for the composer.
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
 | `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry, monitoring evidence and anomalies; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
 | `TELEMETRY_STORAGE_CAP_GB` | empty | Optional storage ceiling for telemetry and monitoring evidence, `0.1–100000` GB (decimal). Every 15 minutes, while over the cap, the oldest completed daily chunk is dropped, even if it is inside the retention window. Empty disables the cap. Restart/redeploy DB Sync after changing it. |
+| `METRICS_PORT` | empty | Port on which the API gateway, TACTIC, mqtt-proxy and the RADAR pool serve Prometheus `/metrics`, `1024–65535`; empty or `0` turns metrics off. Production sets `9464`. Never route it through a proxy. RADAR monitor children inherit it but do not serve metrics |
 | `LOG_LEVEL` | `INFO` | Standard log-level token |
 | `LOG_FORMAT` | `simple` | `simple` writes text lines that end with any `extra=` context as `key=value` pairs; `json` writes one object per line with that context under `extra` |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |

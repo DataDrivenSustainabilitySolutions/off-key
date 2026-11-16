@@ -101,6 +101,7 @@ service_environment:
     ENABLE_PERFORMANCE_LOGGING: "{{ enable_performance_logging }}"
     UVICORN_ACCESS_LOG_LEVEL: "{{ uvicorn_access_log_level }}"
     RATE_LIMIT_LOG_LEVEL: "{{ rate_limit_log_level }}"
+    METRICS_PORT: "{{ metrics_port | default(9464) }}"
   tactic:
     <<: [*common, *database, *auth, *email, *domain]
     POSTGRES_ASYNC_POOL_SIZE: "8"
@@ -111,6 +112,7 @@ service_environment:
     TACTIC_HOST: "{{ tactic_host }}"
     TACTIC_PORT: "{{ tactic_port }}"
     TACTIC_LOG_LEVEL: "{{ tactic_log_level }}"
+    METRICS_PORT: "{{ metrics_port | default(9464) }}"
   db-sync:
     <<: [*common, *database]
     ENVIRONMENT: "{{ app_environment }}"
@@ -146,12 +148,15 @@ service_environment:
     SQLALCHEMY_LOG_LEVEL: "{{ sqlalchemy_log_level }}"
     # The deploy readiness probe (infra/scripts/check_application.py) runs here.
     TACTIC_PORT: "{{ tactic_port }}"
+    METRICS_PORT: "{{ metrics_port | default(9464) }}"
   # The RADAR pool; its monitor children inherit this environment.
   mqtt-radar:
     <<: [*common, *database]
     ENVIRONMENT: "{{ app_environment }}"
     RADAR_POOL_RUNTIME: "{{ mqtt_radar_image }}"
     RADAR_POOL_CAPACITY: "{{ radar_pool_capacity | default(8) }}"
+    # Only the pool process serves metrics; its children inherit but never bind.
+    METRICS_PORT: "{{ metrics_port | default(9464) }}"
   dojo-worker:
     <<: [*common, *database]
     ENVIRONMENT: "{{ app_environment }}"

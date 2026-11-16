@@ -1,7 +1,7 @@
 # Worker observability
 
-Loki and Grafana run on one explicitly selected worker (`observability_data_node`,
-production: `DDSS-2`). Alloy, a GET-only Docker log proxy, and a tiny log canary run
+Loki, Prometheus and Grafana run on one explicitly selected worker
+(`observability_data_node`, production: `DDSS-2`). Alloy, a GET-only Docker log proxy, and a tiny log canary run
 once per active worker. No observability task is eligible for a manager.
 
 The manager must retain headroom for Swarm coordination, SSH and existing ingress.
@@ -9,14 +9,15 @@ Do not drain or restart it to move these services: that can affect other workloa
 
 ## Capacity and storage
 
-The validated policy gives Loki 1 GiB / 1 CPU, Grafana 512 MiB / 0.5 CPU, each
+The validated policy gives Loki 1 GiB / 1 CPU, Grafana 512 MiB / 0.5 CPU,
+Prometheus 512 MiB / 0.5 CPU, each
 Alloy 256 MiB / 0.5 CPU, each proxy 64 MiB / 0.25 CPU, and each canary 16 MiB /
 0.05 CPU. Every service has a memory and CPU reservation. A data worker must be
 ready, active and have at least 3 GiB actually available RAM before deployment.
 
 The storage role creates only `/var/lib/offkey-observability/storage.ext4` and
 mounts it at `/srv/offkey-observability`. The filesystem has a fixed 20 GiB budget,
-shared by Loki and Grafana. The image is sparse, so 20 GiB is its maximum growth,
+shared by Loki, Prometheus and Grafana. The image is sparse, so 20 GiB is its maximum growth,
 not an immediate 20 GiB allocation. Creation requires an additional 10 GiB host
 disk reserve. Existing images are never reformatted or silently resized.
 
@@ -46,6 +47,31 @@ The proxy denies writes, exec, filesystem archives, secret and administration
 APIs. Permitted container metadata is still sensitive; it is not a separate tenant
 security boundary. There are no proxy TCP listeners or published monitoring ports.
 Grafana retains the existing oauth2-proxy/Traefik gate and internal network.
+
+## Metrics
+
+The API gateway, TACTIC, mqtt-proxy and each RADAR pool replica serve Prometheus
+metrics on `METRICS_PORT` (9464) inside the application network. No nginx,
+Traefik or published port routes to it. Prometheus joins the application network
+only to scrape: it finds every task through `tasks.<service>` DNS, so each pool
+replica is its own target. It keeps 15 days or 4 GB, whichever is reached first,
+under its own `prometheus` directory on the bounded filesystem. Grafana has it as
+the `Prometheus` data source next to Loki.
+
+| Metric | Meaning |
+| --- | --- |
+| `offkey_http_requests_total`, `offkey_http_request_duration_seconds` | Gateway requests by route template (never raw paths) and status class |
+| `offkey_collection_received_total`, `_accepted_total`, `_invalid_total`, `_overload_dropped_total` | Ingress envelopes reaching mqtt-proxy and what admission did with them |
+| `offkey_collection_written_records_total`, `_write_batches_total`, `_failed_write_batches_total` | Readings and batches committed to the telemetry log |
+| `offkey_collection_database_queue`, `_database_capacity`, `_database_retrying` | Writer backpressure; a queue near capacity means the database is the limit |
+| `offkey_collection_broker_connected`, `offkey_collection_last_write_timestamp_seconds` | Whether collection is connected and when it last wrote |
+| `offkey_radar_pool_children{kind}`, `_capacity`, `_healthy`, `_lease_age_seconds` | Pool occupancy and lease health per replica |
+| `offkey_radar_pool_crashes_total`, `_memory_kills_total`, `_children_resident_bytes` | Child crashes, memory-limit kills and the memory children use |
+| `process_*`, `python_*` | Standard process and runtime metrics of each service |
+
+Monitor children inherit `METRICS_PORT` from the pool but never bind it; only
+entry points that ask the shared bootstrap for metrics serve them. Set
+`metrics_port: 0` in the inventory to switch metrics off.
 
 ## Dashboard navigation and signal meaning
 

@@ -365,7 +365,7 @@ async def test_anomaly_retention_and_storage_cap(disposable_database, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_opt_in_telemetry_compression_keeps_the_log_readable(
+async def test_telemetry_compression_keeps_the_log_readable(
     disposable_database, monkeypatch
 ):
     engine = create_async_engine(
@@ -390,11 +390,10 @@ async def test_opt_in_telemetry_compression_keeps_the_log_readable(
 
     now = datetime.now(UTC)
     try:
-        await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="")
+        await bootstrap()
         async with engine.connect() as connection:
-            assert await policy(connection) is None
+            assert await policy(connection) in {"24 hours", "24:00:00"}
 
-        await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="48")
         await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="72")
         async with engine.begin() as connection:
             assert await policy(connection) in {"72 hours", "72:00:00"}
@@ -454,10 +453,6 @@ async def test_opt_in_telemetry_compression_keeps_the_log_readable(
                 )
                 == 4
             )
-
-        await bootstrap(TELEMETRY_COMPRESS_AFTER_HOURS="")
-        async with engine.connect() as connection:
-            assert await policy(connection) is None
     finally:
         async with engine.begin() as connection:
             await connection.execute(

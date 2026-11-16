@@ -10,13 +10,12 @@ records what that means and why it is acceptable, the way
 | Edition | License | What off-key uses from it |
 | --- | --- | --- |
 | Apache 2 Edition | Apache License 2.0 | Hypertables, chunks, `create_hypertable`, `set_chunk_time_interval` |
-| Community Edition | Timescale License (TSL) | Retention policies (`add_retention_policy`), user-defined jobs (`add_job`, used for anomaly retention and the storage cap), and, when `TELEMETRY_COMPRESS_AFTER_HOURS` is set, native compression |
+| Community Edition | Timescale License (TSL) | Retention policies (`add_retention_policy`), user-defined jobs (`add_job`, used for anomaly retention and the storage cap), and native compression of telemetry |
 
 The `timescale/timescaledb` image ships the Community Edition and enables it by
 default. Check a running server with `SHOW timescaledb.license;`: `timescale` means
-Community features are on, `apache` means only the Apache 2 Edition is active.
-`reconcile_compression` refuses to enable compression on an `apache` server
-rather than failing inside TimescaleDB.
+Community features are on, `apache` means only the Apache 2 Edition is active;
+off-key's schema bootstrap needs `timescale`.
 
 ## How this differs from EMQX
 

@@ -165,46 +165,8 @@ def _reconcile_chunk_interval(connection: Connection, table: str) -> None:
         )
 
 
-def reconcile_compression(connection: Connection, compress_after: str | None) -> None:
-    """Keep telemetry's compression policy in line with the setting.
-
-    Turning the setting off removes the policy; chunks already compressed stay
-    compressed and remain readable. Decompress them by hand if needed.
-    """
-    job = (
-        connection.execute(
-            text(
-                """
-                SELECT job_id,
-                       CAST(config ->> 'compress_after' AS interval)
-                           = CAST(CAST(:after AS text) AS interval) AS matches
-                FROM timescaledb_information.jobs
-                WHERE hypertable_schema = 'public'
-                  AND hypertable_name = :table AND proc_name = 'policy_compression'
-                """
-            ),
-            {"table": COMPRESSED_TABLE, "after": compress_after or "0"},
-        )
-        .mappings()
-        .one_or_none()
-    )
-    if compress_after is None:
-        if job is not None:
-            connection.execute(
-                text("SELECT remove_compression_policy(to_regclass(:table))"),
-                {"table": f"public.{COMPRESSED_TABLE}"},
-            )
-            logger.info("Compression policy removed for %s", COMPRESSED_TABLE)
-        return
-    if job is not None and job["matches"]:
-        return
-    license_mode = connection.scalar(text("SHOW timescaledb.license"))
-    if license_mode != "timescale":
-        raise RuntimeError(
-            "Telemetry compression needs TimescaleDB's Community edition "
-            f"(timescaledb.license = timescale); this server runs {license_mode!r}. "
-            "Unset TELEMETRY_COMPRESS_AFTER_HOURS or change the edition."
-        )
+def reconcile_compression(connection: Connection, compress_after: str) -> None:
+    """Compress telemetry chunks once they are older than ``compress_after``."""
     enabled = connection.scalar(
         text(
             """
@@ -223,11 +185,26 @@ def reconcile_compression(connection: Connection, compress_after: str | None) ->
                 f"timescaledb.compress_orderby = '{COMPRESS_ORDER_BY}')"
             )
         )
-    if job is not None:
-        connection.execute(
-            text("SELECT remove_compression_policy(to_regclass(:table))"),
-            {"table": f"public.{COMPRESSED_TABLE}"},
-        )
+    matches = connection.scalar(
+        text(
+            """
+            SELECT CAST(config ->> 'compress_after' AS interval)
+                   = CAST(CAST(:after AS text) AS interval)
+            FROM timescaledb_information.jobs
+            WHERE hypertable_schema = 'public'
+              AND hypertable_name = :table AND proc_name = 'policy_compression'
+            """
+        ),
+        {"table": COMPRESSED_TABLE, "after": compress_after},
+    )
+    if matches:
+        return
+    connection.execute(
+        text(
+            "SELECT remove_compression_policy(to_regclass(:table), if_exists => true)"
+        ),
+        {"table": f"public.{COMPRESSED_TABLE}"},
+    )
     connection.execute(
         text(
             """

@@ -23,8 +23,10 @@ Upstream topics are arbitrary concrete MQTT paths. Several readings may extract
 different JSON Pointer fields from one topic. Catalogue IDs identify definitions;
 saved runtime bindings identify their entity and reading in storage. Rename a
 definition without changing its ID to retain its binding and monitor association.
-Accepted numeric observations use `telemetry/<entity>/<reading>` and the existing
-`{value, timestamp}` payload. The collector never subscribes to its own output.
+Accepted numeric observations are appended to the `telemetry` log; monitors read
+them from there by `log_seq`. A monitor still names each input by its accepted
+topic, `telemetry/<entity>/<reading>`, but nothing is published on it: the
+internal broker carries only the ingress envelopes.
 
 Persistent subscriptions run independently of views and login sessions. Temporary
 **Connect** previews use bounded memory and do not enable recording. Opening a

@@ -417,7 +417,7 @@ test("filters real recorded reports by device and reading across the shared side
     await expect(page.getByRole("link", { name: names[1], exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: names[2], exact: true })).toHaveCount(0);
     await navigation.getByRole("link", { name: "Sources", exact: true }).click();
-    const entityReadings = page.getByRole("region", { name: "Entity readings", exact: true });
+    const entityReadings = page.getByRole("region", { name: "Device readings", exact: true });
     await expect(entityReadings).toBeVisible();
     await expect(page.getByRole("radiogroup", { name: "Recording", exact: true })).toHaveCount(0);
     await entityReadings.getByRole("button", { name: /North value 01/ }).click();

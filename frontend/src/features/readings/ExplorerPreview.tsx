@@ -178,8 +178,8 @@ export default function ExplorerPreview({
       <Binding label="Broker ID" value={broker.id} /></>}
     {entity && <><dl><dt>Kind</dt><dd>{entity.kind}</dd>
       <dt>Brokers</dt><dd>{entityBrokers.join(", ") || "Unassigned"}</dd>
-      {entity.parent_id && <><dt>Parent entity</dt><dd>{entitiesById.get(entity.parent_id)?.label ?? entity.parent_id}</dd></>}
-    </dl><Binding label="Entity ID" value={entity.id} /></>}
+      {entity.parent_id && <><dt>Parent device</dt><dd>{entitiesById.get(entity.parent_id)?.label ?? entity.parent_id}</dd></>}
+    </dl><Binding label="Device ID" value={entity.id} /></>}
     {(stream?.topic ?? node.topic) !== undefined && <Binding key={stream?.topic ?? node.topic}
       label={polled ? "Request path" : stream || related.length > 0 ? "MQTT topic" : "Topic path"} value={(stream?.topic ?? node.topic)!} />}
     {stream?.payload_pointer && <Binding key={stream.payload_pointer} label="Payload field" value={stream.payload_pointer} />}

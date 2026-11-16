@@ -135,7 +135,7 @@ describe("dedicated Sources configuration", () => {
     mount();
     await screen.findByRole("heading", { name: "Sources" });
     await openCatalogueSettings();
-    const chooser = await screen.findByLabelText("Edit entity");
+    const chooser = await screen.findByLabelText("Edit device");
     fireEvent.change(chooser, { target: { value: "room" } });
     const name = await screen.findByLabelText("device name");
     expect((name as HTMLInputElement).value).toBe("Room station");
@@ -150,7 +150,7 @@ describe("dedicated Sources configuration", () => {
     mount();
     await screen.findByRole("heading", { name: "Sources" });
     await openCatalogueSettings();
-    expect((await screen.findByLabelText("Edit entity")).hasAttribute("disabled")).toBe(true);
+    expect((await screen.findByLabelText("Edit device")).hasAttribute("disabled")).toBe(true);
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 

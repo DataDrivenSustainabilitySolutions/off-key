@@ -366,7 +366,7 @@ describe("explorer selected-object preview", () => {
     view.rerender(<ExplorerPreview {...entity.props} />);
     expect(screen.getByText("Kind").nextElementSibling?.textContent).toBe("sensor");
     expect(screen.getByText("Brokers").nextElementSibling?.textContent).toBe("North building");
-    expect(screen.getByText("Entity ID").nextElementSibling?.textContent).toBe("device");
+    expect(screen.getByText("Device ID").nextElementSibling?.textContent).toBe("device");
     expect(screen.queryByText(/temporary preview/)).toBeNull();
   });
 

@@ -125,7 +125,7 @@ describe("explorer settings catalogue files", () => {
     const props = common();
     const { rerender } = render(<ExplorerSettings {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Add broker" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add entity" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add device" }));
     fireEvent.click(screen.getByRole("button", { name: "Add reading" }));
     fireEvent.click(screen.getByRole("button", { name: "Add collection" }));
     expect(props.onCreate.mock.calls).toEqual([["connection"], ["device"], ["stream"], ["group"]]);

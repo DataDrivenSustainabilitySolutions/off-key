@@ -258,7 +258,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       : "Choose a different, collected reading for each input. Readings already monitored by another service are unavailable."}</p>}
     <div className="pl-input-step-footer">
       <p className="pl-help">{target ? draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"} selected`
-        : `${mapped} of ${slots.length} inputs mapped` : "Select an entity to choose its readings."}</p>
+        : `${mapped} of ${slots.length} inputs mapped` : "Select a source to choose its readings."}</p>
       {target && props.collectionReady && !unrecorded.length && <Link to={recordingHref}>Review recording in Sources</Link>}
     </div>
   </div>;

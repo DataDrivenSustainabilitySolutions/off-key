@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { WEBSITE_URL } from "@/lib/website";
 
 export const AUTH_LINK_CLASS = "text-primary underline-offset-4 hover:underline";
 export const AUTH_ERROR_CLASS = "text-destructive";
@@ -23,7 +24,7 @@ export function AuthLayout({ title, hideHeading = false, children }: AuthLayoutP
 
   return (
     <AuthBackdrop contentClassName="auth-panel">
-      <a className="auth-return" href="https://aberration.app/">
+      <a className="auth-return" href={WEBSITE_URL}>
         <ArrowLeft size={15} strokeWidth={1.5} aria-hidden="true" />
         Back to website
       </a>

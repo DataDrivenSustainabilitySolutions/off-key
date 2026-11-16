@@ -177,7 +177,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     const lease = await connected;
     expect(lease.ok(), await lease.text()).toBe(true);
     leaseId = (await lease.json() as { view_id: string }).view_id;
-    await expect(page.locator(".sp-live-indicator")).toHaveText("Live");
+    await expect(page.locator(".sp-live-indicator")).toHaveText("Live preview");
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884");
     await publisher.publishAsync(fixture.streams[29]!.topic, "42", { qos: 1 });
     await expect(page.locator(".ex-preview-value strong")).toHaveText("42");
@@ -215,7 +215,8 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await expect(recording.getByRole("radio", { name: "Same as above", exact: true })).toBeChecked();
     await unchanged();
     await navigation.getByRole("link", { name: "Monitoring", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
+    // With a source selected, Monitoring shows the same source header as Sources.
+    await expect(page.getByRole("button", { name: "Monitoring", exact: true })).toBeVisible();
     await unchanged();
     await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
     await expect(page.getByRole("button", { name: "Show sidebar", exact: true })).toBeFocused();

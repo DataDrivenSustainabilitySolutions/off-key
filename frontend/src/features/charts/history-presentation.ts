@@ -1,7 +1,7 @@
 import type { LineSeriesOption } from "echarts/charts";
 import type { HistoryPoint, HistoryPreference, TelemetryHistory } from "@/types/telemetry-history";
 import { epochMilliseconds, isoTimestamp } from "@/lib/timestamps";
-import { getPauseLimit, type TimeValue } from "./telemetry-data";
+import { getStepPauseLimit, type TimeValue } from "./telemetry-data";
 
 export const DEFAULT_HISTORY_PREFERENCE: HistoryPreference = { mode: "auto" };
 const DAY = 86_400_000;
@@ -30,7 +30,7 @@ export function presentHistory(data: TimeValue[], preference: HistoryPreference,
   const visible = range ? data.filter(([time]) => time >= range[0] && time <= range[1]) : data;
   const first = visible[0]?.[0], last = visible[visible.length - 1]?.[0];
   const history: TelemetryHistory = { representation: "raw", points: visible.map(([time, value]) => ({ timestamp: isoTimestamp(time), value })),
-    interval_ms: 0, sample_count: visible.length, extent: first !== undefined && last !== undefined ? [isoTimestamp(first), isoTimestamp(last)] : null, truncated: false };
+    interval_ms: 0, sample_count: visible.length, extent: first !== undefined && last !== undefined ? [isoTimestamp(first), isoTimestamp(last)] : null };
   if (first === undefined || last === undefined || preference.mode === "raw"
     || (!preference.windowMs && !isDense(visible.length, buckets))) return history;
   const interval = intervalMs ?? historyInterval((range?.[1] ?? last) - (range?.[0] ?? first), buckets, preference.windowMs);
@@ -53,10 +53,11 @@ export function presentHistory(data: TimeValue[], preference: HistoryPreference,
 export function combineHistory(overview: TelemetryHistory | undefined, detail: TelemetryHistory,
   range?: { startMs: number; endMs: number }): TelemetryHistory {
   if (!overview || !range) return detail;
+  // Thinned overview readings keep their own column width beside the detail's.
   const outside = overview.points.filter(point => {
     const start = epochMilliseconds(point.start ?? point.timestamp), end = epochMilliseconds(point.end ?? point.timestamp);
     return end < range.startMs || start > range.endMs;
-  });
+  }).map(point => overview.column_ms && point.column_ms === undefined ? { ...point, column_ms: overview.column_ms } : point);
   return { ...detail, extent: overview.extent, points: [...outside, ...detail.points]
     .sort((a, b) => epochMilliseconds(a.timestamp) - epochMilliseconds(b.timestamp)) };
 }
@@ -97,7 +98,13 @@ export function historyChartData(history: TelemetryHistory): HistoryChartPoint[]
   const points = settleEdges(history.points);
   const times = points.map(point => epochMilliseconds(point.timestamp));
   const spans = points.map(spanOf);
-  const pauseLimit = getPauseLimit(times);
+  // A thinned raw view keeps a few readings per column; only a step from one column
+  // to the next joins two consecutive readings, so only those steps show a pause.
+  const columns = points.map(point => point.column_ms ?? history.column_ms ?? 0);
+  const sameColumn = (index: number) => columns[index]! > 0 && columns[index] === columns[index - 1]
+    && Math.floor(times[index]! / columns[index]!) === Math.floor(times[index - 1]! / columns[index]!);
+  const pauseLimit = getStepPauseLimit(times.slice(1).flatMap((time, index) =>
+    sameColumn(index + 1) ? [] : [time - times[index]!]));
   const at = (index: number, time = times[index]!): HistoryChartPoint =>
     ({ value: [time, points[index]!.value], ...(points[index]!.count !== undefined ? { summary: points[index] } : {}) });
   const result: HistoryChartPoint[] = [];
@@ -105,7 +112,8 @@ export function historyChartData(history: TelemetryHistory): HistoryChartPoint[]
   for (let index = 1; index <= points.length; index++) {
     const before = spans[index - 1], after = spans[index];
     // Means break across an empty bucket; original samples across a pause.
-    if (index < points.length && !(before && after ? after[0] > before[1] : times[index]! - times[index - 1]! > pauseLimit)) continue;
+    if (index < points.length && !(before && after ? after[0] > before[1]
+      : !sameColumn(index) && times[index]! - times[index - 1]! > pauseLimit)) continue;
     // A mean stands for its whole interval, so a run reaches the outer edges of its
     // first and last bucket. A bucket between two gaps then still draws its width.
     const run: HistoryChartPoint[] = [];

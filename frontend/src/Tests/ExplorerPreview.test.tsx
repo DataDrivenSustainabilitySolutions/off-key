@@ -216,7 +216,7 @@ describe("workspace chart navigation and monitoring", () => {
     const day = 86_400_000;
     const stored = [{ timestamp: new Date(NOW - 3 * day).toISOString(), value: 10 }, { timestamp: new Date(NOW - 60_000).toISOString(), value: 11 }];
     const history = { representation: "raw" as const, points: stored, interval_ms: 0, sample_count: 2,
-      extent: [stored[0]!.timestamp, stored[1]!.timestamp] as [string, string], truncated: false };
+      extent: [stored[0]!.timestamp, stored[1]!.timestamp] as [string, string] };
     vi.mocked(useStoredRange).mockReturnValue({ history, overview: history, loading: false, error: "" });
     vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { readingId: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
       telemetry: [{ timestamp: new Date(NOW - 60_000).toISOString(), value: 99 }, { timestamp: new Date(NOW).toISOString(), value: 12 }] });
@@ -232,7 +232,7 @@ describe("workspace chart navigation and monitoring", () => {
   });
 
   it("keeps collected values of a reading that went quiet before the range, and extends the live end past the overview", () => {
-    const empty = { representation: "raw" as const, points: [], interval_ms: 0, sample_count: 0, extent: null, truncated: false };
+    const empty = { representation: "raw" as const, points: [], interval_ms: 0, sample_count: 0, extent: null };
     vi.mocked(useStoredRange).mockReturnValue({ history: empty, overview: empty, loading: false, error: "" });
     const collected = [{ timestamp: new Date(NOW - 2 * 3_600_000).toISOString(), value: 5 }, { timestamp: new Date(NOW - 3_590_000).toISOString(), value: 6 }];
     vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { readingId: "temperature" }, error: "", services: [], evidence: [], anomalies: [], telemetry: collected });
@@ -242,7 +242,7 @@ describe("workspace chart navigation and monitoring", () => {
 
     const stored = [{ timestamp: new Date(NOW - 120_000).toISOString(), value: 10 }, { timestamp: new Date(NOW - 60_000).toISOString(), value: 11 }];
     const history = { representation: "raw" as const, points: stored, interval_ms: 0, sample_count: 2,
-      extent: [stored[0]!.timestamp, stored[1]!.timestamp] as [string, string], truncated: false };
+      extent: [stored[0]!.timestamp, stored[1]!.timestamp] as [string, string] };
     vi.mocked(useStoredRange).mockReturnValue({ history, overview: history, loading: false, error: "" });
     vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { readingId: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
       telemetry: [{ timestamp: new Date(NOW).toISOString(), value: 12 }] });
@@ -256,7 +256,7 @@ describe("workspace chart navigation and monitoring", () => {
     const minute = 60_000;
     const mean = (start: number, value: number) => ({ timestamp: new Date(start + minute / 2).toISOString(), value,
       minimum: value - 1, maximum: value + 1, count: 60, start: new Date(start).toISOString(), end: new Date(start + minute).toISOString() });
-    const overview = { representation: "mean" as const, interval_ms: minute, sample_count: 600, truncated: false,
+    const overview = { representation: "mean" as const, interval_ms: minute, sample_count: 600,
       points: Array.from({ length: 10 }, (_, index) => mean(NOW - (10 - index) * minute, 20 + index)),
       extent: [new Date(NOW - 10 * minute).toISOString(), new Date(NOW).toISOString()] as [string, string] };
     vi.mocked(useStoredRange).mockImplementation((_binding, _span, inspected) => inspected

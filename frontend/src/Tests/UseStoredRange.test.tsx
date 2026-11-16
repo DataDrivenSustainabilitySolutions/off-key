@@ -8,7 +8,7 @@ vi.mock("@/lib/charger-api", () => ({ getTelemetryHistory: vi.fn() }));
 const NOW = Date.parse("2026-10-28T12:00:00Z");
 const binding = { readingId: "voltage" };
 const data: TelemetryHistory = { representation: "raw", points: [{ timestamp: new Date(NOW - 1000).toISOString(), value: 1 }],
-  interval_ms: 0, sample_count: 1, extent: [new Date(NOW - 1000).toISOString(), new Date(NOW - 1000).toISOString()], truncated: false };
+  interval_ms: 0, sample_count: 1, extent: [new Date(NOW - 1000).toISOString(), new Date(NOW - 1000).toISOString()] };
 
 beforeEach(() => { vi.spyOn(Date, "now").mockReturnValue(NOW); vi.mocked(getTelemetryHistory).mockResolvedValue(data); });
 const setHidden = (hidden: boolean) => {

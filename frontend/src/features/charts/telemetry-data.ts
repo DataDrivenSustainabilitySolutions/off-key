@@ -20,8 +20,12 @@ export const normalizeTelemetry = (points: readonly TelemetryDataPoint[]): TimeV
 const PAUSE_FACTOR = 5;
 
 /** The longest step between sorted times that a line still bridges: a multiple of the median step. */
-export const getPauseLimit = (times: readonly number[]): number => {
-  const steps = times.slice(1).map((time, index) => time - times[index]!).filter((step) => step > 0).sort((a, b) => a - b);
-  const median = steps[Math.floor(steps.length / 2)];
+export const getPauseLimit = (times: readonly number[]): number =>
+  getStepPauseLimit(times.slice(1).map((time, index) => time - times[index]!));
+
+/** The pause limit from steps between consecutive readings. */
+export const getStepPauseLimit = (steps: readonly number[]): number => {
+  const sorted = steps.filter((step) => step > 0).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
   return median === undefined ? Number.POSITIVE_INFINITY : median * PAUSE_FACTOR;
 };

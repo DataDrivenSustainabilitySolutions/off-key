@@ -227,9 +227,11 @@ The waveform button beside the zoom controls switches automatic averaging on or
 off without changing the selected time range. It applies to every pane of the
 chart. Its highlight indicates automatic
 mode; hover or focus it for the current averaging interval. In Raw mode, a
-reading's **Values** disclosure also exposes exact timestamps and values. If a
-recorded range contains more than 10,000 samples, Raw shows the newest 10,000 and
-asks you to zoom in to inspect earlier values.
+reading's **Values** disclosure also exposes exact timestamps and values. Raw
+always covers the whole selected range. Where it holds more readings than the
+chart has pixels, each pixel column keeps its first, last, lowest and highest
+reading, so the line looks the same and every spike stays; zoom in far enough
+and every reading is shown.
 
 ## Data-source activity
 

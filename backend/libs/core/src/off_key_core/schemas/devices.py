@@ -169,7 +169,15 @@ class MeasurementHistory(BaseModel):
     interval_ms: int = 0
     sample_count: int = 0
     extent: tuple[str, str] | None = None
-    truncated: bool = False
+    column_ms: int = Field(
+        default=0,
+        description=(
+            "Raw views only. Above zero, the range held more readings than the "
+            "chart can separate: each column of this width, counted from the "
+            "epoch, keeps its first, last, lowest and highest reading. Zero "
+            "means every reading in the range is returned."
+        ),
+    )
 
 
 class ChartEvidence(BaseModel):

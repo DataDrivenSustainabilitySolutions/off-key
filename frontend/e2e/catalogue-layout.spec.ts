@@ -320,7 +320,7 @@ test("dense source history offers automatic means and immediate raw readings", a
       minimum: Math.min(...values.map(point => point.value)), maximum: Math.max(...values.map(point => point.value)), count: values.length,
       start: new Date(time).toISOString(), end: new Date(time + interval).toISOString(),
     })), interval_ms: raw ? 0 : interval, sample_count: visible.length,
-    extent: visible.length ? [visible[0]!.timestamp, visible[visible.length - 1]!.timestamp] : null, truncated: false } });
+    extent: visible.length ? [visible[0]!.timestamp, visible[visible.length - 1]!.timestamp] : null } });
   });
   await page.goto("/");
   await page.getByRole("searchbox", { name: "Search catalogue" }).fill("Voltage DC");

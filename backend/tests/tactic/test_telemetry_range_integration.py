@@ -68,7 +68,7 @@ async def test_range_keeps_extremes_and_returns_sparse_rows_raw(disposable_datab
 
 
 @pytest.mark.asyncio
-async def test_history_means_use_every_sample_and_raw_is_explicitly_bounded(
+async def test_history_means_use_every_sample_and_raw_covers_the_range(
     disposable_database,
 ):
     engine = create_async_engine(
@@ -140,14 +140,21 @@ async def test_history_means_use_every_sample_and_raw_is_explicitly_bounded(
     assert sum(point.count for point in overview.points) == overview.sample_count
     assert len(overview.points) == 76  # Four empty 15-second buckets stay empty.
     assert overview.points[1] == refreshed.points[1]
-    assert raw.representation == "raw" and raw.truncated
-    assert len(raw.points) == 10000 and raw.sample_count == 11400
+    # Raw covers the whole range: each 5-second column keeps its first, last,
+    # lowest and highest reading, so the oldest reading and every spike stay.
+    assert raw.representation == "raw" and raw.column_ms == 5000
+    assert raw.sample_count == 11400 and len(raw.points) <= 4 * 300
     assert all(point.value in (0, 0.1) for point in raw.points)
+    assert raw.points[0].timestamp == rows[0]["timestamp"].isoformat()
     assert raw.points[-1].timestamp == rows[-1]["timestamp"].isoformat()
+    spikes = {point.timestamp for point in raw.points if point.value == 0.1}
+    assert len(spikes) == 228  # One per non-empty column, none averaged away.
+    times = [point.timestamp for point in raw.points]
+    assert times == sorted(times) and len(set(times)) == len(times)
     assert raw.extent == (
         rows[0]["timestamp"].isoformat(),
         rows[-1]["timestamp"].isoformat(),
     )
-    assert zoomed.representation == "raw" and not zoomed.truncated
+    assert zoomed.representation == "raw" and zoomed.column_ms == 0
     assert len(zoomed.points) == 9
     assert zoomed.points[1].timestamp == (start + timedelta(seconds=100.1)).isoformat()

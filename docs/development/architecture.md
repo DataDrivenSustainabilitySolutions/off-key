@@ -27,7 +27,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
   workers ask it for forecasts. Opt-in locally (the `forecast` Compose profile);
   see [Forecast service](../operations/forecast-service.md).
 - `timescaledb` (PostgreSQL + TimescaleDB): operational persistence.
-- `mosquitto` (Eclipse Mosquitto, reached as `emqx-main`): internal broker.
+- `mosquitto` (Eclipse Mosquitto): internal broker.
 - `source-broker`: deterministic local source telemetry broker.
 - `mailpit`: local mail capture for authentication flows.
 

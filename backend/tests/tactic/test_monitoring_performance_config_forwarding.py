@@ -263,7 +263,7 @@ def test_tactic_builds_static_environment(monkeypatch):
 def test_production_monitor_environment_carries_no_broker_settings(monkeypatch):
     _validator(monkeypatch)
     settings = TacticSettings(
-        TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST="emqx-main",
+        TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST="mosquitto",
         TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH=True,
     )
     runtime = SimpleNamespace(

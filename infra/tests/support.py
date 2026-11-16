@@ -108,17 +108,17 @@ def render(directory, environment, **overrides):
     } | overrides
     if environment in {"prod", "demo"}:
         variables = {
-            "emqx_ca_cert": (
+            "mqtt_ca_cert": (
                 "-----BEGIN CERTIFICATE-----\n"
                 + "A" * 120
                 + "\n-----END CERTIFICATE-----\n"
             ),
-            "emqx_server_cert": (
+            "mqtt_server_cert": (
                 "-----BEGIN CERTIFICATE-----\n"
                 + "B" * 120
                 + "\n-----END CERTIFICATE-----\n"
             ),
-            "emqx_server_key": (
+            "mqtt_server_key": (
                 "-----BEGIN "
                 + "PRIVATE KEY-----\n"
                 + "C" * 120

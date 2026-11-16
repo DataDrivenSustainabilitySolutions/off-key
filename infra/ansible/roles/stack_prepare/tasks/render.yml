@@ -78,20 +78,18 @@
   when: demo_mode | default(false) | bool
   no_log: true
 
-# The vault keys keep their EMQX-era names; they hold the internal broker's TLS
-# material, which Mosquitto serves unchanged.
-- name: Require the production MQTT CA and broker certificate and key (vault emqx_ca_cert, emqx_server_cert, emqx_server_key)
+- name: Require the production MQTT CA and broker certificate and key (vault mqtt_ca_cert, mqtt_server_cert, mqtt_server_key)
   assert:
     that:
-      - emqx_ca_cert | default('') | length > 100
-      - emqx_server_cert | default('') | length > 100
-      - emqx_server_key | default('') | length > 100
-      - "'-----BEGIN CERTIFICATE-----' in emqx_ca_cert"
-      - "'-----BEGIN CERTIFICATE-----' in emqx_server_cert"
-      - "emqx_server_key is search('-----BEGIN (RSA )?PRIVATE KEY-----')"
-      - "'TEST_ONLY' not in emqx_ca_cert"
-      - "'TEST_ONLY' not in emqx_server_cert"
-      - "'TEST_ONLY' not in emqx_server_key"
+      - mqtt_ca_cert | default('') | length > 100
+      - mqtt_server_cert | default('') | length > 100
+      - mqtt_server_key | default('') | length > 100
+      - "'-----BEGIN CERTIFICATE-----' in mqtt_ca_cert"
+      - "'-----BEGIN CERTIFICATE-----' in mqtt_server_cert"
+      - "mqtt_server_key is search('-----BEGIN (RSA )?PRIVATE KEY-----')"
+      - "'TEST_ONLY' not in mqtt_ca_cert"
+      - "'TEST_ONLY' not in mqtt_server_cert"
+      - "'TEST_ONLY' not in mqtt_server_key"
     fail_msg: Add a dedicated MQTT CA certificate and the broker certificate and key to the production vault.
   no_log: true
 
@@ -131,9 +129,9 @@
 - name: Define production deployment secret material
   set_fact:
     deployment_secret_material:
-      mqtt_ca_cert: "{{ emqx_ca_cert }}"
-      mqtt_server_cert: "{{ emqx_server_cert }}"
-      mqtt_server_key: "{{ emqx_server_key }}"
+      mqtt_ca_cert: "{{ mqtt_ca_cert }}"
+      mqtt_server_cert: "{{ mqtt_server_cert }}"
+      mqtt_server_key: "{{ mqtt_server_key }}"
       mqtt_proxy_password: "{{ mqtt_proxy_password }}"
       radar_checkpoint_secret: "{{ radar_checkpoint_secret }}"
       forecast_api_token: "{{ forecast_service_token }}"

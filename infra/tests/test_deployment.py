@@ -485,7 +485,7 @@ class DeploymentTests(unittest.TestCase):
         # say which vault variable to add or correct; values never leave the run.
         same = "same-" + "s" * 32
         for overrides, variable in (
-            ({"emqx_server_key": ""}, "emqx_server_key"),
+            ({"mqtt_server_key": ""}, "mqtt_server_key"),
             (
                 {"mqtt_proxy_password": same, "mqtt_radar_password": same},
                 "mqtt_radar_password",
@@ -531,9 +531,9 @@ class DeploymentTests(unittest.TestCase):
                     self.assertRegex(task["name"], rf"\b{variable}\b")
         self.assertLessEqual(
             {
-                "emqx_ca_cert",
-                "emqx_server_cert",
-                "emqx_server_key",
+                "mqtt_ca_cert",
+                "mqtt_server_cert",
+                "mqtt_server_key",
                 "mqtt_proxy_password",
                 "mqtt_radar_password",
                 "radar_checkpoint_secret",
@@ -1037,14 +1037,14 @@ class DeploymentTests(unittest.TestCase):
             },
         )
         self.assertFalse(broker.get("environment"))
-        # Clients dial emqx-main, the DNS name the broker certificate carries.
-        self.assertEqual(broker["networks"]["emqx-network"]["aliases"], ["emqx-main"])
-        self.assertEqual(proxy["environment"]["MQTT_BROKER_HOST"], "emqx-main")
+        # Clients dial the broker's service name, the DNS name its certificate carries.
+        self.assertIn("mqtt-network", broker["networks"])
+        self.assertEqual(proxy["environment"]["MQTT_BROKER_HOST"], "mosquitto")
         self.assertEqual(
             tactic["environment"]["TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST"],
-            "emqx-main",
+            "mosquitto",
         )
-        self.assertNotIn("emqx-main", config["services"])
+        self.assertNotIn("emqx", json.dumps(config))
         rendered = json.dumps(config)
         self.assertNotIn(
             self.results["prod"]["inputs"]["mqtt_proxy_password"], rendered
@@ -1053,7 +1053,7 @@ class DeploymentTests(unittest.TestCase):
             self.results["prod"]["inputs"]["mqtt_radar_password"], rendered
         )
         controller = config["services"]["tactic"]
-        self.assertIn("emqx-network", controller["networks"])
+        self.assertIn("mqtt-network", controller["networks"])
         self.assertEqual(controller["environment"]["SYSTEM_LIVE_ENABLED"], "true")
         # Only TACTIC shares the unauthenticated SOCKS proxy's network.
         self.assertEqual(

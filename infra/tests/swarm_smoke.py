@@ -282,7 +282,7 @@ def prepare(directory):
         "rsa:2048",
         "-nodes",
         "-subj",
-        "/CN=emqx-main",
+        "/CN=mosquitto",
         "-keyout",
         directory / "broker.key",
         "-out",
@@ -292,7 +292,7 @@ def prepare(directory):
         "basicConstraints=critical,CA:FALSE\n"
         "keyUsage=critical,digitalSignature,keyEncipherment\n"
         "extendedKeyUsage=serverAuth\n"
-        "subjectAltName=DNS:emqx-main,DNS:localhost,IP:127.0.0.1\n"
+        "subjectAltName=DNS:mosquitto,DNS:localhost,IP:127.0.0.1\n"
     )
     run(
         "openssl",
@@ -319,9 +319,9 @@ def prepare(directory):
         stack_name=STACK,
         jwt_secret="synthetic-smoke-signing-secret-123456789",
         postgres_password="synthetic-smoke-database-password",
-        emqx_ca_cert=(directory / "ca.crt").read_text(),
-        emqx_server_cert=(directory / "broker.crt").read_text(),
-        emqx_server_key=(directory / "broker.key").read_text(),
+        mqtt_ca_cert=(directory / "ca.crt").read_text(),
+        mqtt_server_cert=(directory / "broker.crt").read_text(),
+        mqtt_server_key=(directory / "broker.key").read_text(),
         frontend_base_url="http://localhost:5173",
         cors_allowed_origins='["http://localhost:5173"]',
         smtp_server="smtp-fixture",
@@ -370,12 +370,12 @@ def prepare(directory):
     model["services"]["broker-route"] = {
         "image": release["images"]["gost"],
         "command": ["-L", "socks5://:1055"],
-        "networks": ["broker-route-network", "emqx-network"],
+        "networks": ["broker-route-network", "mqtt-network"],
         "deploy": {"replicas": 1},
     }
     model["services"]["source-broker"] = {
         "image": pin("eclipse-mosquitto:2.0"),
-        "networks": ["emqx-network"],
+        "networks": ["mqtt-network"],
         "configs": [
             {
                 "source": "source-broker-config",

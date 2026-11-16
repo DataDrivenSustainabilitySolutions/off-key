@@ -519,12 +519,12 @@ import json, sys
 args = sys.argv[1:]
 workers = {
     "radar-worker": "network-id-off-key",
-    "radar-preflight": "off-key_emqx-network",
+    "radar-preflight": "off-key_mqtt-network",
     # Another stack's worker on the same cluster is not ours.
     "radar-other": "network-id-other-stack",
 }
 if args[:3] == ["network", "inspect", "--format"]:
-    assert args[-1] == "off-key_emqx-network", args
+    assert args[-1] == "off-key_mqtt-network", args
     print("network-id-off-key")
 elif args[:2] == ["service", "inspect"]:
     print(json.dumps([

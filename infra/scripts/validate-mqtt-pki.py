@@ -31,10 +31,10 @@ def main() -> None:
         raise ValueError("The MQTT issuer must be a CA")
     if cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca:
         raise ValueError("The MQTT server certificate must not be a CA")
-    if "emqx-main" not in cert.extensions.get_extension_for_class(
+    if "mosquitto" not in cert.extensions.get_extension_for_class(
         x509.SubjectAlternativeName
     ).value.get_values_for_type(x509.DNSName):
-        raise ValueError("The MQTT server certificate needs DNS:emqx-main")
+        raise ValueError("The MQTT server certificate needs DNS:mosquitto")
     if (
         x509.ExtendedKeyUsageOID.SERVER_AUTH
         not in cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value

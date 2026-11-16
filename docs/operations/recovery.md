@@ -95,16 +95,6 @@ their inventory check before they change the stack. To roll back past it anyway:
    reads on the manager (named in the production inventory next to
    `broker_route_legacy_exports_file`). Then dispatch the older SHA.
 
-### Rolling back past the Mosquitto release
-
-The release that moved the internal broker from EMQX to Mosquitto removes
-`emqx-main` before it starts `mosquitto`, and both answer on the `emqx-main`
-alias. An older release does not know `mosquitto` and would leave it running
-beside its own broker. Remove `off-key_mosquitto` before dispatching the older
-SHA; [Internal MQTT broker](mqtt-broker.md#rolling-back-to-emqx) lists the steps.
-EMQX's volumes are kept for this, and they hold its logins: keep the MQTT client
-passwords in the vault unchanged while this rollback is possible.
-
 ### Rolling back past the HTTP source release
 
 A catalogue without HTTP sources is stored exactly as before, so this rollback

@@ -124,7 +124,7 @@ resulting URL as `RADAR_DATABASE_URL` from TACTIC.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `MQTT_BROKER_HOST` | `emqx-main` | Internal broker host: the `mosquitto` service's network alias, named in the production certificate |
+| `MQTT_BROKER_HOST` | `mosquitto` | Internal broker host: the `mosquitto` service, named in the production certificate |
 | `MQTT_BROKER_PORT` | `1883` | Internal broker port |
 | `MQTT_USE_TLS` | `false` | TLS to the internal broker |
 | `MQTT_USE_AUTH` | `false` | Internal broker authentication toggle |
@@ -153,7 +153,7 @@ TACTIC writes each monitor and preflight job as a row of `radar_workloads`; repl
 | `TACTIC_RADAR_IMAGE` | `${MQTT_RADAR_IMAGE}` | The runtime TACTIC pins new monitors and preflight jobs to |
 | `TACTIC_POOL_MEMORY_LIMIT` | `512m` | Memory one child may use before the pool kills it (reported as exit 137) |
 | `TACTIC_POOL_RESTART_MONITORS` | `true` | Restart a crashed monitor child, within the crash budget |
-| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `emqx-main` | Broker supplied to managed RADAR workloads; TACTIC's collection publisher uses it too, so it must be the broker mqtt-proxy subscribes on (`MQTT_BROKER_HOST`) |
+| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `mosquitto` | Broker supplied to managed RADAR workloads; TACTIC's collection publisher uses it too, so it must be the broker mqtt-proxy subscribes on (`MQTT_BROKER_HOST`) |
 | `TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT` | `1883` | Managed RADAR and collection publisher broker port |
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR and collection publisher TLS |
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR and collection publisher authentication; the publisher falls back to `TACTIC_RADAR_DEFAULT_MQTT_USERNAME` when `SYSTEM_COLLECTION_MQTT_USERNAME` is empty |

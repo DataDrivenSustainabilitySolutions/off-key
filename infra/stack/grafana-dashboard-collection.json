@@ -317,7 +317,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|emqx-main|broker-route)`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|emqx-main|broker-route)`} [$__range])))",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|broker-route)`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|broker-route)`} [$__range])))",
           "queryType": "instant",
           "legendFormat": "{{service}}"
         }
@@ -544,7 +544,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|emqx-main|broker-route)`} | detected_level=~\"warn|warning|error|critical|fatal|panic\" | drop msg [$__interval]))",
+          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mosquitto|broker-route)`} | detected_level=~\"warn|warning|error|critical|fatal|panic\" | drop msg [$__interval]))",
           "queryType": "range",
           "legendFormat": "{{service}}"
         }

@@ -2,15 +2,15 @@
 # Each secret belongs to the DEMO installation. Never copy the production vault.
 jwt_secret: CHANGE_ME_generate_a_different_random_32_byte_secret
 postgres_password: CHANGE_ME
-emqx_ca_cert: |
+mqtt_ca_cert: |
   -----BEGIN CERTIFICATE-----
   TEST_ONLY_REPLACE_WITH_DEMO_CA_CERTIFICATE
   -----END CERTIFICATE-----
-emqx_server_cert: |
+mqtt_server_cert: |
   -----BEGIN CERTIFICATE-----
   TEST_ONLY_REPLACE_WITH_DEMO_SERVER_CERTIFICATE
   -----END CERTIFICATE-----
-emqx_server_key: TEST_ONLY_REPLACE_WITH_DEMO_SERVER_PRIVATE_KEY_PEM
+mqtt_server_key: TEST_ONLY_REPLACE_WITH_DEMO_SERVER_PRIVATE_KEY_PEM
 mqtt_proxy_password: TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_PASSWORD
 mqtt_radar_password: TEST_ONLY_REPLACE_WITH_DIFFERENT_RANDOM_32_BYTE_PASSWORD
 radar_checkpoint_secret: TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_SECRET

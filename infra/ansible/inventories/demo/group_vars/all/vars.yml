@@ -15,7 +15,7 @@ observability_enabled: false
 broker_route_enabled: false
 tactic_radar_max_active_monitors: "6"
 radar_pool_capacity: "6"
-# The EMQX broker the mosquitto service replaced; see the production inventory.
+# The EMQX broker that mosquitto replaced.
 stack_replaced_services: [emqx-main]
 stack_retired_secret_keys: []
 stack_retired_files: []

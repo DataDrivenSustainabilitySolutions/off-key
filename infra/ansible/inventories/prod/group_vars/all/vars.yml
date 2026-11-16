@@ -125,9 +125,7 @@ broker_route_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tails
 # manager; keep that file while a rollback past broker routes stays possible.
 broker_route_legacy_exports_file: ambibox.exports
 # Stopped before the release starts, so the node identity never runs twice.
-# emqx-main is the EMQX broker the mosquitto service replaced; both answer on the
-# emqx-main alias, so the old one must be gone before the new one starts. Its data
-# volumes stay on the node for a rollback (docs/operations/mqtt-broker.md).
+# emqx-main is the EMQX broker that mosquitto replaced; its volumes are not reused.
 stack_replaced_services: [tailscale-ambibox, mqtt-tailscale-bridge, emqx-main]
 # Releases before broker routes required the manager in the private hosts.yml
 # group ambibox_nfs; see "Rolling back past the broker route release" in
@@ -160,9 +158,9 @@ persist_mosquitto_data: true
 persistence_restore_on_switch: true
 
 # ── MQTT — internal Mosquitto listener (TLS, username/password auth) ────────
-# emqx-main is the broker's network alias and the DNS name in its certificate.
+# The broker's service name, which its certificate carries as DNS name.
 
-mqtt_broker_host:               emqx-main
+mqtt_broker_host:               mosquitto
 mqtt_broker_port:               "8883"
 mqtt_use_tls:                   "true"
 mqtt_transport:                 tcp
@@ -201,7 +199,7 @@ radar_pool_capacity: "8"
 radar_pool_memory_limit: 4G
 tactic_pool_memory_limit: 512m
 tactic_radar_max_active_monitors: "20"
-tactic_radar_default_mqtt_broker_host:      emqx-main
+tactic_radar_default_mqtt_broker_host:      mosquitto
 tactic_radar_default_mqtt_broker_port:      "8883"
 tactic_radar_default_mqtt_use_tls:          "true"
 tactic_radar_default_mqtt_client_id_prefix: radar

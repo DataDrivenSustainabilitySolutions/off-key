@@ -32,8 +32,8 @@
       - "{{ ansible_playbook_python }}"
       - "{{ playbook_dir }}/../scripts/validate-mqtt-pki.py"
     stdin: >-
-      {{ {'ca_cert': emqx_ca_cert, 'server_cert': emqx_server_cert,
-          'server_key': emqx_server_key} | to_json }}
+      {{ {'ca_cert': mqtt_ca_cert, 'server_cert': mqtt_server_cert,
+          'server_key': mqtt_server_key} | to_json }}
     stdin_add_newline: false
   delegate_to: localhost
   become: false

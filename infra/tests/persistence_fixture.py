@@ -21,7 +21,7 @@ def spec(name):
         result['Spec']['TaskTemplate']['ContainerSpec']['Mounts'] = state['mounts'][name]
     if name.startswith('radar-'):
         # TACTIC attaches its workers to its own stack's broker network.
-        result['Spec']['TaskTemplate']['Networks'] = [{'Target': 'off-key_emqx-network'}]
+        result['Spec']['TaskTemplate']['Networks'] = [{'Target': 'off-key_mqtt-network'}]
     return result
 
 if a[:2] == ['compose', '--env-file']:

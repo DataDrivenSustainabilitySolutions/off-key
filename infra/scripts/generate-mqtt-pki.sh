@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-# The broker certificate names DNS:emqx-main, the network alias every MQTT client
-# dials; the Mosquitto service answers on it (docs/operations/mqtt-broker.md).
+# The broker certificate names DNS:mosquitto, the service name every MQTT client
+# dials (docs/operations/mqtt-broker.md).
 
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 OUTPUT_DIRECTORY_OUTSIDE_THE_REPOSITORY" >&2
@@ -34,19 +34,19 @@ openssl req -new -x509 -sha256 -days 3650 \
 
 openssl req -new -newkey rsa:3072 -nodes \
   -keyout "$output/broker.key" -out "$output/broker.csr" \
-  -subj "/CN=emqx-main"
+  -subj "/CN=mosquitto"
 cat > "$output/broker.ext" <<'EOF'
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth
-subjectAltName=DNS:emqx-main
+subjectAltName=DNS:mosquitto
 EOF
 openssl x509 -req -sha256 -days 365 \
   -in "$output/broker.csr" -CA "$output/ca.crt" -CAkey "$output/ca.key" \
   -passin fd:3 -CAcreateserial -out "$output/broker.crt" \
   -extfile "$output/broker.ext" 3<<<"$ca_password"
 unset ca_password
-openssl verify -CAfile "$output/ca.crt" -verify_hostname emqx-main \
+openssl verify -CAfile "$output/ca.crt" -verify_hostname mosquitto \
   "$output/broker.crt"
 echo "Generated CA and broker certificate in $output"
-echo "Keep ca.key encrypted and offline. Put only ca.crt, broker.crt and broker.key in Ansible Vault (emqx_ca_cert, emqx_server_cert, emqx_server_key)."
+echo "Keep ca.key encrypted and offline. Put only ca.crt, broker.crt and broker.key in Ansible Vault (mqtt_ca_cert, mqtt_server_cert, mqtt_server_key)."

@@ -15,7 +15,7 @@ discovery.docker "radar" {
   refresh_interval = "15s"
   filter {
     name   = "network"
-    values = [sys.env("OBSERVABILITY_STACK") + "_emqx-network"]
+    values = [sys.env("OBSERVABILITY_STACK") + "_mqtt-network"]
   }
   filter {
     name   = "ancestor"

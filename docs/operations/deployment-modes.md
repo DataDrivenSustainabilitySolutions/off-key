@@ -15,7 +15,7 @@ docker compose up -d --build
 
 Characteristics:
 
-- One internal Mosquitto broker, `mosquitto`, reached as `emqx-main`.
+- One internal Mosquitto broker, `mosquitto`.
 - A local `source-broker` for deterministic development.
 - `mqtt-radar` is build-only; TACTIC launches its workloads.
 
@@ -48,7 +48,7 @@ If containers keep resolving stale names or networks after switching between the
 local and ingress modes, remove the shared networks too:
 
 ```bash
-docker network rm off-key_app-network off-key_emqx-network || true
+docker network rm off-key_app-network off-key_mqtt-network || true
 ```
 
 !!! warning

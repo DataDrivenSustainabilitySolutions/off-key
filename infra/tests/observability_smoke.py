@@ -83,7 +83,7 @@ def run_rehearsal(evidence_path):
             "--driver",
             "overlay",
             "--internal",
-            f"{stack}_emqx-network",
+            f"{stack}_mqtt-network",
         )
         manager(
             "network",
@@ -101,16 +101,16 @@ def run_rehearsal(evidence_path):
                 f"{stack}_api",
                 "owned",
                 ["com.docker.stack.namespace=" + stack],
-                f"{stack}_emqx-network",
+                f"{stack}_mqtt-network",
             ),
             (
                 f"{stack}_frontend",
                 "owned",
                 ["com.docker.stack.namespace=" + stack],
-                f"{stack}_emqx-network",
+                f"{stack}_mqtt-network",
             ),
             (f"unrelated-{identity}", "unrelated", [], f"unrelated-{identity}"),
-            ("radar-" + str(uuid.uuid4()), "legacy", [], f"{stack}_emqx-network"),
+            ("radar-" + str(uuid.uuid4()), "legacy", [], f"{stack}_mqtt-network"),
         ):
             args = [
                 "service",

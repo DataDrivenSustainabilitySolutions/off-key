@@ -119,7 +119,7 @@ services:
     # Live views and broker checks reach brokers.
     networks:
       - app-network
-      - emqx-network
+      - mqtt-network
     restart: always
     healthcheck:
       <<: *backend-healthcheck
@@ -147,7 +147,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
-      - emqx-network
+      - mqtt-network
     environment:
       <<: [*runtime-env, *logging-env, *database-env, *auth-env, *email-env, *tactic-env]
     restart: always
@@ -263,7 +263,7 @@ services:
       MQTT_CA_FILE: "${MQTT_CA_FILE:-}"
       MQTT_USE_TLS: "${MQTT_USE_TLS}"
       MQTT_USE_AUTH: "${MQTT_USE_AUTH}"
-      MQTT_BROKER_HOST: "${MQTT_BROKER_HOST:-emqx-main}"
+      MQTT_BROKER_HOST: "${MQTT_BROKER_HOST:-mosquitto}"
       MQTT_BROKER_PORT: "${MQTT_BROKER_PORT:-1883}"
       MQTT_TELEMETRY_ENABLED: "true"
     command: [ "/app/bin/python", "-m", "off_key_mqtt_proxy" ]
@@ -278,7 +278,7 @@ services:
         condition: service_started
     networks:
       - app-network
-      - emqx-network
+      - mqtt-network
     restart: always
     healthcheck:
       <<: *backend-healthcheck
@@ -345,8 +345,7 @@ services:
     networks:
       - app-network
 
-  # Internal message bus. Clients still dial emqx-main, the name the production
-  # broker certificate carries; see docs/operations/mqtt-broker.md.
+  # Internal message bus. Clients dial its service name, as in production.
   mosquitto:
     image: eclipse-mosquitto:2.1.2-alpine
     command: ["mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
@@ -359,19 +358,15 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      emqx-network:
-        aliases:
-          - emqx-main
-      app-network:
-        aliases:
-          - emqx-main
+      - mqtt-network
+      - app-network
 
   broker-route:
     # Development SOCKS endpoint stands in for a deployment's broker route sidecar.
     image: gogost/gost:3.3.3
     command: ["-L=socks5://:1055"]
     networks:
-      - emqx-network
+      - mqtt-network
       - app-network
     restart: unless-stopped
 
@@ -389,7 +384,7 @@ services:
 networks:
   app-network:
     driver: bridge
-  emqx-network:
+  mqtt-network:
     driver: bridge
 
 volumes:

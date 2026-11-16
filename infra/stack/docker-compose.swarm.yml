@@ -25,7 +25,7 @@ services:
       app-network:
         aliases:
           - api-gateway
-      emqx-network:
+      mqtt-network:
     # Clients reach the API under /api, which the proxy strips; the root path
     # puts that prefix in the OpenAPI `servers` entry and keeps /api/docs working.
     command: ["uvicorn", "off_key_api_gateway.main:app",
@@ -51,7 +51,7 @@ services:
     # Writes RADAR workload rows; the pool runs them. No Docker access.
     networks:
       - app-network
-      - emqx-network
+      - mqtt-network
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
     # Liveness only: Swarm replaces a task that stops answering. The long start
     # period covers slow starts such as a migration holding the database lock.
@@ -113,7 +113,7 @@ services:
       start_period: 5m
     networks:
       - app-network
-      - emqx-network
+      - mqtt-network
     deploy:
       mode: replicated
       replicas: 1
@@ -205,16 +205,13 @@ services:
       update_config:
         order: start-first
 
-  # The internal message bus (Eclipse Mosquitto). Clients dial emqx-main, the
-  # DNS name in the broker certificate, so that alias stays until the certificate
-  # is reissued; see docs/operations/mqtt-broker.md. One replica only: stop-first
-  # updates keep two brokers from ever answering on the alias together.
+  # The internal message bus (Eclipse Mosquitto). Clients dial its service name,
+  # which the broker certificate carries. One replica only: stop-first updates
+  # keep two brokers from ever answering on the name together.
   mosquitto:
     image: "${MOSQUITTO_IMAGE:-eclipse-mosquitto:2.1.2-alpine}"
     networks:
-      emqx-network:
-        aliases:
-          - emqx-main
+      - mqtt-network
     deploy:
       replicas: 1
       placement:
@@ -245,7 +242,7 @@ networks:
       com.docker.network.driver.mtu: 1280
       # encrypted: "true"
     attachable: true
-  emqx-network:
+  mqtt-network:
     driver: overlay
     attachable: true
     driver_opts:

@@ -5,8 +5,7 @@ from .common import ERRORS, Dashboard, count, events, fields, level, series, ser
 
 def build():
     source = services("mqtt-proxy|tactic")
-    # emqx-main: the broker before Mosquitto, kept while its logs are retained.
-    broker = services("mosquitto|emqx-main|broker-route")
+    broker = services("mosquitto|broker-route")
     database = services("postgres|db-sync")
     writer = services("mqtt-proxy")
     collection_failures = (

@@ -10,7 +10,7 @@
 
 - name: Read this stack's broker network
   command:
-    argv: [docker, network, inspect, --format, "{% raw %}{{.Id}}{% endraw %}", "{{ stack_name }}_emqx-network"]
+    argv: [docker, network, inspect, --format, "{% raw %}{{.Id}}{% endraw %}", "{{ stack_name }}_mqtt-network"]
   register: stack_broker_network
   changed_when: false
   failed_when: false
@@ -36,6 +36,6 @@
       {{ kept.specs }}
   vars:
     own_networks: >-
-      {{ [stack_name ~ '_emqx-network']
+      {{ [stack_name ~ '_mqtt-network']
          + ([stack_broker_network.stdout | trim] if stack_broker_network.rc == 0 else []) }}
   no_log: true

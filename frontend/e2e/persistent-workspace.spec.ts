@@ -234,9 +234,9 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
       await expect(navigation.getByRole("link", { name: section, exact: true })).toBeInViewport();
       await navigation.getByRole("link", { name: section, exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Navigation", exact: true })).toHaveCount(0);
-      // With a source selected, Sources is titled by that source.
-      await expect(section === "Sources" ? page.getByRole("main", { name: "Sources workspace", exact: true })
-        : page.getByRole("heading", { name: section, exact: true })).toBeVisible();
+      // With a source selected, Sources and Monitoring are titled by that source.
+      await expect(section === "Reporting" ? page.getByRole("heading", { name: section, exact: true })
+        : page.getByRole("main", { name: section + " workspace", exact: true })).toBeVisible();
       expect(new URL(page.url()).searchParams.get("source")).toBe(source);
       await expectNoHorizontalScroll(page);
     }

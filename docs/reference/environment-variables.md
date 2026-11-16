@@ -44,8 +44,6 @@ Treat the values of these variables as secrets:
 | `JWT_SECRET` | Unique signing secret, at least 32 characters; do not reuse between environments |
 | `EMAIL_PASSWORD` | SMTP credential when authenticated delivery is enabled |
 | `POSTGRES_PASSWORD` | Unique database credential outside disposable local development |
-| `EMQX_DASHBOARD_PASSWORD` | Unique EMQX administrative credential |
-| `EMQX_NODE_COOKIE` | Shared only by trusted nodes in the same EMQX cluster |
 | `MQTT_APIKEY` | Required only when MQTT authentication is enabled |
 | `DEMO_VIEWER_PASSWORD` | Dedicated 32–72 byte server-only password; never use a real member's credential |
 
@@ -126,10 +124,10 @@ resulting URL as `RADAR_DATABASE_URL` from TACTIC.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `MQTT_BROKER_HOST` | `emqx-main` | Internal EMQX host |
-| `MQTT_BROKER_PORT` | `1883` | Internal EMQX port |
-| `MQTT_USE_TLS` | `false` | TLS to the internal EMQX broker |
-| `MQTT_USE_AUTH` | `false` | EMQX authentication toggle |
+| `MQTT_BROKER_HOST` | `emqx-main` | Internal broker host: the `mosquitto` service's network alias, named in the production certificate |
+| `MQTT_BROKER_PORT` | `1883` | Internal broker port |
+| `MQTT_USE_TLS` | `false` | TLS to the internal broker |
+| `MQTT_USE_AUTH` | `false` | Internal broker authentication toggle |
 | `MQTT_TELEMETRY_ENABLED` | `true` | Persist collected telemetry; fixed to `true` in the local Compose file |
 
 When `MQTT_USE_AUTH=true`, provide the supported `MQTT_USERNAME` and `MQTT_APIKEY` runtime variables through an ignored file or secret store.
@@ -142,14 +140,6 @@ as `db_writer.record_rejected`, counted in `total_records_rejected`, and discard
 they are not stored for replay. Valid records continue through the same
 charger/telemetry transaction. Connection, schema, permission, foreign-key, and
 unknown errors remain eligible for retry.
-
-## EMQX
-
-| Variable | Development default | Purpose / validation |
-| --- | --- | --- |
-| `EMQX_DASHBOARD_USERNAME` | `admin` | Dashboard login name |
-| `EMQX_DASHBOARD_PASSWORD` | Not documented | Dashboard credential |
-| `EMQX_NODE_COOKIE` | Not documented | Node/cluster cookie; all nodes in one cluster must agree |
 
 ## RADAR worker pool and TACTIC-managed workloads
 
@@ -250,7 +240,7 @@ tested main commit. Images are recorded in the verified server release; local
 | `SYSTEM_LIVE_DATA_SOURCE` | `broker` | `simulated` replaces upstream brokers with generated preview data |
 | `SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS` | `15` | Upstream broker connection deadline for previews |
 | `SYSTEM_CONNECTION_CHECK_TIMEOUT_SECONDS`, `SYSTEM_CONNECTION_CHECK_CONCURRENCY` | `8`, `4` | Deadline and parallelism of an administrator's on-demand broker connection check |
-| `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY`, `SYSTEM_COLLECTION_MQTT_CA_FILE` | Empty locally; private TACTIC secrets in production | Internal EMQX publisher credentials and CA; see [Collection](../operations/system-collection.md) |
+| `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY`, `SYSTEM_COLLECTION_MQTT_CA_FILE` | Empty locally; private TACTIC secrets in production | Internal broker publisher credentials and CA; see [Collection](../operations/system-collection.md) |
 | `SYSTEM_LIVE_CREDENTIALS` | Private JSON mapping | Credential reference to MQTT username/password |
 | `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker or HTTP API host to SOCKS route |
 | `SYSTEM_BROKER_ROUTES` | `[]`; a private TACTIC secret in production | Operator broker routes: covered hosts or suffixes, SOCKS5 proxy, optional login and TLS requirement; see [Broker routes](../operations/system-collection.md#broker-routes) |

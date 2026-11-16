@@ -27,7 +27,6 @@ cp .env.example .env
 
 Before using Off-Key outside local development, replace every example credential. At minimum, configure:
 
-- `EMQX_DASHBOARD_PASSWORD` with a strong value.
 - `JWT_SECRET` with a value of at least 32 characters.
 - `SUPERUSER_MAIL` with the intended administrator mailbox.
 
@@ -76,7 +75,7 @@ curl http://localhost:8001/ready
 | --- | --- |
 | Frontend | `http://localhost:5173` |
 | Mailpit | `http://localhost:8025` |
-| EMQX dashboard | `http://localhost:18083` |
+| Internal MQTT broker | `localhost:1883` |
 
 ## 4. Create the first user
 
@@ -115,7 +114,7 @@ docker compose down -v
 | Symptom | Likely cause | First action |
 | --- | --- | --- |
 | API gateway keeps restarting | The database schema is not ready | Wait for startup, then inspect `db-sync` and gateway logs |
-| EMQX fails its health check | Dashboard password is missing or the persisted node state has incompatible bootstrap settings | Check `.env`; recreate the local EMQX volume only if its data can be discarded |
+| `mosquitto` fails its health check | Its configuration did not load | Read `docker compose logs mosquitto`; it names the line it rejected |
 | Invitation email is missing | Mailpit is unavailable | Check the `mailpit` service and open its UI |
 | Frontend cannot reach the API | Vite proxy target is wrong | Check `API_PROXY_TARGET` for the selected run mode |
 | Monitoring start cannot find its image | Local RADAR image has not been built | Run `docker compose build mqtt-radar` |

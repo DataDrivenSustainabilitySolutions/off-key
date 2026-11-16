@@ -186,28 +186,26 @@ operator may still use an independently stored recovery registry credential.
 
 Cloudflare's existing tunnel routes HTTPS hostnames to Traefik. Configure public
 routes/DNS in Cloudflare, matching the committed production hostname settings.
-The tunnel token is a versioned Swarm secret. oauth2-proxy limits the broker and
-Traefik dashboards to the configured GitHub organization/user allowlist. It checks
+The tunnel token is a versioned Swarm secret. oauth2-proxy limits the Traefik and
+Grafana dashboards to the configured GitHub organization/user allowlist. It checks
 organization membership only at sign-in, so its `SameSite=Lax` session lasts 12
 hours (`oauth2_cookie_expire`) and is re-validated against GitHub hourly
 (`oauth2_cookie_refresh`). Someone removed from the organization keeps access for
 at most that long; rotate `oauth2_cookie_secret` to end every session at once.
 
-EMQX clients use TLS and separate least-privilege users, with credentials mounted as
-versioned Swarm secrets. Generate/validate certificate material using
-`infra/scripts/generate-emqx-pki.sh` and `validate-emqx-pki.py`; keep private keys in
-the encrypted vault. When changing a client password, rotate the existing EMQX user
-first; the playbook rejects changing only bootstrap/client values on a running broker.
-The broker's Erlang distribution (`emqx ctl`, clustering) is authenticated with
-`emqx_node_cookie` from the vault: at least 32 characters from letters, digits, `_`
-and `-`, for example from `openssl rand -hex 32`. Changing it restarts the broker;
-stored broker data is unaffected.
+The internal broker (Eclipse Mosquitto, see [Internal MQTT broker](mqtt-broker.md))
+accepts only TLS and two separate users, with credentials mounted as versioned Swarm
+secrets. Generate/validate certificate material using
+`infra/scripts/generate-mqtt-pki.sh` and `validate-mqtt-pki.py`; keep private keys in
+the encrypted vault. Every release renders the broker's password file from
+`mqtt_proxy_password` and `mqtt_radar_password`, so changing a password in the vault
+changes the broker's login and its client's secret in the same release.
 
 A release that needs a vault variable the production vault lacks stops before it
 changes anything. Tests and the rehearsal cannot see this, because they render with
 synthetic secrets; the real vault is read only by a production release. The failed
-task names the variable, for example `Require a dedicated EMQX node cookie (vault
-emqx_node_cookie)`, and `vault.yml.example` describes its value. Add it with
+task names the variable, for example `Require the RADAR checkpoint secret (vault
+radar_checkpoint_secret)`, and `vault.yml.example` describes its value. Add it with
 `ansible-vault edit`, replace the `OFFKEY_PROD_VAULT` environment secret with the
 whole encrypted file, then dispatch the same tested SHA again.
 

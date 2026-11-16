@@ -12,7 +12,7 @@ allowlists, TLS requirements and private network routes stay with the operator.
 ```mermaid
 flowchart LR
   B[Configured MQTT brokers and HTTP APIs] --> I[Selected TACTIC subscriptions and polls]
-  I --> E[Internal EMQX envelopes]
+  I --> E[Internal broker envelopes]
   E --> C[Bounded opt-in collector]
   C --> H[Numeric history and latest state]
   C --> R[Accepted telemetry topics]
@@ -120,7 +120,7 @@ applying; their settings remain available for restart.
   history or the detector feed.
 - **Retained snapshots:** update latest state without becoming fresh history or
   detector input. Only fresh admitted observations update entity contact status.
-  Ingress retains the latest envelope per selected input inside EMQX. Activation
+  Ingress retains the latest envelope per selected input inside the internal broker. Activation
   and reconnect replay it as a snapshot, including when its original delivery
   arrived while the collector was paused. Retired generation topics are cleared
   when ingress applies the next configuration.
@@ -180,7 +180,7 @@ APIs, provider-specific imports and old accepted topics are not supported.
 SOCKS routes and broker routes are private operator configuration; the
 application model names no source. Catalogue exports contain no credentials.
 
-Internal publishing uses the configured EMQX TLS/authentication defaults and the
+Internal publishing uses the configured internal broker TLS/authentication defaults and the
 private `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY` and
 `SYSTEM_COLLECTION_MQTT_CA_FILE`. Production mounts its publisher credential and
 CA as TACTIC secrets. System status reports ingress/collector revisions and diagnostics.

@@ -217,7 +217,7 @@ docker compose logs --tail 200 tactic-middleware
 ### Evidence or anomalies are missing
 
 1. Verify that the monitor workload exists.
-2. Confirm that data reaches its EMQX topic.
+2. Confirm that data reaches its internal broker topic.
 3. Allow static calibration or adaptive warm-up to complete.
 4. Query evidence and alarm counts:
 
@@ -238,9 +238,8 @@ docker compose logs --tail 200 tactic-middleware
 | DB Sync | Internal `8009` |
 | MQTT Proxy health | Internal `8010` |
 | PostgreSQL/TimescaleDB | `5432` |
-| EMQX MQTT | `1883` |
+| Internal MQTT (Mosquitto) | `1883` |
 | Source broker MQTT | `1884`, host loopback |
-| EMQX dashboard | `18083` |
 | Mailpit UI / SMTP | `8025` / `1025` |
 
 ## Related pages

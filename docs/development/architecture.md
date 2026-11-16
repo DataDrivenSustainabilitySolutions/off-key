@@ -27,7 +27,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
   workers ask it for forecasts. Opt-in locally (the `forecast` Compose profile);
   see [Forecast service](../operations/forecast-service.md).
 - `timescaledb` (PostgreSQL + TimescaleDB): operational persistence.
-- `emqx-main`, plus optional `emqx-worker`: internal broker.
+- `mosquitto` (Eclipse Mosquitto, reached as `emqx-main`): internal broker.
 - `source-broker`: deterministic local source telemetry broker.
 - `mailpit`: local mail capture for authentication flows.
 
@@ -39,9 +39,9 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 | API Gateway | The route contract, membership, catalogue, monitors, live views and broker checks | Database, brokers, model catalogue | Database, monitor stops and removals | Database |
 | TACTIC worker | Source recording, pipeline activations and RADAR reconciliation | Database, brokers | Database, including RADAR workload rows | Database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |
-| MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
-| EMQX | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |
-| MQTT RADAR | Online anomaly detection | EMQX topics and model configuration | Monitoring evidence and anomalies | Topic stream, model initialization, database |
+| MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw internal broker topics | Numeric history, latest state, accepted internal broker topics | Catalog, internal broker and database |
+| Mosquitto | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |
+| MQTT RADAR | Online anomaly detection | Internal broker topics and model configuration | Monitoring evidence and anomalies | Topic stream, model initialization, database |
 | Dojo worker | Offline replay of queued Dojo runs | Dojo datasets and run configuration | Run status, progress and results | Database |
 | TimescaleDB | Relational and time-series persistence | Write-capable services | Query results | Storage and schema readiness |
 
@@ -59,7 +59,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 
 1. A member with `manage_sources` saves broker, entity, topic and payload-field definitions through Sources. A broker entry is an MQTT broker or an HTTP API with request paths in place of topics.
 2. Collection is explicitly enabled for chosen readings; saving definitions alone does not select them.
-3. TACTIC subscribes to selected upstream topics, or polls selected request paths with `GET`, using operator-provisioned networking and credentials. It forwards both as generation-scoped envelopes through internal EMQX, so every later step is the same for either protocol.
+3. TACTIC subscribes to selected upstream topics, or polls selected request paths with `GET`, using operator-provisioned networking and credentials. It forwards both as generation-scoped envelopes through the internal broker, so every later step is the same for either protocol.
 4. MQTT Proxy decodes admitted readings, applies collection policy, stores numeric history/latest state and emits accepted topics.
 5. RADAR consumes `telemetry/<entity>/<reading>` observations. Gateway serves stored history and live monitoring evidence to the UI.
 
@@ -101,7 +101,7 @@ completed monitor stops remain durable.
 
 ### 4. Evidence and anomaly flow
 
-1. RADAR consumes selected telemetry topics from EMQX.
+1. RADAR consumes selected telemetry topics from the internal broker.
 2. The configured strategy calculates scores, p-values where applicable, and tracker evidence.
 3. Evidence is written to `monitoring_evidence`; threshold crossings produce `anomalies` records.
 4. The frontend retrieves service state, evidence, counts, and events through the Gateway.
@@ -113,7 +113,7 @@ conditions form two chains:
 
 - `timescaledb` → `db-sync` (`/ready/schema`) → `api-gateway` (`/health`) →
   `frontend`, with `tactic-middleware` (`/ready`) beside the API.
-- `timescaledb`, `db-sync` and `emqx-main` → `mqtt-proxy` (`/ready` once the
+- `timescaledb`, `db-sync` and `mosquitto` → `mqtt-proxy` (`/ready` once the
   collection revision is applied).
 
 Production Swarm has no start order; the release gates on
@@ -140,7 +140,7 @@ API liveness says nothing about the database; TACTIC readiness says the worker r
 | Frontend loads but has no data | API database path | API health and logs, database health |
 | Monitoring start fails | Model validation, sensor ownership, or no pool replica for the pinned image | TACTIC readiness and logs, `mqtt-radar` logs, `/v1/detectors`, active monitors |
 | Telemetry is missing | Source, proxy parsing, or database write | Source publish, proxy logs/readiness, database health |
-| Evidence is absent | RADAR workload or broker topic path | Service list, RADAR logs, EMQX stream |
+| Evidence is absent | RADAR workload or broker topic path | Service list, RADAR logs, internal broker stream |
 | Authentication email is missing | SMTP configuration | Mail service logs and `EMAIL_*` transport settings |
 
 ## Deployment context

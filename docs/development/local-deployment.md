@@ -3,7 +3,8 @@
 Use this workflow to exercise a branch as a complete local application. It builds
 the current checkout with the normal Dockerfiles and locked dependencies, serves
 the compiled frontend through Nginx, and runs the authenticated gateway, TACTIC,
-TimescaleDB, schema bootstrap, MQTT proxy, EMQX, source broker, and Mailpit.
+TimescaleDB, schema bootstrap, MQTT proxy, the internal Mosquitto broker, source
+broker, and Mailpit.
 
 Each checkout gets its own Compose project, application image tags, database,
 broker state, and captured email. Default ports differ from the ordinary stack,
@@ -21,8 +22,8 @@ make local-up
 make local-bootstrap-admin
 ```
 
-`local-init` creates `dev/local/.env` with independent random local secrets and a
-matching EMQX API bootstrap file. These files are Git-ignored. Repeating init
+`local-init` creates `dev/local/.env` with independent random local secrets. It is
+Git-ignored. Repeating init
 preserves the existing configuration, project name, and credentials. The project
 name initially derives from the checkout path.
 
@@ -49,7 +50,7 @@ unchanged. Use normal mode when your images require registry authentication.
 | Gateway health    | <http://127.0.0.1:8002/health>      |
 | TACTIC readiness  | <http://127.0.0.1:8003/ready>       |
 | Captured email    | <http://127.0.0.1:8026>             |
-| EMQX dashboard    | <http://127.0.0.1:18084>            |
+| Internal MQTT     | `127.0.0.1:1885`                    |
 | Local source MQTT | `127.0.0.1:1886`                    |
 
 Open Mailpit, follow the invitation for `admin@example.com`, choose a password,
@@ -154,7 +155,7 @@ SYSTEM_BROKER_ROUTES='[{"name":"local","hosts":["source-broker"],"socks_proxy":{
 
 A deployment configures its route in the inventory and vault; see
 [Collection](../operations/system-collection.md#broker-routes). Previews read the
-upstream topics temporarily through the same route; they do not create EMQX
+upstream topics temporarily through the same route; they do not create broker
 collection rules or change collection policies. Local simulation verifies the
 MQTT client, decoding, leases and UI but cannot establish a route's network health.
 

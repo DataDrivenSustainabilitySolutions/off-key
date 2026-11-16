@@ -95,6 +95,16 @@ their inventory check before they change the stack. To roll back past it anyway:
    reads on the manager (named in the production inventory next to
    `broker_route_legacy_exports_file`). Then dispatch the older SHA.
 
+### Rolling back past the Mosquitto release
+
+The release that moved the internal broker from EMQX to Mosquitto removes
+`emqx-main` before it starts `mosquitto`, and both answer on the `emqx-main`
+alias. An older release does not know `mosquitto` and would leave it running
+beside its own broker. Remove `off-key_mosquitto` before dispatching the older
+SHA; [Internal MQTT broker](mqtt-broker.md#rolling-back-to-emqx) lists the steps.
+EMQX's volumes are kept for this, and they hold its logins: keep the MQTT client
+passwords in the vault unchanged while this rollback is possible.
+
 ### Rolling back past the HTTP source release
 
 A catalogue without HTTP sources is stored exactly as before, so this rollback
@@ -117,7 +127,7 @@ With private local inventory/vault and a verified management SSH connection:
 ```sh
 make -C infra backup-stack-prod
 make -C infra backup-broker-route-prod
-make -C infra restore-stack-prod TS=<explicit-backup-timestamp> SERVICES=postgres,emqx
+make -C infra restore-stack-prod TS=<explicit-backup-timestamp> SERVICES=postgres,mosquitto
 ```
 
 These explicit operator tools may transfer backups to the ignored local
@@ -142,7 +152,7 @@ earlier restore added that key with everything else and stopped at
 backup is complete: only the restore changed, so restore it with the current
 playbooks.
 
-Each PostgreSQL/EMQX backup publishes `manifest.json` last, after every expected
+Each PostgreSQL/Mosquitto backup publishes `manifest.json` last, after every expected
 artifact has reached the control host. The manifest records the service, timestamp,
 exact artifact names and SHA-256 checksums. Restore verifies every listed artifact
 before stopping any service and restores only that list. A directory without a
@@ -154,7 +164,7 @@ manifest by guessing which databases should have been captured.
 An interrupted cutover's `recovery-pending.json` records its original timestamp,
 complete backup references, required services, writer counts and replacement-task
 checks. Retry with **that timestamp and exactly that service set**. For example, an
-EMQX-only cutover requires `SERVICES=emqx`, including a log-only persistence change.
+broker-only cutover requires `SERVICES=mosquitto`.
 An unrelated backup or a subset cannot clear the transaction. A failed retry keeps
 the original plan and writer counts; successful recovery clears it only after the
 entire recorded service set has restored.

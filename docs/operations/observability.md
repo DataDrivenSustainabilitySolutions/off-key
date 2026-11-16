@@ -35,8 +35,8 @@ not just a placement change. Keep the old copy until the new worker is verified.
 ## Collection and access
 
 Discovery selects this stack's namespace. Legacy dynamic RADAR workers are
-selected by both their immutable runtime image and the stack's private EMQX
-network, because older workers lack namespace labels. Unrelated applications and
+selected by both their immutable runtime image and the stack's private broker
+network (`emqx-network`), because older workers lack namespace labels. Unrelated applications and
 collector self-logs are excluded before tailing. Run UUIDs remain in log records;
 the service label for RADAR is stable to avoid one indexed stream per run.
 

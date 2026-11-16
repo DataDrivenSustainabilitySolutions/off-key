@@ -1,6 +1,6 @@
 # Deployment modes
 
-This page documents the supported local, profile-based, cluster, and Swarm deployment patterns.
+This page documents the supported local, profile-based, and Swarm deployment patterns.
 
 ## When to use this page
 
@@ -15,7 +15,7 @@ docker compose up -d --build
 
 Characteristics:
 
-- One EMQX node: `emqx-main`.
+- One internal Mosquitto broker, `mosquitto`, reached as `emqx-main`.
 - A local `source-broker` for deterministic development.
 - `mqtt-radar` is build-only; TACTIC launches its workloads.
 
@@ -25,19 +25,7 @@ Before creating a TACTIC-managed monitoring service for the first time, build it
 docker compose build mqtt-radar
 ```
 
-## 2. Two-node EMQX cluster
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.override.yml \
-  -f docker-compose.cluster.yml \
-  up -d --build
-```
-
-This adds `emqx-worker` and cluster seed wiring for broker-cluster testing.
-
-## 3. Production Swarm
+## 2. Production Swarm
 
 Production uses the single authoritative model under `infra/`, released through
 GitHub Actions after all main checks pass. See [GitHub setup](github-setup.md),
@@ -57,7 +45,7 @@ docker compose down
 ```
 
 If containers keep resolving stale names or networks after switching between the
-local, ingress and cluster modes, remove the shared networks too:
+local and ingress modes, remove the shared networks too:
 
 ```bash
 docker network rm off-key_app-network off-key_emqx-network || true
@@ -71,7 +59,6 @@ docker network rm off-key_app-network off-key_emqx-network || true
 | Goal | Recommended mode |
 | --- | --- |
 | Day-to-day development | Local default |
-| Multi-node broker behaviour | Local plus cluster override |
 | Production and external broker ingress | Integrated production Swarm |
 
 ## Configuration reference

@@ -40,7 +40,9 @@ class SshTargetTests(unittest.TestCase):
             },
         )
         self.assertEqual(targets["worker"]["port"], 2222)
-        self.assertEqual(targets["worker"]["groups"], ["swarm_backend", "swarm_frontend"])
+        self.assertEqual(
+            targets["worker"]["groups"], ["swarm_backend", "swarm_frontend"]
+        )
         bare = ssh.targets({"_meta": {"hostvars": {"node": {}}}})
         self.assertEqual(bare["node"]["address"], "node")
         self.assertEqual(bare["node"]["user"], "ansible")
@@ -66,12 +68,16 @@ class SshTargetTests(unittest.TestCase):
         prod["manager"] = dict(prod["manager"], address="netcup-vps")
         trusted = {("ssh-ed25519", KEY)}
         self.assertEqual(
-            ssh.describe("manager", demo["manager"], set(), trusted, prod, "production"),
+            ssh.describe(
+                "manager", demo["manager"], set(), trusted, prod, "production"
+            ),
             "SSH target manager (swarm_manager): deploy@100.64.0.1 port 22; "
             "known-hosts entry: no; same as production: no",
         )
         self.assertEqual(
-            ssh.describe("worker", demo["worker"], trusted, trusted, prod, "production"),
+            ssh.describe(
+                "worker", demo["worker"], trusted, trusted, prod, "production"
+            ),
             "SSH target worker (swarm_backend, swarm_frontend): deploy@100.64.0.2 "
             "port 2222; known-hosts entry: yes; host key: matches; "
             "same as production: yes",

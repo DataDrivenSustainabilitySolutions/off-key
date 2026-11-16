@@ -41,7 +41,9 @@ def identity(address: str, port: int) -> str:
     return address if port == 22 else f"[{address}]:{port}"
 
 
-def known_keys(known_hosts: Path, address: str, port: int) -> set[tuple[str, str]] | None:
+def known_keys(
+    known_hosts: Path, address: str, port: int
+) -> set[tuple[str, str]] | None:
     """The trusted (type, key) pairs for this address and port; None if unreadable."""
     found = subprocess.run(
         ["ssh-keygen", "-F", identity(address, port), "-f", str(known_hosts)],

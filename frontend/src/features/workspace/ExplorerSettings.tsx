@@ -28,7 +28,7 @@ const catalogueSummary = (document: SystemDocument, includeGroups = false) => [
 ].join(" · ");
 const creationActions = [
   { kind: "connection", label: "Add broker", description: "Connect an MQTT broker or HTTP API", icon: Server },
-  { kind: "device", label: "Add entity", description: "Describe a device or asset", icon: Box },
+  { kind: "device", label: "Add device", description: "Describe a device or asset", icon: Box },
   { kind: "stream", label: "Add reading", description: "Register a value from a topic or path", icon: Radio },
   { kind: "group", label: "Add collection", description: "Organise related sources", icon: Layers },
 ] as const;
@@ -115,7 +115,7 @@ function ExplorerSettings({
         <section className="catalogue-settings-section" aria-label="Manage sources">
           <div className="catalogue-settings-section-heading">
             <h3>Manage sources</h3>
-            <p>{onEdit ? "Add to your catalogue or update an existing entity." : "Add brokers, devices and readings to your catalogue."}</p>
+            <p>{onEdit ? "Add to your catalogue or update an existing device." : "Add brokers, devices and readings to your catalogue."}</p>
           </div>
           <div className="catalogue-settings-create-grid">
             {creationActions.map(({ kind, label, description, icon: Icon }) => (
@@ -129,11 +129,11 @@ function ExplorerSettings({
           </div>
           {!document.brokers.length && <p className="catalogue-settings-hint">Add a broker before registering readings.</p>}
           {onEdit && document.devices.length > 0 && <div className="catalogue-settings-entity">
-            <label htmlFor={entitySelectId}>Edit an existing entity</label>
+            <label htmlFor={entitySelectId}>Edit an existing device</label>
             <div className="catalogue-settings-select">
-              <select id={entitySelectId} aria-label="Edit entity" value="" disabled={!canEdit || disabled}
+              <select id={entitySelectId} aria-label="Edit device" value="" disabled={!canEdit || disabled}
                 onChange={event => { if (event.target.value) onEdit("device", event.target.value); }}>
-                <option value="">Choose an entity to edit…</option>
+                <option value="">Choose a device to edit…</option>
                 {document.devices.map(entity => <option key={entity.id} value={entity.id}>{entity.label}</option>)}
               </select>
               <ChevronDown size={16} aria-hidden="true" />

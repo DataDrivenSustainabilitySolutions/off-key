@@ -38,3 +38,7 @@ export function withCatalogueSource(href: string, source?: ExplorerNode | string
 export function selectedSourceHref(path: string, node?: ExplorerNode | null) {
   return withCatalogueSource(path, node ?? undefined);
 }
+
+/** What a missing selection says, the same on every tab: the kind of source that was asked for. */
+export const missingSelectionMessage = (params: URLSearchParams) =>
+  params.has("reading") ? "Reading not found." : params.has("entity") ? "Device not found." : "Source not found.";

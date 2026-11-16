@@ -50,7 +50,7 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     const picker = page.getByRole("button", { name: "Choose monitoring inputs", exact: true });
     await picker.click();
     const choices = page.getByRole("dialog", { name: "Choose monitoring inputs", exact: true });
-    await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
+    await choices.getByRole("searchbox", { name: "Search sources", exact: true }).fill(runId);
     const activeChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Device ${activeId}` });
     const quietChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Device ${quietId}` });
     await expect(activeChoice).toBeVisible();
@@ -63,7 +63,7 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await quietChoice.click();
     await expect(picker).toHaveText(`${broker.label} / Device ${quietId}`);
     await picker.click();
-    await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
+    await choices.getByRole("searchbox", { name: "Search sources", exact: true }).fill(runId);
     // Keep the MQTT/collector/API path real, and control only the browser's
     // clock for this picker boundary. The sidebar journey still exercises the
     // complete two-minute expiry with real time and real MQTT traffic.

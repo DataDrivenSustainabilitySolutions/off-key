@@ -16,7 +16,7 @@ import { CopyToDojo } from "../dojo/CopyToDojo";
 import { useDesignTest } from "../dojo/designTest";
 import { DesignTestContext } from "../pipelines/designTest";
 import { useOpenProposals } from "../pipelines/proposals";
-import { catalogueSelectionLabel, withCatalogueSource } from "../workspace/catalogue-navigation";
+import { catalogueSelectionLabel, missingSelectionMessage, withCatalogueSource } from "../workspace/catalogue-navigation";
 import "../monitoring/monitoring.css";
 import { setSourceAppearance } from "@/domain/system/sourceAppearance";
 
@@ -97,7 +97,7 @@ export function ExplorerWorkspace() {
     if (loadingCreation) return <p className={creationError ? "ex-banner ex-error" : "ex-muted"} role={creationError ? "alert" : "status"}>
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p>;
-    if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Device not found." : "Source not found."}</p>;
+    if (selectionMissing && !pipelineView) return <p role="alert">{missingSelectionMessage(params)}</p>;
     if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}>
       <DesignTestContext.Provider value={designTest}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
         initialTarget={initialTarget} initialReading={requestedReading}

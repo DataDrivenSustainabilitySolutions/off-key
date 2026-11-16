@@ -80,7 +80,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
     await expect(page.getByRole("button", { name: `${name}, preview`, exact: true })).toBeVisible();
 
     await openCatalogueSettings(page);
-    await page.getByRole("button", { name: "Add entity", exact: true }).click();
+    await page.getByRole("button", { name: "Add device", exact: true }).click();
     await page.getByRole("textbox", { name: "device name", exact: true }).fill(`${name} asset`);
     const entityResponse = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/catalogue");
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -89,7 +89,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
     createdEntityId = ((await entitySaved.json()) as SystemSnapshot).document.devices.find(item => item.label === `${name} asset`)?.id;
     expect(createdEntityId).toBeTruthy();
     await expect(editor).toHaveCount(0);
-    await settings.getByRole("combobox", { name: "Edit entity", exact: true }).selectOption(createdEntityId!);
+    await settings.getByRole("combobox", { name: "Edit device", exact: true }).selectOption(createdEntityId!);
     await expect(page.getByRole("textbox", { name: "device name", exact: true })).toHaveValue(`${name} asset`);
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(editor).toHaveCount(0);

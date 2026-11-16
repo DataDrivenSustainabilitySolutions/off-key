@@ -28,9 +28,9 @@ export function MonitoringTargetPicker({ targets, value, disabled, onChange, rec
   const virtual = useVirtualizer({ count: filtered.length, getScrollElement: () => scroll.current, estimateSize: () => 60, overscan: 5, getItemKey: index => filtered[index]!.id });
   const choose = (id: string) => { onChange(id); setOpen(false); };
   return <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (next) { setQuery(""); setFocus(-1); } }}>
-    <Popover.Trigger className="mn-target-trigger" disabled={disabled} aria-label="Choose monitoring inputs"><span>{targets.find(target => target.id === value)?.label ?? "Select an entity"}</span><ChevronDown size={14} /></Popover.Trigger>
+    <Popover.Trigger className="mn-target-trigger" disabled={disabled} aria-label="Choose monitoring inputs"><span>{targets.find(target => target.id === value)?.label ?? "Select a source"}</span><ChevronDown size={14} /></Popover.Trigger>
     <Popover.Portal><Popover.Content className="ex-popover mn-target-popover" align="start" sideOffset={6} aria-label="Choose monitoring inputs">
-      <label className="mn-target-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search entities" placeholder="Search entities…" value={query}
+      <label className="mn-target-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search sources" placeholder="Search sources…" value={query}
         onChange={event => { setQuery(event.target.value); setFocus(-1); scroll.current?.scrollTo?.(0, 0); }} onKeyDown={event => {
           if ((event.key === "ArrowDown" || event.key === "ArrowUp") && filtered.length) {
             event.preventDefault(); const next = Math.max(0, Math.min(filtered.length - 1, focus + (event.key === "ArrowDown" ? 1 : -1)));
@@ -46,7 +46,7 @@ export function MonitoringTargetPicker({ targets, value, disabled, onChange, rec
             </button>; })}
         </div>{!filtered.length && <p className="ex-muted">{receivingOnly
           ? deferred ? "No matching inputs receiving data." : "No inputs receiving data."
-          : deferred ? "No matching entities." : "Add numeric readings in Sources to get started."}</p>}
+          : deferred ? "No matching sources." : "Add numeric readings in Sources to get started."}</p>}
       </div>
     </Popover.Content></Popover.Portal>
   </Popover.Root>;

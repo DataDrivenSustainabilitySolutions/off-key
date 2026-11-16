@@ -48,7 +48,7 @@ export function DatasetList({ datasetHref, onCreated, scope, readings, selection
     {error && <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => void reload()}>Retry</button></p>}
     {datasets === null && !error ? <p className="dj-loading" role="status">Loading datasets…</p>
       : datasets?.length === 0 ? <div className="dj-empty"><h2>No datasets yet</h2>
-        <p>{editable ? "Upload a CSV file, or select an entity in the catalogue and copy its recorded readings for a time window." : "Datasets will appear here when the demo administrator adds them."}</p></div>
+        <p>{editable ? "Upload a CSV file, or select a device or reading in the catalogue and copy its recorded readings for a time window." : "Datasets will appear here when the demo administrator adds them."}</p></div>
       : datasets && <div className="dj-table-scroll"><table className="dj-table" aria-label="Datasets">
         <thead><tr><th>Dataset</th><th>Origin</th><th>Values</th><th>Time span</th><th>Created</th></tr></thead>
         <tbody>{datasets.map(item => <tr key={item.id}>

@@ -191,7 +191,7 @@ describe("service-centred monitoring workspace", () => {
     const choices = within(await screen.findByRole("dialog", { name: "Choose monitoring inputs" }));
     expect(choices.getByRole("button", { name: /Building broker \/ Room station/ })).toBeTruthy();
     expect(choices.queryByRole("button", { name: /Quiet charger/ })).toBeNull();
-    const search = choices.getByRole("searchbox", { name: "Search entities" });
+    const search = choices.getByRole("searchbox", { name: "Search sources" });
     fireEvent.change(search, { target: { value: "Quiet charger" } });
     expect(await choices.findByText("No matching inputs receiving data.")).toBeTruthy();
     fireEvent.change(search, { target: { value: "Air temperature" } });
@@ -511,7 +511,7 @@ describe("hierarchical explorer workspace", () => {
   it("opens a generic entity from its stable-ID directory link and clears the link when selecting a reading", async () => {
     mount("/?entity=station");
     expect(await screen.findByRole("region", { name: "Device preview" })).toBeTruthy();
-    expect(screen.getByText("Entity ID").nextElementSibling?.textContent).toBe("station");
+    expect(screen.getByText("Device ID").nextElementSibling?.textContent).toBe("station");
     expect(screen.getByTestId("location").textContent).toBe("?entity=station");
     fireEvent.click(await screen.findByRole("button", { name: "Expand weather" }));
     fireEvent.click(await screen.findByRole("button", { name: "Air temperature, preview" }));

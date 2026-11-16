@@ -179,7 +179,7 @@ export function HistoryImportDialog({ open, onOpenChange, onCreated, scope, read
     description="The recorded values of the chosen readings are copied into a frozen dataset. Retention and catalogue edits never change it."
     submitLabel="Copy" canSubmit={selected.size > 0 && windowValid} onSubmit={() => void submit()}>
     {numeric.length === 0
-      ? <p className="dj-help" role="status">Select an entity or reading with numeric values in the catalogue first.</p>
+      ? <p className="dj-help" role="status">Select a device or reading with numeric values in the catalogue first.</p>
       : <fieldset className="dj-field"><legend>Readings{scope ? ` of ${scope}` : ""}</legend>
         <ul className="dj-reading-list">{numeric.map(item => <li key={item.id}><label>
           <input type="checkbox" checked={selected.has(item.id)} disabled={busy} onChange={event => {

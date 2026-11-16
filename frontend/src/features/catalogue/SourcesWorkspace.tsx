@@ -12,7 +12,7 @@ import { checkProblem, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { WorkspaceBack } from "../workspace/WorkspaceBack";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { catalogueSelectionLabel } from "../workspace/catalogue-navigation";
+import { catalogueSelectionLabel, missingSelectionMessage } from "../workspace/catalogue-navigation";
 import { systemApi } from "@/domain/system/systemApi";
 import type { SystemDocument, SystemRuntime, SystemStream } from "@/types/system";
 import "./sources.css";
@@ -102,7 +102,7 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
   const rename = async (kind: Parameters<typeof system.rename>[0], id: string, label: string) => {
     if (!await system.rename(kind, id, label)) throw new Error("The name was not saved.");
   };
-  const readingLinks = <section className="workspace-entity-readings" aria-label="Entity readings">
+  const readingLinks = <section className="workspace-entity-readings" aria-label="Device readings">
     <h3>Readings</h3><p className="ex-muted">Select a reading to change how it is recorded.</p>
     {ids.length ? ids.flatMap(id => {
       const stream = document.readings.find(item => item.id === id);
@@ -110,7 +110,7 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
       return stream && node ? <button key={id} className="source-broker" onClick={() => selectSource(node)}>
         <strong className="source-identity"><SourceIcon kind="stream" appearance={stream.appearance} />{stream.label}</strong><span>{stream.topic}</span><span>{policyLabel(runtime?.bindings?.[id]?.policy)}</span>
       </button> : [];
-    }) : <p className="ex-muted">No readings registered for this entity.</p>}
+    }) : <p className="ex-muted">No readings registered for this device.</p>}
   </section>;
   const configuration = scope ? <>
     {scope.kind === "topic" && <p className="ex-muted">A {isPolled(scope.broker_id) ? "path" : "topic"} setting applies to all matching readings on this broker.</p>}
@@ -144,7 +144,7 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
       <div className="ex-collection-actions"><Button size="sm" onClick={recording.confirm}>Stop monitors and save</Button>
         <Button size="sm" variant="ghost" onClick={recording.cancel}>Cancel</Button></div>
     </div>}
-    {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
+    {selectionMissing ? <p role="alert">{missingSelectionMessage(params)}</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
       <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
         canEdit={system.canEdit} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
         onAppearanceChange={appearance => system.save(setSourceAppearance(document, selected, appearance), system.revision ?? 0)}

@@ -107,7 +107,7 @@ export default function AnomalyTable() {
     <SelectedSourceBar disabled={locked} />
     {system.error && <p role="alert" className="rp-error">Catalogue status unavailable: {system.error}
       <Button variant="link" onClick={() => void system.refresh()}>Retry catalogue</Button></p>}
-    {selectionMissing && <p role="alert" className="rp-error">This source is no longer available. Clear the signal scope to view other events.</p>}
+    {selectionMissing && <p role="alert" className="rp-error">This source is no longer in the catalogue. Show all sources to see other events.</p>}
     {error && <p role="alert" className="rp-error">Anomalies could not be updated: {error}. {page && 'Showing the last loaded results.'}
       <Button variant="outline" size="sm" disabled={busy || locked} onClick={() => void events.load()}>Retry</Button></p>}
     <section className="rp-events" aria-label="Anomaly events" aria-busy={busy}>

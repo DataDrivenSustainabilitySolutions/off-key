@@ -26,6 +26,7 @@ import {
 } from "./telemetry-detectors";
 import { getChartDomain, type DetectionValueBounds } from "./telemetry-thresholds";
 import { forecastIntervalText, type DetectorInputSeries } from "./detector-inputs";
+import { compactAxis, formatAxisValue } from "./axis-labels";
 import { localMidnights, timeAxisLabelFormatter } from "./time-axis";
 import { bandSeries, historyBandSeries, historyChartData } from "./history-presentation";
 import type { HistoryPoint, TelemetryHistory } from "@/types/telemetry-history";
@@ -425,6 +426,7 @@ export const buildMonitoringChartOption = ({
   const units = new Map<string, string>();
   for (const reading of model.readings) if (reading.unit) units.set(reading.name, reading.unit);
 
+  const formatTick = (compact = true) => (value: number) => formatAxisValue(Number(value), locale, compact);
   const grid: GridComponentOption[] = monitoring
     ? panes.map((_, index) => ({ left: 52, right: 18,
         top: 28 + index * 148 + (forecasts.length ? 60 * Math.min(index, model.readings.length) : 0),
@@ -498,11 +500,12 @@ export const buildMonitoringChartOption = ({
   const dots: ScatterSeriesOption[] = [];
   // Alarm episodes the width cannot separate, such as an alarm flapping around its threshold, read as one.
   const joinWithin = Number.isFinite(visibleSpan) ? visibleSpan / 150 : 0;
+  const displays = model.readings.map(reading => reading.presentation && historyChartData(reading.presentation));
   const telemetrySeries: LineSeriesOption[] = model.readings.map((reading, index) => {
     const valueType = reading.valueType ?? "number";
     const telemetryValueExtent = reading.data.reduce<[number, number] | undefined>((extent, [, value]) =>
       extent ? [Math.min(extent[0], value), Math.max(extent[1], value)] : [value, value], undefined);
-    const display = reading.presentation && historyChartData(reading.presentation);
+    const display = displays[index];
     if (display) historyBands.push(...historyBandSeries(reading.id, display, reading.color, index));
     dots.push(...loneDots(reading.id, reading.name, display?.map(point => point.value) ?? reading.data, reading.color, index, 5));
     // A mean speaks for its own interval; a recorded sample as far as its line would bridge.
@@ -766,7 +769,10 @@ export const buildMonitoringChartOption = ({
           ? `${reading.name} (${reading.unit})` : reading.name,
         nameTextStyle: { color: monitoring ? reading.color : colors.mutedForeground, fontSize: 12, align: "left" as const,
           ...(monitoring ? { overflow: "truncate" as const, width: 220 } : {}) },
-        axisLabel: { color: colors.mutedForeground, fontSize: 12 },
+        axisLabel: { color: colors.mutedForeground, fontSize: 12, formatter: formatTick(compactAxis([
+          ...reading.data.map(([, value]) => value),
+          ...(displays[index] ?? []).flatMap(point => [point.value[1], point.summary?.minimum, point.summary?.maximum]),
+        ])) },
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
@@ -784,7 +790,8 @@ export const buildMonitoringChartOption = ({
               name: forecasts.length ? "Transformed / unassociated features" : "Detector inputs",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
               axisLabel: { color: colors.mutedForeground, fontSize: 12,
-                formatter: (value: number) => formatNumber(Number(value)), hideOverlap: true },
+                formatter: formatTick(compactAxis(detectorInputs.flatMap(series => series.data.map(([, value]) => value)))),
+                hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },
               splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
@@ -799,7 +806,7 @@ export const buildMonitoringChartOption = ({
         name: `Residual · ${forecast.name}`,
         nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const,
           overflow: "truncate" as const, width: 260 },
-        axisLabel: { color: colors.mutedForeground, fontSize: 12, formatter: (value: number) => formatNumber(value), hideOverlap: true },
+        axisLabel: { color: colors.mutedForeground, fontSize: 12, formatter: formatTick(), hideOverlap: true },
         axisLine: { show: false }, axisTick: { show: false },
         splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
       })),
@@ -839,7 +846,7 @@ export const buildMonitoringChartOption = ({
               name: monitoring ? model.secondarySeries.find(series => series.pane === "adaptive")?.name : "Adaptive anomaly score",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
               axisLabel: { color: colors.mutedForeground, fontSize: 12,
-                formatter: labelWithin(boundsByPane.get("adaptive"), formatNumber), hideOverlap: true },
+                formatter: labelWithin(boundsByPane.get("adaptive"), formatTick()), hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },
               splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },

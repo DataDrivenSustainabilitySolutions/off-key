@@ -1,4 +1,4 @@
-"""Continuous WAL archiving: the overlay toggle and the base-backup bookkeeping."""
+"""Continuous WAL archiving: the overlay and the base-backup bookkeeping."""
 
 import unittest
 
@@ -20,15 +20,8 @@ def overlay(**variables):
 
 
 class WalArchiveOverlayTests(unittest.TestCase):
-    def test_archiving_is_off_unless_asked_for(self):
-        model = overlay(persist_postgres=True)
-        postgres = model["services"]["postgres"]
-        self.assertNotIn("command", postgres)
-        self.assertNotIn("entrypoint", postgres)
-        self.assertEqual(set(model["volumes"]), {"postgres_data"})
-
     def test_archiving_mounts_its_own_volume_and_never_overwrites(self):
-        model = overlay(persist_postgres=True, postgres_wal_archive=True)
+        model = overlay(persist_postgres=True)
         postgres = model["services"]["postgres"]
         self.assertIn(
             "postgres_wal_archive:/var/lib/postgresql/wal-archive", postgres["volumes"]
@@ -51,7 +44,7 @@ class WalArchiveOverlayTests(unittest.TestCase):
         )
 
     def test_archiving_needs_persistent_data(self):
-        model = overlay(postgres_wal_archive=True)
+        model = overlay(persist_emqx_data=True)
         self.assertNotIn("postgres", model.get("services") or {})
 
 

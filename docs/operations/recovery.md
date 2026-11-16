@@ -112,9 +112,9 @@ with the actually restored database; do not pretend this is a routine code rollb
 
 ## Point-in-time restore of PostgreSQL
 
-With `postgres_wal_archive: true` (it requires `persist_postgres: true`), PostgreSQL
-archives every WAL segment, zstd-compressed, to the `postgres_wal_archive` volume
-on its node, at the latest every `postgres_wal_archive_timeout_seconds` (300 s).
+With `persist_postgres: true`, PostgreSQL always archives every WAL segment,
+zstd-compressed, to the `postgres_wal_archive` volume on its node, at the latest
+every `postgres_wal_archive_timeout_seconds` (300 s).
 A systemd timer on the backend nodes (`offkey-<stack>-postgres-base-backup`) takes
 a base backup into the same volume every Sunday at 03:30 and once when it is first
 installed. It keeps the newest `postgres_base_backup_keep` (2) and deletes archived
@@ -155,9 +155,6 @@ To restore to a moment `T` (UTC), on the node that runs postgres:
 Unlike the dump restore below, a point-in-time restore keeps sessions that existed
 at `T`. Raise session versions or ask members to sign in again if the restore
 undoes an account change that mattered, such as a revoked session.
-
-Turning `postgres_wal_archive` off restarts postgres without archiving and removes
-the timer; the archive volume and its contents stay until you delete them.
 
 ## Existing backup and restore tools
 

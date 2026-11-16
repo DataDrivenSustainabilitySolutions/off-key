@@ -1,17 +1,10 @@
 ---
-# Installs (or removes) the base-backup timer on every backend node. Swarm may
-# place postgres on any of them; the script exits without a backup on a node
-# that does not run the task, so only the node holding the data takes one.
-- name: Require persistent PostgreSQL data for WAL archiving
-  assert:
-    that: persist_postgres | default(false) | bool
-    fail_msg: postgres_wal_archive needs persist_postgres, or the archive outlives no data.
-  when: postgres_wal_archive | bool
-  run_once: true
-  delegate_to: localhost
-
+# Installs the base-backup timer on every backend node whenever PostgreSQL data is
+# persistent, because the overlay then archives WAL. Swarm may place postgres on any
+# of them; the script exits without a backup on a node that does not run the task,
+# so only the node holding the data takes one.
 - name: Install the base backup script
-  when: postgres_wal_archive | bool
+  when: persist_postgres | default(false) | bool
   become: true
   block:
     - name: Create the script directory
@@ -74,23 +67,3 @@
         name: "{{ postgres_wal_unit }}.service"
         state: started
       when: postgres_wal_timer.changed
-
-- name: Remove the base backup timer when archiving is off
-  when: not (postgres_wal_archive | bool)
-  become: true
-  block:
-    - name: Stop and disable the timer if it exists
-      systemd:
-        name: "{{ postgres_wal_unit }}.timer"
-        enabled: false
-        state: stopped
-      failed_when: false
-
-    - name: Remove the units and the script
-      file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "/etc/systemd/system/{{ postgres_wal_unit }}.timer"
-        - "/etc/systemd/system/{{ postgres_wal_unit }}.service"
-        - "{{ postgres_wal_script }}"

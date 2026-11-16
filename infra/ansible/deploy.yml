@@ -56,9 +56,9 @@
             argv: [docker, logout, ghcr.io]
           changed_when: false
 
-# Archived WAL is only restorable from a base backup, so every backend node gets
-# the weekly base-backup timer while postgres_wal_archive is on, and loses it when
-# the flag is turned off. The first base backup is taken right away.
+# Archived WAL is only restorable from a base backup, so with persistent PostgreSQL
+# every backend node gets the weekly base-backup timer. The first base backup is
+# taken right away.
 - name: Schedule PostgreSQL base backups for point-in-time restore
   hosts: swarm_backend
   gather_facts: false

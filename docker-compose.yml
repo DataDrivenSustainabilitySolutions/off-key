@@ -346,7 +346,7 @@ services:
       - app-network
 
   emqx-main:
-    image: emqx/emqx:5.8.7 # Apache-2.0; 5.9+ is BSL 1.1, see docs/operations/emqx-license.md
+    image: emqx/emqx:5.8.9 # Apache-2.0; 5.9+ is BSL 1.1, see docs/operations/emqx-license.md
     hostname: emqx-main
     environment:
       # Local single-node default. See docker-compose.cluster.yml for two-node mode.

@@ -206,7 +206,7 @@ services:
         order: start-first
 
   emqx-main:
-    image: "${EMQX_IMAGE:-emqx/emqx:5.8.7}"
+    image: "${EMQX_IMAGE:-emqx/emqx:5.8.9}"
     # The container hostname MUST equal the host part of EMQX_NODE_NAME. `emqx ctl` reaches
     # the running broker over Erlang distribution to node emqx@emqx-main; without a matching
     # hostname that lookup fails with "Node 'emqx@emqx-main' not responding to pings", which

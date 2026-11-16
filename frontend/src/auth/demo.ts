@@ -1,5 +1,5 @@
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
-import { BrowserVerificationError } from '@/lib/browser-verification';
+import { browserVerificationRequired } from '@/lib/browser-verification';
 
 interface DemoSource {
   id: string;
@@ -24,7 +24,7 @@ export async function loadDemoStatus(signal: AbortSignal): Promise<DemoStatus> {
     signal: AbortSignal.any([signal, AbortSignal.timeout(API_CONFIG.TIMEOUT)]),
     cache: 'no-store',
   });
-  if (response.headers.get('cf-mitigated') === 'challenge') throw new BrowserVerificationError();
+  if (response.headers.get('cf-mitigated') === 'challenge') throw browserVerificationRequired();
   // An older/private installation does not expose the capability endpoint.
   if (response.status === 404) { enabled = false; return { enabled: false }; }
   if (!response.ok) throw new Error('The demo could not be reached. Please retry.');

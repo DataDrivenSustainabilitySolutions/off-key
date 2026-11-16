@@ -27,7 +27,7 @@ SOURCES = {
 DESTINATION = ROOT / "infra/stack/landing-assets.json"
 PRODUCT_IMAGES = {
     "COMPOSER": (
-        "product-composer-v1.webp",
+        "product-composer-v2.webp",
         (
             "Aberration visual composer: pressure, flow and temperature inputs pass "
             "through scaling and two parallel detectors into a detection rule "
@@ -35,7 +35,7 @@ PRODUCT_IMAGES = {
         ),
     ),
     "EVIDENCE": (
-        "product-evidence-v2.webp",
+        "product-evidence-v3.webp",
         (
             "Aberration Reporting: an example cooling-circuit pressure reading, "
             "flagged events and sequential evidence on a shared timeline."

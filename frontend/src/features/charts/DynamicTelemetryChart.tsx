@@ -436,9 +436,10 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       className={`w-full overflow-hidden py-0 transition-all duration-300 ${collapsed ? "" : "min-h-96"}`}
     >
       <div
-        className={`telemetry-chart-heading flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? "flex-row items-center justify-between" : "flex-col lg:flex-row lg:items-center lg:justify-between"}`}
+        className={`telemetry-chart-heading flex gap-3 border-b border-border/60 bg-muted/[0.12] px-5 py-4 ${collapsed ? "flex-row items-center justify-between" : "flex-col lg:flex-row lg:flex-wrap lg:items-center lg:justify-between"}`}
       >
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+        {/* At least room for a reading's name; narrower, the range controls wrap below. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 lg:min-w-64">
           <CardTitle
             className="min-w-0 whitespace-normal break-words text-base"
           >

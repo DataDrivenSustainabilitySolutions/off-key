@@ -1,26 +1,42 @@
-Product screenshots and catalogue counts, captured 2026-11-11.
+Product screenshots captured 2026-11-16; catalogue counts captured 2026-11-11.
 
-Source: the real frontend at f880ab082e30a942af1bb86870bfd8524ec6136b.
-Captured at the browser default 1280 x 720 viewport, dark theme.
-No UI markup, application styles or screenshot pixels were altered.
-Browser captures were converted to WebP, quality 92.
+Source: the real frontend at main (5184184) with this change's reading-chart
+heading fix, served by Vite.
+Captured at a 1280 x 720 viewport with device scale factor 2 (2560 x 1440),
+dark theme. No UI markup, application styles or screenshot pixels were
+altered. Browser captures were converted to WebP (composer quality 92,
+evidence quality 88) to stay under the 150 KB embed limit.
 
-product-composer-v1.webp:
-The actual Monitoring visual composer, with a configuration accepted by
-off_key_core.models.pipeline_compiler.compile_pipeline. Three inputs feed
-standard scaling, parallel PyOD Isolation Forest / Local Outlier Factor
-detectors, fixed-split calibration, the conformal alarm policy and evidence.
-The current UI groups the calibration step into the detection-rule card.
+The backend was not running. The browser answered the frontend's API reads
+from local fixtures; the component catalogue and design validation came from
+the repository's own pipeline_catalog(True) and validate_pipeline, so the
+composer shows what the real backend would return for this design.
 
-product-evidence-v2.webp:
-The actual Reporting reading-detail view, scrolled to its complete chart.
-Illustrative cooling-circuit pressure, flow and temperature were supplied
-through a local, unauthenticated preview fixture; no live systems or customer
-telemetry were accessed. The example has 360 observations at 10-second
-intervals, measurement noise, operating cycles, a brief pressure transient
-and a developing restriction followed by recovery. The displayed evidence is
-illustrative: Isolation Forest scores on synthetic inputs, ranked against
-a separate reference window, with a restarting power-betting statistic.
+product-composer-v2.webp:
+The actual Monitoring visual composer, opened on a saved "Cooling circuit"
+template with all three readings bound. Three inputs feed standard scaling,
+parallel PyOD Isolation Forest / Local Outlier Factor detectors, fixed-split
+calibration of the stronger detector, the conformal alarm policy (restarted
+power-betting e-process, threshold 100) and evidence. validate_pipeline
+accepts the design ("Complete"). The view is fitted to the graph and the
+catalogue tree is expanded to the three readings.
+
+product-evidence-v3.webp:
+The actual Reporting reading-detail view for the cooling circuit, filtered
+to the Pressure chart, with automatic averaging switched off and scrolled to
+the chart. Illustrative cooling-circuit pressure, flow and temperature:
+one hour of observations at 10-second intervals after a separate 24-minute
+reference window, measurement noise, 12-minute operating cycles, a brief
+pressure transient at about 20:00 and a gradually developing restriction
+(pressure up, flow down, temperature up) peaking at about 20:25, followed by
+recovery. No live systems or customer telemetry were accessed.
+The evidence is computed, not drawn: a cycle-invariant score (squared
+standardised residuals of pressure and temperature given flow, fitted on the
+reference window) ranked against the reference window as conformal
+p-values, with a power-betting e-process (epsilon 0.5) that restarts after
+each alarm at threshold 100. The transient raises one alarm at its peak;
+the restriction builds evidence over several minutes and raises three
+alarms near its peak; nothing else crosses the threshold.
 It is not a runtime benchmark or a claim about detection accuracy.
 The composer configuration and Reporting telemetry are separate examples.
 

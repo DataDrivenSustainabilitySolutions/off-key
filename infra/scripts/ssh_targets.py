@@ -33,6 +33,7 @@ def targets(inventory: dict) -> dict[str, dict]:
             "port": int(values.get("ansible_port") or 22),
             "user": str(values.get("ansible_user") or DEFAULT_USER),
             "groups": sorted(groups.get(host, [])),
+            "own_key": bool(values.get("ansible_ssh_private_key_file")),
         }
     return result
 
@@ -105,7 +106,14 @@ def describe(
             line += f"; not in the {other_name} inventory"
         else:
             same = all(match[key] == target[key] for key in ("address", "port", "user"))
-            line += f"; same as {other_name}: " + ("yes" if same else "no")
+            line += f"; same as {other_name}: " + (
+                "yes"
+                if same
+                else f"no, {other_name} uses {match['user']}@{match['address']} "
+                f"port {match['port']}"
+            )
+    if target.get("own_key"):
+        line += "; sets its own ansible_ssh_private_key_file, which the runner lacks"
     return line
 
 

@@ -37,11 +37,21 @@ class SshTargetTests(unittest.TestCase):
                 "port": 22,
                 "user": "deploy",
                 "groups": ["swarm_manager"],
+                "own_key": False,
             },
         )
         self.assertEqual(targets["worker"]["port"], 2222)
         self.assertEqual(
             targets["worker"]["groups"], ["swarm_backend", "swarm_frontend"]
+        )
+        self.assertFalse(targets["manager"]["own_key"])
+        laptop = ssh.targets(
+            {"_meta": {"hostvars": {"node": {"ansible_ssh_private_key_file": "~/k"}}}}
+        )
+        self.assertTrue(laptop["node"]["own_key"])
+        self.assertIn(
+            "sets its own ansible_ssh_private_key_file",
+            ssh.describe("node", laptop["node"], set(), None, None, "production"),
         )
         bare = ssh.targets({"_meta": {"hostvars": {"node": {}}}})
         self.assertEqual(bare["node"]["address"], "node")
@@ -72,7 +82,8 @@ class SshTargetTests(unittest.TestCase):
                 "manager", demo["manager"], set(), trusted, prod, "production"
             ),
             "SSH target manager (swarm_manager): deploy@100.64.0.1 port 22; "
-            "known-hosts entry: no; same as production: no",
+            "known-hosts entry: no; same as production: no, production uses "
+            "deploy@netcup-vps port 22",
         )
         self.assertEqual(
             ssh.describe(

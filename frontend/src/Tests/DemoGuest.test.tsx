@@ -52,6 +52,8 @@ describe('public demo access', () => {
     // The sidebar shows visitors an account row like a signed-in member's.
     const [menu, account] = screen.getAllByRole('button', { name: 'Demo menu' });
     expect(account?.textContent).toBe('DVDemo visitor');
+    // Visitors can always leave the demo for the public website.
+    expect(screen.getByRole('link', { name: 'Back to website' }).getAttribute('href')).toBe('https://aberration.app/');
     fireEvent.pointerDown(menu!, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     expect(await screen.findByText('Demo visitor · Read only')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Admin sign in' }));
@@ -63,6 +65,8 @@ describe('public demo access', () => {
     await screen.findByText('Public workspace');
     fireEvent.click(screen.getByRole('button', { name: 'Finish admin sign in' }));
     expect(await screen.findByRole('button', { name: 'Edit sources' })).toBeTruthy();
+    // Members work in their own installation; only the demo links back to the website.
+    expect(screen.queryByRole('link', { name: 'Back to website' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'End session' }));
     await screen.findByText('Public workspace');
     expect(screen.queryByRole('button', { name: 'Edit sources' })).toBeNull();

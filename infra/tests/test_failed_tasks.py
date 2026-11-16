@@ -64,6 +64,57 @@ class FailedTaskTests(unittest.TestCase):
             ["stack_deploy : Connect", "stack_deploy : Reload"],
         )
 
+    def test_a_known_cause_prints_only_its_fixed_description(self):
+        lines = [
+            "TASK [stack_prepare : Read the currently deployed frontend image] ***",
+            "fatal: [manager]: UNREACHABLE! => changed=false",
+            (
+                "  msg: 'Failed to connect to the host via ssh: deploy@100.64.0.1: "
+                "Host key verification failed.'"
+            ),
+            "  unreachable: true",
+            "TASK [Read every image a Swarm service still names] ***",
+            "fatal: [manager]: FAILED! => changed=false",
+            "  msg: 'Missing sudo password'",
+            "TASK [Check something] ***",
+            "fatal: [manager]: FAILED! => changed=false",
+            "  msg: private detail",
+            "TASK [Connect elsewhere] ***",
+            "fatal: [worker]: UNREACHABLE! => changed=false",
+            "  msg: private detail",
+        ]
+        self.assertEqual(
+            failed.failures(lines),
+            [
+                (
+                    "stack_prepare : Read the currently deployed frontend image",
+                    "host unreachable: SSH host key is not in the known hosts",
+                ),
+                (
+                    "Read every image a Swarm service still names",
+                    "sudo needs a password",
+                ),
+                ("Check something", None),
+                ("Connect elsewhere", "host unreachable"),
+            ],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "release.log"
+            log.write_text("\n".join(lines) + "\n")
+            printed = subprocess.run(
+                [sys.executable, ROOT / "scripts/failed_tasks.py", log],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+        self.assertNotIn("100.64.0.1", printed)
+        self.assertNotIn("private detail", printed)
+        self.assertIn(
+            "Failed Ansible task: Check something\n"
+            "Failed Ansible task: Connect elsewhere (host unreachable)\n",
+            printed,
+        )
+
     def test_only_a_fixed_readiness_check_name_is_printed(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)

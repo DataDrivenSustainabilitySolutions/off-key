@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { FileUp, History } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -12,11 +12,13 @@ import { formatInstant, formatSpan } from "./model";
 
 const ORIGIN = { csv: "CSV upload", history: "Recorded readings" } as const;
 
-export function DatasetList({ datasetHref, onCreated, scope, readings }: {
+export function DatasetList({ datasetHref, onCreated, scope, readings, selection }: {
   datasetHref: (id: string) => string;
   onCreated: (dataset: DatasetView) => void;
   scope?: string;
   readings: SystemStream[];
+  /** The catalogue selection, with a link to its readings. */
+  selection?: ReactNode;
 }) {
   const { can } = useAuth();
   const editable = can("use_dojo");
@@ -36,7 +38,8 @@ export function DatasetList({ datasetHref, onCreated, scope, readings }: {
     <header className="dj-header">
       <div><h1>Dojo</h1>
         <p>Replay detection designs over recorded or uploaded data, mark the problems you already know about, and compare
-          which design finds them before you start monitoring.</p></div>
+          which design finds them before you start monitoring.</p>
+        {selection}</div>
       {editable && <div className="dj-actions">
         <button type="button" className="dj-action" onClick={() => setImporting("csv")}><FileUp size={15} />Upload CSV</button>
         <button type="button" className="dj-action" onClick={() => setImporting("history")}><History size={15} />Copy recorded readings</button>

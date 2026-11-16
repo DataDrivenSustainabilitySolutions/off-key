@@ -9,6 +9,7 @@ import { DOJO_LIMITS } from "@/types/dojo.generated";
 import { fromLocalInput } from "@/features/dojo/model";
 
 const access = vi.hoisted(() => ({ allowed: true, monitors: false, guest: false }));
+const selectSource = vi.hoisted(() => vi.fn());
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: !access.guest, isGuest: access.guest,
   can: (permission: string) => !access.guest && access.allowed && (permission === "use_dojo" || access.monitors && permission === "manage_monitors") }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
@@ -21,11 +22,13 @@ vi.mock("@/features/charts/EChart", () => ({
 }));
 vi.mock("@/features/workspace/catalogue-context", () => ({
   useCatalogue: () => ({
-    selected: { key: "pump", kind: "device", label: "Pump 1", streamIds: ["r1", "r2", "r3"] },
+    selected: { key: "pump", kind: "device", entityKind: "device", label: "Pump 1", streamIds: ["r1", "r2", "r3"] },
+    streamIds: ["r1", "r2", "r3"],
+    selectSource,
     document: { readings: [
-      { id: "r1", label: "Voltage", unit: "V", value_type: "number" },
-      { id: "r2", label: "Current", unit: "A", value_type: "number" },
-      { id: "r3", label: "Mode", value_type: "text" },
+      { id: "r1", label: "Voltage", unit: "V", value_type: "number", device_id: "pump-1", broker_id: "b" },
+      { id: "r2", label: "Current", unit: "A", value_type: "number", device_id: "pump-1", broker_id: "b" },
+      { id: "r3", label: "Mode", value_type: "text", device_id: "pump-1", broker_id: "b" },
     ] },
   }),
 }));
@@ -163,6 +166,15 @@ describe("Dojo workspace", () => {
     await act(async () => { resolveA({ draft: a }); });
     fireEvent.click(screen.getByRole("button", { name: "Start run" }));
     await waitFor(() => expect(dojoApi.createRun).toHaveBeenCalledWith(expect.objectContaining({ definition: b, name: "B" })));
+  });
+
+  it("shows the catalogue selection with a link to its readings page and a way to clear it", async () => {
+    mount("/dojo");
+    const scope = await screen.findByLabelText("Selected source");
+    within(scope).getByText("Pump 1");
+    expect(within(scope).getByRole("link", { name: "Device readings" }).getAttribute("href")).toBe("/details/pump-1?source=pump");
+    fireEvent.click(within(scope).getByRole("button", { name: "Clear selection" }));
+    expect(selectSource).toHaveBeenCalledWith(null);
   });
 
   it("lists datasets and copies the selected entity's numeric readings", async () => {

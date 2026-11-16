@@ -105,7 +105,7 @@ jobs:
         run: |
           mkdir "$RUNNER_TEMP/release-tools" "$RUNNER_TEMP/release-outcome"
           cp infra/scripts/failed_tasks.py infra/scripts/check_application.py infra/scripts/task_timings.py \
-            infra/scripts/release_alert.py infra/ansible/retain-release-log.yml infra/ansible/validate-inventory.yml \
+            infra/scripts/release_alert.py infra/scripts/ssh_targets.py infra/ansible/retain-release-log.yml infra/ansible/validate-inventory.yml \
             "$RUNNER_TEMP/release-tools/"
           echo "OFFKEY_RELEASE_TOOLS=$RUNNER_TEMP/release-tools" >> "$GITHUB_ENV"
           echo "OFFKEY_RELEASE_OUTCOME=$RUNNER_TEMP/release-outcome" >> "$GITHUB_ENV"
@@ -163,6 +163,8 @@ jobs:
           ACTION: ${{ inputs.action || 'deploy' }}
           BOOTSTRAP: ${{ inputs.bootstrap || false }}
           RESET_DATABASE: ${{ inputs.reset_database || '' }}
+          # Only to compare SSH targets after a failure; never written beside the demo's inventory.
+          OFFKEY_PROD_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
           ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
           ANSIBLE_CALLBACKS_ENABLED: ansible.posix.profile_tasks
@@ -178,6 +180,17 @@ jobs:
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
           vault=(-i inventories/demo/hosts.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password")
           log="$OFFKEY_DEPLOY_DIRECTORY/demo.log"
+          # After a failure, name each SSH target, whether the runner trusts its host key,
+          # and whether production reaches the same address, port and user.
+          ssh_targets() {
+            local dir="$OFFKEY_DEPLOY_DIRECTORY/ssh-targets"
+            mkdir -p "$dir/prod"
+            uv run --frozen ansible-inventory "${vault[@]}" --list > "$dir/demo.json" 2> /dev/null \
+              || { echo 'The demo inventory could not be read.'; return 0; }
+            printf '%s\n' "$OFFKEY_PROD_INVENTORY" > "$dir/prod/hosts.yml"
+            uv run --frozen ansible-inventory -i "$dir/prod/hosts.yml" --list > "$dir/prod.json" 2> /dev/null || rm -f "$dir/prod.json"
+            python3 "$OFFKEY_RELEASE_TOOLS/ssh_targets.py" "$dir/demo.json" --known-hosts "$OFFKEY_DEPLOY_DIRECTORY/known-hosts" --compare "$dir/prod.json" || true
+          }
           # An automatic run skips a demo whose runtime files match its last verified release.
           demo_changed() {
             uv run --frozen ansible-playbook deployment-needed.yml "${vault[@]}" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 \
@@ -193,7 +206,7 @@ jobs:
             exit 0
           else
             uv run --frozen ansible-playbook deploy.yml "${vault[@]}" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "release_reset_database=$RESET_DATABASE" > "$log" 2>&1 \
-              || { echo 'Demo release failed; inspect private server records and retry the attempted SHA.'; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$log"; exit 1; }
+              || { echo 'Demo release failed; inspect private server records and retry the attempted SHA.'; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$log"; ssh_targets; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$log"; exit 1; }
           fi
           python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$log"
       - name: Deploy only runtime changes and verify production

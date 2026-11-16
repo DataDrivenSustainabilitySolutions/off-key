@@ -317,8 +317,8 @@ describe("service-centred monitoring workspace", () => {
     const list = within(sidebar).getByRole("list", { name: "Search results" });
     fireEvent.scroll(list.parentElement!, { target: { scrollTop: 72 } });
     const selection = new URLSearchParams(router.state.location.search).get("source");
-    // With a source selected, its preview carries the Sources page heading.
-    for (const [section, heading] of [["Sources", "Room station"], ["Reporting", "Reporting"], ["Monitoring", "Monitoring"]]) {
+    // With a source selected, its header carries the page heading on Sources and Monitoring alike.
+    for (const [section, heading] of [["Sources", "Room station"], ["Reporting", "Reporting"], ["Monitoring", "Room station"]]) {
       fireEvent.click(screen.getByRole("link", { name: section }));
       await screen.findByRole("heading", { name: heading, level: 1 });
       expect(window.document.title).toBe(`Room station · ${section} · Aberration`);
@@ -434,7 +434,7 @@ describe("service-centred monitoring workspace", () => {
     expect(screen.getByRole("link", { name: "Other service" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "weather, open" }));
     expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show all sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
     expect(await screen.findByRole("link", { name: "Other service" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
   });
@@ -510,27 +510,27 @@ describe("hierarchical explorer workspace", () => {
 
   it("opens a generic entity from its stable-ID directory link and clears the link when selecting a reading", async () => {
     mount("/?entity=station");
-    expect(await screen.findByRole("region", { name: "Entity preview" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Device preview" })).toBeTruthy();
     expect(screen.getByText("Entity ID").nextElementSibling?.textContent).toBe("station");
     expect(screen.getByTestId("location").textContent).toBe("?entity=station");
     fireEvent.click(await screen.findByRole("button", { name: "Expand weather" }));
     fireEvent.click(await screen.findByRole("button", { name: "Air temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Device preview" })).toBeNull();
     expect(new URLSearchParams(screen.getByTestId("location").textContent ?? "").has("entity")).toBe(false);
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("closes a linked entity without reopening it and reports missing stable IDs honestly", async () => {
     const view = mount("/?entity=station");
-    await screen.findByRole("region", { name: "Entity preview" });
-    fireEvent.click(screen.getByRole("button", { name: "Hide source details" }));
+    await screen.findByRole("region", { name: "Device preview" });
+    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
     expect(new URLSearchParams(screen.getByTestId("location").textContent ?? "").has("entity")).toBe(false);
-    expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Device preview" })).toBeNull();
     view.unmount();
     mount("/?entity=missing");
     expect(await screen.findByText("Device not found.")).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Device preview" })).toBeNull();
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
@@ -568,7 +568,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.getByRole("button", { name: "weather, open" }).getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("button", { name: "Air temperature, preview" })).toBeNull();
     expect(screen.getByRole("region", { name: "Reading preview" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Show all sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
   });

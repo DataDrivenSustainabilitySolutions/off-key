@@ -1,5 +1,5 @@
-import { lazy, Suspense, useMemo, useState } from "react";
-import { ArrowLeft, Circle, Plug, Plus, RotateCw, Square } from "lucide-react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { Circle, Plug, Plus, RotateCw, Square } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { SystemLiveControls } from "./SystemLiveControls";
@@ -10,10 +10,11 @@ import { POLL_SECONDS, startRecording, stopRecording } from "./recordingEdits";
 import { BrokerCheckMark } from "./BrokerCheck";
 import { checkProblem, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
+import { WorkspaceBack } from "../workspace/WorkspaceBack";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { catalogueSelectionLabel } from "../workspace/catalogue-navigation";
 import { systemApi } from "@/domain/system/systemApi";
-import type { SystemDocument, SystemRuntime } from "@/types/system";
+import type { SystemDocument, SystemRuntime, SystemStream } from "@/types/system";
 import "./sources.css";
 import { SourceIcon } from "@/components/source-icons/SourceIcon";
 import { setSourceAppearance } from "@/domain/system/sourceAppearance";
@@ -36,10 +37,13 @@ const canRetry = (state?: string) => state === "error" || state === "reconnectin
 const enabledReadings = (document: SystemDocument, runtime: SystemRuntime | undefined, id: string) =>
   document.readings.filter(stream => stream.broker_id === id && (runtime?.bindings?.[stream.id]?.policy.mode ?? "off") !== "off").length;
 
-export function SourcesWorkspace() {
+/** Header actions for the selected source, given by the page so that this tab stays free of other tabs. */
+export type SourceActions = (scope: string, readings: SystemStream[]) => ReactNode;
+
+export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActions } = {}) {
   const [params] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
-    openEditor, selectSource, setExpanded } = useCatalogue();
+    openEditor, selectSource, setExpanded, favourites, toggleFavourite } = useCatalogue();
   const runtime = system.snapshot?.runtime;
   const scope = useMemo(() => scopeForNode(selected), [selected]);
   // MQTT topic policies apply across the whole broker, even when reached through an entity.
@@ -88,6 +92,11 @@ export function SourcesWorkspace() {
       <Circle size={12} />{busy ? "Starting…" : "Record"}</Button>;
   };
   const safeReturn = safeServiceReturn(params.get("returnTo"));
+  const favouriteReading = !!selected && favourites.some(item => item.kind === "reading" && item.id === selected.objectId);
+  const previewReadings = useMemo(() => {
+    const chosen = new Set(streamIds ?? []);
+    return document.readings.filter(stream => chosen.has(stream.id));
+  }, [document.readings, streamIds]);
   useDocumentTitle(selectionMissing ? "Source not found" : catalogueSelectionLabel(document, selected), "Sources");
 
   const rename = async (kind: Parameters<typeof system.rename>[0], id: string, label: string) => {
@@ -113,7 +122,7 @@ export function SourcesWorkspace() {
   return <main className="ex-main-content" aria-label="Sources workspace">
     {/* A selected source's preview carries the page title; the heading row keeps only the way back. */}
     <div className="ex-workspace-heading">{selected || selectionMissing
-      ? <button type="button" className="source-back" onClick={() => selectSource(null)}><ArrowLeft size={14} aria-hidden="true" />Sources</button>
+      ? <WorkspaceBack label="Sources" />
       : <h1>Sources</h1>}<div className="ex-workspace-actions">
       {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
       {selectedBroker && system.canEdit && canRetry(selectedState) && <Button variant="outline" size="sm"
@@ -139,10 +148,11 @@ export function SourcesWorkspace() {
       <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
         canEdit={system.canEdit} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
         onAppearanceChange={appearance => system.save(setSourceAppearance(document, selected, appearance), system.revision ?? 0)}
-        runtime={runtime} connectionStatusOnly pageTitle
-        facts={scope && !system.canEdit ? configuration : undefined}
-        collectionControls={scope && !system.canEdit ? undefined : configuration}
-        connectionCheck={selectedBroker && !selectedState ? checkProblem(brokerChecks.checks[selectedBroker]) : undefined} />
+        runtime={runtime} favourite={favouriteReading} onFavourite={id => toggleFavourite("reading", id)}
+        actions={sourceActions?.(catalogueSelectionLabel(document, selected) ?? selected.label, previewReadings)}
+        connectionCheck={selectedBroker && !selectedState ? checkProblem(brokerChecks.checks[selectedBroker]) : undefined}>
+        {configuration}
+      </Preview>
     </Suspense> : <section aria-label="Broker overview" className="source-overview">
       <p className="ex-muted">Record a broker to keep its readings, also while you are signed out.</p>
       {!document.brokers.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}

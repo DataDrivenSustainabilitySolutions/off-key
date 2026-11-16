@@ -82,12 +82,6 @@
 .app-drawer > .app-sidebar { min-width: 0; box-shadow: var(--shadow-dialog); }
 
 /* Pages */
-.workspace-source-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 22px 0; font-size: var(--text-caption); }
-.workspace-source-scope > small { margin-right: -6px; color: var(--ex-muted); font-size: var(--text-caption); }
-.workspace-source-scope > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-weight: 500; }
-.workspace-source-scope button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--ex-line); border-radius: var(--radius-control); color: var(--ex-muted); }
-.workspace-source-scope button:hover { background: var(--ex-hover); }
-.workspace-source-scope.is-compact { margin: 0; }
 .workspace-loading { padding: 40px 48px; color: var(--ex-muted); }
 
 @media (max-width: 1050px) {
@@ -106,7 +100,6 @@
   /* A page that sets its own spacing still leaves room under the sidebar button. */
   .app-main .app-page-shell > .app-page-content { padding-top: 56px; }
   .app-main > .ex-banner:first-child { margin-top: 56px; }
-  .workspace-source-scope { margin: 18px 0; }
   .workspace-loading { padding: 56px 20px 28px; }
 }
 

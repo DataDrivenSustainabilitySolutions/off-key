@@ -1,2 +1,2 @@
 # Documentation image and local preview toolchain; Dependabot keeps it current.
-zensical==0.1.0
+zensical==0.1.1

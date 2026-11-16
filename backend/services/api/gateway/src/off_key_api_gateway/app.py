@@ -256,7 +256,7 @@ def build_app(
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     app.add_exception_handler(DeploymentInProgressError, deployment_in_progress)
 
-    # Added innermost first: requests pass CORS, the correlation ID, the
+    # Added innermost first: requests pass CORS, metrics, the correlation ID, the
     # per-client rate limit, the body size limit, GZip, SlowAPI and request
     # logging in that order. The two limits answer before routing, so they
     # also cover anonymous requests that authentication would reject later.

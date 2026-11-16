@@ -11,6 +11,7 @@ from off_key_api_gateway.app import build_app
 from off_key_api_gateway.settings import AppSettings
 from off_key_core.config.logs import CorrelationIdMiddleware
 from off_key_core.db.maintenance import DeploymentInProgressError
+from off_key_core.metrics import HttpMetricsMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -21,6 +22,7 @@ def test_middleware_runs_cors_first_and_request_logging_last():
 
     assert [middleware.cls for middleware in app.user_middleware] == [
         CORSMiddleware,
+        HttpMetricsMiddleware,
         CorrelationIdMiddleware,
         ClientRateLimitMiddleware,
         BodySizeLimitMiddleware,

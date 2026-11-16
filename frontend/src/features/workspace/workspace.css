@@ -103,6 +103,8 @@
   .app-sidebar-category { max-height: none; flex-shrink: 0; }
   .app-sidebar-catalogue { flex: 1 0 max(320px, 60dvh); }
   .app-main :is(.ex-main-content, .app-page-content) { padding: 56px 20px 28px; }
+  /* A page that sets its own spacing still leaves room under the sidebar button. */
+  .app-main .app-page-shell > .app-page-content { padding-top: 56px; }
   .app-main > .ex-banner:first-child { margin-top: 56px; }
   .workspace-source-scope { margin: 18px 0; }
   .workspace-loading { padding: 56px 20px 28px; }

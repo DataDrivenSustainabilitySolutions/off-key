@@ -200,62 +200,73 @@ def exercise_graph(client, entity, service_id, run_id, batch):
         int(os.getenv("E2E_SOURCE_MQTT_PORT", "1884")),
     )
     publisher.loop_start()
+
+    def publish_frame(index):
+        for key, value in (
+            ("current", 1.0 + batch + index / 100),
+            ("temperature", 20.0 + batch + index / 100),
+        ):
+            message = publisher.publish(entity.topics[key], str(value), qos=1)
+            message.wait_for_publish(timeout=5)
+            assert message.is_published()
+
     try:
         # Pace the frames across several diagnostic sampling intervals. Each
         # release starts a new run, which must warm up and calibrate for itself.
         for index in range(30):
-            for key, value in (
-                ("current", 1.0 + batch + index / 100),
-                ("temperature", 20.0 + batch + index / 100),
-            ):
-                message = publisher.publish(entity.topics[key], str(value), qos=1)
-                message.wait_for_publish(timeout=5)
-                assert message.is_published()
+            publish_frame(index)
             time.sleep(0.1)
+        deadline = time.monotonic() + 120
+        state = None
+        while time.monotonic() < deadline:
+            state = get_json(client, f"/v1/monitors/{service_id}/pipeline/state")
+            if state:
+                assert state["run_id"] == run_id
+                assert state["phase"] != "failed", state
+                learning = state.get("adaptive_learning", {})
+                observation = state.get("observation")
+                # Each log read refreshes the observation, so a score-ready sample
+                # can appear before the run has learned from every paced frame;
+                # wait for enough of them instead of judging the first sample.
+                if (
+                    learning.get("state") == "operational"
+                    and learning.get("model_updates", 0) >= 8
+                    and observation is not None
+                    and observation["sequence_number"] >= 8
+                    and observation["passes"]["score"]["detector"]["state"] == "ready"
+                ):
+                    assert learning["ready"]
+                    assert state["sequence_number"] >= observation["sequence_number"]
+                    assert state["nodes"]["detector"]["score_count"] > 0
+                    assert len(observation["input_timestamps"]) == 2
+                    score = observation["passes"]["score"]
+                    assert (
+                        1.0 + batch
+                        <= score["input"]["output"]["processed"]
+                        <= (1.29 + batch)
+                    )
+                    assert (
+                        20.0 + batch
+                        <= score["input"]["output"]["raw"]
+                        <= (20.29 + batch)
+                    )
+                    assert score["detector"]["input"] == score["joined"]["output"]
+                    assert set(score["detector"]["input"]) == {"processed", "raw"}
+                    assert (
+                        score["detector"]["input"]["raw"]
+                        == score["raw"]["output"]["raw"]
+                        == score["input"]["output"]["raw"]
+                    )
+                    return
+            # The compatible release predates sampling every step of a log read:
+            # it samples at most once a second, so a burst it reads within that
+            # second keeps the burst's first step. A frame per wait gives it a
+            # later step to sample, and costs the current release nothing.
+            publish_frame(29)
+            time.sleep(1)
     finally:
         publisher.disconnect()
         publisher.loop_stop()
-    deadline = time.monotonic() + 120
-    state = None
-    while time.monotonic() < deadline:
-        state = get_json(client, f"/v1/monitors/{service_id}/pipeline/state")
-        if state:
-            assert state["run_id"] == run_id
-            assert state["phase"] != "failed", state
-            learning = state.get("adaptive_learning", {})
-            observation = state.get("observation")
-            # Each log read refreshes the observation, so a score-ready sample
-            # can appear before the run has learned from every paced frame;
-            # wait for enough of them instead of judging the first sample.
-            if (
-                learning.get("state") == "operational"
-                and learning.get("model_updates", 0) >= 8
-                and observation is not None
-                and observation["sequence_number"] >= 8
-                and observation["passes"]["score"]["detector"]["state"] == "ready"
-            ):
-                assert learning["ready"]
-                assert state["sequence_number"] >= observation["sequence_number"]
-                assert state["nodes"]["detector"]["score_count"] > 0
-                assert len(observation["input_timestamps"]) == 2
-                score = observation["passes"]["score"]
-                assert (
-                    1.0 + batch
-                    <= score["input"]["output"]["processed"]
-                    <= (1.29 + batch)
-                )
-                assert (
-                    20.0 + batch <= score["input"]["output"]["raw"] <= (20.29 + batch)
-                )
-                assert score["detector"]["input"] == score["joined"]["output"]
-                assert set(score["detector"]["input"]) == {"processed", "raw"}
-                assert (
-                    score["detector"]["input"]["raw"]
-                    == score["raw"]["output"]["raw"]
-                    == score["input"]["output"]["raw"]
-                )
-                return
-        time.sleep(1)
     pytest.fail(f"Restored graph did not process coherent source data: {state}")
 
 

@@ -125,6 +125,8 @@ test("picker cancels, reports conflicts, resets, and fits a 320px screen", async
 test("appearance in the structure editor stays in the draft until Save changes", async ({ page }) => {
   const state = await installEditableCatalogue(page);
   await page.goto("/sources?entity=machine");
+  // Editing the structure sits with the source details, collapsed below the header on every tab.
+  await page.getByText("Source details", { exact: true }).click();
   await page.getByRole("button", { name: "Edit structure", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Edit catalogue", exact: true });
   const trigger = editor.getByRole("button", { name: "Change icon for Cooling pump", exact: true });

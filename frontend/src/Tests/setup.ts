@@ -1,5 +1,6 @@
 import { configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { resetBrowserVerification } from "@/lib/browser-verification";
 
 // A lazily loaded view appears no sooner than React's 300 ms Suspense fallback
 // throttle, its first import also transforms its module graph, and CI runs
@@ -79,4 +80,5 @@ afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   vi.useRealTimers();
+  resetBrowserVerification();
 });

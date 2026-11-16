@@ -13,7 +13,7 @@ import { getUserIdFromToken } from '@/auth/token';
 import { loginHref } from '@/auth/login-navigation';
 import { isPublicDemo } from '@/auth/demo';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
-import { BrowserVerificationError } from './browser-verification';
+import { browserVerificationRequired, followsUserAction, isBrowserVerificationRequired, verifyBrowser } from './browser-verification';
 
 
 export interface ApiIssue {
@@ -84,6 +84,13 @@ const createApiClient = (): AxiosInstance => {
   // Request interceptor to add auth token
   client.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
+      if (isBrowserVerificationRequired()) {
+        // Every Retry button refetches; once Cloudflare has challenged this page
+        // that cannot succeed, so a click becomes the page reload that can.
+        // Background polls stop here instead of hitting the challenge again.
+        if (followsUserAction()) verifyBrowser();
+        throw browserVerificationRequired();
+      }
       let token = tokenManager.getToken();
       const previousToken = token;
       // Remembered tokens live in memory, so a fresh tab restores one first.
@@ -110,7 +117,7 @@ const createApiClient = (): AxiosInstance => {
       // keep their original status and leave the saved session intact.
       if (!axios.isAxiosError(error)) return Promise.reject(error);
       if (error.response?.headers?.['cf-mitigated'] === 'challenge') {
-        return Promise.reject(new BrowserVerificationError());
+        return Promise.reject(browserVerificationRequired());
       }
       // Handle 401 Unauthorized
       if (error.response?.status === 401) {

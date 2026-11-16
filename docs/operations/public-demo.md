@@ -30,6 +30,15 @@ permission failures do not trigger browser verification. Automated clients
 without clearance are challenged.
 The rule does not match production hostnames and needs no application widget key.
 
+The clearance cookie expires after the zone's **Challenge Passage** time
+(Security → Settings, 30 minutes by default). A page left open longer, such as
+an idle monitoring view, then has its background requests challenged. The app
+stops those requests, shows **Reload page**, and turns any **Retry** click into
+that reload, because only a page load can complete the check. To keep a visitor
+cleared through a session or event, raise Challenge Passage for the demo zone,
+for example to one day. Do not skip the rule for `/api`: that would open the API
+to automated clients the check is meant to keep out.
+
 The demo inventory lists its URL in `release_public_challenge_urls`. Deployment
 still requires database, application and worker readiness, then the external
 probe must receive HTTP 403 with `cf-mitigated: challenge`. A plain access-denied

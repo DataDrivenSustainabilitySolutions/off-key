@@ -6,6 +6,7 @@ import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "@/App.css";
 import { AuthProvider } from "@/auth/AuthContext";
+import { BrowserVerificationNotice } from "@/components/BrowserVerificationNotice";
 import { FullPageLoading } from "@/components/LoadingStates";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useToastPosition } from "@/hooks/use-toast-position";
@@ -19,6 +20,7 @@ const App = () => (
       <Suspense fallback={<FullPageLoading message="Loading page..." />}>
         <RouterProvider router={router} />
       </Suspense>
+      <BrowserVerificationNotice />
     </AuthProvider>
     <AppToaster />
   </ThemeProvider>

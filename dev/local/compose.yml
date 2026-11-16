@@ -59,7 +59,9 @@ services:
 
   emqx-main:
     volumes: !override
-      - local_emqx_data:/opt/emqx/data
+      # Renamed when local EMQX moved from 6.x back to 5.8: a 6.x data
+      # directory does not boot on 5.8, so the old volume is left untouched.
+      - local_emqx58_data:/opt/emqx/data
     ports:
       - "127.0.0.1:${LOCAL_MQTT_PORT:-1885}:1883"
       - "127.0.0.1:${LOCAL_MQTT_WS_PORT:-8085}:8083"
@@ -152,4 +154,4 @@ services:
 
 volumes:
   local_mailpit_data:
-  local_emqx_data:
+  local_emqx58_data:

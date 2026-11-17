@@ -6,7 +6,11 @@ import { Label } from "@/components/ui/label";
 import { useConfirm } from "@/hooks/use-confirm";
 import { createAgent, getAgents, revokeAgent, updateAgent, type Agent, type AgentStarts } from "@/lib/agent-api";
 import { getApiUrl } from "@/lib/api-config";
+import { apiUtils } from "@/lib/api-client";
+import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
+import type { MonitorSummary, PipelineProposalList, PipelineProposalSummary } from "@/types/pipelines.generated";
+import { agentActivity } from "./agentActivity";
 
 type Draft = { name: string; starts: AgentStarts };
 type Issued = { name: string; key: string };
@@ -33,12 +37,23 @@ export function AgentSettings() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirm, confirmation] = useConfirm();
+  const [activity, setActivity] = useState<{ proposals: PipelineProposalSummary[]; monitors: MonitorSummary[] }>();
 
   useEffect(() => {
     let active = true;
     getAgents().then(list => { if (active) setAgents(list); })
       .catch(error => { if (active) setError(getErrorMessage(error)); });
     return () => { active = false; };
+  }, []);
+
+  // What each agent did is a hint beside its key; the keys read without it.
+  useEffect(() => {
+    const controller = new AbortController();
+    const read = { signal: controller.signal, redirectOnUnauthorized: false };
+    void Promise.all([apiUtils.get<PipelineProposalList>("/v1/pipeline-proposals", read).then(list => list.items),
+      apiUtils.get<MonitorSummary[]>(API_CONFIG.ENDPOINTS.MONITORING.LIST, read)])
+      .then(([proposals, monitors]) => { if (!controller.signal.aborted) setActivity({ proposals, monitors }); }, () => undefined);
+    return () => controller.abort();
   }, []);
 
   const run = async (work: () => Promise<string>) => {
@@ -129,7 +144,8 @@ export function AgentSettings() {
       {agents.length ? <ul aria-label="Agents" className="app-settings-list">
         {agents.map(agent => <li key={agent.id}>
           <SettingsRow className="is-wrapping" label={agent.name}
-            detail={`Key ending in ${agent.key_hint}${agent.created_by ? ` · Created by ${agent.created_by}` : ""}`}>
+            detail={<><span className="block">{`Key ending in ${agent.key_hint}${agent.created_by ? ` · Created by ${agent.created_by}` : ""}`}</span>
+              {activity && <span className="block">{agentActivity(agent.name, activity.proposals, activity.monitors)}</span>}</>}>
             <select aria-label={`Starting monitors for ${agent.name}`} className="app-settings-select" value={agent.starts} disabled={busy}
               onChange={(event) => void allow(agent, event.target.value as AgentStarts)}>{levels}</select>
             <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" disabled={busy}

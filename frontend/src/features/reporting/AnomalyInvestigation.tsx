@@ -19,6 +19,7 @@ import type { AlarmDetail, TelemetryTypeData } from '@/types/charger';
 import { anomalyDescription, anomalyHref, anomalyTriggers, copyAnomalyLink, evidenceNumber } from './model';
 import { useAlarmDeletion } from './useAlarmDeletion';
 import { getEventReadings } from './readings';
+import { MonitorWatches } from './MonitorWatches';
 import './reporting.css';
 
 export default function AnomalyInvestigation({ eventId }: { eventId?: string }) {
@@ -92,6 +93,7 @@ function EventView({ detail }: { detail: AlarmDetail }) {
         {evidence?.model_type && <div><dt>Model</dt><dd>{modelName(evidence.model_type)}</dd></div>}
         {triggers.map(trigger => <div key={trigger.name} className="rp-trigger"><dt>{trigger.name}</dt><dd>{trigger.value} <span>threshold {trigger.threshold}</span></dd></div>)}
       </dl>
+      {alarm.monitor_id && <MonitorWatches monitorId={alarm.monitor_id} />}
       <div className="rp-event-links">
         {signal && <Link to={anomalyHref(alarm.alarm_id)} state={{ reportingReturn: back }}>Show all involved signals</Link>}
         {source && <Link to={detailsHref(source)}>All {source.kind} readings</Link>}

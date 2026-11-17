@@ -24,6 +24,7 @@ import { ForecastControls } from "./ForecastControls";
 import { forecastLeadKey } from "@/features/charts/forecast-evidence";
 import { FORECAST_VIEW_LABELS, type ForecastView } from "@/features/charts/forecast-future";
 import { ForecastViewButton } from "./ForecastViewButton";
+import { historyMarkers } from "@/domain/monitoring/monitorOrigin";
 
 type Inspection = { startMs: number; endMs: number };
 
@@ -61,10 +62,13 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const forecasts = completeModel.forecasts ?? [];
   const lead = forecasts.some(forecast => forecastLeadKey(forecast.lead) === chosenLead) ? chosenLead : forecastLeadKey(forecasts[0]?.lead ?? null);
   const intervalLabel = presentation.presentation?.intervalLabel ?? "Calibrated interval";
-  const model = useMemo(() => ({ ...completeModel, intervalLabel, forecastView, showResiduals,
+  const origin = service.origin;
+  const markers = useMemo(() => historyMarkers(origin?.history ?? []), [origin]);
+  const rationale = origin?.rationale ?? undefined;
+  const model = useMemo(() => ({ ...completeModel, intervalLabel, forecastView, showResiduals, markers, rationale,
     forecasts: completeModel.forecasts?.filter(forecast => forecastLeadKey(forecast.lead) === lead),
     secondarySeries: completeModel.forecasts?.length && !showScores ? [] : completeModel.secondarySeries,
-  }), [completeModel, intervalLabel, lead, showScores, forecastView, showResiduals]);
+  }), [completeModel, intervalLabel, lead, showScores, forecastView, showResiduals, markers, rationale]);
   const domain = getChartDomain(model.extent);
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
     + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}`

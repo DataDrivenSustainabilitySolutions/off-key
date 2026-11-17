@@ -1,5 +1,6 @@
 import { Bot, User } from "lucide-react";
 import { RelativeTime } from "@/components/RelativeTime";
+import { stepLabels } from "@/domain/monitoring/monitorOrigin";
 import type { MonitorRationale, MonitorRecord } from "@/types/pipelines.generated";
 import "./rationale.css";
 
@@ -26,9 +27,6 @@ export function RationaleFields({ rationale }: { rationale: MonitorRationale }) 
   </dl>;
 }
 
-const happened = (record: MonitorRecord) =>
-  record.event === "stopped" ? "Stopped" : record.shadow ? "Started in shadow" : "Started";
-
 /**
  * What a monitor watches and why, under the source header: one line that names who designed it,
  * and on opening the four fields and each start and stop. Closed by default, so the chart stays first.
@@ -40,6 +38,8 @@ export function RationaleCard({ author, authorKind, rationale, history = [], ope
   history?: MonitorRecord[];
   open?: boolean;
 }) {
+  const labels = stepLabels(history);
+  const steps = history.map((record, index) => ({ record, label: labels[index]! })).reverse();
   return <details className="rationale-card" open={open || undefined}>
     <summary>
       <span className="rationale-watches">
@@ -50,8 +50,8 @@ export function RationaleCard({ author, authorKind, rationale, history = [], ope
     <div className="rationale-body">
       {rationale && <RationaleFields rationale={rationale} />}
       {history.length > 0 && <ol className="rationale-history" aria-label="Starts and stops">
-        {history.slice().reverse().map((record, index) => <li key={`${record.at}-${index}`}>
-          <span><strong>{happened(record)}</strong> by {record.author_kind === "agent" ? `the agent ${record.author}` : record.author}{" "}
+        {steps.map(({ record, label }, index) => <li key={`${record.at}-${index}`}>
+          <span><strong>{label}</strong> by {record.author_kind === "agent" ? `the agent ${record.author}` : record.author}{" "}
             <RelativeTime value={record.at} />{record.test_run_id ? " · after a test" : ""}</span>
           {record.note && <small>{record.note}</small>}
         </li>)}

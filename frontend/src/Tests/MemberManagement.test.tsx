@@ -6,7 +6,7 @@ import Account from "@/features/account/AccountSettings";
 import Registration from "@/pages/Registration";
 
 const everything = ["manage_sources", "manage_monitors", "manage_alarms", "manage_members"];
-const { auth, getMembers, inviteMember, updateMember, removeMember, getRoles, getPermissions, createRole, updateRole, deleteRole, post,
+const { auth, getMembers, inviteMember, updateMember, removeMember, getRoles, getPermissions, createRole, updateRole, deleteRole, post, get,
   getAgents, createAgent, updateAgent, revokeAgent } = vi.hoisted(() => {
   const auth = {
     member: { id: 1, email: "admin@example.com", role: "admin", permissions: [] as string[] },
@@ -14,7 +14,7 @@ const { auth, getMembers, inviteMember, updateMember, removeMember, getRoles, ge
     logout: vi.fn(), retryAuthentication: vi.fn(),
   };
   return {
-    auth, getMembers: vi.fn(), inviteMember: vi.fn(), updateMember: vi.fn(), removeMember: vi.fn(), post: vi.fn(),
+    auth, getMembers: vi.fn(), inviteMember: vi.fn(), updateMember: vi.fn(), removeMember: vi.fn(), post: vi.fn(), get: vi.fn(),
     getRoles: vi.fn(), getPermissions: vi.fn(), createRole: vi.fn(), updateRole: vi.fn(), deleteRole: vi.fn(),
     getAgents: vi.fn(), createAgent: vi.fn(), updateAgent: vi.fn(), revokeAgent: vi.fn(),
   };
@@ -27,7 +27,7 @@ vi.mock("@/components/AuthLayout", () => ({
 }));
 vi.mock("@/lib/member-api", () => ({ getMembers, inviteMember, updateMember, removeMember, getRoles, getPermissions, createRole, updateRole, deleteRole }));
 vi.mock("@/lib/agent-api", () => ({ getAgents, createAgent, updateAgent, revokeAgent }));
-vi.mock("@/lib/api-client", () => ({ apiUtils: { post } }));
+vi.mock("@/lib/api-client", () => ({ apiUtils: { post, get } }));
 
 const member = { id: 2, email: "member@example.com", role: "user", is_active: true, is_verified: true };
 const roles = [
@@ -49,6 +49,10 @@ beforeEach(() => {
   updateMember.mockResolvedValue(member);
   removeMember.mockResolvedValue(undefined);
   post.mockResolvedValue({ message: "Accepted" });
+  // What each agent did, beside its key.
+  get.mockImplementation(async (url: string) => url === "/v1/pipeline-proposals"
+    ? { items: [{ author: "Night shift agent", author_kind: "agent", status: "open" }] }
+    : [{ id: "s1", active: true, shadow: true, origin: { author: "Night shift agent", author_kind: "agent" } }]);
   getAgents.mockReset().mockResolvedValue([night]);
   createAgent.mockReset().mockImplementation(async (name: string, starts: string) =>
     ({ ...night, id: 8, name, key_hint: "Zr4t", starts, key: "offkey_secretZr4t" }));
@@ -259,6 +263,7 @@ it("allows a key to start monitors and revokes it after confirmation", async () 
   const agents = await screen.findByRole("region", { name: "Agents" });
   const allow = await within(agents).findByRole("combobox", { name: "Starting monitors for Night shift agent" }) as HTMLSelectElement;
   expect(allow.value).toBe("nothing");
+  expect(await within(agents).findByText(/1 proposal \(1 waiting\) · 1 monitor running \(1 in shadow\)/)).toBeTruthy();
   // Shadow lies between proposing and starting live: the key starts monitors that raise no alarm.
   fireEvent.change(allow, { target: { value: "shadow" } });
   await waitFor(() => expect(updateAgent).toHaveBeenCalledExactlyOnceWith(7, "shadow"));

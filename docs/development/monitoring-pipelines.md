@@ -110,7 +110,13 @@ it, which opens into the four fields and each start and stop. The same fields
 and author chip are the body of a proposal. A shadow run's Overview
 (`ShadowReview.tsx`) shows since when it runs, its muted alarm episodes from
 `/v1/evidence/chart?alarm=true` and how many a day, beside the evidence its
-rationale gave, with **Take live** (the Pipeline tab) and **Stop**.
+rationale gave, with **Take live** (the Pipeline tab) and **Stop**. The Evidence
+chart rules each step across its first reading, named by `stepLabels`
+(`domain/monitoring/monitorOrigin.ts`: a start after a start retunes, or takes a
+shadow run live), and an alarm's tooltip ends with what the monitor watches and
+its limits. An anomaly in Reporting shows the card of the monitor that raised it,
+and the Agents settings count each agent's proposals and the monitors it
+designed that run.
 
 In the app a proposal is a design opened in the setup, not a second editor.
 `useOpenProposals` (`proposals.ts`) counts the waiting ones once a minute for

@@ -70,6 +70,24 @@ describe("joint monitoring history", () => {
     expect(text).toContain("Alarm: active");
   });
 
+  it("says what the monitor watches beside an alarm, and rules each start across the first reading", () => {
+    const { model } = build();
+    const rationale = { watches: "Room climate drifting.", limits: "Doors left open alarm." };
+    const markers = [{ timeMs: Date.parse(first), label: "Started in shadow" }, { timeMs: Date.parse(later), label: "Taken live" }];
+    const option = buildMonitoringChartOption({ model: { ...model, rationale, markers }, colors, timeZone: "UTC",
+      accessibleDescription: "Joint forest", layout: "monitoring", viewport: { mode: "live" } });
+    const format = (option.tooltip as { formatter: (params: unknown) => string }).formatter;
+    const alarmed = format([{ seriesName: "Joint anomaly score", data: model.secondarySeries[0]!.data[0] }]);
+    expect(alarmed.split("\n").slice(-2)).toEqual(["Watches: Room climate drifting.", "Limits: Doors left open alarm."]);
+    const quiet = format([{ seriesName: "Joint anomaly score", data: build([{ ...row, alarm: false }]).model.secondarySeries[0]!.data[0] }]);
+    expect(quiet).not.toContain("Watches");
+    type Line = { id?: string; markLine?: { data: Array<{ xAxis: number; label?: { formatter?: string } }> } };
+    const lines = (id: string) => ((option.series as Line[]).find(item => item.id === id)?.markLine?.data ?? [])
+      .flatMap(item => item.label?.formatter ? [item.label.formatter] : []);
+    expect(lines("reading:temperature")).toEqual(["Started in shadow", "Taken live"]);
+    expect(lines("reading:humidity")).toEqual([]);
+  });
+
   it("shows an alarm a Mute alarms step held back as an open dot and says so in hover", () => {
     const muted = { ...row, alarm: false, muted: true };
     const { model } = build([muted]);

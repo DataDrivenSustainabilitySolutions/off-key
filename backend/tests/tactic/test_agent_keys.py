@@ -123,6 +123,12 @@ def start_request(**fields) -> dict:
         "bindings": {"value": "reading-1"},
         "display_name": "Pump vibration",
         "idempotency_key": "one",
+        "rationale": {
+            "watches": "Vibration rising above its usual level.",
+            "why": "One streaming detector on the raw value.",
+            "evidence": "2 alarms in 3 days of history; no labels.",
+            "limits": "Misses slow drifts over weeks.",
+        },
     } | fields
 
 
@@ -137,7 +143,7 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
     reached = []
 
     class Activations:
-        async def apply(self, change):
+        async def apply(self, change, caller=None):
             reached.append((change.display_name, change.shadow))
             raise ValueError("Reached the activation service")
 
@@ -187,6 +193,13 @@ async def test_a_key_reaches_only_what_is_open_to_it(keys):
         status, body = await call("POST", "/pipelines/apply", json=start_request())
         assert status == 403 and "in shadow only" in body["detail"]
         assert reached == []
+        # A key says why it starts a monitor.
+        status, body = await call(
+            "POST",
+            "/pipelines/apply",
+            json=start_request(shadow=True, rationale=None),
+        )
+        assert status == 422 and body["detail"].startswith("A key starts a monitor")
         status, body = await call(
             "POST", "/pipelines/apply", json=start_request(shadow=True)
         )

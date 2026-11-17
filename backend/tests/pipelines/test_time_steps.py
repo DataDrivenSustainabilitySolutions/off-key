@@ -570,7 +570,9 @@ def test_time_steps_reach_real_detectors_and_resume_identically(strategy):
     try:
         for index in range(28):
             process(service, index)
-        if strategy == "static_baseline":
+        # Training may already have finished and been taken in while the
+        # last points were processed, which leaves no future to wait on.
+        if strategy == "static_baseline" and service._training_future is not None:
             service._training_future.result(timeout=30)
         result = process(service, 28)
         assert result.should_persist and math.isfinite(result.anomaly_score)

@@ -1038,3 +1038,22 @@ async def test_an_agent_reads_values_and_a_monitors_alarms(gateway, key, stores)
             True,
             ["r-power"],
         )
+
+
+def test_a_design_of_rules_alone_warms_up_only_its_calibration():
+    settings = {"training_window_size": 500, "calibration_window_size": 20}
+    dataset = {
+        "start_at": "2026-11-01T00:00:00+00:00",
+        "end_at": "2026-11-02T00:00:00+00:00",
+    }
+
+    def design(*components):
+        return {
+            "settings": settings,
+            "nodes": [{"kind": "detector", "component": item} for item in components],
+        }
+
+    rules = mcp_tools._warm_up(design("rule.score"), dataset, 200, 1)
+    assert rules.startswith("Warm-up takes 20 of about 200 observations")
+    learned = mcp_tools._warm_up(design("rule.score", "detector:x"), dataset, 200, 1)
+    assert "warm-up of 520" in learned

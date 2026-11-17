@@ -73,6 +73,10 @@ score, 0, and every 1 alarms. Start it while the condition is false. A rolling \
 calibration such as calibrate.split, with policy.exceedance and several in a \
 row, goes quiet on a fault that lasts.
 
+A warning that observations "are skipped" means nothing is scored for them, \
+such as a division by 0. When that case is the incident (zero messages from a \
+broker), score it: write the case with if, or add a rule branch for it.
+
 Pass a design between tools as you received it: keep `definition` and `layout` \
 together, and let edit_design make a change instead of rewriting them by hand.\
 """
@@ -532,10 +536,22 @@ async def test_design(api: Api, args: Test):
 def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str:
     """How much of a replay the warm-up takes, said before the test runs."""
     settings = definition.get("settings") or {}
-    warm_up = sum(
-        settings.get(key) or 0
-        for key in ("training_window_size", "calibration_window_size")
+    detectors = [
+        node.get("component")
+        for node in definition.get("nodes") or []
+        if node.get("kind") == "detector"
+    ]
+    # Rules learn nothing, so a design of rules alone only calibrates.
+    rules_only = bool(detectors) and all(item == "rule.score" for item in detectors)
+    windows = (
+        ("calibration_window_size",)
+        if rules_only
+        else (
+            "training_window_size",
+            "calibration_window_size",
+        )
     )
+    warm_up = sum(settings.get(key) or 0 for key in windows)
     observations = points // max(inputs, 1)
     if not warm_up or not observations:
         return ""

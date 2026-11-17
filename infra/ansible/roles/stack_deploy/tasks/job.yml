@@ -17,6 +17,7 @@
       {{ ['docker', 'run', '--rm', '--network', stack_name ~ '_app-network']
          + release_job_environment_args + [release_job_image, '/app/bin/python', '-m', release_job_module]
          + release_job_arguments }}
+  delegate_to: "{{ release_job_host | default(inventory_hostname) }}"
   register: release_job_result
   changed_when: release_job_arguments[0] != 'status'
   # A preflight reports its own refusal; the caller explains it without the

@@ -14,6 +14,15 @@ persistence_any_enabled: >-
      or (persist_emqx_data | default(false) | bool)
      or (persist_emqx_log  | default(false) | bool) }}
 
+# One-off release containers (migrations, monitor maintenance and the RADAR
+# preflight replica) join the attachable app network from this node. A backend
+# worker has the CPU and memory for a preflight that the manager lacks; an
+# inventory without workers keeps them on the manager. Override per inventory
+# with release_job_node.
+release_job_host: >-
+  {{ release_job_node | default(groups.get('swarm_backend', []) | first
+     | default(groups['swarm_manager'][0], true), true) }}
+
 # Logs and Grafana are served behind the oauth2-gated grafana.<domain>.
 observability_active: "{{ observability_enabled | default(false) | bool }}"
 

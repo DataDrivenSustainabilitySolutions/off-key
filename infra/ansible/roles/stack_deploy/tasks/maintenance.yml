@@ -192,6 +192,7 @@
               '--network', stack_name ~ '_app-network']
              + release_preflight_environment_args
              + [mqtt_radar_image, '/app/bin/python', '-m', 'off_key_mqtt_radar.pool'] }}
+      delegate_to: "{{ release_job_host | default(inventory_hostname) }}"
       no_log: true
 
     - name: Stop active monitors with a durable restart plan
@@ -202,6 +203,7 @@
     - name: Remove the preflight-only replica
       command:
         argv: [docker, rm, --force, "{{ stack_name }}-release-preflight"]
+      delegate_to: "{{ release_job_host | default(inventory_hostname) }}"
       register: release_preflight_removed
       changed_when: release_preflight_removed.rc == 0
       failed_when: release_preflight_removed.rc != 0 and 'no such container' not in release_preflight_removed.stderr | lower

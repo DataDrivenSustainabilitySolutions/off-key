@@ -51,9 +51,11 @@
                   separately; inspect its services and use deploy-observability.yml to retry
                   or pause it. Application images and schema have not been rolled back.
       always:
-        - name: Remove temporary manager registry credentials
+        - name: Remove temporary registry credentials from the manager and release job node
           command:
             argv: [docker, logout, ghcr.io]
+          delegate_to: "{{ item }}"
+          loop: "{{ [inventory_hostname, release_job_host] | unique }}"
           changed_when: false
 
 # Runs only after the release above was verified and recorded. Cleanup never fails a

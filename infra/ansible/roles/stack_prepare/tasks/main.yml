@@ -89,6 +89,8 @@
 - name: Create content-addressed deployment secrets
   include_tasks: secrets.yml
 
+# The manager deploys with --with-registry-auth; the release job node pulls the
+# images its one-off `docker run` containers need. deploy.yml logs both out.
 - name: Log in to GitHub Container Registry
   command:
     argv:
@@ -100,5 +102,7 @@
       - --password-stdin
     stdin: "{{ ghcr_token }}"
     stdin_add_newline: false
+  delegate_to: "{{ item }}"
+  loop: "{{ [inventory_hostname, release_job_host] | unique }}"
   no_log: true
   changed_when: false

@@ -17,7 +17,7 @@ export function anomalyDescription(alarm: Alarm) {
   };
   if (alarm.alarm_type === 'silence') return {
     title: 'Reading went silent', strategy: 'Freshness check',
-    explanation: 'The reading sent no value for longer than its stale limit, so the monitor could not score it. It raises again only after the reading has sent a value and gone quiet anew.',
+    explanation: 'The reading sent nothing for 1.5 times the longest pause it had over the past day, so the monitor could not score it. It raises again only after the reading has sent a value and gone quiet anew.',
   };
   if (alarm.alarm_type.startsWith('ml_tailprob_')) return {
     title: 'Unusual observation', strategy: 'Tail probability',

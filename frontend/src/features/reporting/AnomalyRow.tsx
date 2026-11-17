@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Activity, ArrowUpRight, Filter, Link2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ActionMenu } from '@/components/ActionMenu';
-import { formatAnomalyValue, getAnomalyValueLabel, isProbabilityAnomalyValue } from '@/lib/anomaly-semantics';
+import { formatAnomalyValue, getAnomalyValueLabel, isProbabilityAnomalyValue, isSilenceAnomalyValue } from '@/lib/anomaly-semantics';
 import { formatExactDateTime, formatTimeOfDay } from '@/lib/format-time';
 import { useCatalogue } from '@/features/workspace/catalogue-context';
 import { alarmSource, sourceNode } from '@/features/workspace/reporting-scope';
@@ -39,7 +39,7 @@ export function AnomalyRow({ alarm, selected, canDelete, disabled, onSelect, onD
       {!alarm.reading_ids.length && <span className="rp-context">{alarm.multivariate ? 'Involved signals unavailable' : 'Removed reading'}</span>}
     </div></td>
     <td className="rp-signal"><span className="rp-result" title={getAnomalyValueLabel(alarm.value_type)}>
-      <span className="rp-result-label">{isProbabilityAnomalyValue(alarm.value_type) ? 'p' : 'Score'}</span>{' '}
+      <span className="rp-result-label">{isProbabilityAnomalyValue(alarm.value_type) ? 'p' : isSilenceAnomalyValue(alarm.value_type) ? 'Quiet' : 'Score'}</span>{' '}
       <span className="rp-result-value">{formatAnomalyValue(alarm.value, alarm.value_type)}</span></span></td>
     <td className="rp-actions"><ActionMenu label={`Actions for ${device} at ${formatExactDateTime(alarm.timestamp)}`} actions={[
       { label: 'Investigate anomaly', icon: Activity, onSelect: () => onNavigate(anomalyHref(alarm.alarm_id)) },

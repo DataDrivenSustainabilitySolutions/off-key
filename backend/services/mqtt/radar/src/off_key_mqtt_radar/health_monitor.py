@@ -24,6 +24,7 @@ from off_key_core.schemas.radar import (
 from .activity import evaluate_activity
 from .models import HealthStatus
 from .run_events import RunEventRecorder
+from .silence import SilenceAlarms
 
 
 class HealthMonitor:
@@ -68,6 +69,9 @@ class HealthMonitor:
         self._publication_suspended = False
 
         self.run_events = RunEventRecorder()
+        self.silence = SilenceAlarms()
+        self._activity: RadarActivityStatus | None = None
+        self._activity_snapshot: dict[str, Any] | None = None
         self._started_at_utc: datetime | None = None
 
         self._log_context = {"component": "health_monitor"}
@@ -181,11 +185,17 @@ class HealthMonitor:
             # Write metrics if database writer is available
             if self._database_writer:
                 events = self.run_events.pending()
+                silences = self.silence.due(
+                    self._activity,
+                    self._activity_snapshot,
+                    service_id=self._database_writer.service_id or "",
+                )
                 stored = await self._database_writer.write_heartbeat(
-                    {**snapshot, "run_events": events}
+                    {**snapshot, "run_events": events, "silence_alarms": silences}
                 )
                 if stored:
                     self.run_events.acknowledge(len(events))
+                    self.silence.raised(silences)
 
         except Exception as e:
             logger.error(
@@ -371,8 +381,9 @@ class HealthMonitor:
             detector_stats.get("strategy") == "adaptive_stream"
             and detector_stats.get("state") == "operational"
         )
+        self._activity_snapshot = processor_metrics.get("activity")
         activity = evaluate_activity(
-            processor_metrics.get("activity"),
+            self._activity_snapshot,
             stale_after_seconds=(
                 self._message_processor.stale_after_seconds()
                 if self._message_processor
@@ -381,6 +392,7 @@ class HealthMonitor:
             inference_expected=inference_expected,
             database_health=components.get("database_writer", {}) or {},
         )
+        self._activity = activity
         active_alerts = self._collect_active_alerts(
             components,
             processor_metrics,

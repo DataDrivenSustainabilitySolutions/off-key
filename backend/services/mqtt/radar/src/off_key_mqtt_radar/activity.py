@@ -38,13 +38,20 @@ class ActivityTracker:
         self._started = self._clock()
         self._required_sensors = frozenset(required_sensors)
         self._inputs: dict[str, _ActivityEvent] = {}
+        # The device each reading last came from, so a silence alarm names it.
+        self._chargers: dict[str, str] = {}
         self._last_input: _ActivityEvent | None = None
         self._last_processed: _ActivityEvent | None = None
         self._last_inference: _ActivityEvent | None = None
         self._last_held_back: _ActivityEvent | None = None
         self._processed_count = 0
 
-    def record_input(self, sensor: str | None, message: MQTTMessage) -> None:
+    def record_input(
+        self,
+        sensor: str | None,
+        message: MQTTMessage,
+        charger_id: str | None = None,
+    ) -> None:
         now = self._clock()
         received_at = as_utc(message.timestamp or datetime.now(UTC))
         receipt_clock = getattr(message, "received_monotonic", None)
@@ -65,6 +72,8 @@ class ActivityTracker:
                 previous = self._inputs.get(sensor)
                 if previous is None or event.monotonic >= previous.monotonic:
                     self._inputs[sensor] = event
+                    if charger_id:
+                        self._chargers[sensor] = charger_id
 
     def record_result(self, result: AnomalyResult) -> None:
         context = result.context or {}
@@ -88,6 +97,7 @@ class ActivityTracker:
                     sensor: max(now - event.monotonic, 0.0)
                     for sensor, event in self._inputs.items()
                 },
+                "sensor_chargers": dict(self._chargers),
                 "last_input_at": self._last_input.at if self._last_input else None,
                 "last_processed_at": self._last_processed.at
                 if self._last_processed

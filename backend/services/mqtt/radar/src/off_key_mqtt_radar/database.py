@@ -53,6 +53,9 @@ class CheckpointOwnershipLost(RuntimeError):
     """Another managed worker has advanced this service's durable snapshot."""
 
 
+IDENTITY_KEYS = ("charger_id", "timestamp", "telemetry_type", "service_id")
+
+
 def _rows(prepared: list[PreparedResult]):
     """Flatten prepared results into anomaly, identity and evidence rows."""
     return (
@@ -447,8 +450,9 @@ class DatabaseWriter:
     async def write_heartbeat(self, metrics: dict[str, Any]) -> bool:
         """Publish the operational status from a health snapshot.
 
-        ``metrics["run_events"]`` rides in the same transaction once the status
-        is published. Returns whether those events are stored, so the caller
+        ``metrics["run_events"]`` and the alarms of readings gone silent
+        (``metrics["silence_alarms"]``) ride in the same transaction once the
+        status is published. Returns whether those events are stored, so the caller
         keeps them for the next heartbeat otherwise.
         """
         if not self.config.db_write_enabled:
@@ -467,7 +471,20 @@ class DatabaseWriter:
                 stored = not events or (
                     published and await self._insert_run_events(session, events)
                 )
+                # A shadow run raises no alarm, so its silences stay unrecorded.
+                silences = metrics.get("silence_alarms")
+                if silences and self.config.shadow:
+                    silences = []
+                if silences and stored and published:
+                    await self._execute_upsert(
+                        session,
+                        silences,
+                        [{key: row[key] for key in IDENTITY_KEYS} for row in silences],
+                    )
+                stored = stored and (not silences or published)
                 await session.commit()
+                if silences and stored:
+                    self.total_written += len(silences)
                 return stored
 
         except CheckpointOwnershipLost:

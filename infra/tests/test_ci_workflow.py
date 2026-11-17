@@ -130,8 +130,14 @@ class CiWorkflowTests(unittest.TestCase):
         for command in ("pre-commit run", "ty check", "generate_pipeline_types.py"):
             self.assertTrue(any(command in run for run in lint), command)
             self.assertFalse(any(command in run for run in backend), command)
+        # The planner names the interpreters (ci_plan.PYTHONS) for each run.
         self.assertEqual(
-            self.jobs["backend"]["strategy"]["matrix"]["python"], ["3.12", "3.14"]
+            self.jobs["backend"]["strategy"]["matrix"]["python"],
+            "${{ fromJSON(needs.changes.outputs['backend-python']) }}",
+        )
+        self.assertEqual(
+            self.jobs["changes"]["outputs"]["backend-python"],
+            "${{ steps.plan.outputs.backend-python }}",
         )
         self.assertEqual(
             self.jobs["collection"]["strategy"]["matrix"]["emqx"], ["5.8.9"]

@@ -9,9 +9,11 @@ name: CI
 # static content and frontend-only changes skip suites whose inputs did not change; everything
 # else, and anything uncertain, runs every job. Pull requests run only the fast
 # suites; the heavy ones (images, Swarm rehearsals, RADAR, collection,
-# infrastructure, observability) run on the main push, which deploys only if
-# they pass, or on a pull request labelled full-ci. Cheap checks run first, so a lint
-# failure stops the image builds and disposable Swarms before they start.
+# infrastructure, observability) and the Python 3.12 backend run on the main push,
+# which deploys only if they pass, or on a pull request labelled full-ci. A main
+# push skips the fast suites (backend, frontend, contracts) that a pull request or
+# merge queue run already passed on exactly its tree. Cheap checks run first, so a
+# lint failure stops the image builds and disposable Swarms before they start.
 on:
   pull_request:
   push:
@@ -43,6 +45,7 @@ jobs:
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       plan: ${{ steps.plan.outputs.plan }}
+      backend-python: ${{ steps.plan.outputs.backend-python }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -264,7 +267,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.12", "3.14"]
+        # Production's 3.14 on every run; the oldest supported 3.12 where the
+        # heavy suites run. A main push skips one that passed on this tree.
+        python: ${{ fromJSON(needs.changes.outputs['backend-python']) }}
 
     steps:
       - name: Checkout
@@ -701,7 +706,8 @@ jobs:
     # images this run's images job built. Both wait for the cheap checks.
     if: >-
       ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan)['deployment-smoke'] &&
-      needs.lint.result == 'success' && needs.frontend.result == 'success' &&
+      needs.lint.result == 'success' &&
+      (needs.frontend.result == 'success' || !fromJSON(needs.changes.outputs.plan).frontend) &&
       ((github.event_name == 'push' && needs.publish.result == 'success') ||
        (github.event_name != 'push' && needs.images.result == 'success')) }}
     runs-on: ubuntu-24.04

@@ -262,14 +262,29 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
         "bucket_seconds": 60.0,
     }
     stores.data.devices.return_value = [device]
-    stores.data.device_readings.return_value = []
+    readings = [
+        {"id": key, "label": key, "broker_id": "plant", "topic": f"pump/{key}"}
+        for key in ("r-power", "r-flow")
+    ]
+    stores.data.device_readings.return_value = readings
+    stores.monitors.list_radar_services.return_value = [
+        {
+            "id": "service-1",
+            "display_name": "Pump power",
+            "stream_ids": ["r-power"],
+            "status": True,
+        }
+    ]
     stores.data.profile.return_value = profile
     async with connected(gateway) as client:
         devices = said(await client.call_tool("list_devices", {"active": True}))
         assert [item["id"] for item in devices] == ["pump"]
-        assert (
-            said(await client.call_tool("list_readings", {"device_id": "pump"})) == []
-        )
+        # Each reading says which running monitor holds it.
+        listed = said(await client.call_tool("list_readings", {"device_id": "pump"}))
+        assert [item.get("held_by") for item in listed] == [
+            {"id": "service-1", "name": "Pump power"},
+            None,
+        ]
         looked = said(
             await client.call_tool("profile_reading", {"reading_id": "r-power"})
         )
@@ -336,6 +351,7 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
         "devices",
         "device_readings",
         "profile",
+        "list_radar_services",
     ]
 
 
@@ -495,6 +511,9 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         return {"items": page, "next_after": None}
 
     stores.runs.results.side_effect = results
+    stores.monitors.list_radar_services.return_value = [
+        {"id": "m1", "display_name": "Pump", "stream_ids": ["r-power"], "status": True}
+    ]
     test = {"definition": starter()["definition"], "bindings": {"value": "r-power"}}
     async with connected(gateway) as client:
         queued = said(await client.call_tool("test_design", test | {"days": 3}))
@@ -505,7 +524,14 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
             "points_total",
             "start_at",
             "end_at",
+            "notes",
         }
+        # Said before it runs: the warm-up outlasts the replay, and the reading
+        # is held by a running monitor.
+        warm_up, held = queued["notes"]
+        assert warm_up.startswith("The replay holds about 100 observations, fewer")
+        assert "warm-up of 1560" in warm_up
+        assert held.startswith("A running monitor already holds r-power (monitor m1)")
         assert (queued["run_id"], queued["dataset_id"]) == ("run-1", "d1")
         # The values of the readings are copied, and each input takes its own.
         copied = stores.datasets.import_history.await_args.args[0]
@@ -903,11 +929,21 @@ async def test_an_agent_reads_what_its_key_may_do_and_the_room_to_start(
         "items": [],
         "capacity": {"running": 2, "limit": 2},
     }
+    stores.monitors.list_radar_services.return_value = [
+        {"id": "m1", "status": True, "shadow": True},
+        {"id": "m2", "status": True},
+    ]
     async with connected(gateway) as client:
         access = said(await client.call_tool("get_access", {}))
         assert access["starts"] == "nothing"
         assert access["may"].startswith("propose")
-        assert access["monitors"] == {"running": 2, "limit": 2, "free": 0}
+        assert access["monitors"] == {
+            "running": 2,
+            "limit": 2,
+            "free": 0,
+            "live": 1,
+            "shadow": 1,
+        }
         assert access["open_proposals"] == 0
         assert "places are taken" in access["note"]
         key.starts = "shadow"

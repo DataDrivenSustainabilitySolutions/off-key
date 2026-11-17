@@ -33,8 +33,8 @@ start now.
 1. list_devices and list_readings show what can be monitored. profile_reading \
 says what a reading looks like, which decides the steps it needs, and \
 get_values shows its values over a time range. A reading \
-belongs to one monitor at a time: list_designs names the readings each \
-monitor holds, and a design bound to one of them cannot start.
+belongs to one monitor at a time: list_readings names the monitor that \
+holds a reading, and a design bound to it cannot start.
 2. list_designs and get_design give a design to start from: a starter, a saved \
 template or the design a running monitor uses.
 3. search_components finds steps by purpose and get_component explains one \
@@ -238,6 +238,10 @@ async def get_access(api: Api, args: Nothing):
     agent = await api.get("/v1/agents/me")
     waiting = await api.get("/v1/pipeline-proposals", {"status": "open"})
     room = _room(waiting.get("capacity"))
+    if room is not None:
+        running = await api.get("/v1/monitors", {"active": True})
+        shadow = sum(1 for item in running if item.get("shadow"))
+        room |= {"live": len(running) - shadow, "shadow": shadow}
     answer = {
         "key": agent["name"],
         "starts": agent["starts"],
@@ -272,11 +276,28 @@ class Device(Args):
     device_id: str = Field(description="Id of a device, as list_devices gives it.")
 
 
+async def _holders(api: Api) -> dict[str, dict[str, Any]]:
+    """The running monitor that holds each reading, by reading id."""
+    monitors = await api.get("/v1/monitors", {"active": True})
+    return {
+        reading: {"id": item["id"], "name": item.get("display_name")}
+        for item in monitors
+        for reading in item.get("reading_ids") or ()
+    }
+
+
 @tool(Device)
 async def list_readings(api: Api, args: Device):
-    """The readings of one device with their label, unit and kind of value.
-    A design monitors readings: its inputs are bound to reading ids."""
-    return await api.get(f"/v1/devices/{_segment(args.device_id)}/readings")
+    """The readings of one device with their label, unit and kind of value,
+    and `held_by` the running monitor that watches a reading. A design monitors
+    readings: its inputs are bound to reading ids, and a reading belongs to one
+    monitor at a time."""
+    readings = await api.get(f"/v1/devices/{_segment(args.device_id)}/readings")
+    held = await _holders(api)
+    return [
+        item | ({"held_by": held[item["id"]]} if item.get("id") in held else {})
+        for item in readings
+    ]
 
 
 class Profile(Args):
@@ -444,8 +465,10 @@ class Test(Args):
 async def test_design(api: Api, args: Test):
     """Replay a design over recorded values of its readings, as a monitor would
     have seen them. It copies the values into the Dojo and queues the run;
-    follow it with get_test. Test before you propose or start a design, and
-    test a changed design on the same `dataset_id`."""
+    follow it with get_test. `notes` say how much of the replay the warm-up
+    takes and whether a running monitor holds a bound reading. Test before
+    you propose or start a design, and test a changed design on the same
+    `dataset_id`."""
     if args.dataset_id:
         dataset = await api.get(f"/v1/dojo/datasets/{_segment(args.dataset_id)}")
     else:
@@ -474,7 +497,7 @@ async def test_design(api: Api, args: Test):
             },
         },
     )
-    return {
+    answer = {
         "run_id": run["id"],
         "dataset_id": dataset["id"],
         "status": run["status"],
@@ -482,6 +505,57 @@ async def test_design(api: Api, args: Test):
         "start_at": dataset["start_at"],
         "end_at": dataset["end_at"],
     }
+    notes = [
+        _warm_up(args.definition, dataset, run["points_total"], len(args.bindings))
+    ]
+    try:
+        held = await _holders(api)
+    except ApiRefusal:
+        held = {}
+    taken = sorted(
+        f"{reading} (monitor {held[reading]['id']})"
+        for reading in set(args.bindings.values())
+        if reading in held
+    )
+    if taken:
+        notes.append(
+            "A running monitor already holds "
+            + ", ".join(taken)
+            + ", so this design cannot start on it. Test it all the same, then "
+            "bind other readings or propose it to replace that monitor."
+        )
+    if notes := [note for note in notes if note]:
+        answer["notes"] = notes
+    return answer
+
+
+def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str:
+    """How much of a replay the warm-up takes, said before the test runs."""
+    settings = definition.get("settings") or {}
+    warm_up = sum(
+        settings.get(key) or 0
+        for key in ("training_window_size", "calibration_window_size")
+    )
+    observations = points // max(inputs, 1)
+    if not warm_up or not observations:
+        return ""
+    if warm_up >= observations:
+        return (
+            f"The replay holds about {observations} observations, fewer than "
+            f"the warm-up of {warm_up}, so nothing will be scored. Test more "
+            "days or shrink training_window_size and calibration_window_size."
+        )
+    try:
+        start = datetime.fromisoformat(dataset["start_at"])
+        end = datetime.fromisoformat(dataset["end_at"])
+    except (KeyError, TypeError, ValueError):
+        return ""
+    share = warm_up / observations
+    scored_from = (start + (end - start) * share).isoformat()
+    return (
+        f"Warm-up takes {warm_up} of about {observations} observations "
+        f"({share:.0%}), so scoring starts near {scored_from}."
+    )
 
 
 async def _settled(read: Callable[[], Awaitable[dict]], done, wait: int) -> dict:

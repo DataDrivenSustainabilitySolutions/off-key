@@ -125,6 +125,12 @@ class ActivationOwnershipLost(RuntimeError):
     """A delayed controller must leave the newer durable activation untouched."""
 
 
+def _named(launch_config, service_id: str) -> str:
+    """A monitor as a refusal names it: by its name and id."""
+    name = (launch_config or {}).get("display_name")
+    return f"Monitor '{name}' ({service_id})" if name else f"Monitor {service_id}"
+
+
 class PipelineActivations:
     def __init__(self, session, workloads=None):
         self.session = session
@@ -481,9 +487,16 @@ class PipelineActivations:
         claims = sorted(
             set(topics) | set(predecessor.mqtt_topic if predecessor else [])
         )
-        if any(first_overlap(claims, item.claim_topics) for item in pending):
+        starting = next(
+            (item for item in pending if first_overlap(claims, item.claim_topics)),
+            None,
+        )
+        if starting is not None:
             raise ConflictError(
-                "A pending activation already reserves one or more inputs"
+                f"{_named(starting.launch_config, starting.service_id)} is starting "
+                "on one of these readings, and a reading can belong to only one "
+                "monitoring service. Wait until its start settles, or bind other "
+                "readings."
             )
         active = list(
             (
@@ -492,12 +505,21 @@ class PipelineActivations:
                 )
             ).all()
         )
-        if any(
-            item.id != request.replace_service_id
-            and first_overlap(claims, item.mqtt_topic or [])
-            for item in active
-        ):
-            raise ConflictError("A reading can belong to only one monitoring service")
+        holder = next(
+            (
+                item
+                for item in active
+                if item.id != request.replace_service_id
+                and first_overlap(claims, item.mqtt_topic or [])
+            ),
+            None,
+        )
+        if holder is not None:
+            raise ConflictError(
+                "A reading can belong to only one monitoring service, and "
+                f"{_named(holder.launch_config, holder.id)} already watches one "
+                "of these. Bind other readings, or replace that monitor."
+            )
         owners = claim_owners(
             active,
             pending,

@@ -1122,6 +1122,12 @@ The compiler checks schema 2 designs by learning mode instead of by lane
   fixed split, the exceedance rule a step that adapts.
 - `calibration_window` (warning): the calibration window is too short for the
   alarm rate of a step that adapts.
+- `blind` (warning): a step that adapts can learn a lasting change before it
+  alarms. It warns when the exceedance rule asks for more scores in a row than
+  the about alarm rate x calibration window the boundary lets above it, and
+  when a rule detector scores a `prepare.condition` flag, whose condition
+  becomes the norm while it holds; the fixed split with the score threshold at
+  1.0 suits a flag.
 
 The rules leave one policy for a design. A calibration step that adapts alarms
 by the exceedance rule. Under the fixed split, detectors that are all fitted

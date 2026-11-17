@@ -208,7 +208,32 @@ def test_a_small_alarm_rate_warns_of_a_short_window(
         for item in short.issues
     ] == [("calibration_window", "calibrate", "warning", ["alpha"])]
     assert f"{needed:,} calibration observations" in short.issues[0].message
+    # Why two detectors under max need twice the window is said too.
+    assert ("detectors combined by max" in short.issues[0].message) == (
+        len(detectors) > 1 and fusion == "max"
+    )
     assert run(needed).issues == []
+
+
+def test_more_exceedances_in_a_row_than_the_window_lets_above_go_blind():
+    def run(consecutive):
+        return validate_pipeline(
+            boundary_definition(
+                ("mad",),
+                params={"alpha": 0.1},
+                policy_params={"consecutive": consecutive},
+                calibration_window=20,
+            )
+        )
+
+    # 0.1 x 20 lets about 2 scores of the window above the boundary.
+    assert run(2).issues == []
+    blind = run(3)
+    assert blind.valid
+    assert [
+        (item.code, item.node_id, item.parameter_path) for item in blind.issues
+    ] == [("blind", "policy", ["consecutive"])]
+    assert "about 2 scores (0.1 x 20)" in blind.issues[0].message
 
 
 def test_the_warning_writes_a_small_alarm_rate_out():

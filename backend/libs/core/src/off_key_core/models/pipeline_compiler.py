@@ -614,7 +614,56 @@ def _validate_calibration(compilation: _Compilation) -> bool:
         )
         return False
     _validate_calibration_window(compilation, calibration, method)
+    _validate_blindness(compilation, calibration, policy)
     return True
+
+
+def _validate_blindness(
+    compilation: _Compilation, calibration: PipelineNode, policy: PipelineNode
+) -> None:
+    """Where an adapting boundary can learn a lasting change before it alarms.
+
+    It lets about alarm rate x calibration window scores of its window above it,
+    so a change that lasts longer becomes what it expects. A rule that scores a
+    condition's 0/1 flag makes a condition that holds for a while the norm.
+    """
+    flags = [
+        identifier
+        for identifier in _ancestors(compilation, calibration.id)
+        if compilation.nodes[identifier].component == RULE_DETECTOR
+        and any(
+            compilation.nodes[step].component == "prepare.condition"
+            for step in _ancestors(compilation, identifier)
+        )
+    ]
+    if flags:
+        compilation.warning(
+            "blind",
+            f"{_label(compilation, calibration.id)} keeps adapting, so a rule's "
+            "condition that holds for a while becomes what it expects, and the "
+            "monitor goes quiet while the condition lasts. For a rule, use the "
+            "fixed split with the calibrated score threshold at 1.0.",
+            calibration.id,
+        )
+        return
+    alpha = calibration.params.get("alpha")
+    consecutive = policy.params.get("consecutive")
+    if not isinstance(alpha, float) or not isinstance(consecutive, int):
+        return
+    window = compilation.definition.settings.calibration_window_size
+    above = alpha * window
+    if consecutive > 1 and consecutive > above:
+        compilation.warning(
+            "blind",
+            f"{consecutive} exceedances in a row are more than the about "
+            f"{above:g} scores ({Decimal(repr(alpha)):f} x {window:,}) the "
+            "boundary lets above it in its calibration window, so it can follow "
+            "a lasting change before the alarm fires, and the monitor goes "
+            "quiet. Ask for fewer in a row, or raise the alarm rate or the "
+            "window.",
+            policy.id,
+            parameter_path=["consecutive"],
+        )
 
 
 def _validate_calibration_window(
@@ -633,12 +682,21 @@ def _validate_calibration_window(
         fusion_mode(calibration.params),
     )
     if window < needed:
+        detectors = _detector_count(compilation.definition)
+        fused = detectors > 1 and fusion_mode(calibration.params) == "max"
         compilation.warning(
             "calibration_window",
             # Written out, as the setting shows it: a small rate has no exponent.
             f"An alarm rate of {Decimal(repr(alpha)):f} needs at least {needed:,} "
             f"calibration observations; the calibration window has {window:,}. "
-            "With fewer, the boundary sits at the largest score seen.",
+            + (
+                f"{detectors} detectors combined by max each reach the top "
+                f"rank, so they need {detectors} times the observations one "
+                "detector would. "
+                if fused
+                else ""
+            )
+            + "With fewer, the boundary sits at the largest score seen.",
             calibration.id,
             parameter_path=["alpha"],
         )

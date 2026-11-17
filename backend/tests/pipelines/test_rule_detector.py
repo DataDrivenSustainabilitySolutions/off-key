@@ -356,3 +356,42 @@ def test_the_setup_form_does_not_offer_a_rule_detector():
     assert RULE_DETECTOR not in offered
     assert set(offered) >= set(ADAPTIVE_MODELS_BY_TYPE) - set(RULE_DETECTORS)
     assert all(offered.values())
+
+
+def _flag_rule(**settings) -> PipelineDefinition:
+    """A rule that scores a condition's 0/1 flag."""
+    data = rule_definition(
+        before="prepare.condition",
+        before_params={"name": "high", "condition": "gap > 1"},
+        **settings,
+    ).model_dump(mode="json")
+    data["nodes"].append(
+        {
+            "id": "flag",
+            "kind": "transform",
+            "component": "features.select",
+            "params": {"features": ["high"]},
+        }
+    )
+    data["edges"] = [
+        edge
+        for edge in data["edges"]
+        if (edge["source"], edge["target"])
+        != (
+            "before",
+            "rule",
+        )
+    ] + [{"source": "before", "target": "flag"}, {"source": "flag", "target": "rule"}]
+    return PipelineDefinition.model_validate(data)
+
+
+def test_a_flag_under_an_adapting_boundary_is_said_to_go_blind():
+    warned = validate_pipeline(_flag_rule(**BOUNDARY))
+    assert warned.valid
+    assert [(item.code, item.node_id) for item in warned.issues] == [
+        ("blind", "calibrate")
+    ]
+    assert "fixed split" in warned.issues[0].message
+    # The fixed split freezes its threshold, and a rule on a value is no flag.
+    assert validate_pipeline(_flag_rule()).issues == []
+    assert validate_pipeline(rule_definition(**BOUNDARY)).issues == []

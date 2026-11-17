@@ -55,7 +55,13 @@ class DojoRuns:
     def __init__(self, session):
         self.session = session
 
-    async def create(self, request: RunCreate, *, created_by: int | None) -> RunView:
+    async def create(
+        self,
+        request: RunCreate,
+        *,
+        created_by: int | None,
+        created_by_agent: str | None = None,
+    ) -> RunView:
         await require_application_writes(self.session)
         dataset = await self.session.get(DojoDataset, request.dataset_id)
         if dataset is None:
@@ -137,6 +143,8 @@ class DojoRuns:
                     for item, binding in zip(bound, execution.bindings, strict=True)
                 ],
                 **({"calibration_comparison": comparison} if comparison else {}),
+                # A key is no member, so the run keeps the agent's name.
+                **({"created_by_agent": created_by_agent} if created_by_agent else {}),
             },
             cancel_requested=False,
             points_total=sum(item.point_count for item in bound),
@@ -398,6 +406,7 @@ class DojoRuns:
             alarm_count=row.alarm_count,
             error=row.error,
             created_by=row.created_by,
+            created_by_agent=row.config.get("created_by_agent"),
             created_at=row.created_at,
             started_at=row.started_at,
             finished_at=row.finished_at,

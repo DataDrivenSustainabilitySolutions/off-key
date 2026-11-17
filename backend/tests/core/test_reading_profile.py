@@ -58,6 +58,7 @@ def test_a_window_without_values_answers_with_nulls():
         "weekly_rhythm": None,
         "level_change": None,
         "recent": None,
+        "notes": ["The window holds no value of this reading."],
     }
 
 
@@ -84,6 +85,12 @@ def test_coverage_counts_from_the_first_value_not_from_the_start_of_the_window()
     assert profile.first == began + timedelta(minutes=1)
     assert profile.coverage == 1
     assert profile.longest_outage_seconds == 0
+    # Said, with the rhythm that three days cannot show.
+    assert profile.notes == [
+        f"Values begin at {profile.first.isoformat()}, after the window starts: "
+        "the profile describes the 3.0 days that exist.",
+        "weekly_rhythm needs fourteen days of values; there are 3.0 days.",
+    ]
 
 
 def test_rhythm_is_the_share_of_variation_the_clock_explains():
@@ -135,6 +142,11 @@ def test_rhythm_and_level_change_need_days_to_speak_of():
         "r1", start, end, extremes(start, end, lambda at: (5, 5)), []
     )
     assert (flat.daily_rhythm, flat.level_change) == (None, None)
+    assert flat.notes[0].startswith("daily_rhythm is null: the values do not vary")
+    assert day.notes == [
+        "daily_rhythm and level_change need two days of values; there are 1.0 days.",
+        "weekly_rhythm needs fourteen days of values; there are 1.0 days.",
+    ]
     assert (flat.minimum, flat.maximum) == (5, 5)
 
 
@@ -208,3 +220,18 @@ def test_values_from_before_the_window_are_left_out():
     assert profile.first is None and profile.recent is None
     kept = profile_reading("r1", start, end, [], [*old, (END, 9.0)]).recent
     assert (kept.count, kept.mean) == (1, 9)
+
+
+def test_last_is_the_newest_value_and_a_capped_recent_says_so(monkeypatch):
+    start, end = window(1)
+    from off_key_core.models import reading_profile
+
+    monkeypatch.setattr(reading_profile, "RECENT_VALUES", 50)
+    # The bucket keeps an extreme from earlier; the newest value is later.
+    points = [(END - timedelta(minutes=10), 1.0), (END - timedelta(minutes=9), 3.0)]
+    profile = profile_reading("r1", start, end, points, newest(50, value=lambda i: 2.0))
+    assert profile.last == profile.recent.last == END
+    assert profile.notes[-1] == (
+        f"recent looks at the newest 50 values only, from "
+        f"{profile.recent.first.isoformat()}; get_values reads older ones."
+    )

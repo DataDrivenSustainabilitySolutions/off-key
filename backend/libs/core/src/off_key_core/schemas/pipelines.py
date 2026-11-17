@@ -2065,9 +2065,10 @@ class FormulaParameters(PipelineModel):
         title="Formula",
         description=(
             "Arithmetic over the features arriving here, such as "
-            "dc_voltage * dc_current, with + - * / ^, parentheses and functions "
-            "such as abs, sqrt, log, round, mod, min, max, mean and "
-            "if(condition, when_true, when_false); typing lists them all. "
+            "dc_voltage * dc_current, with + - * / ^, parentheses, the "
+            "functions abs, atan2, ceil, clip, cos, exp, floor, hypot, log, "
+            "log1p, max, mean, min, mod, round, sign, sin, sqrt and sum, pi, "
+            "and if(condition, when_true, when_false). "
             "Only the chosen branch of if is evaluated. Write a name with other "
             "characters between backticks. In a formula for each feature, x "
             "stands for that feature."

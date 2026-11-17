@@ -429,7 +429,51 @@ async def edit_design(api: Api, args: Edit):
     `definition` and `layout`, the ids the edits `added`, and a `report` with
     the issues left. A design that would not run is no error, so read
     `report.issues` and fix them with further edits."""
-    return await api.post("/v1/pipelines/edit", _sent(args))
+    answer = await api.post("/v1/pipelines/edit", _sent(args))
+    nodes = (answer.get("definition") or {}).get("nodes") or []
+    answer["report"] = _compact(answer.get("report") or {}, nodes)
+    if not any(node.get("kind") == "detector" for node in nodes):
+        answer["note"] = STARTER_NOTE
+    return answer
+
+
+STARTER_NOTE = (
+    "The design has no detector yet. A starter is quicker than building one: "
+    "list_designs lists them and get_design with source 'starter' gives one."
+)
+# A step after the detector works on scores, so its features say nothing new.
+SCORED = {"calibration", "policy", "output"}
+# What a report says that an agent needs only where it differs.
+QUIET = {
+    "selected_node_id": None,
+    "features_complete": True,
+    "provenance_complete": True,
+    "issues_truncated": False,
+    "preparation_observations": 0,
+    "ready_after": {},
+}
+
+
+def _compact(report: dict[str, Any], nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    """The report without what the agent holds or what says nothing: the design
+    it came with, the fingerprint, defaults, and features after the detector."""
+    scored = {node.get("id") for node in nodes if node.get("kind") in SCORED}
+    compact = {
+        key: value
+        for key, value in report.items()
+        if key not in {"definition", "definition_omitted", "fingerprint"}
+        and (key not in QUIET or value != QUIET[key])
+    }
+    if "features" in compact:
+        compact["features"] = {
+            step: [
+                {key: value for key, value in item.items() if value not in (None, [])}
+                for item in columns
+            ]
+            for step, columns in compact["features"].items()
+            if step not in scored
+        }
+    return compact
 
 
 class Check(Args):
@@ -441,7 +485,8 @@ async def validate_design(api: Api, args: Check):
     """Check a design you hold without changing it: whether it would run, the
     issues if not, and the features at every step. edit_design already checks
     what it returns, so use this for a design that came from elsewhere."""
-    return await api.post("/v1/pipelines/validate", _sent(args))
+    report = await api.post("/v1/pipelines/validate", _sent(args))
+    return _compact(report, args.definition.get("nodes") or [])
 
 
 class InjectedFault(Args):
@@ -662,9 +707,21 @@ async def get_test(api: Api, args: TestRef):
         args.wait_seconds,
     )
     # The agent holds the design; the compiled copy of it is long.
-    answer = {key: value for key, value in run.items() if key != "definition"}
+    answer = _results_are(_renamed(run, {"id": "run_id", "alarm_count": ALARMING}))
+    del answer["definition"]
+    # A key is no member: the run names the agent instead.
+    if agent := answer.pop("created_by_agent", None):
+        answer["created_by"] = f"Agent · {agent}"
+    if meanings := {
+        key: STATS[key] for key in answer.get("stats") or {} if key in STATS
+    }:
+        answer["stats_meaning"] = meanings
     if run["status"] == "succeeded":
-        metrics = answer["metrics"] = await api.get(f"{path}/metrics")
+        metrics = await api.get(f"{path}/metrics")
+        metrics = answer["metrics"] = _results_are(
+            _renamed(metrics, {"alarm_count": ALARMING})
+        )
+        answer["alarms"] = {"count": 0, "listed": [], "complete": True}
         if metrics.get("scored_from") is None:
             answer["note"] = _unscored(run)
         elif run.get("alarm_count"):
@@ -690,14 +747,48 @@ async def get_test(api: Api, args: TestRef):
             if not metrics.get("labels_total"):
                 answer["note"] = (
                     "The dataset has no labels, so false_alarms counts every "
-                    "separate alarm. alarm_count counts the results above the "
-                    "boundary, several to one alarm. `alarms` lists when they were."
+                    "separate alarm. alarming_results counts the results above "
+                    "the boundary, several to one alarm. `alarms` lists when "
+                    "they were."
                 )
     return answer
 
 
 ALARM_RESULTS = 2000
 ALARMS_LISTED = 20
+# Several results in a row make one alarm, so the count of results says so.
+ALARMING = "alarming_results"
+# What each reason a replayed value gave no result stands for.
+STATS = {
+    "missing_reading": "no value of another bound reading had arrived yet",
+    "waiting_for_reading": (
+        "held until the other readings' next values arrived; usual with "
+        "several readings, as each observation takes one value of each"
+    ),
+    "stale_reading": "another reading's latest value was too old to pair with",
+    "pipeline_observation_rejected": (
+        "a step skipped it, such as a division by 0 or a gate that held it back"
+    ),
+    "observation_too_old": "it was already older than its reading's limit on arrival",
+}
+
+
+def _renamed(item: dict[str, Any], names: dict[str, str]) -> dict[str, Any]:
+    return {names.get(key, key): value for key, value in item.items()}
+
+
+# A run's `strategy` names what its results are, not the starter it came from.
+RESULTS_ARE = {
+    "adaptive_stream": "scores against a threshold",
+    "static_baseline": "p-values of a conformal martingale",
+}
+
+
+def _results_are(item: dict[str, Any]) -> dict[str, Any]:
+    if "strategy" not in item:
+        return item
+    strategy = item.pop("strategy")
+    return item | {"results_are": RESULTS_ARE.get(strategy, strategy)}
 
 
 def _runs(results: list[dict], sequence: str, timestamp: str) -> list[dict]:

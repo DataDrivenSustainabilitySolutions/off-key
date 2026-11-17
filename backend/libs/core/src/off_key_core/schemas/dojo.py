@@ -250,6 +250,9 @@ class RunSummary(DojoModel):
     alarm_count: int
     error: str | None
     created_by: int | None
+    created_by_agent: str | None = Field(
+        default=None, description="The agent whose key queued the run, by name."
+    )
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None

@@ -136,7 +136,8 @@ def profile_reading(
     for at, value in extremes:
         if start <= at <= end:
             buckets[int((at - start) / width)].append(value)
-    recent = _recent([(at, value) for at, value in newest if start <= at <= end])
+    inside = [(at, value) for at, value in newest if start <= at <= end]
+    recent = _recent(inside)
     profile = ReadingProfile(
         reading_id=reading_id,
         start=start,
@@ -145,6 +146,7 @@ def profile_reading(
         recent=recent,
     )
     if not buckets:
+        profile.notes.append("The window holds no value of this reading.")
         return profile
     filled = sorted(buckets)
     # The middle of what a bucket holds stands for its level.
@@ -156,7 +158,11 @@ def profile_reading(
         default=0,
     )
     profile.first = min(at for at, _ in extremes if start <= at <= end)
-    profile.last = max(at for at, _ in extremes if start <= at <= end)
+    # A bucket keeps its lowest and highest value, not always its newest.
+    profile.last = max(
+        max(at for at, _ in extremes if start <= at <= end),
+        recent.last if recent else start,
+    )
     profile.coverage = round(len(filled) / (filled[-1] - filled[0] + 1), 3)
     profile.longest_outage_seconds = _short((longest_empty * width).total_seconds())
     profile.minimum = _short(min(min(values) for values in buckets.values()))
@@ -183,4 +189,43 @@ def profile_reading(
         profile.weekly_rhythm = _explained(
             levels, [(at.weekday(), at.hour) for at in middles]
         )
+    profile.notes = _notes(profile, span, len(newest) >= RECENT_VALUES)
     return profile
+
+
+def _days(span: timedelta) -> str:
+    return f"{span / DAY:.1f} days"
+
+
+def _notes(profile: ReadingProfile, span: timedelta, capped: bool) -> list[str]:
+    """Say why a figure is null and where the profile saw less than asked."""
+    notes = []
+    if profile.first and profile.first - profile.start > 2 * MIN_BUCKET:
+        notes.append(
+            f"Values begin at {profile.first.isoformat()}, after the window "
+            f"starts: the profile describes the {_days(span)} that exist."
+        )
+    if span < 2 * DAY:
+        notes.append(
+            f"daily_rhythm and level_change need two days of values; there "
+            f"are {_days(span)}."
+        )
+    elif profile.daily_rhythm is None:
+        notes.append(
+            "daily_rhythm is null: the values do not vary, or too few buckets hold one."
+        )
+    if span < 14 * DAY:
+        notes.append(
+            f"weekly_rhythm needs fourteen days of values; there are {_days(span)}."
+        )
+    elif profile.weekly_rhythm is None:
+        notes.append(
+            "weekly_rhythm is null: the values do not vary, or too few "
+            "buckets hold one."
+        )
+    if capped and profile.recent:
+        notes.append(
+            f"recent looks at the newest {RECENT_VALUES} values only, from "
+            f"{profile.recent.first.isoformat()}; get_values reads older ones."
+        )
+    return notes

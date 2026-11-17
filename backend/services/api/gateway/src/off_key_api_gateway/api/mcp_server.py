@@ -66,6 +66,9 @@ async def _list_tools(
 
 
 def _answer(said: Any, refused: bool = False) -> types.CallToolResult:
+    # A refusal is JSON too, so an agent reads every answer the same way.
+    if refused:
+        said = {"error": said}
     text = said if isinstance(said, str) else json.dumps(said, separators=(",", ":"))
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=text)], is_error=refused

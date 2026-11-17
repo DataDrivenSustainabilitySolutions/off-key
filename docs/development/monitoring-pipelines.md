@@ -556,7 +556,12 @@ been quiet (`silence_seconds`), and its `sensor_set` names the reading, so the
 alarm list, the reading's chart and agents see it like any other alarm. The row
 rides in the heartbeat's transaction and stays due until a heartbeat stores
 it. A reading raises again only after it sends a value and goes quiet anew. A
-shadow run stores none.
+shadow run stores none. A catalogue reading may set `max_silence_seconds`, for a
+sensor whose rhythm is known up front: activation copies it into the launch
+(`RadarStartConfig.silence_after_seconds`, by input key, and
+`RADAR_SILENCE_AFTER`, present only when one is set), and that reading uses it
+from the start instead of a learned limit. A changed limit applies to monitors
+started afterwards.
 
 ## Numerical ownership
 

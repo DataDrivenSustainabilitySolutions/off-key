@@ -251,6 +251,7 @@ class PipelineActivations:
             performance_config=performance,
             pipeline=execution,
             shadow=request.shadow,
+            silence_after_seconds=self._silence_limits(bindings, snapshot),
         )
         collection_fingerprint = await monitoring_collection_fingerprint(
             self.session, topics
@@ -463,6 +464,16 @@ class PipelineActivations:
             for slot in definition.input_slots
         ]
         return performance, topics, bindings, snapshot
+
+    @staticmethod
+    def _silence_limits(bindings, snapshot) -> dict[str, int]:
+        """The catalogue's silence limit of each bound reading that sets one."""
+        readings = {item.id: item for item in snapshot.catalog.document.streams}
+        return {
+            binding.input_key: limit
+            for binding in bindings
+            if (limit := readings[binding.reading_id].max_silence_seconds)
+        }
 
     async def _binding_metadata(self, bindings, snapshot, fingerprint):
         document = snapshot.catalog.document

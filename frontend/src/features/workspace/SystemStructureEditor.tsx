@@ -468,6 +468,39 @@ export function SystemStructureEditor({
                 onChange={(event) => update({ category: event.target.value })}
               />
             </label>
+            {stream.value_type === "number" && (
+              <label>
+                Longest expected quiet (minutes)
+                <input
+                  aria-label="Longest expected quiet"
+                  type="number"
+                  min={1}
+                  max={43200}
+                  step={1}
+                  placeholder="Learned"
+                  value={
+                    stream.max_silence_seconds === undefined
+                      ? ""
+                      : Math.round(stream.max_silence_seconds / 60)
+                  }
+                  onChange={(event) => {
+                    const minutes = Math.round(Number(event.target.value));
+                    update({
+                      max_silence_seconds:
+                        event.target.value === "" || !(minutes >= 1)
+                          ? undefined
+                          : Math.min(minutes, 43200) * 60,
+                    });
+                  }}
+                />
+                <small>
+                  A monitor raises a silence alarm once this reading has sent
+                  nothing for longer. Leave empty to learn it: 1.5 times its
+                  longest pause of the past day. Applies to monitors started
+                  afterwards.
+                </small>
+              </label>
+            )}
           </>
         )}
         {kind === "group" && (

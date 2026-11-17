@@ -41,6 +41,7 @@ def _radar_service(monkeypatch) -> RadarService:
         max_feature_count=100,
         max_string_length=1000,
         health_check_interval=30.0,
+        silence_after_seconds={},
         subscription_topics=["telemetry/+/#"],
         sensor_key_strategy="full_hierarchy",
         sensor_freshness_seconds=30.0,

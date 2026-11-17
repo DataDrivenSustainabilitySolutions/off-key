@@ -93,6 +93,7 @@ class RadarService:
         # Extracted components
         self.health_monitor = HealthMonitor(
             health_check_interval=self.config.health_check_interval,
+            silence_after_seconds=self.config.silence_after_seconds,
         )
         self.message_processor: MessageProcessor | None = None
         self.coverage: CoverageTracker | None = None

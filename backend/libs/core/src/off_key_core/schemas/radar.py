@@ -886,6 +886,9 @@ class RadarStartConfig(_MonitorLaunch):
     # The RADAR pool runtime the run is pinned to: only a pool replica running
     # it claims the run's workload.
     runtime_image: str | None = Field(default=None, max_length=512, pattern=r"^\S+$")
+    # Quiet seconds after which a bound reading raises a silence alarm, by input
+    # key: copied at activation from readings whose catalogue entry sets one.
+    silence_after_seconds: dict[str, int] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_pipeline(self) -> "RadarStartConfig":
@@ -909,6 +912,10 @@ class RadarStartConfig(_MonitorLaunch):
             for binding in bindings
         ):
             raise ValueError("Bound input keys must match the alignment feature schema")
+        if not set(self.silence_after_seconds) <= {
+            binding.input_key for binding in bindings
+        }:
+            raise ValueError("Silence limits must name bound input keys")
         if self.pipeline.fingerprint != execution_fingerprint(
             self.pipeline.definition, bindings
         ):

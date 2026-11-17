@@ -12,6 +12,7 @@ def _build_radar_config(subscription_topics):
         max_feature_count=100,
         max_string_length=1000,
         health_check_interval=30.0,
+        silence_after_seconds={},
         strategy="static_baseline",
         model_type="pyod_iforest",
         model_params={},

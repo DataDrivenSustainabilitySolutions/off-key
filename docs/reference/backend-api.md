@@ -497,6 +497,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `GET` | `/dojo/datasets` | List datasets, newest first | `limit`, `offset` |
 | `POST` | `/dojo/datasets/csv` | Create a dataset from a CSV request body (`text/csv`, at most 100 MB) | Query: `name`, `layout` (`wide` or `long`), optional `timestamp_column`, `series_column`, `value_column`, `delimiter`, `filename`, `description` |
 | `POST` | `/dojo/datasets/history` | Copy recorded readings for one window into a dataset | Body: `name`, `reading_ids`, `end`, optional `start` (omitted: from the first stored value) |
+| `POST` | `/dojo/datasets/{dataset_id}/faults` | Copy a dataset with faults written in: a step, a drift, a frozen value or a gap on one series between two times. Each becomes a label of the copy, beside the dataset's own labels, so a run's metrics say which were detected and how late; faults may not overlap any label. 201 with the copy, whose `source` adds `copied_from` and `faults` | Body: `name`, optional `description`, `faults` (1 to 20), each with `kind`, `series_id`, `start_at`, `end_at`, and for a step or drift an optional `size` (default three standard deviations of the series) |
 | `GET` | `/dojo/datasets/{dataset_id}` | One dataset with its series | Path: `dataset_id` |
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |
@@ -615,7 +616,7 @@ hold open and any replica answers any request.
 | `search_components`, `get_component` | Finds steps by purpose and reads one with its settings | `GET /pipeline-components/search`, `GET /pipeline-components/{component_id}` |
 | `list_designs`, `get_design` | Reads a design to start from: a starter, a saved template, the design of a running monitor or a proposal | `GET /pipeline-components`, `/pipelines`, `/monitors`, `/monitors/{monitor_id}/pipeline`, `/pipeline-proposals/{proposal_id}` |
 | `edit_design`, `validate_design` | Changes a design in small edits and checks it | `POST /pipelines/edit`, `POST /pipelines/validate` |
-| `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised, and when | `POST /dojo/datasets/history`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` and `/results` |
+| `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised, and when; with `faults`, over a copy with labelled faults written in, and how many it caught and how late | `POST /dojo/datasets/history`, `POST /dojo/datasets/{dataset_id}/faults`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` and `/results` |
 | `propose_design`, `list_proposals`, `withdraw_proposal` | Hands a design to a member and learns what they decided | `/pipeline-proposals` |
 | `start_monitor`, `get_start` | Starts a monitor without a member's decision, in shadow with `shadow` set | `POST /pipelines/apply`, `GET /pipeline-activations/{activation_id}` |
 

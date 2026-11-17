@@ -131,6 +131,7 @@ GATEWAY_ACCESS = {
         "GET /v1/dojo/datasets",
         "POST /v1/dojo/datasets/csv",
         "POST /v1/dojo/datasets/history",
+        "POST /v1/dojo/datasets/{dataset_id}/faults",
         "DELETE /v1/dojo/datasets/{dataset_id}",
         "GET /v1/dojo/datasets/{dataset_id}",
         "PATCH /v1/dojo/datasets/{dataset_id}",
@@ -181,6 +182,7 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/devices/{device_id}/readings",
         "GET /v1/dojo/datasets",
         "POST /v1/dojo/datasets/history",
+        "POST /v1/dojo/datasets/{dataset_id}/faults",
         "GET /v1/dojo/datasets/{dataset_id}",
         "GET /v1/dojo/datasets/{dataset_id}/series/{series_id}/points",
         "GET /v1/dojo/datasets/{dataset_id}/comparison",
@@ -320,6 +322,7 @@ def test_a_key_changes_nothing_it_did_not_make():
     assert writes == {
         "POST /v1/alarms/query",
         "POST /v1/dojo/datasets/history",
+        "POST /v1/dojo/datasets/{dataset_id}/faults",
         "POST /v1/dojo/runs",
         "POST /v1/pipelines/edit",
         "POST /v1/pipelines/validate",

@@ -149,3 +149,14 @@ export const monitoringHandOff = (promotion: RunPromotion) => templateHref(promo
 export function suggestionNote(item: Pick<LabelSuggestion, "alarm_count">) {
   return item.alarm_count === 1 ? "Recorded alarm" : `${item.alarm_count.toLocaleString()} recorded alarms`;
 }
+
+const FAULT_KINDS = ["step", "drift", "freeze", "gap"] as const;
+
+/** The faults written into a copy, by kind, such as "3: 2 step, 1 gap"; nothing for an original. */
+export function injectedFaults(source: Record<string, unknown>): string | undefined {
+  const faults = Array.isArray(source.faults) ? source.faults as { kind?: unknown }[] : [];
+  if (!faults.length) return undefined;
+  const counts = FAULT_KINDS.map(kind => [kind, faults.filter(item => item.kind === kind).length] as const)
+    .filter(([, count]) => count > 0).map(([kind, count]) => `${count} ${kind}`);
+  return `${faults.length}: ${counts.join(", ")}`;
+}

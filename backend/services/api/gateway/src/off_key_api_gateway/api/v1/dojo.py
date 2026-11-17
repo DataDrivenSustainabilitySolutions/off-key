@@ -21,6 +21,7 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    DatasetWithFaults,
     LabelBatch,
     LabelChange,
     LabelCreate,
@@ -151,6 +152,32 @@ async def import_dojo_history(
     catalogue edits do not change it.
     """
     return await datasets.import_history(change, created_by=member_id(caller))
+
+
+@router.post(
+    "/datasets/{dataset_id}/faults",
+    response_model=DatasetView,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@write_limit
+async def inject_dojo_faults(
+    request: Request,
+    dataset_id: str,
+    change: DatasetWithFaults,
+    caller: User | Agent = Depends(use_dojo),
+    datasets: DojoDatasets = Depends(get_dojo_datasets),
+):
+    """Copy a dataset with faults written in, to test what a design catches.
+
+    Each fault is a step, a drift, a frozen value or a gap on one series
+    between two times, and becomes a label of the copy, so a run's metrics
+    say how many the design detected and how late. The copy keeps the
+    dataset's own labels; faults may not overlap them or each other.
+    """
+    return await datasets.inject_faults(
+        dataset_id, change, created_by=member_id(caller)
+    )
 
 
 @router.get(

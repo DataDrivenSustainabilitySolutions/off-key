@@ -26,10 +26,13 @@ MAX_LABEL_SUGGESTIONS = 200
 # A comparison puts this many runs on one dataset side by side; each run keeps
 # its own colour in the chart beside two series of values.
 MAX_COMPARED_RUNS = 6
+# Faults one copy of a dataset may carry, each labelled as a known problem.
+MAX_FAULTS = 20
 DatasetOrigin = Literal["csv", "history"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 CsvLayout = Literal["wide", "long"]
 LabelOutcomeKind = Literal["detected", "missed", "unscored"]
+FaultKind = Literal["step", "drift", "freeze", "gap"]
 
 
 class DojoModel(BaseModel):
@@ -65,7 +68,8 @@ class DatasetSummary(DojoModel):
 class DatasetView(DatasetSummary):
     source: dict[str, Any] = Field(
         description="Provenance: the uploaded file and layout, or the copied "
-        "readings and time window."
+        "readings and time window. A copy with faults adds `copied_from` and "
+        "`faults`."
     )
     series: list[DatasetSeriesView] = Field(max_length=MAX_DATASET_SERIES)
 
@@ -129,6 +133,43 @@ class DatasetFromHistory(DojoModel):
         if len(set(self.reading_ids)) != len(self.reading_ids):
             raise ValueError("Each reading may appear only once")
         return self
+
+
+class Fault(DojoModel):
+    """A problem written into a copy of a series between two times."""
+
+    kind: FaultKind = Field(
+        description="'step' adds `size` to every value, 'drift' adds a share "
+        "of `size` that grows from 0 at start_at to all of it at end_at, "
+        "'freeze' repeats the last value before start_at, and 'gap' drops "
+        "the values."
+    )
+    series_id: str
+    start_at: datetime
+    end_at: datetime
+    size: float | None = Field(
+        default=None,
+        description="For 'step' and 'drift', in the series' unit. Left out, "
+        "three standard deviations of the series.",
+    )
+
+    @model_validator(mode="after")
+    def interval(self):
+        _aware(self.start_at, "start_at")
+        _aware(self.end_at, "end_at")
+        if self.end_at <= self.start_at:
+            raise ValueError("end_at must be after start_at")
+        if self.size is not None and self.kind not in ("step", "drift"):
+            raise ValueError(f"A {self.kind} takes no size")
+        return self
+
+
+class DatasetWithFaults(DojoModel):
+    """Copy a dataset with faults written in, each labelled as a known problem."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    faults: list[Fault] = Field(min_length=1, max_length=MAX_FAULTS)
 
 
 class DatasetChange(DojoModel):

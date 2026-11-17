@@ -13,7 +13,7 @@ import { dojoApi } from "./api";
 import { ComparePanel } from "./ComparePanel";
 import { LabelsPanel } from "./LabelsPanel";
 import { RunsPanel } from "./RunsPanel";
-import { DATASET_TABS as TABS, formatSpan, isActive, type DatasetTab } from "./model";
+import { DATASET_TABS as TABS, formatSpan, injectedFaults, isActive, type DatasetTab } from "./model";
 
 const RUN_POLL_MS = 3000;
 
@@ -79,6 +79,7 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
     {error ? <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => void datasetLoop.reload()}>Retry</button></p>
       : <p className="dj-loading" role="status">Loading dataset…</p>}
   </section>;
+  const faults = injectedFaults(dataset.source);
   return <section className="dj-page dj-detail" aria-label={`Dataset ${dataset.name}`}>
     <Link className="dj-back" to={listHref}><ArrowLeft size={14} />All datasets</Link>
     <div className="dj-detail-header">
@@ -95,6 +96,7 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
       <div><dt>Series</dt><dd>{dataset.series.length}</dd></div>
       <div><dt>Time span</dt><dd>{formatSpan(dataset.start_at, dataset.end_at)}</dd></div>
       <div><dt>Labels</dt><dd>{labels.length}</dd></div>
+      {faults && <div><dt>Injected faults</dt><dd title="Written into this copy and labelled, to test what a design catches">{faults}</dd></div>}
       <div><dt>Runs</dt><dd>{runs.length}{moreRuns ? "+" : ""}</dd></div>
     </dl>
     <div className="dj-tabs" role="tablist" aria-label="Dataset sections">

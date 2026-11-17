@@ -100,7 +100,21 @@ export type DatasetView = {
   series: Array<DatasetSeriesView>;
 };
 
+export type DatasetWithFaults = {
+  name: string;
+  description?: string;
+  faults: Array<Fault>;
+};
+
 export type DojoModel = Record<string, unknown>;
+
+export type Fault = {
+  kind: "step" | "drift" | "freeze" | "gap";
+  series_id: string;
+  start_at: string;
+  end_at: string;
+  size?: number | null;
+};
 
 export type LabelBatch = {
   labels: Array<LabelCreate>;

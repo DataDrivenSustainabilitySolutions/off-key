@@ -554,6 +554,38 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         assert stores.datasets.import_history.await_count == 1
         assert stores.runs.create.await_count == 2
 
+        # Faults are written into a labelled copy, and the run replays the copy.
+        series = dataset["series"][0] | {"id": "s2"}
+        stores.datasets.inject_faults.return_value = dataset | {
+            "id": "d2",
+            "series": [series],
+        }
+        step = {
+            "kind": "step",
+            "reading": "r-power",
+            "start": "2026-03-01T00:10:00Z",
+            "end": "2026-03-01T00:20:00Z",
+            "size": 5,
+        }
+        faulted = said(
+            await client.call_tool(
+                "test_design", test | {"dataset_id": "d1", "faults": [step]}
+            )
+        )
+        assert faulted["dataset_id"] == "d2"
+        source, written = stores.datasets.inject_faults.await_args.args
+        assert source == "d1"
+        assert written.name == "Test by an agent · 1 injected fault"
+        assert [(item.kind, item.series_id, item.size) for item in written.faults] == [
+            ("step", "s1", 5.0)
+        ]
+        assert stores.runs.create.await_args.args[0].bindings == {"value": "s2"}
+        unbound = await client.call_tool(
+            "test_design",
+            test | {"dataset_id": "d1", "faults": [step | {"reading": "r-flow"}]},
+        )
+        assert said(unbound) == ("Faults name readings the test does not bind: r-flow")
+
         # It waits for the run to finish, and spares the agent the compiled design.
         result = said(await client.call_tool("get_test", {"run_id": "run-1"}))
         assert (result["status"], result["alarm_count"]) == ("succeeded", 7)

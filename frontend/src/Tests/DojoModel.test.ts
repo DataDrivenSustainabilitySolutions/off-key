@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { datasetChartOption } from "@/features/dojo/dojo-chart";
-import { formatDuration, readPages, runState, suggestBindings } from "@/features/dojo/model";
+import { formatDuration, injectedFaults, readPages, runState, suggestBindings } from "@/features/dojo/model";
 import type { DatasetSeriesView } from "@/types/dojo.generated";
 
 const series = (id: string, name: string, unit: string | null = null): DatasetSeriesView => ({
   id, name, unit, position: 0, reading_id: null, point_count: 1, start_at: null, end_at: null });
 
 describe("Dojo model", () => {
+  it("counts the faults written into a copy by kind", () => {
+    expect(injectedFaults({ reading_ids: ["r1"] })).toBeUndefined();
+    expect(injectedFaults({ faults: [{ kind: "gap" }, { kind: "step" }, { kind: "step" }] })).toBe("3: 2 step, 1 gap");
+  });
+
   it("binds a slot by name first, then by unit, then by order", () => {
     const available = [series("s1", "Temperature", "°C"), series("s2", "Voltage", "V"), series("s3", "Spare")];
     expect(suggestBindings([

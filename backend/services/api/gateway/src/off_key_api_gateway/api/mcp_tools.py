@@ -43,7 +43,9 @@ what its report lists before you go on.
 4. test_design replays the design over recorded values of the readings, and \
 get_test says how many alarms it would have raised, with the scores around \
 the first ones. Compare variants on the same `dataset_id`, so they replay the \
-same values.
+same values. To show that a design catches a problem the history lacks, pass \
+`faults`: a step, drift, freeze or gap written into a copy, which get_test \
+scores as caught or missed, with the delay.
 5. propose_design hands the design to a member with your reason and the test. \
 A member decides, and list_proposals shows the decision with their note. A key \
 that may start monitors also has start_monitor. In shadow, a monitor records \
@@ -168,7 +170,9 @@ class Tool:
 
 
 def _without_titles(schema: Any, names: bool = False) -> Any:
-    """Pydantic titles every field after its name, which tells an agent nothing.
+    """Pydantic titles every field after its name, which tells an agent nothing,
+    and maps a tagged union's tags beside its `oneOf`, whose `const` tags
+    already say the same.
 
     ``names`` says the keys are names of properties, not words of the schema.
     """
@@ -179,7 +183,7 @@ def _without_titles(schema: Any, names: bool = False) -> Any:
     return {
         key: _without_titles(value, not names and key in {"properties", "$defs"})
         for key, value in schema.items()
-        if names or key != "title"
+        if names or key not in {"title", "discriminator"}
     }
 
 
@@ -440,6 +444,16 @@ async def validate_design(api: Api, args: Check):
     return await api.post("/v1/pipelines/validate", _sent(args))
 
 
+class InjectedFault(Args):
+    kind: Literal["step", "drift", "freeze", "gap"]
+    reading: str
+    start: datetime
+    end: datetime
+    size: float | None = Field(
+        default=None, description="In the reading's unit; default 3 sigma."
+    )
+
+
 class Test(Args):
     definition: Design = Field(description=DESIGN)
     bindings: dict[str, str] = Field(min_length=1, description=BINDINGS)
@@ -452,27 +466,34 @@ class Test(Args):
     dataset_id: str | None = Field(
         default=None,
         description=(
-            "The `dataset_id` of an earlier test. The design then runs on the "
-            "same copy of the values, so the two results compare, and `days` "
-            "is not used."
+            "An earlier test's `dataset_id`, to replay the same values so the "
+            "results compare. `days` is then not used."
         ),
     )
     name: str = Field(
         default="Test by an agent",
         min_length=1,
         max_length=100,
-        description="What the test is called in the Dojo, where members see it.",
+        description="Its name in the Dojo, where members see it.",
+    )
+    faults: list[InjectedFault] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Written into a labelled copy after warm-up, not overlapping: "
+            "step adds size, drift ramps to it, freeze holds a value, "
+            "gap drops values."
+        ),
     )
 
 
 @tool(Test, changes=True)
 async def test_design(api: Api, args: Test):
     """Replay a design over recorded values of its readings, as a monitor would
-    have seen them. It copies the values into the Dojo and queues the run;
-    follow it with get_test. `notes` say how much of the replay the warm-up
-    takes and whether a running monitor holds a bound reading. Test before
-    you propose or start a design, and test a changed design on the same
-    `dataset_id`."""
+    have seen them, in the Dojo; follow it with get_test. `notes` say how much
+    of the replay the warm-up takes and whether a running monitor holds a bound
+    reading. Test before you propose or start, and test a changed design on
+    the same `dataset_id`, which with `faults` is the copy holding them."""
     if args.dataset_id:
         dataset = await api.get(f"/v1/dojo/datasets/{_segment(args.dataset_id)}")
     else:
@@ -490,6 +511,9 @@ async def test_design(api: Api, args: Test):
     missing = sorted(set(args.bindings.values()) - series.keys())
     if missing:
         raise ApiRefusal(422, f"The dataset holds no values of {', '.join(missing)}")
+    if args.faults:
+        dataset = await _with_faults(api, dataset, series, args)
+        series = {item["reading_id"]: item["id"] for item in dataset["series"]}
     run = await api.post(
         "/v1/dojo/runs",
         {
@@ -531,6 +555,32 @@ async def test_design(api: Api, args: Test):
     if notes := [note for note in notes if note]:
         answer["notes"] = notes
     return answer
+
+
+async def _with_faults(api: Api, dataset: dict, series: dict, args: Test) -> dict:
+    """A copy of the dataset with the faults written in and labelled."""
+    unknown = sorted({item.reading for item in args.faults} - series.keys())
+    if unknown:
+        raise ApiRefusal(
+            422, f"Faults name readings the test does not bind: {', '.join(unknown)}"
+        )
+    return await api.post(
+        f"/v1/dojo/datasets/{_segment(dataset['id'])}/faults",
+        {
+            "name": f"{args.name} · {len(args.faults)} injected "
+            + ("fault" if len(args.faults) == 1 else "faults"),
+            "faults": [
+                {
+                    "kind": item.kind,
+                    "series_id": series[item.reading],
+                    "start_at": item.start.isoformat(),
+                    "end_at": item.end.isoformat(),
+                    **({} if item.size is None else {"size": item.size}),
+                }
+                for item in args.faults
+            ],
+        },
+    )
 
 
 def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str:
@@ -600,12 +650,11 @@ class TestRef(Args):
 @tool(TestRef)
 async def get_test(api: Api, args: TestRef):
     """How a test stands and, once it has `succeeded`, what it found: how many
-    results alarmed, how many separate alarms that makes per day, and against
-    the labels of the dataset, where it has any, how many known problems the
-    design caught and how late. For the first alarms, `alarms.excerpts` holds
-    the score and threshold from a few results before to a few after; read the
-    input values of that time with get_values. `stats` says why observations
-    gave no result. Call it again while the status is `queued` or `running`."""
+    results alarmed, how many separate alarms per day, and against the
+    dataset's labels (injected faults among them) how many it caught and how
+    late. `alarms.excerpts` holds the score and threshold around the first
+    alarms; read the input values then with get_values. `stats` says why
+    observations gave no result. Call it again while `queued` or `running`."""
     path = f"/v1/dojo/runs/{_segment(args.run_id)}"
     run = await _settled(
         lambda: api.get(path),
@@ -1024,17 +1073,17 @@ class Start(Args):
         min_length=1,
         max_length=128,
         description=(
-            "Any text of yours that names this start. Sent again, it answers "
-            "with the same start instead of a second monitor, so send it when "
-            "you repeat a call whose answer you did not get."
+            "Any text naming this start. Sent again, it answers with the same "
+            "start, not a second monitor: use it to repeat a call whose answer "
+            "you missed."
         ),
     )
     shadow: bool = Field(
         default=False,
         description=(
-            "Start in shadow: the monitor learns and scores as any other, "
-            "records each alarm it would raise as muted evidence and raises "
-            "none. A key that may start in shadow only must set it."
+            "Start in shadow: it scores as any other and records the alarms it "
+            "would raise as muted evidence, raising none. A key limited to "
+            "shadow must set it."
         ),
     )
     rationale: MonitorRationale = Field(

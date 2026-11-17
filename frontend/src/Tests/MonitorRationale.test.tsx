@@ -1,11 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { historyMarkers, stepLabels } from "@/domain/monitoring/monitorOrigin";
 import { mutedAlarms, shadowSince } from "@/domain/monitoring/shadowReview";
+import { agentActivity } from "@/features/account/agentActivity";
+import { MonitorWatches } from "@/features/reporting/MonitorWatches";
 import { ShadowReview } from "@/features/monitoring/ShadowReview";
 import { RationaleCard } from "@/features/workspace/RationaleCard";
 import { apiUtils } from "@/lib/api-client";
 import type { ActiveService } from "@/types/monitoring";
-import type { MonitorOrigin } from "@/types/pipelines.generated";
+import type { MonitorOrigin, MonitorSummary, PipelineProposalSummary } from "@/types/pipelines.generated";
 
 vi.mock("@/lib/api-client", async (original) => ({
   ...(await original<typeof import("@/lib/api-client")>()),
@@ -78,5 +81,45 @@ describe("a shadow run under review", () => {
     vi.mocked(apiUtils.get).mockResolvedValue([]);
     render(<ShadowReview service={service} canEdit={false} onTakeLive={() => {}} />);
     expect(screen.queryByRole("button", { name: "Take live" })).toBeNull();
+  });
+});
+
+describe("a monitor's steps", () => {
+  const step = (event: "started" | "stopped", shadow = false, at = "2026-11-01T00:00:00Z") =>
+    ({ event, shadow, at, author: "admin@example.com", author_kind: "member" as const });
+
+  it("names a start after a start as a retune or as taking a shadow run live", () => {
+    expect(stepLabels([step("started", true), step("started"), step("started"), step("stopped"), step("started", true)]))
+      .toEqual(["Started in shadow", "Taken live", "Retuned", "Stopped", "Started in shadow"]);
+    expect(historyMarkers([step("started"), step("stopped", false, "not a time")]))
+      .toEqual([{ timeMs: Date.parse("2026-11-01T00:00:00Z"), label: "Started" }]);
+  });
+});
+
+describe("an agent's activity", () => {
+  const proposal = (author: string, status: PipelineProposalSummary["status"]) =>
+    ({ author, author_kind: "agent", status }) as PipelineProposalSummary;
+  const monitor = (author: string, active: boolean, shadow: boolean) =>
+    ({ id: author, active, shadow, origin: { author, author_kind: "agent" } }) as MonitorSummary;
+
+  it("counts its proposals by decision and the monitors it designed that run", () => {
+    const proposals = [proposal("Designer", "open"), proposal("designer", "accepted"), proposal("Designer", "accepted"), proposal("Other", "declined")];
+    const monitors = [monitor("Designer", true, true), monitor("Designer", true, false), monitor("Designer", false, false), monitor("Other", true, false)];
+    expect(agentActivity("Designer", proposals, monitors)).toBe("3 proposals (1 waiting, 2 started) · 2 monitors running (1 in shadow)");
+    expect(agentActivity("Quiet", proposals, monitors)).toBe("No proposals or monitors yet");
+  });
+});
+
+describe("an alarm's monitor in reporting", () => {
+  it("says what the monitor watches, and nothing when it has no rationale", async () => {
+    vi.mocked(apiUtils.get).mockResolvedValueOnce({ origin });
+    const view = render(<MonitorWatches monitorId="s1" />);
+    expect((await screen.findAllByText(rationale.watches)).length).toBeGreaterThan(0);
+    expect(vi.mocked(apiUtils.get).mock.lastCall![0]).toBe("/v1/monitors/s1");
+    view.unmount();
+    vi.mocked(apiUtils.get).mockRejectedValueOnce(new Error("gone"));
+    const { container } = render(<MonitorWatches monitorId="s2" />);
+    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledTimes(2));
+    expect(container.textContent).toBe("");
   });
 });

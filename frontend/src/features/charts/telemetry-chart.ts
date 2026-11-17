@@ -93,7 +93,17 @@ export interface MonitoringChartModel {
   secondarySeries: SecondaryChartSeries[];
   range: ChartTimeRange;
   extent?: [startMs: number, endMs: number];
+  /** What the monitor watches and its limits, said beside an alarm. */
+  rationale?: { watches: string; limits: string };
+  /** Where the monitor started, was retuned, taken live or stopped: a labelled rule across the readings. */
+  markers?: ChartMarker[];
 }
+
+interface ChartMarker { timeMs: number; label: string }
+
+/** An alarm's tooltip ends with what the monitor watches and where it is known to be wrong. */
+const withRationale = (text: string, rationale?: MonitoringChartModel["rationale"]) =>
+  rationale && /^Alarm: (active|muted)$/m.test(text) ? `${text}\nWatches: ${rationale.watches}\nLimits: ${rationale.limits}` : text;
 
 export interface TelemetryChartModel {
   telemetry: TelemetryChartSeries;
@@ -490,6 +500,10 @@ export const buildMonitoringChartOption = ({
     lineStyle: { color: colors.mutedForeground, type: "dashed" as const, width: 1, opacity: 0.35 } }));
   const dayBreakLine = { silent: true, animation: false, symbol: ["none", "none"], label: { show: false }, z: 1,
     data: dayBreaks };
+  // Each start, retune, take-live and stop of the monitor, named at the top of the first pane.
+  const markerLines = (model.markers ?? []).map(marker => ({ xAxis: marker.timeMs,
+    lineStyle: { color: colors.primary, type: "dotted" as const, width: 1, opacity: 0.7 },
+    label: { show: true, formatter: marker.label, position: "insideEndTop" as const, color: colors.mutedForeground, fontSize: 11 } }));
 
   const alarmColor = colors.alarmBoundary ?? "#dc2626";
   // How far from the pointer each series still speaks: see `formatTelemetryTooltip`.
@@ -551,9 +565,9 @@ export const buildMonitoringChartOption = ({
       ...(episodes.length ? { markArea: { silent: true, animation: false, label: { show: false },
         itemStyle: { color: colors.alarmFill ?? "rgba(220, 38, 38, 0.12)" },
         data: episodes.map(([start, end]) => [{ xAxis: start }, { xAxis: end }]) } } : {}),
-      ...(alarmSpans.length || dayBreaks.length ? { markLine: { ...dayBreakLine,
+      ...(alarmSpans.length || dayBreaks.length || (index === 0 && markerLines.length) ? { markLine: { ...dayBreakLine,
         lineStyle: { color: alarmColor, width: 1, opacity: 0.55 },
-        data: [...alarmSpans.map(([start]) => ({ xAxis: start })), ...dayBreaks],
+        data: [...alarmSpans.map(([start]) => ({ xAxis: start })), ...dayBreaks, ...(index === 0 ? markerLines : [])],
       } } : {}),
     };
   });
@@ -745,13 +759,13 @@ export const buildMonitoringChartOption = ({
       borderColor: colors.border,
       textStyle: { color: colors.popoverForeground, fontSize: 12 },
       axisPointer: { type: "line" },
-      formatter: (params: unknown) =>
+      formatter: (params: unknown) => withRationale(
         (forecasts.length ? formatForecastTooltip(params,
           time => formatChartTime(time, timeZone, "tooltip", locale), formatForecastValue, model.intervalLabel ?? "Calibrated interval",
           !model.forecastView || model.forecastView === "overlay") : undefined)
           ?? (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
           time => formatChartTime(time, timeZone, "tooltip", locale), formatNumber) : undefined)
-          ?? formatTelemetryTooltip(params, timeZone, units, locale, reach, means),
+          ?? formatTelemetryTooltip(params, timeZone, units, locale, reach, means), model.rationale),
     },
     xAxis,
     yAxis: [

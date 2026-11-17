@@ -112,6 +112,8 @@
 .rp-event-signals a { color: var(--rp-ink); }
 .rp-event-overview > .rp-note { margin-top: 8px; }
 .rp-event-links { display: flex; flex-wrap: wrap; gap: 6px 20px; grid-column: 1 / -1; font-size: 12px; }
+.rp-watches { grid-column: 1 / -1; min-width: 0; }
+.rp-watches .rationale-card { margin: 0; }
 .rp-event-links a { color: var(--rp-muted); text-decoration: none; text-underline-offset: 4px; }
 .rp-event-links a:hover { color: var(--rp-ink); text-decoration: underline; }
 .rp-evidence-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 16px 24px; padding: 4px 0 4px 28px; border-left: 1px solid var(--rp-line); }

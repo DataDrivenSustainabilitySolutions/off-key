@@ -129,7 +129,8 @@ async def connected(app):
 def said(result):
     """What a tool answered: its JSON, or the words of a refusal."""
     [content] = result.content
-    return content.text if result.is_error else json.loads(content.text)
+    answer = json.loads(content.text)
+    return answer["error"] if result.is_error else answer
 
 
 def starter(name: str = "adaptive_stream") -> dict:
@@ -330,6 +331,30 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
         )
         assert edited["added"] == ["prepare_smooth_1"]
         assert edited["report"]["valid"] and edited["report"]["issues"] == []
+        # The report leaves out what the agent holds and what says nothing:
+        # the design, defaults, and the features after the detector.
+        assert edited["report"].keys() == {
+            "valid",
+            "issues",
+            "order",
+            "features",
+            # The smoothing step holds the first observations back.
+            "preparation_observations",
+            "ready_after",
+        }
+        assert edited["report"]["features"].keys() == {
+            "input",
+            "prepare_smooth_1",
+            "detector",
+        }
+        assert "note" not in edited
+        empty = said(
+            await client.call_tool(
+                "edit_design",
+                {"edits": [{"op": "add_input", "id": "power"}]},
+            )
+        )
+        assert empty["note"].startswith("The design has no detector yet.")
         labels = {
             node["id"]: node.get("label") for node in edited["definition"]["nodes"]
         }
@@ -445,6 +470,7 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         "alarm_count": 0,
         "error": None,
         "created_by": None,
+        "created_by_agent": "Claude",
         "created_at": THEN,
         "started_at": None,
         "finished_at": None,
@@ -542,7 +568,10 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         assert stores.datasets.import_history.await_args.kwargs == {"created_by": None}
         queue = stores.runs.create.await_args.args[0]
         assert (queue.dataset_id, queue.bindings) == ("d1", {"value": "s1"})
-        assert stores.runs.create.await_args.kwargs == {"created_by": None}
+        assert stores.runs.create.await_args.kwargs == {
+            "created_by": None,
+            "created_by_agent": key.name,
+        }
 
         # A changed design runs on the same copy, so the two results compare.
         await client.call_tool("test_design", test | {"dataset_id": "d1"})
@@ -588,8 +617,18 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
 
         # It waits for the run to finish, and spares the agent the compiled design.
         result = said(await client.call_tool("get_test", {"run_id": "run-1"}))
-        assert (result["status"], result["alarm_count"]) == ("succeeded", 7)
+        assert (result["status"], result["alarming_results"]) == ("succeeded", 7)
+        # One name for the run in both tools.
+        assert result["run_id"] == "run-1" and "id" not in result
+        assert result["created_by"] == "Agent · Claude"
+        assert result["metrics"]["alarming_results"] == 7
+        # What the results are, not the starter the design came from.
+        assert result["results_are"] == "scores against a threshold"
+        assert "strategy" not in result and "strategy" not in result["metrics"]
         assert result["stats"] == {"missing_reading": 2}
+        assert result["stats_meaning"] == {
+            "missing_reading": "no value of another bound reading had arrived yet"
+        }
         assert "definition" not in result
         assert result["metrics"]["false_alarms_per_day"] == 2
         # Alarmed results in a row are one alarm, listed with when it was.
@@ -635,6 +674,8 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         result = said(await client.call_tool("get_test", {"run_id": "run-1"}))
         assert result["note"].startswith("Nothing was scored: the replay gave 300 ")
         assert "warm-up of 1560 observations" in result["note"]
+        # A test without alarms still answers them as an object.
+        assert result["alarms"] == {"count": 0, "listed": [], "complete": True}
 
 
 @pytest.mark.asyncio

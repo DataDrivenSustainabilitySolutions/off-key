@@ -112,13 +112,15 @@ class ReadingProfile(BaseModel):
         default=None, description="The earliest value in the window, if it holds one."
     )
     last: datetime | None = Field(
-        default=None, description="The latest value in the window."
+        default=None,
+        description="The latest value in the window, the same moment as recent.last.",
     )
     coverage: float | None = Field(
         default=None,
         description=(
             "Share of the buckets between the first and the last value that "
-            "hold a value, from 0 to 1."
+            "hold a value, from 0 to 1: of the history that exists, not of "
+            "the window before it began."
         ),
     )
     longest_outage_seconds: float | None = Field(
@@ -150,6 +152,10 @@ class ReadingProfile(BaseModel):
     )
     recent: RecentValues | None = Field(
         default=None, description="Null where the window holds no value."
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Why a figure is null, and where the profile saw less than asked.",
     )
 
 

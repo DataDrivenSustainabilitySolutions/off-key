@@ -54,7 +54,7 @@ from ...providers import (
     get_dojo_metrics,
     get_dojo_runs,
 )
-from ..access import caller_key, member_id, require_permission
+from ..access import agent_name, caller_key, member_id, require_permission
 from ..errors import DomainErrorRoute
 from ..rate_limiter import client_ip, limiter
 
@@ -398,7 +398,9 @@ async def create_dojo_run(
     to every other calibration method, which takes longer; read the result
     with `GET /v1/dojo/runs/{run_id}/calibration`.
     """
-    return await runs.create(run, created_by=member_id(caller))
+    return await runs.create(
+        run, created_by=member_id(caller), created_by_agent=agent_name(caller)
+    )
 
 
 @router.get("/runs/{run_id}", response_model=RunView, openapi_extra=OPEN_TO_AGENTS)

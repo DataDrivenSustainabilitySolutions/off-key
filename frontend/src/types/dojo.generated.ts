@@ -330,6 +330,7 @@ export type RunSummary = {
   alarm_count: number;
   error: string | null;
   created_by: number | null;
+  created_by_agent?: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -348,6 +349,7 @@ export type RunView = {
   alarm_count: number;
   error: string | null;
   created_by: number | null;
+  created_by_agent?: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

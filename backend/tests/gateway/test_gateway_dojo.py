@@ -140,7 +140,10 @@ async def test_a_run_is_created_with_its_bindings_and_alignment(api, dojo_servic
     [run] = dojo_services.runs.create.await_args.args
     assert run.bindings == body["bindings"]
     assert run.alignment == RunAlignment()
-    assert dojo_services.runs.create.await_args.kwargs == {"created_by": 17}
+    assert dojo_services.runs.create.await_args.kwargs == {
+        "created_by": 17,
+        "created_by_agent": None,
+    }
 
 
 @pytest.mark.asyncio

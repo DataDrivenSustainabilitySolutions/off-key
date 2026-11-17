@@ -105,6 +105,7 @@ class CatalogueDataService:
         after_service_id: str | None,
         after_sequence_number: int | None,
         limit: int,
+        alarm: bool | None = None,
     ) -> list[dict[str, Any]]:
         if device_id is not None and not stream_ids:
             scope = self._ids.device_scope(device_id)
@@ -122,6 +123,7 @@ class CatalogueDataService:
             after_service_id=after_service_id,
             after_sequence_number=after_sequence_number,
             limit=limit,
+            alarm=alarm,
         )
         return [self.chart_row(row) for row in rows]
 

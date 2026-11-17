@@ -48,6 +48,10 @@ async def list_chart_evidence(
     after_timestamp: datetime | None = None,
     after_monitor_id: str | None = None,
     after_sequence_number: int | None = Query(default=None, ge=1),
+    alarm: bool | None = Query(
+        default=None,
+        description="true keeps the observations that alarmed, muted or not.",
+    ),
     limit: int = Query(default=2000, ge=1, le=10000),
     service: CatalogueDataService = Depends(get_catalogue_data_service),
 ):
@@ -55,7 +59,8 @@ async def list_chart_evidence(
     paging forward.
 
     Name either `device_id` or one or more `reading_id`, and optionally one
-    monitor. Page with the four `after_*` fields together, taken from the last
+    monitor and `alarm`. Without a cursor the newest `limit` rows come back,
+    oldest first. Page with the four `after_*` fields together, taken from the last
     row of the previous page.
     """
     if (device_id is None) == (not reading_id):
@@ -84,4 +89,5 @@ async def list_chart_evidence(
         after_service_id=after_monitor_id,
         after_sequence_number=after_sequence_number,
         limit=limit,
+        alarm=alarm,
     )

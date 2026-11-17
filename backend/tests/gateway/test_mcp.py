@@ -41,6 +41,8 @@ WITHOUT_THE_GRANT = [
     "withdraw_proposal",
     "list_monitors",
     "get_monitor",
+    "get_values",
+    "get_monitor_alarms",
 ]
 
 
@@ -191,7 +193,7 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
     }
     # An agent reads the whole list with every session, so it stays short.
     listing = [tool.model_dump(mode="json", exclude_none=True) for tool in granted]
-    assert len(json.dumps(listing)) < 25_000
+    assert len(json.dumps(listing)) < 27_500
 
 
 def test_a_schema_says_nothing_twice():
@@ -260,14 +262,29 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
         "bucket_seconds": 60.0,
     }
     stores.data.devices.return_value = [device]
-    stores.data.device_readings.return_value = []
+    readings = [
+        {"id": key, "label": key, "broker_id": "plant", "topic": f"pump/{key}"}
+        for key in ("r-power", "r-flow")
+    ]
+    stores.data.device_readings.return_value = readings
+    stores.monitors.list_radar_services.return_value = [
+        {
+            "id": "service-1",
+            "display_name": "Pump power",
+            "stream_ids": ["r-power"],
+            "status": True,
+        }
+    ]
     stores.data.profile.return_value = profile
     async with connected(gateway) as client:
         devices = said(await client.call_tool("list_devices", {"active": True}))
         assert [item["id"] for item in devices] == ["pump"]
-        assert (
-            said(await client.call_tool("list_readings", {"device_id": "pump"})) == []
-        )
+        # Each reading says which running monitor holds it.
+        listed = said(await client.call_tool("list_readings", {"device_id": "pump"}))
+        assert [item.get("held_by") for item in listed] == [
+            {"id": "service-1", "name": "Pump power"},
+            None,
+        ]
         looked = said(
             await client.call_tool("profile_reading", {"reading_id": "r-power"})
         )
@@ -334,6 +351,7 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
         "devices",
         "device_readings",
         "profile",
+        "list_radar_services",
     ]
 
 
@@ -476,7 +494,26 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         }
         for n in (3, 4, 5, 8)
     ]
-    stores.runs.results.return_value = {"items": alarmed, "next_after": None}
+    around = [
+        {
+            "sequence": n,
+            "timestamp": f"2026-03-01T00:{n:02}:00Z",
+            "phase": "operational",
+            "score": 0.2,
+            "threshold": 0.5,
+            "alarm": False,
+        }
+        for n in (1, 2)
+    ]
+
+    async def results(run_id, query):
+        page = alarmed if query.alarm else around
+        return {"items": page, "next_after": None}
+
+    stores.runs.results.side_effect = results
+    stores.monitors.list_radar_services.return_value = [
+        {"id": "m1", "display_name": "Pump", "stream_ids": ["r-power"], "status": True}
+    ]
     test = {"definition": starter()["definition"], "bindings": {"value": "r-power"}}
     async with connected(gateway) as client:
         queued = said(await client.call_tool("test_design", test | {"days": 3}))
@@ -487,7 +524,14 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
             "points_total",
             "start_at",
             "end_at",
+            "notes",
         }
+        # Said before it runs: the warm-up outlasts the replay, and the reading
+        # is held by a running monitor.
+        warm_up, held = queued["notes"]
+        assert warm_up.startswith("The replay holds about 100 observations, fewer")
+        assert "warm-up of 1560" in warm_up
+        assert held.startswith("A running monitor already holds r-power (monitor m1)")
         assert (queued["run_id"], queued["dataset_id"]) == ("run-1", "d1")
         # The values of the readings are copied, and each input takes its own.
         copied = stores.datasets.import_history.await_args.args[0]
@@ -532,8 +576,24 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
                 },
             ],
             "complete": True,
+            # Scores from a few results before to a few after the first alarms.
+            "excerpts": {
+                "columns": ["time", "score", "threshold", "alarm"],
+                "around": [
+                    {
+                        "start": start,
+                        "rows": [
+                            ["2026-03-01T00:01:00Z", 0.2, 0.5, False],
+                            ["2026-03-01T00:02:00Z", 0.2, 0.5, False],
+                        ],
+                    }
+                    for start in ("2026-03-01T00:03:00Z", "2026-03-01T00:08:00Z")
+                ],
+            },
         }
-        assert stores.runs.results.await_args.args[1].alarm is True
+        asked = [call.args[1] for call in stores.runs.results.await_args_list]
+        assert asked[0].alarm is True
+        assert [(item.after, item.limit) for item in asked[1:]] == [(None, 12), (1, 13)]
         # Without labels every alarm is counted false, which the note says.
         assert result["note"].startswith("The dataset has no labels")
 
@@ -869,11 +929,21 @@ async def test_an_agent_reads_what_its_key_may_do_and_the_room_to_start(
         "items": [],
         "capacity": {"running": 2, "limit": 2},
     }
+    stores.monitors.list_radar_services.return_value = [
+        {"id": "m1", "status": True, "shadow": True},
+        {"id": "m2", "status": True},
+    ]
     async with connected(gateway) as client:
         access = said(await client.call_tool("get_access", {}))
         assert access["starts"] == "nothing"
         assert access["may"].startswith("propose")
-        assert access["monitors"] == {"running": 2, "limit": 2, "free": 0}
+        assert access["monitors"] == {
+            "running": 2,
+            "limit": 2,
+            "free": 0,
+            "live": 1,
+            "shadow": 1,
+        }
         assert access["open_proposals"] == 0
         assert "places are taken" in access["note"]
         key.starts = "shadow"
@@ -882,3 +952,86 @@ async def test_an_agent_reads_what_its_key_may_do_and_the_room_to_start(
         assert "shadow" in access["may"]
         assert access["monitors"]["free"] == 5
         assert "note" not in access
+
+
+@pytest.mark.asyncio
+async def test_an_agent_reads_values_and_a_monitors_alarms(gateway, key, stores):
+    stores.data.measurement_buckets.return_value = {
+        "representation": "mean",
+        "points": [
+            {
+                "timestamp": "2026-03-01T00:00:00Z",
+                "value": 4.0,
+                "minimum": 1.0,
+                "maximum": 9.0,
+                "count": 12,
+                "start": "2026-03-01T00:00:00Z",
+                "end": "2026-03-01T00:01:00Z",
+            }
+        ],
+        "interval_ms": 60_000,
+        "sample_count": 12,
+    }
+    evidence = [
+        {
+            "monitor_id": "service-1",
+            "timestamp": f"2026-03-01T00:0{n}:00Z",
+            "sequence_number": n,
+            "reading_ids": ["r-power"],
+            "input_timestamps": {},
+            "strategy": "adaptive_stream",
+            "anomaly_score": score,
+            "threshold": 0.5,
+            "alarm": True,
+            "muted": True,
+            "created": f"2026-03-01T00:0{n}:01Z",
+        }
+        for n, score in ((3, 0.7), (4, 0.9), (7, 0.6))
+    ]
+    stores.data.chart_evidence.return_value = evidence
+    stores.monitors.get_radar_service.return_value = monitor()
+    async with connected(gateway) as client:
+        values = said(
+            await client.call_tool(
+                "get_values",
+                {"reading_id": "r-power", "start": THEN, "points": 50},
+            )
+        )
+        assert values == {
+            "reading_id": "r-power",
+            "columns": ["time", "mean", "min", "max", "count"],
+            "rows": [["2026-03-01T00:00:00Z", 4.0, 1.0, 9.0, 12]],
+            "stretch_seconds": 60.0,
+        }
+        [reading], window = stores.data.measurement_buckets.await_args
+        assert reading == "r-power"
+        assert (window["buckets"], window["view"]) == (50, "auto")
+
+        alarms = said(
+            await client.call_tool("get_monitor_alarms", {"monitor_id": "service-1"})
+        )
+        assert alarms["count"] == 2 and alarms["shadow"] and alarms["complete"]
+        assert alarms["listed"] == [
+            {
+                "start": "2026-03-01T00:03:00Z",
+                "end": "2026-03-01T00:04:00Z",
+                "results": 2,
+                "score": 0.9,
+                "threshold": 0.5,
+                "muted": True,
+            },
+            {
+                "start": "2026-03-01T00:07:00Z",
+                "end": "2026-03-01T00:07:00Z",
+                "results": 1,
+                "score": 0.6,
+                "threshold": 0.5,
+                "muted": True,
+            },
+        ]
+        asked = stores.data.chart_evidence.await_args.kwargs
+        assert (asked["service_id"], asked["alarm"], asked["stream_ids"]) == (
+            "service-1",
+            True,
+            ["r-power"],
+        )

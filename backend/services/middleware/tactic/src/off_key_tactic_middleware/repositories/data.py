@@ -489,6 +489,7 @@ class MonitoringEvidenceRepository:
         after_sequence_number: int | None,
         limit: int,
         service_id: str | None = None,
+        alarm: bool | None = None,
     ) -> list[
         Row[
             tuple[
@@ -536,6 +537,8 @@ class MonitoringEvidenceRepository:
 
         if service_id is not None:
             query = query.where(MonitoringEvidence.service_id == service_id)
+        if alarm is not None:
+            query = query.where(MonitoringEvidence.alarm.is_(alarm))
 
         if after_created is not None:
             if (

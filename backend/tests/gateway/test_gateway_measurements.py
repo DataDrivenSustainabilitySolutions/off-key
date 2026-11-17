@@ -200,6 +200,7 @@ async def test_chart_evidence_names_monitors_and_readings_publicly(get, data):
         "after_service_id": "m0",
         "after_sequence_number": 4,
         "limit": 10,
+        "alarm": None,
     }
 
 

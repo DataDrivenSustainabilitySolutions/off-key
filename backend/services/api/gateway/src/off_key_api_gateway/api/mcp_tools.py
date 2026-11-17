@@ -8,6 +8,7 @@ does so only to spare the agent what it already holds.
 
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import FunctionType
@@ -30,23 +31,26 @@ A usual session:
 0. get_access says what your key may do and whether a monitor has room to \
 start now.
 1. list_devices and list_readings show what can be monitored. profile_reading \
-says what a reading looks like, which decides the steps it needs. A reading \
-belongs to one monitor at a time: list_designs names the readings each \
-monitor holds, and a design bound to one of them cannot start.
+says what a reading looks like, which decides the steps it needs, and \
+get_values shows its values over a time range. A reading \
+belongs to one monitor at a time: list_readings names the monitor that \
+holds a reading, and a design bound to it cannot start.
 2. list_designs and get_design give a design to start from: a starter, a saved \
 template or the design a running monitor uses.
 3. search_components finds steps by purpose and get_component explains one \
 with its settings. edit_design makes small changes and checks the result. Fix \
 what its report lists before you go on.
 4. test_design replays the design over recorded values of the readings, and \
-get_test says how many alarms it would have raised. Compare variants on the \
-same `dataset_id`, so they replay the same values.
+get_test says how many alarms it would have raised, with the scores around \
+the first ones. Compare variants on the same `dataset_id`, so they replay the \
+same values.
 5. propose_design hands the design to a member with your reason and the test. \
 A member decides, and list_proposals shows the decision with their note. A key \
 that may start monitors also has start_monitor. In shadow, a monitor records \
 the alarms it would raise and alerts nobody.
 6. list_monitors shows every monitor, with `mine` on those your key started, \
-and get_monitor one with who started it and why. Stop a shadow monitor of \
+and get_monitor one with who started it and why. get_monitor_alarms lists \
+the alarms it raised, or in shadow would have raised. Stop a shadow monitor of \
 yours that is noisy or blind with stop_monitor, which frees its place, or \
 propose it to run live with what it showed. Live monitors stay with members.
 
@@ -234,6 +238,10 @@ async def get_access(api: Api, args: Nothing):
     agent = await api.get("/v1/agents/me")
     waiting = await api.get("/v1/pipeline-proposals", {"status": "open"})
     room = _room(waiting.get("capacity"))
+    if room is not None:
+        running = await api.get("/v1/monitors", {"active": True})
+        shadow = sum(1 for item in running if item.get("shadow"))
+        room |= {"live": len(running) - shadow, "shadow": shadow}
     answer = {
         "key": agent["name"],
         "starts": agent["starts"],
@@ -268,11 +276,28 @@ class Device(Args):
     device_id: str = Field(description="Id of a device, as list_devices gives it.")
 
 
+async def _holders(api: Api) -> dict[str, dict[str, Any]]:
+    """The running monitor that holds each reading, by reading id."""
+    monitors = await api.get("/v1/monitors", {"active": True})
+    return {
+        reading: {"id": item["id"], "name": item.get("display_name")}
+        for item in monitors
+        for reading in item.get("reading_ids") or ()
+    }
+
+
 @tool(Device)
 async def list_readings(api: Api, args: Device):
-    """The readings of one device with their label, unit and kind of value.
-    A design monitors readings: its inputs are bound to reading ids."""
-    return await api.get(f"/v1/devices/{_segment(args.device_id)}/readings")
+    """The readings of one device with their label, unit and kind of value,
+    and `held_by` the running monitor that watches a reading. A design monitors
+    readings: its inputs are bound to reading ids, and a reading belongs to one
+    monitor at a time."""
+    readings = await api.get(f"/v1/devices/{_segment(args.device_id)}/readings")
+    held = await _holders(api)
+    return [
+        item | ({"held_by": held[item["id"]]} if item.get("id") in held else {})
+        for item in readings
+    ]
 
 
 class Profile(Args):
@@ -440,8 +465,10 @@ class Test(Args):
 async def test_design(api: Api, args: Test):
     """Replay a design over recorded values of its readings, as a monitor would
     have seen them. It copies the values into the Dojo and queues the run;
-    follow it with get_test. Test before you propose or start a design, and
-    test a changed design on the same `dataset_id`."""
+    follow it with get_test. `notes` say how much of the replay the warm-up
+    takes and whether a running monitor holds a bound reading. Test before
+    you propose or start a design, and test a changed design on the same
+    `dataset_id`."""
     if args.dataset_id:
         dataset = await api.get(f"/v1/dojo/datasets/{_segment(args.dataset_id)}")
     else:
@@ -470,7 +497,7 @@ async def test_design(api: Api, args: Test):
             },
         },
     )
-    return {
+    answer = {
         "run_id": run["id"],
         "dataset_id": dataset["id"],
         "status": run["status"],
@@ -478,6 +505,57 @@ async def test_design(api: Api, args: Test):
         "start_at": dataset["start_at"],
         "end_at": dataset["end_at"],
     }
+    notes = [
+        _warm_up(args.definition, dataset, run["points_total"], len(args.bindings))
+    ]
+    try:
+        held = await _holders(api)
+    except ApiRefusal:
+        held = {}
+    taken = sorted(
+        f"{reading} (monitor {held[reading]['id']})"
+        for reading in set(args.bindings.values())
+        if reading in held
+    )
+    if taken:
+        notes.append(
+            "A running monitor already holds "
+            + ", ".join(taken)
+            + ", so this design cannot start on it. Test it all the same, then "
+            "bind other readings or propose it to replace that monitor."
+        )
+    if notes := [note for note in notes if note]:
+        answer["notes"] = notes
+    return answer
+
+
+def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str:
+    """How much of a replay the warm-up takes, said before the test runs."""
+    settings = definition.get("settings") or {}
+    warm_up = sum(
+        settings.get(key) or 0
+        for key in ("training_window_size", "calibration_window_size")
+    )
+    observations = points // max(inputs, 1)
+    if not warm_up or not observations:
+        return ""
+    if warm_up >= observations:
+        return (
+            f"The replay holds about {observations} observations, fewer than "
+            f"the warm-up of {warm_up}, so nothing will be scored. Test more "
+            "days or shrink training_window_size and calibration_window_size."
+        )
+    try:
+        start = datetime.fromisoformat(dataset["start_at"])
+        end = datetime.fromisoformat(dataset["end_at"])
+    except (KeyError, TypeError, ValueError):
+        return ""
+    share = warm_up / observations
+    scored_from = (start + (end - start) * share).isoformat()
+    return (
+        f"Warm-up takes {warm_up} of about {observations} observations "
+        f"({share:.0%}), so scoring starts near {scored_from}."
+    )
 
 
 async def _settled(read: Callable[[], Awaitable[dict]], done, wait: int) -> dict:
@@ -508,8 +586,10 @@ async def get_test(api: Api, args: TestRef):
     """How a test stands and, once it has `succeeded`, what it found: how many
     results alarmed, how many separate alarms that makes per day, and against
     the labels of the dataset, where it has any, how many known problems the
-    design caught and how late. `stats` says why observations gave no result.
-    Call it again while the status is `queued` or `running`."""
+    design caught and how late. For the first alarms, `alarms.excerpts` holds
+    the score and threshold from a few results before to a few after; read the
+    input values of that time with get_values. `stats` says why observations
+    gave no result. Call it again while the status is `queued` or `running`."""
     path = f"/v1/dojo/runs/{_segment(args.run_id)}"
     run = await _settled(
         lambda: api.get(path),
@@ -530,7 +610,18 @@ async def get_test(api: Api, args: TestRef):
             except ApiRefusal:
                 alarmed = None
             if alarmed is not None:
-                answer["alarms"] = _episodes(alarmed.get("items", []))
+                answer["alarms"], around = _episodes(alarmed.get("items", []))
+                with suppress(ApiRefusal):
+                    answer["alarms"]["excerpts"] = {
+                        "columns": ["time", "score", "threshold", "alarm"],
+                        "around": [
+                            {
+                                "start": item["start"],
+                                "rows": await _excerpt(api, path, item),
+                            }
+                            for item in around
+                        ],
+                    }
             if not metrics.get("labels_total"):
                 answer["note"] = (
                     "The dataset has no labels, so false_alarms counts every "
@@ -544,24 +635,63 @@ ALARM_RESULTS = 2000
 ALARMS_LISTED = 20
 
 
-def _episodes(results: list[dict]) -> dict[str, Any]:
-    """Alarmed results in a row make one alarm: when it began and ended."""
+def _runs(results: list[dict], sequence: str, timestamp: str) -> list[dict]:
+    """Alarmed results in a row make one alarm: when it began and ended, and
+    the sequences it spans."""
     episodes: list[dict[str, Any]] = []
-    previous = None
     for item in results:
-        if previous is not None and item["sequence"] == previous + 1:
-            episodes[-1]["end"] = item["timestamp"]
+        if episodes and item[sequence] == episodes[-1]["last"] + 1:
+            episodes[-1] |= {"end": item[timestamp], "last": item[sequence]}
             episodes[-1]["results"] += 1
         else:
             episodes.append(
-                {"start": item["timestamp"], "end": item["timestamp"], "results": 1}
+                {
+                    "start": item[timestamp],
+                    "end": item[timestamp],
+                    "results": 1,
+                    "first": item[sequence],
+                    "last": item[sequence],
+                }
             )
-        previous = item["sequence"]
+    return episodes
+
+
+def _public(episode: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in episode.items() if key not in SEQUENCES}
+
+
+SEQUENCES = {"first", "last"}
+
+
+def _episodes(results: list[dict]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """The alarms of a test as an agent reads them, and the first few with
+    the sequences they span, to read around."""
+    episodes = _runs(results, "sequence", "timestamp")
     return {
         "count": len(episodes),
-        "listed": episodes[:ALARMS_LISTED],
+        "listed": [_public(item) for item in episodes[:ALARMS_LISTED]],
         "complete": len(results) < ALARM_RESULTS,
-    }
+    }, episodes[:EXCERPTS]
+
+
+EXCERPTS = 5
+AROUND = 6
+EXCERPT_RESULTS = 60
+
+
+async def _excerpt(api: Api, path: str, episode: dict[str, Any]) -> list[list]:
+    """The results from a few before an alarm to a few after it, as rows of
+    time, score, threshold and alarm."""
+    first = max(episode["first"] - AROUND, 0)
+    span = episode["last"] + AROUND - first + 1
+    query: dict[str, Any] = {"limit": min(span, EXCERPT_RESULTS)}
+    if first > 0:
+        query["after"] = first - 1
+    page = await api.get(f"{path}/results", query)
+    return [
+        [item["timestamp"], item["score"], item["threshold"], item["alarm"]]
+        for item in page.get("items", [])
+    ]
 
 
 def _unscored(run: dict) -> str:
@@ -733,6 +863,137 @@ async def get_monitor(api: Api, args: MonitorRef):
         "mine": _mine(monitor, await _me(api)),
         "origin": origin,
     }
+
+
+class Values(Args):
+    reading_id: str
+    start: datetime = Field(description="From when, as an ISO 8601 time.")
+    end: datetime | None = Field(default=None, description="Until when; now if out.")
+    points: int = Field(
+        default=200,
+        ge=10,
+        le=500,
+        description="At most this many rows; a long range is summed up in stretches.",
+    )
+
+
+@tool(Values)
+async def get_values(api: Api, args: Values):
+    """Recorded values of one reading over a time range, to look at what a
+    profile, a test or an alarm points at. A short range answers with every
+    value; a longer one with the mean, lowest and highest value and count of
+    each stretch, so a spike survives."""
+    query = {
+        "start": args.start.isoformat(),
+        "buckets": args.points,
+        "view": "auto",
+    } | ({"end": args.end.isoformat()} if args.end else {})
+    history = await api.get(
+        f"/v1/readings/{_segment(args.reading_id)}/measurements/buckets", query
+    )
+    points = history.get("points", [])
+    if history.get("representation") == "mean":
+        columns = ["time", "mean", "min", "max", "count"]
+        rows = [
+            [
+                item["timestamp"],
+                item["value"],
+                item.get("minimum"),
+                item.get("maximum"),
+                item.get("count"),
+            ]
+            for item in points
+        ]
+    else:
+        columns = ["time", "value"]
+        rows = [[item["timestamp"], item["value"]] for item in points]
+    answer: dict[str, Any] = {
+        "reading_id": args.reading_id,
+        "columns": columns,
+        "rows": rows,
+    }
+    if history.get("interval_ms"):
+        answer["stretch_seconds"] = history["interval_ms"] / 1000
+    if history.get("column_ms"):
+        answer["note"] = (
+            "More values than rows: each stretch keeps its first, last, lowest "
+            "and highest value. Narrow the range to see every value."
+        )
+    return answer
+
+
+def _score(row: Mapping[str, Any]) -> float:
+    return row.get("anomaly_score") or 0.0
+
+
+class MonitorAlarms(Args):
+    monitor_id: str = Field(description="Id of a monitor, as list_monitors gives it.")
+    limit: int = Field(
+        default=500,
+        ge=1,
+        le=2000,
+        description="How many of the newest alarmed observations to read.",
+    )
+
+
+@tool(MonitorAlarms)
+async def get_monitor_alarms(api: Api, args: MonitorAlarms):
+    """The alarms a running monitor raised, or in shadow would have raised, in
+    the shape of a test's: when each began and ended, how many results it
+    spans, and its highest score against the threshold, the newest last.
+    `muted` says it alerted nobody. Read the values around one with
+    get_values, and compare the count per day with the test behind the
+    monitor."""
+    monitor_id = _segment(args.monitor_id)
+    monitor = await api.get(f"/v1/monitors/{monitor_id}")
+    readings = monitor.get("reading_ids") or []
+    if not readings:
+        raise ApiRefusal(409, "The monitor watches no reading the catalogue still has.")
+    rows = await api.get(
+        "/v1/evidence/chart",
+        {
+            "reading_id": readings,
+            "monitor_id": args.monitor_id,
+            "alarm": "true",
+            "limit": args.limit,
+        },
+    )
+    episodes = _runs(rows, "sequence_number", "timestamp")
+    owner = {
+        sequence: episode["first"]
+        for episode in episodes
+        for sequence in range(episode["first"], episode["last"] + 1)
+    }
+    peaks: dict[int, dict] = {}
+    for item in rows:
+        first = owner[item["sequence_number"]]
+        if first not in peaks or _score(item) > _score(peaks[first]):
+            peaks[first] = item
+    listed = []
+    for episode in episodes[-ALARMS_LISTED:]:
+        peak = peaks[episode["first"]]
+        listed.append(
+            _public(episode)
+            | {
+                "score": peak.get("anomaly_score"),
+                "threshold": peak.get("threshold"),
+                "muted": peak.get("muted", False),
+            }
+        )
+    answer = {
+        "monitor_id": args.monitor_id,
+        "shadow": monitor.get("shadow", False),
+        "running_since": monitor.get("created_at"),
+        "count": len(episodes),
+        "listed": listed,
+        "complete": len(rows) < args.limit,
+    }
+    if not episodes:
+        answer["note"] = (
+            "No alarm yet. get_monitor says whether it scores already or is "
+            "still learning."
+        )
+    return answer
 
 
 class Start(Args):

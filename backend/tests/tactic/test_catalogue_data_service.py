@@ -277,6 +277,7 @@ async def test_chart_evidence_of_a_device_covers_its_readings_by_catalogue_id():
         after_service_id="monitor-0",
         after_sequence_number=1,
         limit=50,
+        alarm=None,
     )
     assert ChartEvidence.model_validate(rows[0]).model_dump() == {
         "monitor_id": "monitor-1",

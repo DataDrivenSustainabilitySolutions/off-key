@@ -19,17 +19,19 @@ import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache"
 import type { SystemDocument } from "@/types/system";
 import { modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "@/domain/monitoring/serviceModel";
 import type { PipelineState } from "../pipelines/PipelineDiagnostics";
+import { RationaleCard } from "../workspace/RationaleCard";
+import { ShadowReview } from "./ShadowReview";
 
 const PipelineRun = lazy(() => import("../pipelines/PipelineRunView"));
 
 type Configuration = { monitoring: Record<string, JsonValue>; performance_config: Record<string, JsonValue> };
 type Props = { service: ActiveService; inputs: MonitoringInput[]; document: SystemDocument; historyCache?: ReadingHistoryCache; canEdit: boolean; favourite: boolean;
   pipelineState?: PipelineState;
-  onFavourite: () => void; onRename: (name: string) => Promise<void>; onBack: () => void; onDeleted: () => Promise<void> };
+  onFavourite: () => void; onRename: (name: string) => Promise<void>; onBack: () => void; onDeleted: () => Promise<void>; onStopped?: () => void | Promise<void> };
 const formatSetting = (value: JsonValue) => typeof value === "number" ? value.toLocaleString() : String(value);
 const tabs = [{ id: "overview", label: "Overview" }, { id: "evidence", label: "Evidence" }, { id: "pipeline", label: "Pipeline" }, { id: "configuration", label: "Configuration" }];
 
-export default function MonitoringServiceDetail({ service, inputs, document, historyCache, canEdit, favourite, pipelineState, onFavourite, onRename, onBack, onDeleted }: Props) {
+export default function MonitoringServiceDetail({ service, inputs, document, historyCache, canEdit, favourite, pipelineState, onFavourite, onRename, onBack, onDeleted, onStopped }: Props) {
   const [params, setParams] = useSearchParams();
   const tab = tabs.some(item => item.id === params.get("tab")) ? params.get("tab")! : "overview";
   const [configuration, setConfiguration] = useState<Configuration>();
@@ -77,6 +79,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         <ActionMenu label="Service actions" actions={[{ label: "Copy service ID", icon: Copy, onSelect: () => void copyId() },
           ...(canEdit ? [{ label: removeLabel, icon: Trash2, destructive: true, separated: true, onSelect: () => { setDeleteError(""); setConfirm(true); } }] : [])]} />
       </div></div>
+    {service.origin && <RationaleCard author={service.origin.author} authorKind={service.origin.author_kind}
+      rationale={service.origin.rationale} history={service.origin.history} />}
     <dl className="mn-summary"><div><dt>Status</dt><dd><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
       {progress && <>{" · "}{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples
         <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>
@@ -94,8 +98,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     <div className="mn-detail-panel" role="tabpanel" id={`monitor-panel-${tab}`} aria-labelledby={`monitor-tab-${tab}`}>
       {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} canEdit={canEdit} state={pipelineState} /></Suspense>}
       {tab === "overview" && <>
-        {service.shadow && <p className="ex-muted">This service runs in shadow: it records the alarms it would raise and raises none.
-          To take it live, choose Edit service on the Pipeline tab and update it without Shadow run.</p>}
+        {service.shadow && <ShadowReview service={service} canEdit={canEdit} onTakeLive={() => chooseTab("pipeline")} onStopped={onStopped} />}
         {service.operational_status.error && <p className="ex-preview-error" role="alert">{service.operational_status.error}</p>}
         {service.operational_status.detail && <p className="ex-muted">{service.operational_status.detail}</p>}
         {activity && <section className="mn-section"><h3>Monitoring activity</h3>

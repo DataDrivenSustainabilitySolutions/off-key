@@ -109,6 +109,7 @@
   color: var(--ex-muted); font-size: var(--text-caption); line-height: 1.6; }
 .pl-proposal-reason { color: var(--ex-ink); font-size: var(--text-body); line-height: var(--leading-body); max-width: 80ch; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pl-proposal-evidence { color: var(--ex-muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; max-width: 80ch; overflow-wrap: anywhere; }
 .pl-proposal-body small { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-caption); color: var(--ex-muted); overflow-wrap: anywhere; }
 .pl-proposal-body small.mn-state { color: var(--ex-ink); }
 .pl-proposal-body small.pl-proposal-missing { color: hsl(var(--destructive)); }

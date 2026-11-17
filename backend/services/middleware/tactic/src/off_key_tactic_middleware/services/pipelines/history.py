@@ -7,7 +7,7 @@ the shadow monitors it started itself.
 
 from collections import defaultdict
 
-from off_key_core.db.models import Agent, MonitorEventRecord, User
+from off_key_core.db.models import Agent, MonitorEventRecord, PipelineProposal, User
 from off_key_core.schemas.pipelines import (
     MonitorEvent,
     MonitorOrigin,
@@ -30,15 +30,32 @@ def record(
     note: str | None = None,
     test_run_id: str | None = None,
     shadow: bool = False,
+    proposal: PipelineProposal | None = None,
 ) -> MonitorEventRecord:
-    """Add a step to a monitor's history; the caller commits it."""
+    """Add a step to a monitor's history; the caller commits it.
+
+    A start that accepts a ``proposal`` names its author, who designed the
+    monitor, and notes the member who started it.
+    """
     agent = isinstance(caller, Agent)
+    who = caller.name if agent else caller.email
+    if proposal is not None:
+        author, author_kind, agent_id = (
+            proposal.author,
+            proposal.author_kind,
+            proposal.agent_id,
+        )
+        note = note or f"Proposed by {proposal.author}, started by {who}."
+    else:
+        author = who
+        author_kind = "agent" if agent else "member"
+        agent_id = caller.id if agent else None
     row = MonitorEventRecord(
         service_id=service_id,
         event=event,
-        author=caller.name if agent else caller.email,
-        author_kind="agent" if agent else "member",
-        agent_id=caller.id if agent else None,
+        author=author,
+        author_kind=author_kind,
+        agent_id=agent_id,
         rationale=rationale.model_dump(mode="json") if rationale else None,
         note=note,
         test_run_id=test_run_id,

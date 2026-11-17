@@ -144,3 +144,11 @@
   .ex-shell .mn-filters button,.mn-input-list button { min-height: 44px; }
   .mn-favourite { min-width: 30px; min-height: 44px; }
 }
+
+/* A shadow run under review: its figures, then Take live and Stop. */
+.mn-shadow-review { max-width: 720px; }
+.mn-shadow-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.mn-shadow-actions button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: var(--radius-control); border: 1px solid var(--ex-line); }
+.mn-shadow-actions button:not(.mn-primary):hover { background: var(--ex-hover); }
+.mn-shadow-hint { margin-top: 8px; font-size: var(--text-caption); }
+@media (max-width: 680px) { .mn-shadow-actions button { min-height: 44px; } }

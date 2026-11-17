@@ -83,8 +83,11 @@ reported, so a test of an earlier version is refused in words that say to test
 again. The run is not held: a proposal still reads once its run is deleted,
 and the app then says that the test cannot be opened. Deciding is a member's,
 never a key's, and a decision starts nothing: it records who decided and what
-they answered. The table comes from the ORM model alone; no migration introduces it
-(`BOOTSTRAP_TABLES` in `backend/tests/database/test_migration_ledger.py`).
+they answered. The table comes from the ORM model (`BOOTSTRAP_TABLES` in
+`backend/tests/database/test_migration_ledger.py`); migration
+`001_proposal_rationale.sql` adds its `rationale` column to databases made before it.
+A proposal carries the same four-field `rationale` as a start below, which a key
+must give; its `reason` then defaults to what the design watches.
 
 Every start through `POST /v1/pipelines/apply` and every stop adds a row to
 `monitor_records` (`services/pipelines/history.py`): who did it, an agent's
@@ -96,7 +99,18 @@ added, so the monitor's `origin` (in `GET /v1/monitors` and
 `GET /v1/monitors/{id}`) names who started it, the latest rationale and test,
 and its whole history. The first start says who a monitor belongs to: a key
 that may start monitors may stop the shadow monitors it started, and nothing
-else (`stop_monitor_as` in `orchestration/radar.py`).
+else (`stop_monitor_as` in `orchestration/radar.py`). A start that names the
+`proposal_id` it accepts records the proposal's author as who the monitor belongs
+to, notes the member who started it, and takes the proposal's rationale, and its
+test while the design still has the tested fingerprint.
+
+The app reads the origin on the service page (`RationaleCard` in
+`features/workspace`): one line with what the monitor watches and who designed
+it, which opens into the four fields and each start and stop. The same fields
+and author chip are the body of a proposal. A shadow run's Overview
+(`ShadowReview.tsx`) shows since when it runs, its muted alarm episodes from
+`/v1/evidence/chart?alarm=true` and how many a day, beside the evidence its
+rationale gave, with **Take live** (the Pipeline tab) and **Stop**.
 
 In the app a proposal is a design opened in the setup, not a second editor.
 `useOpenProposals` (`proposals.ts`) counts the waiting ones once a minute for

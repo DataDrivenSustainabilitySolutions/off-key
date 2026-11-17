@@ -9,6 +9,9 @@ from off_key_core.db.migrate import BASELINE, migration_checksum, migration_file
 
 APPLIED_CHECKSUMS = {
     BASELINE: "dcd5666da2ed1466cf0b4ece3cf02f05c2dcb0180bfa62e603e28f85863a88ab",
+    "001_proposal_rationale.sql": (
+        "6097980cc9eb9f8d0d1b5ec6557f9b89a4d6004c15afe7563f70585e4a6fafcd"
+    ),
 }
 
 

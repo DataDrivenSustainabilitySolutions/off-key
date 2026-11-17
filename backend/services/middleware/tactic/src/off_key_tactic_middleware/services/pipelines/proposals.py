@@ -169,6 +169,12 @@ class PipelineProposals:
     async def create(
         self, change: PipelineProposalCreate, caller: User | Agent
     ) -> PipelineProposalView:
+        if isinstance(caller, Agent) and change.rationale is None:
+            # Members read it at a glance, and the monitor keeps it once started.
+            raise ValidationError(
+                "A key proposes a design with a rationale: what it watches, why "
+                "this design, the evidence and its limits."
+            )
         # The write lock makes the count hold until the commit.
         await begin_library_write(self.session)
         validation = validate_pipeline(change.definition)
@@ -204,6 +210,9 @@ class PipelineProposals:
             id=str(uuid4()),
             name=change.name,
             reason=change.reason,
+            rationale=change.rationale.model_dump(mode="json")
+            if change.rationale
+            else None,
             definition=change.definition.model_dump(mode="json"),
             layout=change.layout.model_dump(mode="json"),
             bindings=dict(change.bindings),

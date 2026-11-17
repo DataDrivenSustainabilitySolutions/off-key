@@ -333,6 +333,7 @@ export type PipelineApplyRequest = {
   replace_monitor_id?: string | null;
   shadow?: boolean;
   rationale?: MonitorRationale | null;
+  proposal_id?: string | null;
   test_run_id?: string | null;
 };
 
@@ -544,7 +545,8 @@ export type PipelineObservationPasses = {
 
 export type PipelineProposalCreate = {
   name: string;
-  reason: string;
+  reason?: string;
+  rationale?: MonitorRationale | null;
   definition: PipelineDefinition;
   layout?: PipelineLayout;
   bindings?: Record<string, string>;
@@ -566,6 +568,7 @@ export type PipelineProposalSummary = {
   id: string;
   name: string;
   reason: string;
+  rationale?: MonitorRationale | null;
   author: string;
   author_kind: "agent" | "member";
   status: "open" | "accepted" | "declined" | "withdrawn";
@@ -582,6 +585,7 @@ export type PipelineProposalView = {
   id: string;
   name: string;
   reason: string;
+  rationale?: MonitorRationale | null;
   author: string;
   author_kind: "agent" | "member";
   status: "open" | "accepted" | "declined" | "withdrawn";

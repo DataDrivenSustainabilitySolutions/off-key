@@ -714,12 +714,12 @@ class Proposal(Args):
     name: str = Field(
         min_length=1, max_length=120, description="The name the monitor would carry."
     )
-    reason: str = Field(
-        min_length=1,
-        description=(
-            "Why this is worth running, for the member who decides: what it "
-            "watches, what it would have caught and what it costs in alarms."
-        ),
+    rationale: MonitorRationale = Field(
+        description="Why it is worth running: one or two sentences per field."
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Anything the four fields leave out. Usually not needed.",
     )
     definition: Design = Field(description=DESIGN)
     layout: Design | None = Field(default=None, description=LAYOUT)
@@ -742,7 +742,7 @@ async def propose_design(api: Api, args: Proposal):
     """Hand a design to a member to decide on. This is how a design of yours
     comes to run: a member opens it on the canvas, reads your reason and
     starts or declines it. The design must check without errors. Propose once
-    it is tested, and say in the reason what the test showed."""
+    it is tested, and say in the rationale's evidence what the test showed."""
     made = await api.post("/v1/pipeline-proposals", _sent(args))
     if args.replace_monitor_id is None:
         try:

@@ -244,6 +244,18 @@ describe("proposals", () => {
     expect(pipelinesApi.decideProposal).toHaveBeenLastCalledWith("p1", { status: "declined", note: "Alarms too often at night" });
   });
 
+  it("reads a proposal's rationale as four labelled rows, under the author's chip", () => {
+    const rationale = { watches: "Pump vibration above its daily band.", why: "A moving distance on two readings.",
+      evidence: "1 alarm in 9 scored hours.", limits: "First mornings alarm." };
+    render(<PipelineProposalNotice proposal={summary({ rationale, reason: rationale.watches })} canDecide={false} onDeclined={() => {}} />);
+    const notice = screen.getByRole("group", { name: "Proposal by Night shift agent" });
+    expect(notice.textContent).toContain("Agent · Night shift agent");
+    for (const [label, text] of [["Watches", rationale.watches], ["Why this design", rationale.why], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
+      expect(screen.getByText(label).nextElementSibling?.textContent).toBe(text);
+    // The reason it fell back to is not said twice.
+    expect(screen.getAllByText(rationale.watches)).toHaveLength(1);
+  });
+
   it("leaves the decision to a member who manages monitors, and shows one that was made", () => {
     const view = render(<PipelineProposalNotice proposal={summary()} canDecide={false} onDeclined={() => {}} />);
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();

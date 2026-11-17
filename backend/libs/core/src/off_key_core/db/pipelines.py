@@ -90,6 +90,8 @@ class PipelineProposal(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # The four short fields of MonitorRationale; older proposals have none.
+    rationale: Mapped[Any | None] = mapped_column(document(), nullable=True)
     definition: Mapped[Any] = mapped_column(document(), nullable=False)
     layout: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)
     bindings: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)

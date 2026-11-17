@@ -1,10 +1,11 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the first build on the schema baseline. Its monitors read
-the stored telemetry log, in a leased worker pool with one API service and
-per-reading hold timing. It keeps shadow runs, a layout with switched-off steps
-and notes, and titles in the design. It carries the baseline ledger and
-Aberrant 1.5.0 numerics, and proves no compatibility with earlier schemas.
+The reference is the first build with migration 001, which gives a proposal
+its rationale. Its monitors read the stored telemetry log, in a leased worker
+pool with one API service and per-reading hold timing. It keeps shadow runs, a
+layout with switched-off steps and notes, and titles in the design. It carries
+the ledger through 001 and Aberrant 1.5.0 numerics, and proves no
+compatibility with earlier schemas.
 """
 
 import argparse
@@ -23,7 +24,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "d44f4783fa0a256bc213b49515a4a161cacb1bf9"
+COMPATIBLE_REVISION = "2ec843f2802f8618a473fd9639b71cd1e3d3c4d3"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

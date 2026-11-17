@@ -75,20 +75,23 @@ def test_fresh_database_records_the_baseline_and_later_migrations_run_once(
     disposable_database,
 ):
     with disposable_database.begin() as connection:
+        # A fresh database gets the current schema and records every release.
+        released = list(migration_files())
+        assert released[0] == BASELINE
         assert migration_status(connection) == {
-            "pending": [BASELINE],
+            "pending": released,
             "applied": [],
             "fresh": True,
         }
-        assert apply_migrations(connection) == {"applied": [BASELINE], "fresh": True}
+        assert apply_migrations(connection) == {"applied": released, "fresh": True}
         assert apply_migrations(connection)["applied"] == []
         later = migration_files() | {
-            "001_later.sql": "CREATE TABLE release_probe (id integer);"
+            "999_later.sql": "CREATE TABLE release_probe (id integer);"
         }
-        assert apply_migrations(connection, later)["applied"] == ["001_later.sql"]
+        assert apply_migrations(connection, later)["applied"] == ["999_later.sql"]
         assert inspect(connection).has_table("release_probe")
         assert apply_migrations(connection, later)["applied"] == []
-        changed = later | {"001_later.sql": "SELECT 1;"}
+        changed = later | {"999_later.sql": "SELECT 1;"}
         with pytest.raises(ValueError, match="history differs"):
             migration_status(connection, changed)
 

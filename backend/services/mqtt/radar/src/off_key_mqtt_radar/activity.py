@@ -2,6 +2,7 @@
 
 import math
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,6 +13,40 @@ from off_key_core.schemas.radar import MonitorTiming, RadarActivityStatus
 from off_key_core.utils.timestamps import as_utc
 
 from .models import AnomalyResult, MQTTMessage, is_held_back, is_inference
+
+# How far back a reading's longest gap is remembered, kept as one maximum per hour.
+GAP_MEMORY_SECONDS = 86400.0
+_GAP_BUCKET_SECONDS = 3600.0
+
+
+class _GapMemory:
+    """The longest gap between a reading's values over the last day.
+
+    One maximum per hour keeps the memory small at any arrival rate.
+    """
+
+    __slots__ = ("first", "hours")
+
+    def __init__(self, first: float):
+        self.first = first
+        self.hours: deque[tuple[int, float]] = deque()
+
+    def add(self, gap: float, at: float) -> None:
+        hour = int(at // _GAP_BUCKET_SECONDS)
+        if self.hours and self.hours[-1][0] == hour:
+            self.hours[-1] = (hour, max(self.hours[-1][1], gap))
+        else:
+            self.hours.append((hour, gap))
+        self._forget(at)
+
+    def _forget(self, now: float) -> None:
+        oldest = int((now - GAP_MEMORY_SECONDS) // _GAP_BUCKET_SECONDS)
+        while self.hours and self.hours[0][0] < oldest:
+            self.hours.popleft()
+
+    def longest(self, now: float) -> float | None:
+        self._forget(now)
+        return max((gap for _, gap in self.hours), default=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +75,7 @@ class ActivityTracker:
         self._inputs: dict[str, _ActivityEvent] = {}
         # The device each reading last came from, so a silence alarm names it.
         self._chargers: dict[str, str] = {}
+        self._gaps: dict[str, _GapMemory] = {}
         self._last_input: _ActivityEvent | None = None
         self._last_processed: _ActivityEvent | None = None
         self._last_inference: _ActivityEvent | None = None
@@ -72,6 +108,9 @@ class ActivityTracker:
                 previous = self._inputs.get(sensor)
                 if previous is None or event.monotonic >= previous.monotonic:
                     self._inputs[sensor] = event
+                    gaps = self._gaps.setdefault(sensor, _GapMemory(event.monotonic))
+                    if previous is not None:
+                        gaps.add(event.monotonic - previous.monotonic, event.monotonic)
                     if charger_id:
                         self._chargers[sensor] = charger_id
 
@@ -98,6 +137,17 @@ class ActivityTracker:
                     for sensor, event in self._inputs.items()
                 },
                 "sensor_chargers": dict(self._chargers),
+                # For silence alarms: how long each reading has been heard,
+                # and the longest it went quiet over the last day.
+                "sensor_heard_seconds": {
+                    sensor: max(now - gaps.first, 0.0)
+                    for sensor, gaps in self._gaps.items()
+                },
+                "sensor_longest_gap_seconds": {
+                    sensor: longest
+                    for sensor, gaps in self._gaps.items()
+                    if (longest := gaps.longest(now)) is not None
+                },
                 "last_input_at": self._last_input.at if self._last_input else None,
                 "last_processed_at": self._last_processed.at
                 if self._last_processed

@@ -542,16 +542,21 @@ input and 2,000 result rows). Ordinary reading charts remain independent of a
 monitor; when monitoring is present their alarm markers and results share the
 same service scope.
 
-A reading that sends nothing for longer than its stale limit raises one silence
-alarm (`silence.py`). The health loop already judges each reading against its
-own limit (`evaluate_activity`); `SilenceAlarms` turns the moment a reading
-enters `stale_sensors` into an anomaly row of type `silence`, timed at the
-moment it crossed its limit. The row's value is how long the reading had been
-quiet (`silence_seconds`), and its `sensor_set` names the reading, so the alarm
-list, the reading's chart and agents see it like any other alarm. The row rides
-in the heartbeat's transaction and stays due until a heartbeat stores it. A
-reading raises again only after it sends a value and goes quiet anew. A shadow
-run stores none.
+A reading that goes quieter than it has been for a day raises one silence alarm
+(`silence.py`). The stale limit that decides whether a value is still fresh
+enough to score is too short for this: a sensor that sends for a few minutes
+every hour pauses far longer than its usual gap. `ActivityTracker` remembers
+each reading's longest gap over the last day, as one maximum per hour, and how
+long it has heard the reading. A reading is silent once it has sent nothing for
+1.5 times that longest gap, and never before its stale limit; a reading heard
+for less than a day raises nothing, since its rhythm is not known yet.
+`SilenceAlarms` turns that moment into an anomaly row of type `silence`, timed
+when the reading crossed its limit. The row's value is how long the reading had
+been quiet (`silence_seconds`), and its `sensor_set` names the reading, so the
+alarm list, the reading's chart and agents see it like any other alarm. The row
+rides in the heartbeat's transaction and stays due until a heartbeat stores
+it. A reading raises again only after it sends a value and goes quiet anew. A
+shadow run stores none.
 
 ## Numerical ownership
 

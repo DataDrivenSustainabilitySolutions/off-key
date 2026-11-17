@@ -76,7 +76,7 @@ as a proposal (`services/pipelines/proposals.py`, table
 layout and bindings and points at nothing, so it reads the same after a run, a
 service or the author's key is gone. It must check without errors when it is
 handed in, and at most 50 wait at a time. A `test_run_id` is checked when the
-proposal is made (`_tested`): the Dojo run must have succeeded, and the design
+proposal is made (`require_tested`): the Dojo run must have succeeded, and the design
 it ran must have the fingerprint of the design proposed, which leaves titles
 out. The member who decides reads that test as what this design would have
 reported, so a test of an earlier version is refused in words that say to test
@@ -85,6 +85,18 @@ and the app then says that the test cannot be opened. Deciding is a member's,
 never a key's, and a decision starts nothing: it records who decided and what
 they answered. The table comes from the ORM model alone; no migration introduces it
 (`BOOTSTRAP_TABLES` in `backend/tests/database/test_migration_ledger.py`).
+
+Every start through `POST /v1/pipelines/apply` and every stop adds a row to
+`monitor_records` (`services/pipelines/history.py`): who did it, an agent's
+name or a member's email, and why. A start carries a `rationale` in four short
+fields (what it watches, why this design, the evidence, its limits; at most
+200 characters each) and may carry a `test_run_id`, checked as for a
+proposal. A key must give a rationale, and a note when it stops. Rows are only
+added, so the monitor's `origin` (in `GET /v1/monitors` and
+`GET /v1/monitors/{id}`) names who started it, the latest rationale and test,
+and its whole history. The first start says who a monitor belongs to: a key
+that may start monitors may stop the shadow monitors it started, and nothing
+else (`stop_monitor_as` in `orchestration/radar.py`).
 
 In the app a proposal is a design opened in the setup, not a second editor.
 `useOpenProposals` (`proposals.ts`) counts the waiting ones once a minute for

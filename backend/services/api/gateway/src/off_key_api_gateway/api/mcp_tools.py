@@ -18,6 +18,7 @@ from uuid import uuid4
 import anyio
 import httpx2
 from off_key_core.schemas.pipeline_tools import ComponentSearchQuery, DesignEdit
+from off_key_core.schemas.pipelines import MonitorRationale
 from pydantic import BaseModel, ConfigDict, Field
 
 INSTRUCTIONS = """\
@@ -44,6 +45,15 @@ same `dataset_id`, so they replay the same values.
 A member decides, and list_proposals shows the decision with their note. A key \
 that may start monitors also has start_monitor. In shadow, a monitor records \
 the alarms it would raise and alerts nobody.
+6. list_monitors shows every monitor, with `mine` on those your key started, \
+and get_monitor one with who started it and why. Stop a shadow monitor of \
+yours that is noisy or blind with stop_monitor, which frees its place, or \
+propose it to run live with what it showed. Live monitors stay with members.
+
+Each start carries a rationale for the members who read it next to the \
+monitor: what it watches, why this design, the evidence and its limits, each \
+one or two sentences of at most 200 characters, with numbers where you have \
+them.
 
 Warm-up: a design scores nothing until it has seen training_window_size plus \
 calibration_window_size observations. These count observations, not time, so \
@@ -323,8 +333,9 @@ async def list_designs(api: Api, args: Nothing):
         "monitors": [
             {
                 key: item.get(key)
-                for key in ("id", "display_name", "reading_ids", "active")
+                for key in ("id", "display_name", "reading_ids", "active", "shadow")
             }
+            | {"started_by": _started_by(item)}
             for item in monitors
         ],
     }
@@ -647,6 +658,83 @@ async def withdraw_proposal(api: Api, args: ProposalRef):
     )
 
 
+def _started_by(monitor: Mapping[str, Any]) -> dict[str, Any] | None:
+    origin = monitor.get("origin")
+    if not origin:
+        return None
+    return {"author": origin["author"], "kind": origin["author_kind"]}
+
+
+async def _me(api: Api) -> str:
+    return (await api.get("/v1/agents/me"))["name"]
+
+
+def _mine(monitor: Mapping[str, Any], me: str) -> bool:
+    origin = monitor.get("origin") or {}
+    return origin.get("author_kind") == "agent" and origin.get("author") == me
+
+
+class Monitors(Args):
+    active: bool | None = Field(
+        default=None,
+        description="true keeps the monitors that run, false the stopped ones.",
+    )
+    mine: bool = Field(
+        default=False, description="true keeps the monitors your key started."
+    )
+
+
+@tool(Monitors)
+async def list_monitors(api: Api, args: Monitors):
+    """The monitors, each with its name, whether it runs and in shadow, the
+    readings it holds, when it started, who started it, and `mine` where your
+    key did. Read it to find your monitors and to see which readings are
+    taken: a reading belongs to one monitor at a time."""
+    params = {"active": args.active} if args.active is not None else None
+    monitors = await api.get("/v1/monitors", params)
+    me = await _me(api)
+    listed = [
+        {
+            "id": item["id"],
+            "name": item.get("display_name"),
+            "active": item.get("active"),
+            "shadow": item.get("shadow", False),
+            "reading_ids": item.get("reading_ids", []),
+            "started_at": item.get("created_at"),
+            "started_by": _started_by(item),
+            "mine": _mine(item, me),
+        }
+        for item in monitors
+    ]
+    return [item for item in listed if item["mine"] or not args.mine]
+
+
+class MonitorRef(Args):
+    monitor_id: str = Field(
+        description="Id of a monitor, as list_monitors or get_start gives it."
+    )
+
+
+@tool(MonitorRef)
+async def get_monitor(api: Api, args: MonitorRef):
+    """One monitor: whether it runs and in shadow, its readings and how it is
+    doing, who started it, the rationale they gave, the test behind it, and
+    every start and stop since. Read its design with get_design."""
+    monitor = await api.get(f"/v1/monitors/{_segment(args.monitor_id)}")
+    origin = monitor.get("origin")
+    return {
+        "id": monitor["id"],
+        "name": monitor.get("display_name"),
+        "active": monitor.get("active"),
+        "shadow": monitor.get("shadow", False),
+        "reading_ids": monitor.get("reading_ids", []),
+        "started_at": monitor.get("created_at"),
+        "status": monitor.get("operational_status") or {},
+        "mine": _mine(monitor, await _me(api)),
+        "origin": origin,
+    }
+
+
 class Start(Args):
     name: str = Field(
         min_length=1, max_length=120, description="The name the monitor carries."
@@ -672,6 +760,16 @@ class Start(Args):
             "none. A key that may start in shadow only must set it."
         ),
     )
+    rationale: MonitorRationale = Field(
+        description="Why it runs, for members: one or two sentences per field."
+    )
+    test_run_id: str | None = Field(
+        default=None,
+        description=(
+            "The `run_id` of the test that supports it: one that succeeded, on "
+            "this very design. It stays with the monitor as its evidence."
+        ),
+    )
 
 
 @tool(Start, changes=True, starts=True)
@@ -681,9 +779,10 @@ async def start_monitor(api: Api, args: Start):
     design you have tested, and propose instead where you are unsure. With
     `shadow` it alerts nobody: use that to see on live readings what a design
     would raise, then propose it with what you saw. A member takes a shadow
-    monitor live. The answer is a start in progress; follow it with get_start.
-    Replacing a running monitor stays with a member: propose that."""
-    return await api.post(
+    monitor live. The answer is a start in progress; follow it with get_start,
+    and use its `monitor_id` with get_monitor and stop_monitor. Replacing a
+    running monitor stays with a member: propose that."""
+    started = await api.post(
         "/v1/pipelines/apply",
         {
             "display_name": args.name,
@@ -691,9 +790,18 @@ async def start_monitor(api: Api, args: Start):
             "bindings": args.bindings,
             "idempotency_key": args.idempotency_key or uuid4().hex,
             "shadow": args.shadow,
+            "rationale": args.rationale.model_dump(mode="json"),
         }
-        | ({"layout": args.layout} if args.layout else {}),
+        | ({"layout": args.layout} if args.layout else {})
+        | ({"test_run_id": args.test_run_id} if args.test_run_id else {}),
     )
+    return _start(started)
+
+
+def _start(activation: dict[str, Any]) -> dict[str, Any]:
+    """A start without the id of its run inside the monitor, which no tool
+    reads and which agents took for a test's `run_id`."""
+    return {key: value for key, value in activation.items() if key != "run_id"}
 
 
 class StartRef(Args):
@@ -707,8 +815,33 @@ async def get_start(api: Api, args: StartRef):
     monitor runs under `monitor_id`. `failed` comes with the `error` and the
     issues that stopped it."""
     path = f"/v1/pipeline-activations/{_segment(args.activation_id)}"
-    return await _settled(
-        lambda: api.get(path),
-        lambda state: state["phase"] in {"succeeded", "failed", "cancelled"},
-        args.wait_seconds,
+    return _start(
+        await _settled(
+            lambda: api.get(path),
+            lambda state: state["phase"] in {"succeeded", "failed", "cancelled"},
+            args.wait_seconds,
+        )
+    )
+
+
+class Stop(Args):
+    monitor_id: str = Field(description="Id of a shadow monitor your key started.")
+    note: str = Field(
+        min_length=1,
+        max_length=200,
+        description=(
+            "Why it stops, in one or two sentences, for the members who read "
+            "its history: noisy, blind, or replaced by a better design."
+        ),
+    )
+
+
+@tool(Stop, changes=True, starts=True)
+async def stop_monitor(api: Api, args: Stop):
+    """Stop a shadow monitor your key started, for example one that is noisy
+    or blind, and free its place and readings. Its records stay. A live
+    monitor, or one somebody else started, stays with members: propose that
+    instead."""
+    return await api.post(
+        f"/v1/monitors/{_segment(args.monitor_id)}/stop", {"note": args.note}
     )

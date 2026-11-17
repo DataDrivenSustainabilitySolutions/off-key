@@ -226,6 +226,7 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/readings/{reading_id}/profile",
     },
     "start": {
+        "POST /v1/monitors/{monitor_id}/stop",
         "POST /v1/pipeline-activations/{activation_id}/cancel",
         "POST /v1/pipelines/apply",
     },
@@ -323,6 +324,7 @@ def test_a_key_changes_nothing_it_did_not_make():
         "POST /v1/pipelines/edit",
         "POST /v1/pipelines/validate",
         "POST /v1/pipelines/apply",
+        "POST /v1/monitors/{monitor_id}/stop",
         "POST /v1/pipeline-activations/{activation_id}/cancel",
         "POST /v1/pipeline-proposals",
         "POST /v1/pipeline-proposals/{proposal_id}/withdraw",

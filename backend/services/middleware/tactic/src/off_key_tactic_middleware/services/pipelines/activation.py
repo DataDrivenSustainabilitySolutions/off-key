@@ -13,6 +13,7 @@ from off_key_core.db.collection_runtime import (
 )
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import (
+    Agent,
     MemberFavorite,
     MonitoringPipeline,
     MonitoringService,
@@ -20,6 +21,7 @@ from off_key_core.db.models import (
     PipelineRevision,
     PipelineRun,
     SystemConfiguration,
+    User,
 )
 from off_key_core.db.pipeline_claims import (
     TERMINAL_ACTIVATION_PHASES,
@@ -34,6 +36,7 @@ from off_key_core.models.pipelines import (
     derive_monitoring_config,
     execution_fingerprint,
     pipeline_catalog_id,
+    validate_pipeline,
 )
 from off_key_core.schemas.collection_status import is_applied
 from off_key_core.schemas.pipelines import (
@@ -66,8 +69,10 @@ from ..orchestration.radar_status import (
     heartbeat_age_seconds,
 )
 from ..orchestration.radar_workloads import RadarWorkloadManager
+from .history import record
 from .library import require_authoring
 from .preflight import PipelinePreflight, PreflightRejected
+from .proposals import require_tested
 from .runs import ensure_predecessor_run
 
 FORM_DESCRIPTION = "Created by the monitoring setup form"
@@ -163,9 +168,15 @@ class PipelineActivations:
     async def submit(self, request: PipelineActivationRequest):
         return await self._submit(request)
 
-    async def apply(self, request: PipelineApplyRequest):
-        """Atomically snapshot, bind and reserve a directly configured service."""
-        return await self._submit(request)
+    async def apply(
+        self, request: PipelineApplyRequest, caller: User | Agent | None = None
+    ):
+        """Atomically snapshot, bind and reserve a directly configured service.
+
+        ``caller`` goes into the monitor's history with the request's
+        rationale and test, so members can see who started it and why.
+        """
+        return await self._submit(request, caller=caller)
 
     async def apply_form(
         self, request: PipelineApplyRequest, performance: PerformanceConfig
@@ -179,6 +190,7 @@ class PipelineActivations:
         *,
         performance: PerformanceConfig | None = None,
         workbench: bool = True,
+        caller: User | Agent | None = None,
     ):
         if workbench:
             require_authoring()
@@ -200,6 +212,14 @@ class PipelineActivations:
                     "Idempotency key already identifies a different activation"
                 )
             return activation_view(existing)
+        test_run_id = None
+        if isinstance(request, PipelineApplyRequest) and request.test_run_id:
+            test_run_id = request.test_run_id
+            await require_tested(
+                self.session,
+                test_run_id,
+                validate_pipeline(request.definition).fingerprint,
+            )
         revision, design, definition = (
             await self._snapshot(
                 request,
@@ -274,6 +294,16 @@ class PipelineActivations:
             phase_entered_at=now,
         )
         self.session.add(row)
+        if caller is not None:
+            record(
+                self.session,
+                service_id,
+                "started",
+                caller,
+                rationale=getattr(request, "rationale", None),
+                test_run_id=test_run_id,
+                shadow=request.shadow,
+            )
         self.session.add(
             run_event(
                 run_id,

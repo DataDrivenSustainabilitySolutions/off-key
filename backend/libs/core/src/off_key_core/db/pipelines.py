@@ -125,6 +125,42 @@ class PipelineProposal(Base):
     )
 
 
+class MonitorEventRecord(Base):
+    """Who started or stopped a monitor, and why, one row per step.
+
+    Rows are only added, so a monitor's history shows why it changed. The
+    service id is no foreign key: a deleted monitor keeps its history.
+    """
+
+    __tablename__ = "monitor_records"
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=False), primary_key=True
+    )
+    service_id: Mapped[str] = mapped_column(Text, nullable=False)
+    event: Mapped[str] = mapped_column(Text, nullable=False)
+    # The agent's name or the member's email, kept as text so it outlives both.
+    author: Mapped[str] = mapped_column(Text, nullable=False)
+    author_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    # Tells an agent's own monitors apart; not a foreign key, a key is revoked.
+    agent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rationale: Mapped[Any | None] = mapped_column(document(), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    test_run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shadow: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "event IN ('started', 'stopped')", name="ck_monitor_record_event"
+        ),
+        CheckConstraint(
+            "author_kind IN ('agent', 'member')", name="ck_monitor_record_author_kind"
+        ),
+        Index("ix_monitor_records_service", "service_id", "id"),
+    )
+
+
 class PipelineRevision(Base):
     __tablename__ = "monitoring_pipeline_revisions"
     id: Mapped[str] = mapped_column(Text, primary_key=True)

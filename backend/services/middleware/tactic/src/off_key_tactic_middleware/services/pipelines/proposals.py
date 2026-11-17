@@ -64,6 +64,59 @@ def _wrote(row: PipelineProposal, caller: User | Agent) -> bool:
     return row.author_kind == "member" and row.author == caller.email
 
 
+async def require_tested(session, run_id: str, fingerprint: str | None) -> None:
+    """Refuse a test that is no evidence for the design it is handed in with.
+
+    The member who reads it takes the test as what this design would have
+    reported, so it must have run to its end, and on this design. Titles do
+    not count: the fingerprint of a design leaves them out.
+    """
+    run = await session.get(DojoRun, run_id)
+    if run is None:
+        raise ValidationError(
+            f"There is no test run {run_id}. Test the design on history, "
+            "then hand it in with the id of that run."
+        )
+    if run.status in ("queued", "running"):
+        raise ValidationError(
+            "The test is still running. Hand the design in once it has finished."
+        )
+    if run.status != "succeeded":
+        raise ValidationError(
+            "The test did not run to its end. Hand the design in with a test "
+            "that finished, or with none."
+        )
+    try:
+        ran = validate_pipeline(
+            PipelineDefinition.model_validate(run.config["execution"]["definition"])
+        ).fingerprint
+    except (KeyError, TypeError, ValueError):
+        # A run this release cannot read tested nothing that can be handed in.
+        ran = None
+    if ran is None or ran != fingerprint:
+        raise ValidationError(
+            "The test ran another design. Test this design, then hand it in "
+            "with that test."
+        )
+    scored = await session.scalar(
+        select(
+            select(DojoRunResult.sequence)
+            .where(
+                DojoRunResult.run_id == run_id,
+                DojoRunResult.score.is_not(None),
+            )
+            .exists()
+        )
+    )
+    if not scored:
+        # Zero alarms there says nothing, yet reads as a quiet design.
+        raise ValidationError(
+            "The test scored nothing: the replay ended inside the design's "
+            "warm-up. Test on more days, or with shorter training and "
+            "calibration windows, then hand it in with that test."
+        )
+
+
 class PipelineProposals:
     def __init__(self, session):
         self.session = session
@@ -133,7 +186,9 @@ class PipelineProposals:
                 "Bind readings to its input slots by their id."
             )
         if change.test_run_id is not None:
-            await self._tested(change.test_run_id, validation.fingerprint)
+            await require_tested(
+                self.session, change.test_run_id, validation.fingerprint
+            )
         waiting = await self.session.scalar(
             select(func.count())
             .select_from(PipelineProposal)
@@ -163,58 +218,6 @@ class PipelineProposals:
         self.session.add(row)
         await self.session.commit()
         return proposal_view(row)
-
-    async def _tested(self, run_id: str, fingerprint: str | None) -> None:
-        """Refuse a test that is no evidence for the design it is handed in with.
-
-        The member who decides reads the test as what this design would have
-        reported, so it must have run to its end, and on this design. Titles
-        do not count: the fingerprint of a design leaves them out.
-        """
-        run = await self.session.get(DojoRun, run_id)
-        if run is None:
-            raise ValidationError(
-                f"There is no test run {run_id}. Test the design on history, "
-                "then propose it with the id of that run."
-            )
-        if run.status in ("queued", "running"):
-            raise ValidationError(
-                "The test is still running. Propose the design once it has finished."
-            )
-        if run.status != "succeeded":
-            raise ValidationError(
-                "The test did not run to its end. Propose the design with a "
-                "test that finished, or with none."
-            )
-        try:
-            ran = validate_pipeline(
-                PipelineDefinition.model_validate(run.config["execution"]["definition"])
-            ).fingerprint
-        except (KeyError, TypeError, ValueError):
-            # A run this release cannot read tested nothing that can be proposed.
-            ran = None
-        if ran is None or ran != fingerprint:
-            raise ValidationError(
-                "The test ran another design. Test this design, then propose "
-                "it with that test."
-            )
-        scored = await self.session.scalar(
-            select(
-                select(DojoRunResult.sequence)
-                .where(
-                    DojoRunResult.run_id == run_id,
-                    DojoRunResult.score.is_not(None),
-                )
-                .exists()
-            )
-        )
-        if not scored:
-            # Zero alarms there says nothing, yet reads as a quiet design.
-            raise ValidationError(
-                "The test scored nothing: the replay ended inside the design's "
-                "warm-up. Test on more days, or with shorter training and "
-                "calibration windows, then propose it with that test."
-            )
 
     async def decide(
         self, identifier: str, decision: PipelineProposalDecision, member: User

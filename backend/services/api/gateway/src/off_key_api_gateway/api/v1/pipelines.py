@@ -147,9 +147,10 @@ async def apply_pipeline(
     it would raise as muted evidence and raises none; replacing it without
     `shadow` takes it live. Repeating a request with the same
     `idempotency_key` returns the first activation instead of starting another.
+    `rationale` and `test_run_id` are kept with the monitor as why it runs.
     Answers 202: poll the activation until its `phase` settles. A key for an
-    agent may start, not replace, and one that starts in shadow only gets 403
-    without `shadow`.
+    agent may start, not replace, must give a `rationale`, and one that starts
+    in shadow only gets 403 without `shadow`.
     """
     if isinstance(caller, Agent):
         # A key adds a service. Taking a running one away stays with a member.
@@ -160,6 +161,13 @@ async def apply_pipeline(
         refusal = shadow_refusal(starts=caller.starts, shadow=change.shadow)
         if refusal:
             raise HTTPException(403, refusal)
+        if change.rationale is None:
+            # Members read it next to the monitor to know why a key started it.
+            raise HTTPException(
+                422,
+                "A key starts a monitor with a rationale: what it watches, why "
+                "this design, the evidence and its limits.",
+            )
         log_security_event(
             "agent_service_start",
             caller.name,
@@ -169,7 +177,7 @@ async def apply_pipeline(
                 "shadow": change.shadow,
             },
         )
-    return await invoke(activations.apply(change))
+    return await invoke(activations.apply(change, caller))
 
 
 @monitor_pipeline_router.get(

@@ -1,8 +1,10 @@
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from off_key_core.auth.agents import OPEN_TO_AGENTS
+from off_key_core.auth.agents import OPEN_TO_AGENTS, STARTS_SERVICES
+from off_key_core.db.models import Agent, User
 from off_key_core.schemas.pipelines import (
+    MAX_RATIONALE_TEXT,
     ComponentField,
     MonitorDetail,
     MonitorSummary,
@@ -16,9 +18,10 @@ from off_key_tactic_middleware.models.catalog import available_models
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...providers import get_form_monitor_starter, get_radar_orchestration_service
+from ..access import current_caller
 from ..errors import DomainErrorRoute
 from ..rate_limiter import limiter
 from .pipelines import monitor_pipeline_router
@@ -170,18 +173,38 @@ async def update_monitor(
     return MonitorName(id=monitor_id, display_name=change.display_name)
 
 
-@router.post("/{monitor_id}/stop", response_model=MonitorStopped)
+class MonitorStop(BaseModel):
+    """Why a monitor stops, kept in its history for members to read."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_RATIONALE_TEXT,
+        description="Why it stops, in one or two sentences. A key must give one.",
+    )
+
+
+@router.post(
+    "/{monitor_id}/stop", response_model=MonitorStopped, openapi_extra=STARTS_SERVICES
+)
 @shared_limit_execute
 async def stop_monitor(
     request: Request,
     monitor_id: str,
+    stop: MonitorStop | None = None,
+    caller: User | Agent = Depends(current_caller),
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
     """Stop a monitor and remove its workload. Needs `manage_monitors`.
 
-    The monitor stays listed as stopped and its alarms stay in Reporting.
+    The monitor stays listed as stopped and its alarms stay in Reporting. A
+    key that may start monitors stops the shadow monitors it started, with a
+    `note` on why.
     """
-    if not await service.stop_radar_service(monitor_id):
+    note = stop.note.strip() if stop and stop.note else None
+    if not await service.stop_monitor_as(monitor_id, caller, note):
         raise HTTPException(
             404, f"RADAR service '{monitor_id}' was not found or not stopped"
         )

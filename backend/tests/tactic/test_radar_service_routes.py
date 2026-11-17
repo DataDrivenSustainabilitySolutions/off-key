@@ -48,8 +48,8 @@ DETAIL = {
     [
         ("GET", "/s1", "get_radar_service", DETAIL, 200),
         ("GET", "/s1", "get_radar_service", None, 404),
-        ("POST", "/s1/stop", "stop_radar_service", True, 200),
-        ("POST", "/s1/stop", "stop_radar_service", False, 404),
+        ("POST", "/s1/stop", "stop_monitor_as", True, 200),
+        ("POST", "/s1/stop", "stop_monitor_as", False, 404),
         ("DELETE", "/s1", "delete_radar_service", True, 204),
         ("DELETE", "/s1", "delete_radar_service", False, 404),
         ("GET", "", "list_radar_services", [], 200),
@@ -69,7 +69,7 @@ async def test_outcomes_map_to_status(method, path, operation, outcome, status):
     [
         ("GET", "", "list_radar_services"),
         ("GET", "/s1", "get_radar_service"),
-        ("POST", "/s1/stop", "stop_radar_service"),
+        ("POST", "/s1/stop", "stop_monitor_as"),
         ("DELETE", "/s1", "delete_radar_service"),
     ],
 )
@@ -87,7 +87,7 @@ async def test_unexpected_failures_are_not_turned_into_an_answer_with_the_cause(
     ("method", "path", "operation"),
     [
         ("GET", "/s1", "get_radar_service"),
-        ("POST", "/s1/stop", "stop_radar_service"),
+        ("POST", "/s1/stop", "stop_monitor_as"),
         ("DELETE", "/s1", "delete_radar_service"),
     ],
 )

@@ -39,6 +39,8 @@ WITHOUT_THE_GRANT = [
     "propose_design",
     "list_proposals",
     "withdraw_proposal",
+    "list_monitors",
+    "get_monitor",
 ]
 
 
@@ -172,6 +174,7 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
         *WITHOUT_THE_GRANT,
         "start_monitor",
         "get_start",
+        "stop_monitor",
     ]
     for tool in granted:
         assert tool.description == " ".join(tool.description.split()) != "", tool.name
@@ -184,10 +187,11 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
         "propose_design",
         "withdraw_proposal",
         "start_monitor",
+        "stop_monitor",
     }
     # An agent reads the whole list with every session, so it stays short.
     listing = [tool.model_dump(mode="json", exclude_none=True) for tool in granted]
-    assert len(json.dumps(listing)) < 24_000
+    assert len(json.dumps(listing)) < 25_000
 
 
 def test_a_schema_says_nothing_twice():
@@ -616,26 +620,44 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
         )
         assert taken_back["status"] == "withdrawn"
 
-        refused = await client.call_tool("start_monitor", start)
+        refused = await client.call_tool("start_monitor", start | WHY)
         assert said(refused).startswith("This key may not start monitors")
         assert "propose_design" in said(refused)
         assert stores.activations.apply.await_count == 0
 
         key.starts = "live"
-        started = said(await client.call_tool("start_monitor", start))
+        # The rationale is required, and each field is short.
+        unexplained = await client.call_tool("start_monitor", start)
+        assert unexplained.is_error and "rationale" in said(unexplained)
+        rambling = WHY["rationale"] | {"limits": "x" * 201}
+        too_long = await client.call_tool(
+            "start_monitor", start | {"rationale": rambling}
+        )
+        assert too_long.is_error and "rationale.limits" in said(too_long)
+        assert stores.activations.apply.await_count == 0
+        started = said(
+            await client.call_tool("start_monitor", start | WHY | {"test_run_id": "t1"})
+        )
         assert (started["id"], started["monitor_id"]) == ("activation-1", "service-1")
-        [applied] = stores.activations.apply.await_args.args
+        # The id of the run inside the monitor is no test's: agents took it for one.
+        assert "run_id" not in started
+        applied, caller = stores.activations.apply.await_args.args
+        assert caller is key
+        assert applied.rationale.model_dump() == WHY["rationale"]
+        assert applied.test_run_id == "t1"
         assert applied.display_name == "Pump vibration"
         assert applied.bindings == {"value": "r-power"}
         assert applied.replace_service_id is None
         assert applied.shadow is False
         # In shadow the monitor records its alarms and raises none.
-        await client.call_tool("start_monitor", start | {"shadow": True})
+        await client.call_tool("start_monitor", start | WHY | {"shadow": True})
         assert stores.activations.apply.await_args.args[0].shadow
         # A start is named even where the agent names none, and by the agent's
         # own word where it repeats a call.
         assert len(applied.idempotency_key) == 32
-        await client.call_tool("start_monitor", start | {"idempotency_key": "again"})
+        await client.call_tool(
+            "start_monitor", start | WHY | {"idempotency_key": "again"}
+        )
         again = stores.activations.apply.await_args.args[0]
         assert again.idempotency_key == "again"
 
@@ -643,6 +665,94 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
             await client.call_tool("get_start", {"activation_id": "activation-1"})
         )
         assert (settled["phase"], settled["monitor_id"]) == ("succeeded", "service-1")
+        assert "run_id" not in settled
+
+
+WHY = {
+    "rationale": {
+        "watches": "Pump vibration rising above its usual daily band.",
+        "why": "A moving Mahalanobis distance on vibration and current.",
+        "evidence": "1 alarm in 9 scored hours of the last week; no labels.",
+        "limits": "First mornings alarm until it has seen a few days.",
+    }
+}
+
+
+def monitor(**fields) -> dict:
+    return {
+        "id": "service-1",
+        "display_name": "Pump vibration",
+        "stream_ids": ["r-power"],
+        "status": True,
+        "shadow": True,
+        "created_at": THEN,
+        "operational_status": {"stage": "running"},
+        "origin": {
+            "author": "Designer",
+            "author_kind": "agent",
+            "rationale": WHY["rationale"],
+            "test_run_id": "t1",
+            "history": [
+                {
+                    "event": "started",
+                    "author": "Designer",
+                    "author_kind": "agent",
+                    "rationale": WHY["rationale"],
+                    "test_run_id": "t1",
+                    "shadow": True,
+                    "at": THEN,
+                }
+            ],
+        },
+    } | fields
+
+
+@pytest.mark.asyncio
+async def test_an_agent_finds_watches_and_stops_its_own_monitors(gateway, key, stores):
+    theirs = monitor(
+        id="service-2",
+        stream_ids=["r-flow"],
+        shadow=False,
+        origin={"author": "admin@example.com", "author_kind": "member"},
+    )
+    stores.monitors.list_radar_services.return_value = [monitor(), theirs]
+    stores.monitors.get_radar_service.return_value = monitor()
+    stores.monitors.stop_monitor_as.return_value = True
+    async with connected(gateway) as client:
+        listed = said(await client.call_tool("list_monitors", {}))
+        assert [(item["id"], item["mine"]) for item in listed] == [
+            ("service-1", True),
+            ("service-2", False),
+        ]
+        assert listed[0]["started_by"] == {"author": "Designer", "kind": "agent"}
+        assert listed[1]["reading_ids"] == ["r-flow"]
+        mine = said(await client.call_tool("list_monitors", {"mine": True}))
+        assert [item["id"] for item in mine] == ["service-1"]
+
+        one = said(await client.call_tool("get_monitor", {"monitor_id": "service-1"}))
+        assert one["mine"] and one["shadow"]
+        assert one["origin"]["rationale"] == WHY["rationale"]
+        assert one["origin"]["test_run_id"] == "t1"
+        assert stores.monitors.get_radar_service.await_args.args == ("service-1",)
+
+        # Stopping is for a key that may start monitors, with a note on why.
+        refused = await client.call_tool(
+            "stop_monitor", {"monitor_id": "service-1", "note": "Too noisy."}
+        )
+        assert said(refused).startswith("This key may not start monitors")
+        key.starts = "shadow"
+        unexplained = await client.call_tool(
+            "stop_monitor", {"monitor_id": "service-1"}
+        )
+        assert unexplained.is_error and "note" in said(unexplained)
+        stopped = said(
+            await client.call_tool(
+                "stop_monitor", {"monitor_id": "service-1", "note": "Too noisy."}
+            )
+        )
+        assert stopped == {"monitor_id": "service-1", "status": "stopped"}
+    monitor_id, caller, note = stores.monitors.stop_monitor_as.await_args.args
+    assert (monitor_id, caller, note) == ("service-1", key, "Too noisy.")
 
 
 @pytest.mark.asyncio
@@ -724,6 +834,8 @@ async def test_a_design_is_read_from_where_it_is(gateway, key, stores):
                     "display_name": "Pump vibration",
                     "reading_ids": ["r-power"],
                     "active": True,
+                    "shadow": False,
+                    "started_by": None,
                 }
             ],
         }

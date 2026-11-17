@@ -50,6 +50,7 @@ __all__ = [
     "AlarmStatistic",
     "AutomaticAlarmThresholdConfig",
     "AutomaticThresholdCalibrationConfig",
+    "FixedThresholdConfig",
     "FormMonitorConfig",
     "LegacyMonitoringConfig",
     "ManualAlarmThresholdConfig",
@@ -288,6 +289,16 @@ class AdaptiveThresholdConfig(BaseModel):
     quantile: float = Field(default=1.0, gt=0, le=1, allow_inf_nan=False)
 
 
+class FixedThresholdConfig(BaseModel):
+    """A threshold the design sets: a score at or above it alarms, with no
+    calibration."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    mode: Literal["fixed"] = "fixed"
+    value: float = Field(allow_inf_nan=False)
+
+
 class AdaptiveStreamConfig(BaseModel):
     """Configuration for score-then-learn adaptive stream monitoring."""
 
@@ -307,7 +318,8 @@ class AdaptiveStreamConfig(BaseModel):
         default_factory=list,
         max_length=2,
     )
-    threshold_config: AdaptiveThresholdConfig = Field(
+    # Older stored configs omit the mode, so the union is matched by shape.
+    threshold_config: AdaptiveThresholdConfig | FixedThresholdConfig = Field(
         default_factory=AdaptiveThresholdConfig
     )
 

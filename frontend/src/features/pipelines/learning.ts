@@ -7,6 +7,8 @@ import { componentFor } from "./semantics";
 export type Learning = NonNullable<PipelineComponent["learning"]>;
 
 export const FIXED_SPLIT = "calibrate.fixed_split";
+/** The policy that alarms at a value the design sets, with no calibration step. */
+export const FIXED_THRESHOLD = "policy.threshold";
 
 const LABELS: Record<Learning, string | undefined> = {
   none: undefined,

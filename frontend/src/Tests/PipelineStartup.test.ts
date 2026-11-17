@@ -25,6 +25,10 @@ describe("start-up estimate", () => {
       .toEqual([["Calibration", 360]]);
     expect(startupSentence(startupEstimate(definition(), [], 79, "none")))
       .toBe("The first alarm can come after at least 439 observations: 79 to prepare and 360 to calibrate.");
+    // A fixed threshold calibrates nothing, so a rule under it starts at once.
+    const fixed = { ...definition(), nodes: [{ id: "policy", kind: "policy" as const, component: "policy.threshold", params: { value: 1 } }] };
+    expect(startupPhases(fixed, 0, "none")).toEqual([]);
+    expect(startupPhases(fixed).map((phase) => phase.label)).toEqual(["Detector learning"]);
   });
 
   it("is paced by the most frequent reading, and unknown while any reading has no interval", () => {

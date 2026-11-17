@@ -20,6 +20,8 @@ CALIBRATION_ID = "calibrate"
 # A rule detector learns nothing: the value of the one feature it reads is its
 # score. It scores every observation as it arrives, as an online detector does.
 RULE_DETECTOR = "rule.score"
+# A policy that needs no calibration step: the design sets its threshold.
+FIXED_THRESHOLD = "policy.threshold"
 # A pretrained step scores and then takes in every observation, as an online
 # one does, so both run in the adaptive lane.
 _STRATEGY_BY_LEARNING: dict[str, Strategy] = {
@@ -96,7 +98,12 @@ def upgrade(data: Any) -> Any:
     data = {**data, "schema_version": 2}
     nodes, edges = _plain(data.get("nodes")), _plain(data.get("edges"))
     policies = [node for node in nodes if node.get("kind") == "policy"]
-    if len(policies) != 1 or any(node.get("kind") == "calibration" for node in nodes):
+    if (
+        len(policies) != 1
+        or any(node.get("kind") == "calibration" for node in nodes)
+        # The fixed threshold takes scores, with no calibration step.
+        or policies[0].get("component") == FIXED_THRESHOLD
+    ):
         return {**data, "nodes": nodes, "edges": edges}
     policy = policies[0]
     identifier = _calibration_id(nodes)
@@ -125,6 +132,9 @@ def downgrade(data: dict[str, Any]) -> dict[str, Any]:
     strategy = derived_strategy(nodes)
     calibrations = [node for node in nodes if node.get("kind") == "calibration"]
     if strategy is None or len(calibrations) > 1:
+        return data
+    if any(node.get("component") == FIXED_THRESHOLD for node in nodes):
+        # Schema 1 has no policy without a calibration step to read it back as.
         return data
     if calibrations:
         calibration = calibrations[0]

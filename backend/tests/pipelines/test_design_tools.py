@@ -96,6 +96,7 @@ def test_search_without_words_lists_what_the_filters_leave():
     assert ids(found(group="policy")) == [
         "policy.martingale",
         "policy.quantile",
+        "policy.threshold",
         "policy.exceedance",
     ]
     online = found("scaling", learning="online", limit=100)

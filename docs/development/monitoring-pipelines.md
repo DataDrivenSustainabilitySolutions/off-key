@@ -1136,6 +1136,15 @@ every observation (one that learns continuously, a pretrained forecaster or
 a rule detector) alarms on the score threshold; the compiler reports the threshold behind
 detectors that are all fitted once as `calibration`.
 
+The fixed threshold (`policy.threshold`, `FIXED_THRESHOLD`) is the one policy
+without a calibration step: one detector that takes in every observation feeds
+it directly, and a score at or above its `value` alarms. It suits a rule, whose
+score means what it says. `derive_monitoring_config` gives the run a
+`FixedThresholdConfig` (`mode: fixed`), and the adaptive service skips
+calibration: a rule scores from its first observation, a learning detector after
+its warm-up. Such a design stays schema 2 when written, since schema 1 reads a
+policy without a calibration step as one behind a fixed split.
+
 A rule detector is the component `rule.score` (`RULE_DETECTOR`). It learns
 nothing, so its learning is `none`, and it scores every observation as it
 arrives, so `streams()` in `pipeline_versions.py` is true for it as for an

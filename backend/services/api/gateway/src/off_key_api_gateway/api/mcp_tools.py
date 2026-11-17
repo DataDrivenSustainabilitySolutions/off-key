@@ -66,12 +66,12 @@ every few seconds, and on a reading that reports every few minutes their \
 windows outlast the recorded history. Shrink them to fit, or a test scores \
 nothing.
 
-A rule (a 0/1 flag from prepare.condition, scored by rule.score) needs a \
-boundary it can cross. Use calibrate.fixed_split with policy.quantile at \
-quantile 1.0 and short windows, so the boundary is the highest calibration \
-score, 0, and every 1 alarms. Start it while the condition is false. A rolling \
-calibration such as calibrate.split, with policy.exceedance and several in a \
-row, goes quiet on a fault that lasts.
+A rule (a 0/1 flag from prepare.condition, scored by rule.score) alarms on \
+policy.threshold: connect the detector straight to it, with no calibration \
+step, and set value 1, so every 1 alarms from the first observation. A rule \
+learns nothing, so the design has no warm-up. A rolling calibration such as \
+calibrate.split, with policy.exceedance and several in a row, goes quiet on a \
+fault that lasts.
 
 A warning that observations "are skipped" means nothing is scored for them, \
 such as a division by 0. When that case is the incident (zero messages from a \

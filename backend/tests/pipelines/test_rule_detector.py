@@ -395,3 +395,92 @@ def test_a_flag_under_an_adapting_boundary_is_said_to_go_blind():
     # The fixed split freezes its threshold, and a rule on a value is no flag.
     assert validate_pipeline(_flag_rule()).issues == []
     assert validate_pipeline(rule_definition(**BOUNDARY)).issues == []
+
+
+def _fixed(**settings) -> PipelineDefinition:
+    return rule_definition(
+        calibration=None,
+        policy="policy.threshold",
+        policy_params={"value": 1.0},
+        **settings,
+    )
+
+
+def test_a_fixed_threshold_alarms_at_its_value_from_the_first_observation():
+    definition = _fixed(expression="if(a > 5 or b > 5, 1, 0)")
+    assert validate_pipeline(definition).issues == []
+    config = bound(definition)
+    assert config.monitoring.threshold_config.model_dump() == {
+        "mode": "fixed",
+        "value": 1.0,
+    }
+    assert detector_service_class(config) is AdaptiveStreamDetectionService
+    service = AdaptiveStreamDetectionService(config)
+    try:
+        assert service.state is AdaptiveStreamState.OPERATIONAL
+        values = [1.0, 9.0, 5.0, 5.5, 0.0]
+        results = [service.process_data_point(reading(a, 0.0)) for a in values]
+
+        # A score at the value alarms: nothing is calibrated first.
+        assert outcomes(results) == [
+            (0, 1.0, False),
+            (1, 1.0, True),
+            (0, 1.0, False),
+            (1, 1.0, True),
+            (0, 1.0, False),
+        ]
+        restored = AdaptiveStreamDetectionService.from_checkpoint_data(
+            pickle.loads(pickle.dumps(service.export_checkpoint())), config
+        )
+        assert restored.state is AdaptiveStreamState.OPERATIONAL
+        assert restored.threshold == 1.0
+    finally:
+        service.shutdown()
+
+
+def test_a_fixed_threshold_after_a_learning_detector_skips_calibration():
+    definition = rule_definition(
+        ("mad",), calibration=None, policy="policy.threshold"
+    ).model_dump(mode="json")
+    # One detector only: the rule goes, the learning detector stays.
+    definition["nodes"] = [
+        node for node in definition["nodes"] if node["id"] not in {"rule", "gap"}
+    ]
+    definition["edges"] = [
+        edge
+        for edge in definition["edges"]
+        if edge["source"] not in {"rule", "gap"}
+        and edge["target"] not in {"rule", "gap"}
+    ]
+    config = bound(PipelineDefinition.model_validate(definition))
+    service = AdaptiveStreamDetectionService(config)
+    try:
+        results = feed(service, 0, TRAINING + 20)
+        assert [name for name, _ in phases(results)] == ["warmup", "operational"]
+        assert service.threshold == 1.0
+    finally:
+        service.shutdown()
+
+
+def test_a_fixed_threshold_takes_scores_from_one_detector_with_no_calibration():
+    def codes(definition):
+        return [item for item in issues(definition)]
+
+    assert any(
+        "Remove the calibration step" in message
+        for _, _, message in codes(
+            rule_definition(policy="policy.threshold", policy_params={"value": 1.0})
+        )
+    )
+    assert any(
+        "takes one detector" in message
+        for _, _, message in codes(
+            rule_definition(("mad",), calibration=None, policy="policy.threshold")
+        )
+    )
+    assert any(
+        "fitted once" in message
+        for _, _, message in codes(
+            rule_definition(("knn",), calibration=None, policy="policy.threshold")
+        )
+    )

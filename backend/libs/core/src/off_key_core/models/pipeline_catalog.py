@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from ..schemas.pipeline_versions import (
     CALIBRATION_PREFIX,
     FIXED_SPLIT,
+    FIXED_THRESHOLD,
     component_learning,
 )
 from ..schemas.pipelines import (
@@ -27,7 +28,11 @@ from ..schemas.pipelines import (
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE, detector_component
-from .pipeline_calibration import CALIBRATION_MODELS, CALIBRATORS, EXCEEDANCE_RULE
+from .pipeline_calibration import (
+    CALIBRATION_MODELS,
+    CALIBRATORS,
+    EXCEEDANCE_RULE,
+)
 from .pipeline_digest import digest
 from .pipeline_fields import component_fields
 from .pipeline_guidance import (
@@ -373,6 +378,15 @@ _STEPS: tuple[_Step, ...] = (
         "The threshold is a quantile of the calibration scores and then stays.",
     ),
     _Step(
+        FIXED_THRESHOLD,
+        "policy",
+        "policy",
+        "Fixed threshold",
+        "Alarm when a score is at or above a value you set.",
+        "No calibration step: the detector's scores reach the policy directly. "
+        "Suits rules, whose scores mean what they say.",
+    ),
+    _Step(
         EXCEEDANCE_RULE,
         "policy",
         "policy",
@@ -481,6 +495,9 @@ def pipeline_components() -> list[PipelineComponent]:
             or _POLICY_SCHEMAS[step.id]
         )
         input_type, output_type = _PORTS[step.kind]
+        if step.id == FIXED_THRESHOLD:
+            # Scores arrive from the detector itself, with no calibration step.
+            input_type = "scores"
         result.append(
             PipelineComponent(
                 id=step.id,

@@ -23,7 +23,7 @@ from aberrant.compose import (
 )
 from off_key_core.models import ABERRANT_VERSION
 from off_key_core.schemas.pipeline_versions import RULE_DETECTOR
-from off_key_core.schemas.radar import AdaptiveStreamConfig
+from off_key_core.schemas.radar import AdaptiveStreamConfig, FixedThresholdConfig
 
 from .calibration_comparison import CalibrationComparison
 from .config.config import AnomalyDetectionConfig
@@ -140,6 +140,30 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self.operational_count = 0
         self.anomaly_count = 0
         self.last_checkpoint = 0
+        if self.state == AdaptiveStreamState.CALIBRATING:
+            self._calibrate_or_fix()
+
+    def _fixed_threshold(self) -> float | None:
+        """The threshold the design sets, when it has no calibration step."""
+        # Boundary runs carry a static baseline config, with no threshold step.
+        config = getattr(self.adaptive_config, "threshold_config", None)
+        return config.value if isinstance(config, FixedThresholdConfig) else None
+
+    def _quantile(self) -> float:
+        config = self.adaptive_config.threshold_config
+        assert config.mode == "calibrated_quantile"
+        return config.quantile
+
+    def _calibrate_or_fix(self) -> None:
+        """Calibrate next, or, with a threshold the design sets, score at once."""
+        fixed = self._fixed_threshold()
+        if fixed is None:
+            self.state = AdaptiveStreamState.CALIBRATING
+            return
+        self.threshold = fixed
+        self.severity_scale = max(abs(fixed), 1.0)
+        self.state = AdaptiveStreamState.OPERATIONAL
+        self._log_calibrated()
 
     def _restore(self, checkpoint: dict[str, Any]) -> None:
         if checkpoint.get("schema_signature") != self.schema_signature:
@@ -403,7 +427,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         if self.warmup_count >= self.adaptive_config.training_window_size and all(
             graph.readiness.ready for graph in self.pipelines
         ):
-            self.state = AdaptiveStreamState.CALIBRATING
+            self._calibrate_or_fix()
             self.logger.info(
                 "event=radar.adaptive_warmup_complete warmup_count=%s "
                 "processed_count=%s",
@@ -430,7 +454,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             self.threshold = float(
                 np.quantile(
                     np.asarray(self.calibration_scores, dtype=float),
-                    self.adaptive_config.threshold_config.quantile,
+                    self._quantile(),
                     method="higher",
                 )
             )
@@ -458,7 +482,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             score, is_anomaly = self._score_fused(data)
         else:
             score = self._score(data)
-            is_anomaly = score > self.threshold
+            # A threshold the design sets alarms at it; a calibrated one above it.
+            is_anomaly = (
+                score >= self.threshold
+                if self._fixed_threshold() is not None
+                else score > self.threshold
+            )
         # Combined detectors meet as ranks, so no step's own score has a threshold.
         self._expect(None if self.plan.fused else self.threshold)
         self._learn(data)
@@ -659,9 +688,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         combined surprises, each against the other calibration scores."""
         self._start_comparison(self.calibration_scores)
         self.fusion = RankFusion(self.calibration_scores, self.plan.fusion)
-        self.threshold_count = threshold_count(
-            self.fusion, self.adaptive_config.threshold_config.quantile
-        )
+        self.threshold_count = threshold_count(self.fusion, self._quantile())
         self.threshold = self.fusion.value(self.threshold_count)
         values = [self.fusion.value(item) for item in self.fusion.calibration_counts()]
         self.severity_scale = max(abs(self.threshold), max(values) - min(values))

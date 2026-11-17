@@ -78,6 +78,21 @@ class ExceedanceRuleParameters(PipelineModel):
     )
 
 
+class FixedThresholdParameters(PipelineModel):
+    """The score the design alarms at, set by hand rather than calibrated."""
+
+    value: float = Field(
+        default=1.0,
+        allow_inf_nan=False,
+        title="Alarm at or above",
+        description=(
+            "A score at or above this value raises an alarm. For a rule that "
+            "scores a 0/1 flag, 1 alarms on every 1. Nothing is calibrated, so "
+            "scoring starts as soon as the detector is ready."
+        ),
+    )
+
+
 def calibrator_id(component: str) -> str | None:
     """The adapting method a calibration component runs; none for the fixed split."""
     method = component.removeprefix(CALIBRATION_PREFIX)

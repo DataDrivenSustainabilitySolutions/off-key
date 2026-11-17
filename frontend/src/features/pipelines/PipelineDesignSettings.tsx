@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { AlarmBudgetSetting } from "./AlarmBudgetSetting";
 import type { PipelineCatalog } from "./contracts";
-import { hasFittedDetector, hasStreamingDetector, learningWindow } from "./learning";
+import { FIXED_THRESHOLD, hasFittedDetector, hasStreamingDetector, learningWindow } from "./learning";
 import { PIPELINE_LIMITS, type GraphDocument } from "./model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "./slots";
 import { observationCount, roughDuration, startupSummary, type Startup } from "./startup";
@@ -117,6 +117,8 @@ export function PipelineDesignSettings({
   const streaming = !catalog || hasStreamingDetector(definition, catalog.components);
   // Detectors that follow a rule have nothing to learn, so the design has no learning window.
   const untrained = !!catalog && learningWindow(definition, catalog.components) === "none";
+  // A fixed threshold alarms at a value the design sets, so nothing is calibrated.
+  const fixed = definition.nodes.some((node) => node.component === FIXED_THRESHOLD);
   const setting = (change: Partial<typeof settings>, field: string) =>
     onChange({
       ...document,
@@ -135,7 +137,9 @@ export function PipelineDesignSettings({
         </label>}
       </section>}
       {catalog && <p className="pl-help pl-learning-note">
-        {untrained
+        {untrained && fixed
+          ? "The detector follows a rule and the threshold is fixed, so it scores from the first observation."
+          : untrained
           ? "The detectors follow a rule and learn nothing, so calibration starts with the first observation."
           : fitted && streaming
             ? "Some detectors are fitted once on the training window and others keep learning. They meet at the calibration step."
@@ -153,14 +157,14 @@ export function PipelineDesignSettings({
           disabled={readOnly}
           onChange={(value) => setting({ training_window_size: value ?? settings.training_window_size }, "training")}
         />}
-        <NumberSetting
+        {!fixed && <NumberSetting
           label="Calibration observations"
           min={1}
           max={1_000_000}
           value={settings.calibration_window_size}
           disabled={readOnly}
           onChange={(value) => setting({ calibration_window_size: value ?? settings.calibration_window_size }, "calibration")}
-        />
+        />}
         <NumberSetting
           label="Default random seed"
           nullable

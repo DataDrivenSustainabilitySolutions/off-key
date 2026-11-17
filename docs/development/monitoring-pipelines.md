@@ -542,6 +542,17 @@ input and 2,000 result rows). Ordinary reading charts remain independent of a
 monitor; when monitoring is present their alarm markers and results share the
 same service scope.
 
+A reading that sends nothing for longer than its stale limit raises one silence
+alarm (`silence.py`). The health loop already judges each reading against its
+own limit (`evaluate_activity`); `SilenceAlarms` turns the moment a reading
+enters `stale_sensors` into an anomaly row of type `silence`, timed at the
+moment it crossed its limit. The row's value is how long the reading had been
+quiet (`silence_seconds`), and its `sensor_set` names the reading, so the alarm
+list, the reading's chart and agents see it like any other alarm. The row rides
+in the heartbeat's transaction and stays due until a heartbeat stores it. A
+reading raises again only after it sends a value and goes quiet anew. A shadow
+run stores none.
+
 ## Numerical ownership
 
 Aberrant 1.3 supplies the standalone `aberrant.compose.GraphPipeline` numerical

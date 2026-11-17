@@ -151,7 +151,7 @@ class MessageProcessor:
             )
             self.last_alignment_status = alignment_context.get("alignment_status")
             if self.last_alignment_status != "observation_rejected":
-                self.activity.record_input(sensor_type, message)
+                self.activity.record_input(sensor_type, message, charger_id)
             if aligned_features is None:
                 return None
 

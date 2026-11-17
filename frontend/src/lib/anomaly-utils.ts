@@ -58,6 +58,7 @@ const ANOMALY_STYLES: Record<string, AnomalyStyle> = {
   ml_conformal_static_multivariate: { color: "#991b1b", radius: 6, opacity: 0.95 },
   ml_tailprob_univariate: { color: "#ea580c", radius: 4, opacity: 0.9 },
   ml_tailprob_multivariate: { color: "#c2410c", radius: 5, opacity: 0.9 },
+  silence: { color: "#64748b", radius: 5, opacity: 0.9 },
 };
 
 /**

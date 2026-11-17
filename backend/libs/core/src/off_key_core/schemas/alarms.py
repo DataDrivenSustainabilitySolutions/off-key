@@ -55,7 +55,9 @@ class Alarm(BaseModel):
     value_type: str | None = Field(
         default=None,
         description="`tail_pvalue` or `conformal_pvalue` when `value` is a "
-        "p-value; other values are detector scores.",
+        "p-value; `silence_seconds` for a `silence` alarm, raised once when a "
+        "reading sends nothing past its stale limit; other values are "
+        "detector scores.",
     )
     monitor_id: str | None = Field(
         default=None, description="Monitor that raised it; null for manual alarms."

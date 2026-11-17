@@ -20,6 +20,15 @@ label is read when the run starts, so re-running CI after adding it is enough.
 If the labels cannot be read, the pull request runs its whole plan. Manual runs are always full. A main push compares
 against the newest ancestor whose main CI run kept full release evidence, so a
 superseded or cancelled run can never hide an untested change.
+
+Pull requests test the backend on the production interpreter only; the oldest
+supported one (OLDEST_PYTHON) runs where the heavy suites run. The backend job
+reads its interpreters from the `backend-python` output.
+
+A main push does not repeat a fast suite that a successful pull request or
+merge queue run already passed on exactly this commit's tree (see
+proven_on_this_tree). Lint, the heavy suites, image publication and the gate
+always run. Any doubt, including an unreadable API, runs the suite.
 """
 
 import json
@@ -76,6 +85,18 @@ HEAVY = {
     "observability",
 }
 FULL_CI_LABEL = "full-ci"
+# The backend job's interpreters: production's, then the oldest supported one.
+PYTHONS = ("3.14", "3.12")
+OLDEST_PYTHON = "3.12"
+# Fast suites a main push may take from a run on an identical tree, by the
+# check names that prove them. The browser job reads the frontend job's build,
+# so the two are proven together. Names that change prove nothing, so the
+# suite runs again.
+REUSABLE = {
+    "contracts": ("contracts",),
+    "frontend": ("frontend", "frontend browser"),
+    "frontend-browser": ("frontend", "frontend browser"),
+}
 STATIC_RELEASE_MODES = {"landing", "published-docs", "static"}
 LANDING_PATHS = {
     "assets/landing/export.py",
@@ -260,27 +281,126 @@ def plan_without_deferral(event_name, event, head, repository, api=None, ancesto
         return "full", plan_for("full", event_name), f"classification failed: {error}"
 
 
+def proven_on_this_tree(head, repository, api=None):
+    """Check names that passed in a pull request or merge queue run of this tree.
+
+    A merge queue run counts only for this very commit. A pull request run
+    counts when its head has this commit's tree and already contains this
+    commit's first parent: the pull request was then tested merged onto that
+    parent or an older base, which its head contains, so on exactly this tree.
+    """
+    api = api or github
+    parents = git("rev-list", "--parents", "-n", "1", head).split()
+    if len(parents) < 2:
+        return set()
+    parent = parents[1]
+    tree = git("rev-parse", f"{head}^{{tree}}").strip()
+    heads = [head]
+    for pull in api(f"commits/{head}/pulls"):
+        if (
+            pull.get("merged_at")
+            and pull["base"]["ref"] == "main"
+            and (pull["head"].get("repo") or {}).get("full_name") == repository
+        ):
+            heads.append(pull["head"]["sha"])
+    proven = set()
+    for sha in dict.fromkeys(heads):
+        if sha != head and (
+            api(f"git/commits/{sha}")["tree"]["sha"] != tree
+            or api(f"compare/{parent}...{sha}").get("behind_by") != 0
+        ):
+            continue
+        runs = api(
+            f"actions/workflows/{WORKFLOW}/runs?head_sha={sha}&status=success&per_page=20"
+        )["workflow_runs"]
+        for run in runs:
+            if (
+                run.get("head_sha") != sha
+                or run.get("conclusion") != "success"
+                or (run.get("head_repository") or {}).get("full_name") != repository
+            ):
+                continue
+            if run.get("event") == "merge_group":
+                trusted = sha == head and str(run.get("head_branch", "")).startswith(
+                    "gh-readonly-queue/main/"
+                )
+            elif run.get("event") == "pull_request":
+                trusted = sha != head and any(
+                    pull["base"]["ref"] == "main"
+                    for pull in run.get("pull_requests") or ()
+                )
+            else:
+                trusted = False
+            if trusted:
+                jobs = api(f"actions/runs/{run['id']}/jobs?per_page=100")["jobs"]
+                proven |= {
+                    job["name"] for job in jobs if job.get("conclusion") == "success"
+                }
+    return proven
+
+
+def reuse(jobs, pythons, proven):
+    """Drop the fast suites and interpreters that already passed on this tree."""
+    jobs = dict(jobs)
+    reused = [
+        job
+        for job, names in REUSABLE.items()
+        if jobs[job] and all(name in proven for name in names)
+    ]
+    for job in reused:
+        jobs[job] = False
+    if jobs["backend"]:
+        kept = [python for python in pythons if f"backend ({python})" not in proven]
+        reused += [f"backend ({python})" for python in pythons if python not in kept]
+        pythons = kept
+        jobs["backend"] = bool(kept)
+    return jobs, pythons, reused
+
+
+def plan_run(event_name, event, head, repository, api=None, ancestor=None):
+    """The plan, the backend interpreters and why, for this run."""
+    mode, planned, reason = plan_without_deferral(
+        event_name, event, head, repository, api, ancestor
+    )
+    mode, jobs, reason = defer_heavy(event_name, event, mode, planned, reason, api=api)
+    pythons = list(PYTHONS)
+    if any(planned[job] and not jobs[job] for job in HEAVY):
+        pythons.remove(OLDEST_PYTHON)
+    if event_name == "push" and event.get("ref") == "refs/heads/main":
+        try:
+            proven = proven_on_this_tree(head, repository, api)
+        except Exception as error:  # noqa: BLE001 - unproven suites run
+            reason = f"{reason}; no reuse: {error}"
+        else:
+            jobs, pythons, reused = reuse(jobs, pythons, proven)
+            if reused:
+                reason = f"{reason}; passed on this tree: {', '.join(reused)}"
+    return mode, jobs, pythons or list(PYTHONS), reason
+
+
 def main():
     event_name = os.environ["GITHUB_EVENT_NAME"]
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
     head = git("rev-parse", "HEAD").strip()
     if head != os.environ["GITHUB_SHA"]:
+        full = plan_for("full", event_name)
         mode, jobs, reason = defer_heavy(
-            event_name,
-            event,
-            "full",
-            plan_for("full", event_name),
-            "unexpected checkout",
+            event_name, event, "full", full, "unexpected checkout"
         )
+        pythons = list(PYTHONS)
+        if any(full[job] and not jobs[job] for job in HEAVY):
+            pythons.remove(OLDEST_PYTHON)
     else:
-        mode, jobs, reason = plan(
+        mode, jobs, pythons, reason = plan_run(
             event_name, event, head, os.environ["GITHUB_REPOSITORY"]
         )
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
         output.write(f"mode={mode}\nplan={json.dumps(jobs, sort_keys=True)}\n")
+        output.write(f"backend-python={json.dumps(pythons)}\n")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     lines = [f"CI plan: **{mode}** ({reason})", ""]
     lines += [f"- {job}: {'run' if run else 'not needed'}" for job, run in jobs.items()]
+    lines += ["", f"Backend interpreters: {', '.join(pythons)}"]
     if summary:
         with Path(summary).open("a") as output:
             output.write("\n".join(lines) + "\n")

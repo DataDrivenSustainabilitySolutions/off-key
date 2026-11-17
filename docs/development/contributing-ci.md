@@ -29,7 +29,7 @@ plan.
 
 | Workflow file | Name | Triggers | Checks | Release gate |
 | --- | --- | --- | --- | --- |
-| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `static` and `static-release` (focused content checks and verified image reuse for the static plan); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.12)`, `backend (3.14)` (backend tests); `frontend` (lint, tests and build); `frontend browser` (route-mocked journeys against that checked build); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.9)` (`postgres` lane and a real EMQX broker at the production version); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (every deployment test on a production Swarm: the adaptive monitor, then backup restore and binary rollback over state the test creates) and `deployment-smoke (browser)` (every browser journey on a second Swarm, visual pipelines last). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
+| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `static` and `static-release` (focused content checks and verified image reuse for the static plan); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.14)` (backend tests on the production interpreter) and `backend (3.12)` (the oldest supported interpreter, where the heavy suites run); `frontend` (lint, tests and build); `frontend browser` (route-mocked journeys against that checked build); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.9)` (`postgres` lane and a real EMQX broker at the production version); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (every deployment test on a production Swarm: the adaptive monitor, then backup restore and binary rollback over state the test creates) and `deployment-smoke (browser)` (every browser journey on a second Swarm, visual pipelines last). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
 | `docker-images.yml` | Docker Images | Called by CI on `main` | Publishes and attests the image matrix, including the strict Zensical docs build | no |
 | `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded and kept its `production-release` evidence ([Production releases](../operations/production.md)); then the [public demo](../operations/public-demo.md) when `DEMO_AUTO_DEPLOY_ENABLED` is on; a manual run with *stack* `demo` deploys or initializes the demo alone | no |
 | `ghcr-retention.yml` | GHCR Retention | Weekly, manual | Lists application image versions beyond the newest 20 releases per image, keeping `latest`, the committed release pins and the kept images' attestations; deletes them on a manual run with `delete` or weekly once the variable `GHCR_RETENTION_ENABLED` is `true` ([Image retention](../operations/production.md#image-retention)) | no |
@@ -43,10 +43,20 @@ and the locked backend sync). Test lanes select their tests by pytest marker; se
 ### Pull requests and main
 
 Every push to a pull request runs only the fast suites of its plan: `lint`,
-`backend`, `frontend`, `frontend browser` and `contracts`. The heavy suites
+`backend (3.14)`, `frontend`, `frontend browser` and `contracts`. The heavy suites
 (`images`, both `deployment-smoke` lanes, `radar`, `collection`, `infrastructure`
-and `worker observability`) run on the `main` push after merging; a release
-deploys only when they pass. A green pull request merges directly: the branch
+and `worker observability`) and `backend (3.12)` run on the `main` push after
+merging; a release deploys only when they pass. `lint` type checks against
+Python 3.12 on every pull request.
+
+A `main` push does not repeat a fast suite that already passed on exactly its
+code. When the merged commit has the same tree as a pull request head whose CI
+run succeeded, and that head already contained the previous `main` commit, the
+planner skips the `backend`, `frontend`, `frontend browser` and `contracts`
+checks that passed there; a merge queue run of the same commit counts the same
+way. `lint`, the heavy suites, image publication and `ci-gate` always run, and
+any doubt (an unreadable API, a different tree, a renamed or missing check)
+runs the suite. The plan's summary names what it took from the earlier run. A green pull request merges directly: the branch
 rule does not require it to be up to date with `main`, so merging another pull
 request does not re-run its tests.
 

@@ -452,6 +452,298 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(lines["mode"], "full")
 
 
+class TreeReuseTests(unittest.TestCase):
+    """A main push takes fast suites only from a run of exactly its tree."""
+
+    PASSED = (
+        "lint",
+        "backend (3.14)",
+        "frontend",
+        "frontend browser",
+        "contracts",
+    )
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.repo = Repository(self.directory.name)
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def squash(self, *changes, main_first=()):
+        """A pull request head and its squash onto main, as GitHub merges it."""
+        self.repo.git("checkout", "-q", "-b", "feature", self.repo.base)
+        for change in changes:
+            change()
+        head = self.repo.commit("feature")
+        self.repo.git("checkout", "-q", "main")
+        for change in main_first:
+            change()
+            self.repo.commit("other pull request")
+        for change in changes:
+            change()
+        return head, self.repo.commit("squash")
+
+    def api(self, merged, pull_head, runs, jobs, evidence=True):
+        """GitHub as the planner reads it, answering from the real repository."""
+        released = [
+            {
+                "id": 1,
+                "head_sha": self.repo.base,
+                "event": "push",
+                "head_branch": "main",
+                "conclusion": "success",
+                "head_repository": {"full_name": REPOSITORY},
+            }
+        ]
+
+        def answer(path):
+            if path.startswith(f"actions/workflows/{plan.WORKFLOW}/runs?branch=main"):
+                return {"workflow_runs": released}
+            if path.startswith("actions/runs/1/artifacts"):
+                artifacts = [{"name": "production-release", "expired": False}]
+                return {"artifacts": artifacts if evidence else []}
+            if path == f"commits/{merged}/pulls":
+                return [
+                    {
+                        "merged_at": "2026-11-17T12:00:00Z",
+                        "base": {"ref": "main"},
+                        "head": {"sha": pull_head, "repo": {"full_name": REPOSITORY}},
+                    }
+                ]
+            if path.startswith("git/commits/"):
+                sha = path.split("/")[2]
+                return {"tree": {"sha": self.repo.git("rev-parse", f"{sha}^{{tree}}")}}
+            if path.startswith("compare/"):
+                parent, sha = path.split("/")[1].split("...")
+                behind = self.repo.git("rev-list", "--count", f"{sha}..{parent}")
+                return {"behind_by": int(behind)}
+            if "runs?head_sha=" in path:
+                sha = path.split("head_sha=")[1].split("&")[0]
+                return {
+                    "workflow_runs": [run for run in runs if run["head_sha"] == sha]
+                }
+            if path.startswith("actions/runs/") and "/jobs" in path:
+                run_id = int(path.split("/")[2])
+                return {"jobs": jobs.get(run_id, [])}
+            raise AssertionError(path)
+
+        return answer
+
+    @staticmethod
+    def pull_run(run_id, sha, **changes):
+        return {
+            "id": run_id,
+            "head_sha": sha,
+            "event": "pull_request",
+            "conclusion": "success",
+            "head_branch": "feature",
+            "head_repository": {"full_name": REPOSITORY},
+            "pull_requests": [{"base": {"ref": "main"}}],
+        } | changes
+
+    @staticmethod
+    def passed(*names, result="success"):
+        return [{"name": name, "conclusion": result} for name in names]
+
+    def plan_push(self, merged, api):
+        with (
+            patch.object(plan, "git", self.repo.git),
+            patch.object(plan, "is_ancestor", self.repo.ancestor),
+        ):
+            return plan.plan_run(
+                "push", {"ref": "refs/heads/main"}, merged, REPOSITORY, api=api
+            )
+
+    def backend_change(self):
+        self.repo.write("backend/app.py", "print('b')\n")
+
+    def test_a_main_push_skips_fast_suites_that_passed_on_its_tree(self):
+        head, merged = self.squash(self.backend_change)
+        api = self.api(
+            merged, head, [self.pull_run(5, head)], {5: self.passed(*self.PASSED)}
+        )
+        mode, jobs, pythons, reason = self.plan_push(merged, api)
+        self.assertEqual(mode, "full")
+        self.assertFalse(
+            jobs["frontend"] or jobs["frontend-browser"] or jobs["contracts"]
+        )
+        # The pull request ran production's interpreter only; 3.12 still runs.
+        self.assertTrue(jobs["backend"])
+        self.assertEqual(pythons, ["3.12"])
+        for job in ("lint", "publish", "deployment-smoke", "radar", "infrastructure"):
+            self.assertTrue(jobs[job], job)
+        self.assertIn("passed on this tree", reason)
+
+    def test_every_interpreter_that_passed_leaves_no_backend_job(self):
+        head, merged = self.squash(self.backend_change)
+        names = (*self.PASSED, "backend (3.12)")
+        api = self.api(merged, head, [self.pull_run(5, head)], {5: self.passed(*names)})
+        _, jobs, pythons, _ = self.plan_push(merged, api)
+        self.assertFalse(jobs["backend"])
+        # The matrix is never empty, even for a job that does not run.
+        self.assertEqual(pythons, list(plan.PYTHONS))
+        self.assertEqual(
+            gate.problems(
+                {"changes": {"result": "success"}}
+                | {
+                    job: {"result": "success" if run else "skipped"}
+                    for job, run in jobs.items()
+                },
+                json.dumps(jobs),
+            ),
+            [],
+        )
+
+    def test_a_merge_queue_run_of_this_commit_proves_its_suites(self):
+        head, merged = self.squash(self.backend_change)
+        group = self.pull_run(
+            6,
+            merged,
+            event="merge_group",
+            head_branch="gh-readonly-queue/main/pr-7-abc",
+            pull_requests=[],
+        )
+        names = (*self.PASSED, "backend (3.12)")
+        api = self.api(merged, head, [group], {6: self.passed(*names)})
+        _, jobs, _, _ = self.plan_push(merged, api)
+        self.assertFalse(jobs["backend"] or jobs["frontend"])
+        self.assertTrue(jobs["lint"] and jobs["deployment-smoke"])
+
+    def test_anything_short_of_this_tree_runs_every_suite(self):
+        full = plan.plan_for("full", "push")
+        cases = {}
+        head, merged = self.squash(self.backend_change)
+        good = self.passed(*self.PASSED, "backend (3.12)")
+        cases["failed run"] = (
+            merged,
+            self.api(
+                merged, head, [self.pull_run(5, head, conclusion="failure")], {5: good}
+            ),
+        )
+        cases["fork"] = (
+            merged,
+            self.api(
+                merged,
+                head,
+                [self.pull_run(5, head, head_repository={"full_name": "fork/x"})],
+                {5: good},
+            ),
+        )
+        cases["other base"] = (
+            merged,
+            self.api(
+                merged,
+                head,
+                [self.pull_run(5, head, pull_requests=[{"base": {"ref": "next"}}])],
+                {5: good},
+            ),
+        )
+        cases["failed jobs"] = (
+            merged,
+            self.api(
+                merged,
+                head,
+                [self.pull_run(5, head)],
+                {5: self.passed(*self.PASSED, "backend (3.12)", result="failure")},
+            ),
+        )
+        cases["merge group of another commit"] = (
+            merged,
+            self.api(
+                merged,
+                head,
+                [
+                    self.pull_run(
+                        5,
+                        head,
+                        event="merge_group",
+                        head_branch="gh-readonly-queue/main/x",
+                    )
+                ],
+                {5: good},
+            ),
+        )
+        cases["push run"] = (
+            merged,
+            self.api(merged, head, [self.pull_run(5, head, event="push")], {5: good}),
+        )
+        for name, (sha, api) in cases.items():
+            with self.subTest(case=name):
+                _, jobs, pythons, _ = self.plan_push(sha, api)
+                self.assertEqual(jobs, full)
+                self.assertEqual(pythons, list(plan.PYTHONS))
+
+    def test_a_head_without_the_merged_parent_proves_nothing(self):
+        # main moved on: the head has the same tree, but was tested on an
+        # older base, so its run never saw main's other change merged in.
+        readme = lambda: self.repo.write("README.md", "Other\n")
+        head, merged = self.squash(self.backend_change, readme, main_first=(readme,))
+        self.assertEqual(
+            self.repo.git("rev-parse", f"{head}^{{tree}}"),
+            self.repo.git("rev-parse", f"{merged}^{{tree}}"),
+        )
+        api = self.api(
+            merged, head, [self.pull_run(5, head)], {5: self.passed(*self.PASSED)}
+        )
+        _, jobs, _, _ = self.plan_push(merged, api)
+        self.assertEqual(jobs, plan.plan_for("full", "push"))
+
+    def test_a_different_tree_or_an_unreadable_api_proves_nothing(self):
+        head, merged = self.squash(self.backend_change)
+        self.repo.write("backend/app.py", "print('c')\n")
+        later = self.repo.commit("fix on main")
+        api = self.api(
+            later, head, [self.pull_run(5, head)], {5: self.passed(*self.PASSED)}
+        )
+        _, jobs, _, _ = self.plan_push(later, api)
+        self.assertEqual(jobs, plan.plan_for("full", "push"))
+
+        released = self.api(merged, head, [], {})
+
+        def broken(path):
+            if path.startswith("commits/"):
+                raise OSError("API unavailable")
+            return released(path)
+
+        _, jobs, pythons, reason = self.plan_push(merged, broken)
+        self.assertEqual(jobs, plan.plan_for("full", "push"))
+        self.assertEqual(pythons, list(plan.PYTHONS))
+        self.assertIn("no reuse", reason)
+
+    def test_pull_requests_test_production_python_and_defer_the_oldest(self):
+        def labels(*names):
+            return lambda path: [{"name": name} for name in names]
+
+        merge, event = self.pull_request_merge()
+        event["pull_request"]["number"] = 7
+        with (
+            patch.object(plan, "git", self.repo.git),
+            patch.object(plan, "is_ancestor", self.repo.ancestor),
+        ):
+            _, jobs, pythons, _ = plan.plan_run(
+                "pull_request", event, merge, REPOSITORY, api=labels()
+            )
+            self.assertTrue(jobs["backend"])
+            self.assertEqual(pythons, ["3.14"])
+            _, jobs, pythons, _ = plan.plan_run(
+                "pull_request", event, merge, REPOSITORY, api=labels("full-ci")
+            )
+            self.assertEqual(pythons, ["3.14", "3.12"])
+            group = {"merge_group": {"base_sha": self.repo.base, "head_sha": merge}}
+            _, _, pythons, _ = plan.plan_run("merge_group", group, merge, REPOSITORY)
+            self.assertEqual(pythons, ["3.14", "3.12"])
+
+    def pull_request_merge(self):
+        self.repo.git("checkout", "-q", "-b", "feature", self.repo.base)
+        self.backend_change()
+        head = self.repo.commit("feature")
+        self.repo.git("checkout", "-q", "main")
+        self.repo.git("merge", "-q", "--no-ff", "--no-edit", "feature")
+        merge = self.repo.git("rev-parse", "HEAD")
+        return merge, {"pull_request": {"head": {"sha": head}}}
+
+
 PULL_REQUEST_7 = {"pull_request": {"number": 7}}
 
 

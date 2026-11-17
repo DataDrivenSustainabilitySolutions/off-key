@@ -29,18 +29,35 @@ A usual session:
 0. get_access says what your key may do and whether a monitor has room to \
 start now.
 1. list_devices and list_readings show what can be monitored. profile_reading \
-says what a reading looks like, which decides the steps it needs.
+says what a reading looks like, which decides the steps it needs. A reading \
+belongs to one monitor at a time: list_designs names the readings each \
+monitor holds, and a design bound to one of them cannot start.
 2. list_designs and get_design give a design to start from: a starter, a saved \
 template or the design a running monitor uses.
 3. search_components finds steps by purpose and get_component explains one \
 with its settings. edit_design makes small changes and checks the result. Fix \
 what its report lists before you go on.
 4. test_design replays the design over recorded values of the readings, and \
-get_test says how many alarms it would have raised.
+get_test says how many alarms it would have raised. Compare variants on the \
+same `dataset_id`, so they replay the same values.
 5. propose_design hands the design to a member with your reason and the test. \
 A member decides, and list_proposals shows the decision with their note. A key \
 that may start monitors also has start_monitor. In shadow, a monitor records \
 the alarms it would raise and alerts nobody.
+
+Warm-up: a design scores nothing until it has seen training_window_size plus \
+calibration_window_size observations. These count observations, not time, so \
+read the real cadence in profile_reading first: the starters assume a value \
+every few seconds, and on a reading that reports every few minutes their \
+windows outlast the recorded history. Shrink them to fit, or a test scores \
+nothing.
+
+A rule (a 0/1 flag from prepare.condition, scored by rule.score) needs a \
+boundary it can cross. Use calibrate.fixed_split with policy.quantile at \
+quantile 1.0 and short windows, so the boundary is the highest calibration \
+score, 0, and every 1 alarms. Start it while the condition is false. A rolling \
+calibration such as calibrate.split, with policy.exceedance and several in a \
+row, goes quiet on a fault that lasts.
 
 Pass a design between tools as you received it: keep `definition` and `layout` \
 together, and let edit_design make a change instead of rewriting them by hand.\

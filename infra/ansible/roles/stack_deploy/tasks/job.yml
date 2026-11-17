@@ -11,7 +11,21 @@
   loop: "{{ stack_compose_model.services[release_job_service].environment | combine(release_job_overrides | default({})) | dict2items }}"
   no_log: true
 
+- name: Choose the node for one-off release containers
+  # A backend worker has the CPU and memory a preflight needs; the manager is
+  # often the smallest node. The stack's network is attachable from any node.
+  set_fact:
+    release_job_node: "{{ (groups.get('swarm_backend') or [inventory_hostname]) | first }}"
+  when: release_job_node is not defined
+
+- name: Make the release job image available on its node
+  include_tasks: job_image.yml
+  vars:
+    release_job_pull_image: "{{ release_job_image }}"
+  when: release_job_node != inventory_hostname
+
 - name: Run the release CLI against the production database
+  delegate_to: "{{ release_job_node }}"
   command:
     argv: >-
       {{ ['docker', 'run', '--rm', '--network', stack_name ~ '_app-network']

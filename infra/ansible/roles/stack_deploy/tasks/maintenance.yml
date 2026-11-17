@@ -185,7 +185,21 @@
       loop: "{{ stack_compose_model.services['mqtt-radar'].environment | combine({'RADAR_POOL_KINDS': 'preflight'}) | dict2items }}"
       no_log: true
 
+    - name: Choose the node for one-off release containers
+      # A backend worker has the CPU and memory a preflight needs; the manager is
+      # often the smallest node. The stack's network is attachable from any node.
+      set_fact:
+        release_job_node: "{{ (groups.get('swarm_backend') or [inventory_hostname]) | first }}"
+      when: release_job_node is not defined
+
+    - name: Make the target RADAR image available on the job node
+      include_tasks: job_image.yml
+      vars:
+        release_job_pull_image: "{{ mqtt_radar_image }}"
+      when: release_job_node != inventory_hostname
+
     - name: Start a preflight-only replica of the target RADAR image
+      delegate_to: "{{ release_job_node }}"
       command:
         argv: >-
           {{ ['docker', 'run', '--detach', '--rm', '--name', stack_name ~ '-release-preflight',
@@ -200,6 +214,7 @@
         monitor_action: begin
   always:
     - name: Remove the preflight-only replica
+      delegate_to: "{{ release_job_node | default(inventory_hostname) }}"
       command:
         argv: [docker, rm, --force, "{{ stack_name }}-release-preflight"]
       register: release_preflight_removed

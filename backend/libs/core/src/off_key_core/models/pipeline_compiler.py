@@ -6,7 +6,12 @@ from decimal import Decimal
 
 from pydantic import ValidationError
 
-from ..schemas.pipeline_versions import RULE_DETECTOR, component_learning, streams
+from ..schemas.pipeline_versions import (
+    FIXED_THRESHOLD,
+    RULE_DETECTOR,
+    component_learning,
+    streams,
+)
 from ..schemas.pipelines import (
     MAX_DETECTORS,
     MAX_PIPELINE_EXECUTION_BYTES,
@@ -129,7 +134,10 @@ def _validate_identity(compilation: _Compilation) -> None:
         compilation.unresolved.update(
             node.id for node in definition.nodes if node.kind == "source"
         )
+    fixed = _validate_fixed_threshold(compilation)
     for kind in ("source", "calibration", "policy", "output"):
+        if kind == "calibration" and fixed:
+            continue
         if sum(node.kind == kind for node in definition.nodes) != 1:
             compilation.error(
                 "node_count", f"An executable design requires exactly one {kind} node"
@@ -145,6 +153,29 @@ def _validate_identity(compilation: _Compilation) -> None:
             f"A design can combine at most {MAX_DETECTORS} detectors; "
             f"this one has {detectors}.",
         )
+
+
+def _validate_fixed_threshold(compilation: _Compilation) -> bool:
+    """The fixed threshold takes one detector's scores, with no calibration step.
+
+    Whether the design has one, so the calibration step is not asked for.
+    """
+    nodes = compilation.definition.nodes
+    if not any(node.component == FIXED_THRESHOLD for node in nodes):
+        return False
+    if any(node.kind == "calibration" for node in nodes):
+        compilation.error(
+            "node_count",
+            "The fixed threshold takes the detector's scores directly. Remove the "
+            "calibration step, or use the calibrated score threshold.",
+        )
+    if _detector_count(compilation.definition) > 1:
+        compilation.error(
+            "node_count",
+            "The fixed threshold takes one detector. Combine several conditions "
+            "in one formula before a rule, or calibrate the detectors together.",
+        )
+    return True
 
 
 def _detector_count(definition: PipelineDefinition) -> int:
@@ -713,6 +744,8 @@ def _validate_rule_calibration(compilation: _Compilation) -> None:
     ]
     if not detectors or any(node.component != RULE_DETECTOR for node in detectors):
         return
+    if any(node.component == FIXED_THRESHOLD for node in compilation.definition.nodes):
+        return
     window = compilation.definition.settings.calibration_window_size
     if window <= _RULE_CALIBRATION:
         return
@@ -726,11 +759,27 @@ def _validate_rule_calibration(compilation: _Compilation) -> None:
     )
 
 
+def _validate_fixed_learning(compilation: _Compilation, modes: dict) -> None:
+    """The fixed threshold scores what arrives, so its detector takes it in."""
+    for identifier, node in compilation.nodes.items():
+        if node.component != FIXED_THRESHOLD:
+            continue
+        if "batch" in {modes.get(item) for item in _ancestors(compilation, identifier)}:
+            compilation.error(
+                "calibration",
+                "The fixed threshold needs a detector that takes in every "
+                "observation. A detector fitted once alarms through a "
+                "calibration step.",
+                identifier,
+            )
+
+
 def _validate_learning(compilation: _Compilation) -> None:
     """What may be combined follows from how each step learns."""
     _validate_rule_calibration(compilation)
     modes = _learned(compilation)
     _validate_branches(compilation, modes)
+    _validate_fixed_learning(compilation, modes)
     if not _validate_calibration(compilation):
         return
     for identifier, node in compilation.nodes.items():

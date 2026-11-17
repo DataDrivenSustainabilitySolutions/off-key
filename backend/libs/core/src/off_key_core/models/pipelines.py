@@ -3,7 +3,7 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..schemas.pipeline_versions import component_learning
+from ..schemas.pipeline_versions import FIXED_THRESHOLD, component_learning
 from ..schemas.pipelines import BoundInput, PipelineDefinition
 from ..schemas.radar import (
     AdaptiveStreamConfig,
@@ -55,7 +55,8 @@ def derive_monitoring_config(definition: PipelineDefinition):
     nodes = {node.id: node for node in compiled.definition.nodes}
     policy_node = nodes[compiled.policy_id]
     boundary = policy_node.component == EXCEEDANCE_RULE
-    on_scores = boundary or policy_node.component == "policy.quantile"
+    fixed = policy_node.component == FIXED_THRESHOLD
+    on_scores = boundary or fixed or policy_node.component == "policy.quantile"
     streaming = [
         identifier
         for identifier in compiled.detector_ids
@@ -64,6 +65,8 @@ def derive_monitoring_config(definition: PipelineDefinition):
     detector = nodes[streaming[0] if on_scores and streaming else compiled.detector_id]
     # The exceedance rule's own settings stay in the graph.
     policy = None if boundary else policy_settings(policy_node.params)
+    if fixed:
+        policy = {"mode": "fixed", **policy_node.params}
     settings = compiled.definition.settings
     common: dict[str, Any] = dict(
         model_type=detector.component.removeprefix("detector:"),

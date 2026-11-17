@@ -6,7 +6,7 @@ import { writtenNames } from "./formula";
 import {
   addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope, timeFeatures,
 } from "./scope";
-import { coverage } from "./learning";
+import { coverage, FIXED_THRESHOLD } from "./learning";
 import { fusionChoice } from "./steps";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
@@ -261,6 +261,8 @@ function settingsSummary(
       const from = strings(params.apply_to);
       return { text: `Expects ${params.target} from ${from.length ? listed(from) : "the other features"}` };
     }
+    case FIXED_THRESHOLD:
+      return { text: `At or above ${typeof params.value === "number" ? params.value.toLocaleString() : 1}` };
     case "policy.quantile": {
       // The threshold freezes at this quantile of the calibration scores.
       const quantile = typeof params.quantile === "number" ? params.quantile : 1;

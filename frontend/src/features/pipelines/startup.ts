@@ -1,5 +1,5 @@
 import type { PipelineDefinition } from "./contracts";
-import type { LearningWindow } from "./learning";
+import { FIXED_THRESHOLD, type LearningWindow } from "./learning";
 
 export type StartupPhase = {
   id: "preparing" | "learning" | "calibration";
@@ -12,7 +12,7 @@ export type StartupPhase = {
  * as the last check counted them, then learning and calibration. Learned steps upstream
  * of the detector may need a few observations of their own first, so this is a lower bound.
  * When every detector is fitted once the learning phase is a training, and when none
- * learns anything there is no such phase. */
+ * learns anything there is no such phase. A fixed threshold calibrates nothing. */
 export function startupPhases(
   definition: PipelineDefinition,
   preparation = 0,
@@ -20,11 +20,12 @@ export function startupPhases(
 ): StartupPhase[] {
   const { training_window_size: learning, calibration_window_size: calibration } = definition.settings;
   const fitted = window === "fitted";
+  const calibrates = !definition.nodes.some((node) => node.component === FIXED_THRESHOLD);
   return [
     ...(preparation > 0 ? [{ id: "preparing", label: "Preparing", verb: "prepare", observations: preparation } as const] : []),
     ...(window === "none" ? []
       : [{ id: "learning", label: fitted ? "Training" : "Detector learning", verb: fitted ? "train" : "learn", observations: learning } as const]),
-    { id: "calibration", label: "Calibration", verb: "calibrate", observations: calibration },
+    ...(calibrates ? [{ id: "calibration", label: "Calibration", verb: "calibrate", observations: calibration } as const] : []),
   ];
 }
 

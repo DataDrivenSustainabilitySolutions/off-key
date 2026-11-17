@@ -605,6 +605,12 @@ STEPS: dict[str, dict[str, str]] = {
             "smaller probabilities and take longer."
         ),
     },
+    "policy.threshold": {
+        "value": (
+            "A score at or above it alarms. It is not calibrated, so set it in "
+            "the score's own units."
+        ),
+    },
     "policy.quantile": {
         "mode": "How the threshold is set: from the calibration scores.",
         "quantile": (

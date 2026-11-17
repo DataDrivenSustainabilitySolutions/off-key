@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from ..schemas.pipeline_versions import streams
+from ..schemas.pipeline_versions import FIXED_THRESHOLD, streams
 from ..schemas.pipelines import (
     ExpectedValueParameters,
     FusionMode,
@@ -25,6 +25,7 @@ from .pipeline_calibration import (
     CALIBRATION_MODELS,
     EXCEEDANCE_RULE,
     ExceedanceRuleParameters,
+    FixedThresholdParameters,
     Fusion,
 )
 from .pipeline_prepare import PREPARE_MODELS
@@ -51,6 +52,7 @@ PARAMETER_MODELS: dict[str, type[PipelineModel]] = {
     "adaptive.expected_value": OnlineExpectedValueParameters,
     **PREPARE_MODELS,
     EXCEEDANCE_RULE: ExceedanceRuleParameters,
+    FIXED_THRESHOLD: FixedThresholdParameters,
     "output.evidence": PipelineModel,
 }
 

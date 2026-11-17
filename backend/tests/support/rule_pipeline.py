@@ -17,7 +17,7 @@ def rule_definition(
     *,
     expression: str = GAP,
     policy: str = "policy.quantile",
-    calibration: str = "calibrate.fixed_split",
+    calibration: str | None = "calibrate.fixed_split",
     calibration_params: dict | None = None,
     before: str | None = None,
     before_params: dict | None = None,
@@ -25,6 +25,7 @@ def rule_definition(
     rule_params: dict | None = None,
     calibration_window: int = CALIBRATION,
     mute: str | None = None,
+    policy_params: dict | None = None,
 ) -> PipelineDefinition:
     """A formula over readings a and b feeds a rule detector.
 
@@ -32,7 +33,8 @@ def rule_definition(
     each reading one scaled reading. ``before`` puts a step between the
     formula and the rule detector, and ``rule`` puts another detector in the
     rule detector's place. ``mute`` is the condition of a Mute alarms step
-    between the input and the formula.
+    between the input and the formula. Without a ``calibration`` the detectors
+    feed the policy itself, as the fixed threshold takes them.
     """
     nodes = [
         {"id": "input", "kind": "source", "component": "source.aligned"},
@@ -51,7 +53,7 @@ def rule_definition(
     ]
     edges = [
         {"source": "input" if mute is None else "mute", "target": "gap"},
-        {"source": "rule", "target": "calibrate", "order": 0},
+        {"source": "rule", "target": calibration and "calibrate", "order": 0},
     ]
     if mute is not None:
         nodes.append(
@@ -97,22 +99,32 @@ def rule_definition(
             {"source": "input", "target": f"only_{reading}"},
             {"source": f"only_{reading}", "target": f"scale_{reading}"},
             {"source": f"scale_{reading}", "target": name},
-            {"source": name, "target": "calibrate", "order": order},
+            {"source": name, "target": calibration and "calibrate", "order": order},
         ]
+    if calibration is None:
+        for edge in edges:
+            if edge["target"] is None:
+                edge["target"] = "policy"
+    else:
+        nodes.append(
+            {
+                "id": "calibrate",
+                "kind": "calibration",
+                "component": calibration,
+                "params": calibration_params or {},
+            }
+        )
+        edges.append({"source": "calibrate", "target": "policy"})
     nodes += [
         {
-            "id": "calibrate",
-            "kind": "calibration",
-            "component": calibration,
-            "params": calibration_params or {},
+            "id": "policy",
+            "kind": "policy",
+            "component": policy,
+            "params": policy_params or {},
         },
-        {"id": "policy", "kind": "policy", "component": policy},
         {"id": "output", "kind": "output", "component": "output.evidence"},
     ]
-    edges += [
-        {"source": "calibrate", "target": "policy"},
-        {"source": "policy", "target": "output"},
-    ]
+    edges.append({"source": "policy", "target": "output"})
     return PipelineDefinition.model_validate(
         {
             "schema_version": 2,

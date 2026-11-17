@@ -1,0 +1,41 @@
+---
+# Input: release_job_pull_image. A plain docker run on a worker has no Swarm
+# registry auth, so pull a missing private image there with credentials that
+# live only for this pull. On the manager the release's registry login covers it.
+- name: Check for the release job image on its node
+  command:
+    argv: [docker, image, inspect, --format, "{% raw %}{{.Id}}{% endraw %}", "{{ release_job_pull_image }}"]
+  delegate_to: "{{ release_job_node }}"
+  register: release_job_image_present
+  changed_when: false
+  failed_when: false
+
+- name: Pull the release job image on its node with temporary credentials
+  when: release_job_image_present.rc != 0
+  delegate_to: "{{ release_job_node }}"
+  block:
+    - name: Create a temporary Docker configuration on the job node
+      tempfile:
+        state: directory
+        prefix: off-key-release-job-
+      register: release_job_docker_config
+
+    - name: Write the temporary registry credentials
+      copy:
+        dest: "{{ release_job_docker_config.path }}/config.json"
+        mode: "0600"
+        content: "{{ {'auths': {'ghcr.io': {'auth': (ghcr_username ~ ':' ~ ghcr_token) | b64encode}}} | to_json }}"
+      no_log: true
+
+    - name: Pull the release job image
+      command:
+        argv: [docker, pull, --quiet, "{{ release_job_pull_image }}"]
+      environment:
+        DOCKER_CONFIG: "{{ release_job_docker_config.path }}"
+      changed_when: true
+  always:
+    - name: Remove the temporary registry credentials from the job node
+      file:
+        path: "{{ release_job_docker_config.path }}"
+        state: absent
+      when: release_job_docker_config.path is defined

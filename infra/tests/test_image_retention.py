@@ -1,9 +1,13 @@
 """Old application images leave GHCR and the nodes; recent, pinned and used ones stay."""
 
+import io
 import json
+import subprocess
 import unittest
+from contextlib import redirect_stdout
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest import mock
 
 import yaml
 from support import ROOT, load_script
@@ -115,8 +119,14 @@ class GhcrRetentionTests(unittest.TestCase):
         self.assertIn("inputs.delete", job["env"]["DELETE"])
 
 
-def image(identifier, tags=(), digests=()):
-    return {"Id": identifier, "RepoTags": list(tags), "RepoDigests": list(digests)}
+def image(identifier, tags=(), digests=(), source=None):
+    labels = {"org.opencontainers.image.source": source} if source else None
+    return {
+        "Id": identifier,
+        "RepoTags": list(tags),
+        "RepoDigests": list(digests),
+        "Config": {"Labels": labels},
+    }
 
 
 class NodeImagePruneTests(unittest.TestCase):
@@ -144,6 +154,65 @@ class NodeImagePruneTests(unittest.TestCase):
             prune.stale(images, application, keep), ["old-radar", "old-api"]
         )
 
+    def test_unreferenced_images_go_only_when_off_key_built_them(self):
+        api = f"{OWNER}/off-key-api-gateway"
+        application = [f"{api}:sha-0000002@sha256:{'b' * 64}"]
+        repository = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
+        images = [
+            image("off-key-orphan", source=repository),
+            image("off-key-orphan-git", source=repository.lower() + ".git"),
+            image("other-project", source="https://github.com/example/stallkarte"),
+            image("similar-name", source=repository + "-tools"),
+            image("unlabelled"),
+        ]
+        self.assertEqual(
+            prune.stale(images, application, application),
+            ["off-key-orphan", "off-key-orphan-git"],
+        )
+
+    def test_an_image_a_kept_reference_resolves_to_always_stays(self):
+        radar = f"{OWNER}/off-key-mqtt-radar"
+        repository = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
+        application = [f"{radar}:sha-0000002@sha256:{'2' * 64}"]
+        images = [
+            # The seeded RADAR image with no reference left, still the release's.
+            image("seeded-radar", source=repository),
+            image("old-radar", digests=[f"{radar}@sha256:{'0' * 64}"]),
+        ]
+        self.assertEqual(
+            prune.stale(
+                images, application, application, {"seeded-radar", "old-radar"}
+            ),
+            [],
+        )
+        self.assertEqual(
+            prune.stale(images, application, application, {"seeded-radar"}),
+            ["old-radar"],
+        )
+
+    def test_prune_lists_untagged_images_too(self):
+        radar = f"{OWNER}/off-key-mqtt-radar"
+        application = [f"{radar}:sha-0000002@sha256:{'2' * 64}"]
+        old = image("old-radar", digests=[f"{radar}@sha256:{'0' * 64}"])
+        calls = []
+
+        def docker(*args):
+            calls.append(args)
+            if args[:2] == ("image", "ls"):
+                # Recent Docker lists digest-only images only with --all.
+                out = "old-radar\n" if "--all" in args else ""
+            elif args[:2] == ("image", "inspect") and "--format" not in args:
+                out = json.dumps([old])
+            elif args[:2] == ("image", "rm"):
+                out = ""
+            else:
+                return subprocess.CompletedProcess(args, 1, "", "No such image")
+            return subprocess.CompletedProcess(args, 0, out, "")
+
+        with mock.patch.object(prune, "docker", docker), redirect_stdout(io.StringIO()):
+            self.assertEqual(prune.prune(application, application), 0)
+        self.assertIn(("image", "rm", "old-radar"), calls)
+
     def test_repository_names_ignore_tags_digests_and_registry_ports(self):
         self.assertEqual(
             prune.repository(f"{OWNER}/off-key-db-sync:sha-1@sha256:{'c' * 64}"),
@@ -161,6 +230,17 @@ class NodeImagePruneTests(unittest.TestCase):
         self.assertIn("Verify and record", json.dumps(plays[-2]))
         for task in cleanup["tasks"]:
             self.assertTrue(task["ignore_errors"])
+        self.assertEqual(cleanup["vars"]["swarm_task_history_limit"], 2)
+        update = next(
+            t
+            for t in cleanup["tasks"]
+            if "swarm" in t.get("command", {}).get("argv", [])
+        )
+        self.assertEqual(
+            update["command"]["argv"][:4],
+            ["docker", "swarm", "update", "--task-history-limit"],
+        )
+        self.assertTrue(update["run_once"])
         self.assertTrue(Path(ROOT / "scripts/prune_images.py").exists())
 
 

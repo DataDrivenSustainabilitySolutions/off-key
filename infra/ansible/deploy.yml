@@ -62,11 +62,35 @@
   hosts: swarm_manager:swarm_worker
   gather_facts: false
   vars:
+    swarm_task_history_limit: 2
     application_images: >-
       {{ release.images | dict2items
          | selectattr('key', 'in', ['api', 'frontend', 'docs', 'tactic', 'mqtt_proxy', 'mqtt_radar', 'db_sync', 'forecast'])
          | map(attribute='value') | list }}
   tasks:
+    # Swarm keeps exited task containers per slot (5 by default), and each one pins
+    # its image, so a short history lets superseded images go after two releases.
+    - name: Read the Swarm task history limit
+      command:
+        argv: [docker, info, --format, json]
+      delegate_to: "{{ groups['swarm_manager'][0] }}"
+      run_once: true
+      changed_when: false
+      register: swarm_info
+      ignore_errors: true
+      ignore_unreachable: true
+
+    - name: Keep only a short Swarm task history
+      command:
+        argv: [docker, swarm, update, --task-history-limit, "{{ swarm_task_history_limit }}"]
+      delegate_to: "{{ groups['swarm_manager'][0] }}"
+      run_once: true
+      when:
+        - swarm_info is succeeded
+        - (swarm_info.stdout | from_json).Swarm.Cluster.Spec.Orchestration.TaskHistoryRetentionLimit | default(-1) | int != swarm_task_history_limit
+      ignore_errors: true
+      ignore_unreachable: true
+
     - name: Read every image a Swarm service still names
       command:
         argv: [python3, '-', services]

@@ -4,6 +4,8 @@
  * Replaces Record<string, any> usage in Monitoring.tsx
  */
 
+import type { MonitorOrigin } from "./pipelines.generated";
+
 // Parameter schema from the static model registry
 export type MonitoringStrategy = 'static_baseline' | 'adaptive_stream';
 
@@ -126,6 +128,8 @@ export interface ActiveService {
   monitoring_strategy?: MonitoringStrategy | null;
   model_type?: string;
   created_at?: string;
+  /** Who started the monitor and why; monitors started before this was recorded have none. */
+  origin?: MonitorOrigin | null;
 }
 
 /**

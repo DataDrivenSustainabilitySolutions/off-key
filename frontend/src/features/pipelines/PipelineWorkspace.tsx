@@ -142,6 +142,7 @@ export default function PipelineWorkspace({
     notice={proposal && <PipelineProposalNotice proposal={proposal} canDecide={canEdit} onDeclined={proposals} />}
     tested={tested}
     onRequested={proposal?.status === "open" ? () => accept(proposal.id) : undefined}
+    proposalId={proposal?.status === "open" ? proposal.id : undefined}
     replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
     sourceService={sourceId ? { id: sourceId, replace: !!replacementId } : undefined}
     activationBlocked={sourceId && (!predecessor || replacementId && !replacement) ? "This service configuration is unavailable. Return to Monitoring and choose an available service." : undefined}

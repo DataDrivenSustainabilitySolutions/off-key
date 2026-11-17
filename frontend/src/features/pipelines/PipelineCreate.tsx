@@ -54,6 +54,8 @@ export type PipelineSetupProps = {
   tested?: DesignEvidence;
   /** The start of the service was requested and the server took the request. */
   onRequested?: () => void;
+  /** The proposal a start accepts: the service then names its author and keeps its rationale. */
+  proposalId?: string;
   revisionId?: string;
   sourceService?: { id: string; replace: boolean };
   activationBlocked?: string; onManage: () => void; onBack: () => void; onStarted: (id: string) => void;
@@ -222,7 +224,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       if (!result?.valid) { setIssuesRequest((value) => value + 1); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
         bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_monitor_id: replaceId ?? null,
-        shadow: !!draft.shadow });
+        shadow: !!draft.shadow, ...(props.proposalId ? { proposal_id: props.proposalId } : {}) });
       if (apply.session.getSnapshot().operationId) props.onRequested?.();
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setChecking(false); }

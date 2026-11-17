@@ -18,6 +18,7 @@ from off_key_core.db.models import (
     MonitoringPipeline,
     MonitoringService,
     PipelineActivation,
+    PipelineProposal,
     PipelineRevision,
     PipelineRun,
     SystemConfiguration,
@@ -41,6 +42,7 @@ from off_key_core.models.pipelines import (
 from off_key_core.schemas.collection_status import is_applied
 from off_key_core.schemas.pipelines import (
     BoundInput,
+    MonitorRationale,
     PipelineActivationRequest,
     PipelineActivationView,
     PipelineApplyRequest,
@@ -218,14 +220,7 @@ class PipelineActivations:
                     "Idempotency key already identifies a different activation"
                 )
             return activation_view(existing)
-        test_run_id = None
-        if isinstance(request, PipelineApplyRequest) and request.test_run_id:
-            test_run_id = request.test_run_id
-            await require_tested(
-                self.session,
-                test_run_id,
-                validate_pipeline(request.definition).fingerprint,
-            )
+        rationale, test_run_id, proposal = await self._reasons(request)
         revision, design, definition = (
             await self._snapshot(
                 request,
@@ -306,9 +301,10 @@ class PipelineActivations:
                 service_id,
                 "started",
                 caller,
-                rationale=getattr(request, "rationale", None),
+                rationale=rationale,
                 test_run_id=test_run_id,
                 shadow=request.shadow,
+                proposal=proposal,
             )
         self.session.add(
             run_event(
@@ -324,6 +320,34 @@ class PipelineActivations:
         )
         await self.session.commit()
         return activation_view(row)
+
+    async def _reasons(self, request):
+        """Why a monitor starts: the rationale, the test behind it and the
+        proposal it accepts, checked before anything is reserved."""
+        if not isinstance(request, PipelineApplyRequest):
+            return None, None, None
+        rationale, test_run_id, proposal = request.rationale, None, None
+        fingerprint = validate_pipeline(request.definition).fingerprint
+        if request.test_run_id:
+            test_run_id = request.test_run_id
+            await require_tested(self.session, test_run_id, fingerprint)
+        if request.proposal_id:
+            proposal = await self.session.get(PipelineProposal, request.proposal_id)
+            if proposal is None:
+                raise NotFoundError("Proposal not found")
+            if rationale is None and proposal.rationale:
+                rationale = MonitorRationale.model_validate(proposal.rationale)
+            if test_run_id is None and proposal.test_run_id:
+                # A member may change the design before starting it; the test
+                # then speaks for another design and is left out.
+                try:
+                    await require_tested(
+                        self.session, proposal.test_run_id, fingerprint
+                    )
+                    test_run_id = proposal.test_run_id
+                except ValidationError:
+                    test_run_id = None
+        return rationale, test_run_id, proposal
 
     async def _snapshot(self, request: PipelineApplyRequest, *, description: str):
         try:

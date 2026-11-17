@@ -1,0 +1,29 @@
+/* Why a monitor runs: a one-line summary that opens into four labelled rows. Colours come from the
+   theme tokens, so light and dark need nothing of their own. */
+.rationale-card { max-width: 780px; margin: 0 0 14px; border-bottom: 1px solid hsl(var(--border)); }
+.rationale-card > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 0 10px; cursor: pointer; list-style: none;
+  font-size: var(--text-body); color: hsl(var(--foreground)); }
+.rationale-card > summary::-webkit-details-marker { display: none; }
+.rationale-card > summary::before { content: ""; width: 6px; height: 6px; flex: none; border: solid hsl(var(--muted-foreground)); border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg); transition: transform 120ms ease; }
+.rationale-card[open] > summary::before { transform: rotate(45deg); }
+.rationale-card > summary:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; border-radius: 4px; }
+.rationale-watches { flex: 1 1 320px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rationale-card[open] .rationale-watches { white-space: normal; overflow-wrap: anywhere; }
+.rationale-label { color: hsl(var(--muted-foreground)); font-weight: 550; }
+.rationale-author { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; flex: none;
+  background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: 1.6; }
+.rationale-body { padding: 0 0 14px 18px; }
+.rationale-fields { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr); gap: 8px 16px; margin: 4px 0 0; font-size: var(--text-body); }
+.rationale-fields dt { color: hsl(var(--muted-foreground)); }
+.rationale-fields dd { margin: 0; overflow-wrap: anywhere; line-height: var(--leading-body); }
+.rationale-history { list-style: none; margin: 14px 0 0; padding: 10px 0 0; border-top: 1px dashed hsl(var(--border)); display: grid; gap: 8px; font-size: var(--text-caption); }
+.rationale-history li { display: grid; gap: 2px; color: hsl(var(--muted-foreground)); }
+.rationale-history strong { color: hsl(var(--foreground)); font-weight: 550; }
+.rationale-history small { color: hsl(var(--foreground)); overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .rationale-body { padding-left: 0; }
+  .rationale-fields { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .rationale-fields dd { margin-bottom: 8px; }
+  .rationale-card > summary { min-height: 44px; }
+}

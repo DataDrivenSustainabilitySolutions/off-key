@@ -51,11 +51,20 @@ def design() -> dict:
     return pipeline_catalog(True).templates[0].definition.model_dump(mode="json")
 
 
+RATIONALE = {
+    "watches": "Pump vibration rising above its usual daily band.",
+    "why": "A moving Mahalanobis distance on vibration and current.",
+    "evidence": "1 alarm in 9 scored hours of the last week; no labels.",
+    "limits": "First mornings alarm until it has seen a few days.",
+}
+
+
 def proposal(**fields) -> PipelineProposalCreate:
     return PipelineProposalCreate.model_validate(
         {
             "name": "Pump vibration",
             "reason": "The bearing ran hot twice in October and nothing watched it.",
+            "rationale": RATIONALE,
             "definition": design(),
             "bindings": {"value": "reading-1"},
         }
@@ -71,7 +80,10 @@ def test_a_proposal_names_the_monitor_and_says_why():
     assert replacing.replace_service_id == "service-1"
     for missing in ({"name": " "}, {"reason": ""}, {"reason": "   "}):
         with pytest.raises(SchemaError):
-            proposal(**missing)
+            proposal(**missing | {"rationale": None})
+    # Without a reason, the rationale says what the proposal watches.
+    assert proposal(reason="").reason == RATIONALE["watches"]
+    assert proposal().rationale.model_dump() == RATIONALE
     with pytest.raises(SchemaError):
         proposal(started=True)
 
@@ -265,6 +277,9 @@ async def test_only_its_author_withdraws_a_proposal(library):
         service = PipelineProposals(session)
         agent, _ = await agent_named(session, "Night shift agent")
         other, _ = await agent_named(session, "Auditor")
+        with pytest.raises(ValidationError, match="rationale"):
+            await service.create(proposal(rationale=None), agent)
+        await again_after_refusal(session, agent, other)
         made = await service.create(proposal(), agent)
         admin = await admin_of(session)
         for stranger in (other, admin):

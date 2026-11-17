@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.db.models import MonitorEventRecord
+from off_key_core.db.models import MonitorEventRecord, PipelineProposal
 from off_key_core.schemas.pipelines import MonitorRationale
 from off_key_tactic_middleware.domain import ForbiddenError, ValidationError
 from off_key_tactic_middleware.services.orchestration.radar import (
@@ -138,3 +138,14 @@ async def test_a_member_stops_any_monitor_and_it_is_recorded(monkeypatch):
     # Nothing stopped, nothing recorded.
     assert not await service.stop_monitor_as("s1", member())
     service.session.add.assert_not_called()
+
+
+def test_a_started_proposal_names_its_author_and_who_started_it():
+    proposal = PipelineProposal(
+        id="p1", author="Designer", author_kind="agent", agent_id=4
+    )
+    row = history.record(
+        MagicMock(), "s1", "started", member("admin"), proposal=proposal
+    )
+    assert (row.author, row.author_kind, row.agent_id) == ("Designer", "agent", 4)
+    assert row.note == "Proposed by Designer, started by admin@example.com."

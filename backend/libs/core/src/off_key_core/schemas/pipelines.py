@@ -906,11 +906,19 @@ class PipelineProposalCreate(PipelineModel):
         description="The name the monitoring service would carry.",
     )
     reason: str = Field(
-        min_length=1,
+        default="",
         max_length=MAX_PROPOSAL_TEXT,
         description=(
             "Why this is worth running, for the member who decides: what it "
-            "watches, what it would have caught and what it costs in alarms."
+            "watches, what it would have caught and what it costs in alarms. "
+            "Left out, it is the rationale's `watches`."
+        ),
+    )
+    rationale: MonitorRationale | None = Field(
+        default=None,
+        description=(
+            "Why it is worth running, in four short fields the member reads at "
+            "a glance and the monitor keeps once started. A key must give one."
         ),
     )
     definition: PipelineDefinition
@@ -937,18 +945,28 @@ class PipelineProposalCreate(PipelineModel):
         **public("replace_monitor_id", "replace_service_id"),
     )
 
-    @field_validator("name", "reason")
+    @field_validator("name")
     @classmethod
     def nonblank(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("Enter a name and a reason")
         return value.strip()
 
+    @model_validator(mode="after")
+    def explained(self):
+        self.reason = self.reason.strip()
+        if not self.reason and self.rationale is not None:
+            self.reason = self.rationale.watches
+        if not self.reason:
+            raise ValueError("Enter a name and a reason")
+        return self
+
 
 class PipelineProposalSummary(PipelineModel):
     id: str
     name: str
     reason: str
+    rationale: MonitorRationale | None = None
     author: str = Field(description="The agent's name, or the member's email.")
     author_kind: Literal["agent", "member"]
     status: ProposalStatus
@@ -1036,6 +1054,16 @@ class PipelineApplyRequest(PipelineModel):
         description=(
             "Why the monitor runs, shown to members next to who started it. "
             "A key must give one."
+        ),
+    )
+    proposal_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "The proposal this start accepts. The monitor then names the "
+            "proposal's author and keeps its rationale and test, unless the "
+            "request gives its own."
         ),
     )
     test_run_id: str | None = Field(

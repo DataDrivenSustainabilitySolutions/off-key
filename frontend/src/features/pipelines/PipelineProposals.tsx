@@ -10,6 +10,7 @@ import { pipelinesApi } from "./api";
 import { usePipelineApply } from "./applySession";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { proposalOutcome } from "./proposals";
+import { AuthorChip, RationaleFields } from "../workspace/RationaleCard";
 
 /** A note that an open proposal binds readings the catalogue no longer has. */
 function missingReadings(proposal: PipelineProposalSummary): string {
@@ -87,7 +88,8 @@ function StartProposal({ proposal, blocked, replaced, onStarted, onChoosing }: {
     try {
       const full = await pipelinesApi.proposal(proposal.id);
       await apply.session.submit({ definition: full.definition, layout: full.layout, bindings: full.bindings,
-        display_name: full.name, idempotency_key: crypto.randomUUID(), replace_monitor_id: full.replace_monitor_id, shadow });
+        display_name: full.name, idempotency_key: crypto.randomUUID(), replace_monitor_id: full.replace_monitor_id, shadow,
+        proposal_id: proposal.id });
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setLoading(false); }
   };
@@ -150,7 +152,8 @@ function ProposalRow({ proposal, canDecide, full, replaced, onReview, onDeclined
         {proposal.test_run_id && <span className="pl-proposal-tag"><FlaskConical size={13} aria-hidden="true" />Tested</span>}
         {proposal.replace_monitor_id && <span className="pl-proposal-tag">Update</span>}
       </span>
-      <span className="pl-proposal-reason">{proposal.reason}</span>
+      <span className="pl-proposal-reason">{proposal.rationale?.watches ?? proposal.reason}</span>
+      {proposal.rationale && <span className="pl-proposal-evidence">{proposal.rationale.evidence}</span>}
       <small>Proposed by {proposal.author} <RelativeTime value={proposal.created_at} />
         {proposal.replace_monitor_id && ` · Replaces ${replaced?.display_name || "a running service"}`}</small>
       {!open && <small className={`mn-state mn-state--${tone}`}>{outcome}</small>}
@@ -263,8 +266,9 @@ export function PipelineProposalNotice({ proposal, canDecide, onDeclined }: {
 
   return <div className="pl-proposal" role="group" aria-label={`Proposal by ${proposal.author}`}>
     <div className="pl-proposal-text">
-      <p><strong>Proposed by {proposal.author}</strong> <RelativeTime value={proposal.created_at} /></p>
-      <p>{proposal.reason}</p>
+      <p><strong>Proposed by</strong> <AuthorChip author={proposal.author} kind={proposal.author_kind} /> <RelativeTime value={proposal.created_at} /></p>
+      {proposal.rationale ? <RationaleFields rationale={proposal.rationale} /> : <p>{proposal.reason}</p>}
+      {proposal.rationale && proposal.reason && proposal.reason !== proposal.rationale.watches && <p>{proposal.reason}</p>}
       {missing && <p className="pl-proposal-missing">{missing}</p>}
       <p className="pl-proposal-state">{open ? canDecide ? "Starting the service accepts the proposal." : "It waits for a member who manages monitors."
         : `${proposalOutcome(proposal)}.`}</p>

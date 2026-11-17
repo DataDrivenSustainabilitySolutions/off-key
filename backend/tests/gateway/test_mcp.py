@@ -644,8 +644,8 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
             await client.call_tool(
                 "propose_design",
                 start
+                | WHY
                 | {
-                    "reason": "Catches the bearing fault of March.",
                     "test_run_id": "run-1",
                     "replace_monitor_id": "service-9",
                 },
@@ -655,6 +655,9 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
         handed, author = stores.proposals.create.await_args.args
         assert author is key
         assert handed.name == "Pump vibration"
+        # The rationale is the proposal's reason, and kept as four fields.
+        assert handed.rationale.model_dump() == WHY["rationale"]
+        assert handed.reason == WHY["rationale"]["watches"]
         assert handed.bindings == {"value": "r-power"}
         assert handed.layout.model_dump(mode="json") == design["layout"]
         assert (handed.test_run_id, handed.replace_service_id) == (
@@ -667,7 +670,7 @@ async def test_a_design_is_proposed_and_started_only_with_the_grant(
         stores.proposals.list.side_effect = [RuntimeError("busy")]
         made = said(
             await client.call_tool(
-                "propose_design", start | {"reason": "Catches the bearing fault."}
+                "propose_design", start | WHY | {"reason": "Catches the bearing fault."}
             )
         )
         assert made["id"] == "p1" and "note" not in made

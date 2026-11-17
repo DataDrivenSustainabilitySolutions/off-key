@@ -116,7 +116,8 @@ export function ExplorerWorkspace() {
       <ServiceDetail key={selectedService.id} service={selectedService} inputs={monitoringIndex.inputs.get(selectedService.id) ?? []}
         document={document} historyCache={history} canEdit={manageMonitors} favourite={favourites.has(selectedService.id)}
         pipelineState={monitoring.pipelineState ?? undefined} onFavourite={() => toggleFavourite("monitor", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
-        onDeleted={async () => { monitoring.remove(selectedService.id); closeView(); await monitoring.reload(); }} />
+        onDeleted={async () => { monitoring.remove(selectedService.id); closeView(); await monitoring.reload(); }}
+        onStopped={() => monitoring.reload()} />
     </Suspense>;
     // A retained run outlives its service row.
     if (requestedService && monitoring.ready && params.get("tab") === "pipeline") return <Suspense fallback={<p role="status">Opening retained run…</p>}><RetainedPipeline key={requestedService} serviceId={requestedService} canEdit={manageMonitors} replaceable={false} /></Suspense>;

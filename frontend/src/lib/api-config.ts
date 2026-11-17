@@ -78,6 +78,16 @@ export const API_CONFIG = {
       LIST: '/v1/monitors',
       OVERVIEW: '/v1/monitors/overview',
       ITEM: (monitorId: string) => `/v1/monitors/${encodeURIComponent(monitorId)}`,
+      STOP: (monitorId: string) => `/v1/monitors/${encodeURIComponent(monitorId)}/stop`,
+      /** The newest observations of a monitor that alarmed, muted or not. */
+      ALARMS: (monitorId: string, readingIds: readonly string[]) => {
+        const params = new URLSearchParams();
+        readingIds.forEach(readingId => params.append('reading_id', readingId));
+        params.set('monitor_id', monitorId);
+        params.set('alarm', 'true');
+        params.set('limit', '2000');
+        return `/v1/evidence/chart?${params.toString()}`;
+      },
       DETECTORS: '/v1/detectors',
       /** Evidence of every reading of a device, or of the named readings. */
       CHART_EVIDENCE: (

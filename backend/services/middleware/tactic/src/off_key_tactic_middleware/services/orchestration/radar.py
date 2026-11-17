@@ -8,7 +8,13 @@ from off_key_core.db.collection import (
 )
 from off_key_core.db.collection_runtime import monitoring_collection_fingerprint
 from off_key_core.db.maintenance import require_application_writes
-from off_key_core.db.models import MonitoringService, PipelineActivation, PipelineRun
+from off_key_core.db.models import (
+    Agent,
+    MonitoringService,
+    PipelineActivation,
+    PipelineRun,
+    User,
+)
 from off_key_core.db.pipeline_claims import (
     claim_owners,
     first_overlap,
@@ -28,6 +34,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.config import get_tactic_settings
+from ...domain import ForbiddenError, ValidationError
+from ..pipelines import history
 from .monitor_intent import mark_deleting, purge_service_rows, retire_workload
 from .radar_environment import (
     build_radar_config_fingerprint,
@@ -549,6 +557,32 @@ class RadarOrchestrationService:
 
         await self._cancel_pipeline_activations(service.id)
         return await self.retire_service(service)
+
+    async def stop_monitor_as(
+        self, service_id: str, caller: User | Agent, note: str | None = None
+    ) -> bool:
+        """Stop a monitor for a member or a key, and record who did and why.
+
+        A key stops only a shadow monitor it started, with a note; live
+        monitors and other callers' monitors stay with members.
+        """
+        if isinstance(caller, Agent):
+            if not note:
+                raise ValidationError("A key stops a monitor with a note on why.")
+            started = await history.starter(self.session, service_id)
+            if started is None or started.agent_id != caller.id:
+                raise ForbiddenError(
+                    "A key stops only the monitors it started. Ask a member."
+                )
+            if not started.shadow:
+                raise ForbiddenError(
+                    "This monitor runs live, so a member stops it. Propose that."
+                )
+        if not await self.stop_radar_service(service_id):
+            return False
+        history.record(self.session, service_id, "stopped", caller, note=note)
+        await self.session.commit()
+        return True
 
     async def list_radar_services(
         self, active_only: bool = False, include_workload_status: bool = False

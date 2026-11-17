@@ -289,6 +289,76 @@ SHADOW = (
 )
 
 
+MAX_RATIONALE_TEXT = 200
+
+
+class MonitorRationale(PipelineModel):
+    """Why a monitor runs, in four short fields a member reads at a glance."""
+
+    # One or two sentences each: the limit keeps them comparable across
+    # authors, and the canvas notes hold the detail.
+
+    watches: str = Field(
+        min_length=1,
+        max_length=MAX_RATIONALE_TEXT,
+        description="What it looks for, in the device's own terms.",
+    )
+    why: str = Field(
+        min_length=1,
+        max_length=MAX_RATIONALE_TEXT,
+        description="The main choices of the design and what they trade off.",
+    )
+    evidence: str = Field(
+        min_length=1,
+        max_length=MAX_RATIONALE_TEXT,
+        description="What the test or shadow period showed, with numbers.",
+    )
+    limits: str = Field(
+        min_length=1,
+        max_length=MAX_RATIONALE_TEXT,
+        description="What it cannot catch, or where it may be noisy.",
+    )
+
+    @field_validator("watches", "why", "evidence", "limits")
+    @classmethod
+    def written(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Write one or two sentences")
+        return " ".join(value.split())
+
+
+MonitorEvent = Literal["started", "stopped"]
+
+
+class MonitorRecord(PipelineModel):
+    """One step in a monitor's history: who started or stopped it, and why."""
+
+    event: MonitorEvent
+    author: str = Field(description="The agent's name, or the member's email.")
+    author_kind: Literal["agent", "member"]
+    rationale: MonitorRationale | None = None
+    note: str | None = Field(
+        default=None, description="Why it was stopped, where the author said."
+    )
+    test_run_id: str | None = Field(
+        default=None, description="The Dojo run that supported the start."
+    )
+    shadow: bool = False
+    at: datetime
+
+
+class MonitorOrigin(PipelineModel):
+    """Who started a monitor and why, with every later step of its history."""
+
+    author: str = Field(description="The agent's name, or the member's email.")
+    author_kind: Literal["agent", "member"]
+    rationale: MonitorRationale | None = None
+    test_run_id: str | None = None
+    history: list[MonitorRecord] = Field(
+        default_factory=list, description="Every record, the oldest first."
+    )
+
+
 class PipelineExecutionConfig(PipelineModel):
     schema_version: Literal[1] = 1
     definition: PipelineDefinition
@@ -961,6 +1031,22 @@ class PipelineApplyRequest(PipelineModel):
         default=None, **public("replace_monitor_id", "replace_service_id")
     )
     shadow: bool = Field(default=False, description=SHADOW)
+    rationale: MonitorRationale | None = Field(
+        default=None,
+        description=(
+            "Why the monitor runs, shown to members next to who started it. "
+            "A key must give one."
+        ),
+    )
+    test_run_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "A Dojo run that tested this very design to its end, kept with the "
+            "monitor as its evidence."
+        ),
+    )
 
     @field_validator("display_name")
     @classmethod
@@ -1174,6 +1260,13 @@ class MonitorSummary(BaseModel):
     operational_status: dict[str, Any] = Field(default_factory=dict)
     shadow: bool = Field(default=False, description=SHADOW)
     created_at: datetime | None = None
+    origin: MonitorOrigin | None = Field(
+        default=None,
+        description=(
+            "Who started the monitor and why. Monitors started before this "
+            "was recorded have none."
+        ),
+    )
 
     @field_validator("stream_ids", mode="before")
     @classmethod

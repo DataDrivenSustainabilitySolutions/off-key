@@ -53,6 +53,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `monitoring_pipeline_revisions` | `id` | Immutable compiled revisions of a pipeline |
 | `monitoring_pipeline_blocks` | `id` | Named chains of steps the composer copies into a design. `name` is unique, and no design, revision or run refers to a block |
 | `monitoring_pipeline_proposals` | `id` | Designs an agent or a member handed to a member to decide on: the name and the reason, the design with its layout and bindings, the author, and the decision with who made it and what they answered. It holds the design itself and no foreign key, so it reads the same after a run, a service or the agent's key is gone |
+| `monitor_records` | `id` | Who started or stopped each monitor and why: the author (an agent's name or a member's email), the rationale of a start in four short fields (what it watches, why this design, the evidence, its limits), the test behind it, and the note of a stop. Rows are only added, and the service id is no foreign key, so a monitor's history outlives it |
 | `monitoring_pipeline_runs` | `id` | A revision bound to inputs and running as one monitoring service |
 | `monitoring_pipeline_activations` | `id` | Idempotent activation requests and their phase through preflight, start and heartbeat |
 | `monitoring_pipeline_run_events` | `id` | A run's lifecycle events (setup phases, stage changes, data gaps, worker crashes, end), kept after its service is purged |

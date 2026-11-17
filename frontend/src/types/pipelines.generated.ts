@@ -232,7 +232,34 @@ export type MonitorDetail = {
   operational_status?: Record<string, unknown>;
   shadow?: boolean;
   created_at?: string | null;
+  origin?: MonitorOrigin | null;
   configuration?: Record<string, unknown>;
+};
+
+export type MonitorOrigin = {
+  author: string;
+  author_kind: "agent" | "member";
+  rationale?: MonitorRationale | null;
+  test_run_id?: string | null;
+  history?: Array<MonitorRecord>;
+};
+
+export type MonitorRationale = {
+  watches: string;
+  why: string;
+  evidence: string;
+  limits: string;
+};
+
+export type MonitorRecord = {
+  event: "started" | "stopped";
+  author: string;
+  author_kind: "agent" | "member";
+  rationale?: MonitorRationale | null;
+  note?: string | null;
+  test_run_id?: string | null;
+  shadow?: boolean;
+  at: string;
 };
 
 export type MonitorSummary = {
@@ -245,6 +272,7 @@ export type MonitorSummary = {
   operational_status?: Record<string, unknown>;
   shadow?: boolean;
   created_at?: string | null;
+  origin?: MonitorOrigin | null;
 };
 
 export type MuteParameters = {
@@ -304,6 +332,8 @@ export type PipelineApplyRequest = {
   idempotency_key: string;
   replace_monitor_id?: string | null;
   shadow?: boolean;
+  rationale?: MonitorRationale | null;
+  test_run_id?: string | null;
 };
 
 export type PipelineBindingMetadata = {

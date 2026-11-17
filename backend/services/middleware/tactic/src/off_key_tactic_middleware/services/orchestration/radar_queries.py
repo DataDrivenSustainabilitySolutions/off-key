@@ -8,6 +8,7 @@ from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_core.utils.timestamps import as_utc
 from sqlalchemy import select
 
+from ..pipelines.history import origins
 from .radar_status import derive_operational_status, name_inputs_by_reading
 
 
@@ -34,10 +35,15 @@ def _public_status(status: dict[str, Any], launch: dict) -> dict[str, Any]:
     return name_inputs_by_reading(status, pipeline.get("bindings")) or {}
 
 
+def _origin(origin) -> dict[str, Any] | None:
+    return origin.model_dump(mode="json") if origin is not None else None
+
+
 def service_summary(
     service: MonitoringService,
     catalogue: SystemCollectionDefinition,
     probe: tuple[str, dict[str, str]] | None = None,
+    origin=None,
 ) -> dict[str, Any]:
     configuration = service.launch_config or {}
     monitoring = configuration.get("monitoring") or {}
@@ -64,6 +70,7 @@ def service_summary(
         "operational_status": operational_status,
         "shadow": _shadow(configuration),
         "created_at": _created_at(service),
+        "origin": _origin(origin),
     }
     if probe is not None:
         summary["workload_status"] = workload_status
@@ -86,16 +93,20 @@ class RadarServiceQueries:
         result = await self.session.execute(query)
         services = result.scalars().all()
         catalogue = (await read_collection_runtime(self.session)).catalog
+        found = await origins(self.session, [service.id for service in services])
 
         if not include_workload_status:
-            return [service_summary(service, catalogue) for service in services]
+            return [
+                service_summary(service, catalogue, origin=found.get(service.id))
+                for service in services
+            ]
 
         # One read answers the whole listing.
         probes = await self.workloads.statuses_and_labels(
             [item.container_id for item in services]
         )
         return [
-            service_summary(service, catalogue, probe)
+            service_summary(service, catalogue, probe, found.get(service.id))
             for service, probe in zip(services, probes, strict=True)
         ]
 
@@ -136,4 +147,7 @@ class RadarServiceQueries:
             or labels.get("radar_model_type"),
             "shadow": _shadow(configuration),
             "created_at": _created_at(service),
+            "origin": _origin(
+                (await origins(self.session, [service.id])).get(service.id)
+            ),
         }

@@ -107,7 +107,6 @@ async def test_a_key_is_refused_wherever_a_route_is_not_open_to_it(
         ("POST", "/live/views"),
         ("POST", "/monitors"),
         ("PATCH", "/monitors/example"),
-        ("POST", "/monitors/example/stop"),
         ("DELETE", "/monitors/example"),
         ("PUT", "/monitors/example/pipeline/layout"),
         ("POST", "/pipelines"),
@@ -186,6 +185,13 @@ async def test_a_key_starts_a_service_only_when_it_may(gateway, services, monkey
         assert services.asked() == []
         # The grant is read with every request, so it holds from the next one.
         key.starts = "live"
+        # A key says why it starts a monitor, for the members who read it.
+        unexplained = await client.post(
+            "/v1/pipelines/apply", headers=BY_KEY, json=start
+        )
+        assert unexplained.status_code == 422
+        assert "rationale" in unexplained.json()["detail"]
+        start["rationale"] = RATIONALE
         started = await client.post("/v1/pipelines/apply", headers=BY_KEY, json=start)
         assert started.status_code == 202
         assert started.json()["monitor_id"] == "service-1"
@@ -200,6 +206,37 @@ async def test_a_key_starts_a_service_only_when_it_may(gateway, services, monkey
         assert shadowed.status_code == 202
     applied = activations.apply.await_args_list
     assert [call.args[0].shadow for call in applied] == [False, True]
+    # The start goes into the monitor's history as the key's.
+    assert {call.args[1].id for call in applied} == {key.id}
+    assert applied[0].args[0].rationale.watches == RATIONALE["watches"]
+
+
+RATIONALE = {
+    "watches": "Pump vibration rising above its usual daily band.",
+    "why": "A moving Mahalanobis distance on vibration and current.",
+    "evidence": "1 alarm in 9 scored hours of the last week; no labels.",
+    "limits": "First mornings alarm until it has seen a few days.",
+}
+
+
+@pytest.mark.asyncio
+async def test_a_key_stops_only_its_own_shadow_monitors(gateway, services, monkeypatch):
+    key = agent(starts="shadow")
+    orchestration = services.of(providers.get_radar_orchestration_service)
+    orchestration.stop_monitor_as.return_value = True
+    Callers(monkeypatch, agent=key)
+    async with asgi_client(gateway) as client:
+        stopped = await client.post(
+            "/v1/monitors/service-1/stop", headers=BY_KEY, json={"note": "Too noisy."}
+        )
+        assert stopped.status_code == 200
+        key.starts = "nothing"
+        refused = await client.post(
+            "/v1/monitors/service-1/stop", headers=BY_KEY, json={"note": "Again."}
+        )
+        assert refused.status_code == 403
+    (call,) = orchestration.stop_monitor_as.await_args_list
+    assert call.args == ("service-1", key, "Too noisy.")
 
 
 @pytest.mark.asyncio

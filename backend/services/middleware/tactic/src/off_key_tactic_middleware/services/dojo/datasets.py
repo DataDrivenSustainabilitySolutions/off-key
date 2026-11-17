@@ -16,6 +16,7 @@ from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import (
     DojoDataset,
+    DojoLabel,
     DojoPoint,
     DojoRun,
     DojoRunResult,
@@ -37,11 +38,14 @@ from off_key_core.schemas.dojo import (
     DatasetSeriesView,
     DatasetSummary,
     DatasetView,
+    DatasetWithFaults,
 )
 from sqlalchemy import Text, delete, func, insert, literal, select, update
 
 from ...domain import ConflictError, NotFoundError, ValidationError
 from .csv_import import read_points
+from .faults import kept, plan_faults, written_value
+from .labels import dataset_labels
 
 COPY_BATCH = 20_000
 POINT_COLUMNS = ("series_id", "timestamp", "value")
@@ -327,20 +331,105 @@ class DojoDatasets:
                     .limit(MAX_DATASET_POINTS - copied + 1),
                 )
             )
-            count, start, end = (
-                await self.session.execute(
-                    select(
-                        func.count(),
-                        func.min(DojoPoint.timestamp),
-                        func.max(DojoPoint.timestamp),
-                    ).where(DojoPoint.series_id == item.id)
-                )
-            ).one()
-            item.point_count, item.start_at, item.end_at = count, start, end
-            copied += count
+            await self._measure(item)
+            copied += item.point_count
             if copied > MAX_DATASET_POINTS:
                 raise _too_many_points()
         return await self._finish(dataset, series)
+
+    async def inject_faults(
+        self, dataset_id: str, request: DatasetWithFaults, *, created_by: int | None
+    ) -> DatasetView:
+        """Copy a dataset with faults written in, each one a new label.
+
+        The copy keeps the source's labels and readings, so a run on it is
+        scored on every known problem, injected or not.
+        """
+        await require_application_writes(self.session)
+        source = await self._row(dataset_id)
+        originals = list(
+            (
+                await self.session.scalars(
+                    select(DojoSeries)
+                    .where(DojoSeries.dataset_id == source.id)
+                    .order_by(DojoSeries.position)
+                )
+            ).all()
+        )
+        labels = await dataset_labels(self.session, source.id)
+        planned = await plan_faults(
+            self.session,
+            request.faults,
+            {item.id: item for item in originals},
+            labels,
+        )
+        copies = {
+            item.id: _Series(
+                id=str(uuid4()),
+                position=item.position,
+                name=item.name,
+                unit=item.unit,
+                reading_id=item.reading_id,
+            )
+            for item in originals
+        }
+        faults = [
+            {
+                **item.fault.model_dump(mode="json"),
+                "series_id": copies[item.series.id].id,
+                "size": item.size,
+            }
+            for item in planned
+        ]
+        dataset = self._dataset(
+            request.name,
+            request.description,
+            source.origin,
+            {**source.source, "copied_from": source.id, "faults": faults},
+            created_by,
+        )
+        await self._store_series(dataset.id, copies.values())
+        for original in originals:
+            mine = [item for item in planned if item.series.id == original.id]
+            copy = copies[original.id]
+            await self.session.execute(
+                insert(DojoPoint).from_select(
+                    list(POINT_COLUMNS),
+                    select(
+                        literal(copy.id, Text),
+                        DojoPoint.timestamp,
+                        written_value(mine),
+                    ).where(DojoPoint.series_id == original.id, kept(mine)),
+                )
+            )
+            await self._measure(copy)
+        intervals = [(label.start_at, label.end_at, label.note) for label in labels]
+        intervals += [(*item.interval, item.note()) for item in planned]
+        self.session.add_all(
+            DojoLabel(
+                id=str(uuid4()),
+                dataset_id=dataset.id,
+                start_at=start,
+                end_at=end,
+                note=note,
+                created_by=created_by,
+            )
+            for start, end, note in intervals
+        )
+        return await self._finish(dataset, copies.values())
+
+    async def _measure(self, item: _Series) -> None:
+        """Read back how many values a series holds and when."""
+        count, start, end = (
+            await self.session.execute(
+                select(
+                    func.count(),
+                    func.min(DojoPoint.timestamp),
+                    func.max(DojoPoint.timestamp),
+                ).where(DojoPoint.series_id == item.id)
+            )
+        ).one()
+        item.point_count, item.start_at, item.end_at = count, start, end
 
     def _dataset(self, name, description, origin, source, created_by):
         dataset = DojoDataset(

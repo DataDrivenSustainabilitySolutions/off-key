@@ -266,6 +266,7 @@ function stream(value: unknown, index: number): SystemStream {
     "category",
     "policy",
     "appearance",
+    "max_silence_seconds",
   ]);
   const topic = text(item.topic, `${path}.topic`, 512);
   if (new TextEncoder().encode(topic).length > 512)
@@ -295,7 +296,17 @@ function stream(value: unknown, index: number): SystemStream {
     ...(item.policy === undefined || item.policy === null
       ? {}
       : { policy: policy(item.policy, `${path}.policy`) }),
+    ...(item.max_silence_seconds === undefined || item.max_silence_seconds === null
+      ? {}
+      : { max_silence_seconds: silence(item.max_silence_seconds, `${path}.max_silence_seconds`) }),
   };
+}
+
+/** Whole quiet seconds a monitor waits before a silence alarm: one minute to 30 days. */
+function silence(value: unknown, path: string) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 60 || value > 30 * 86400)
+    fail(path, "use whole seconds from 60 to 2592000");
+  return value as number;
 }
 
 function group(value: unknown, index: number): SystemGroup {

@@ -888,7 +888,11 @@ class RadarStartConfig(_MonitorLaunch):
     runtime_image: str | None = Field(default=None, max_length=512, pattern=r"^\S+$")
     # Quiet seconds after which a bound reading raises a silence alarm, by input
     # key: copied at activation from readings whose catalogue entry sets one.
-    silence_after_seconds: dict[str, int] = Field(default_factory=dict)
+    # Left out of a launch without any, so an earlier release rolled back to
+    # still reads every launch saved before one was set.
+    silence_after_seconds: dict[str, int] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
 
     @model_validator(mode="after")
     def validate_pipeline(self) -> "RadarStartConfig":

@@ -73,6 +73,18 @@ const systemFixture = (): SystemDocument => ({
 });
 
 describe("domain agnostic saved systems", () => {
+  it("keeps a reading's silence limit and reads a stored null as unset", () => {
+    const system = systemFixture();
+    const [reading] = system.readings;
+    const limited: SystemDocument = { ...system, readings: [{ ...reading!, max_silence_seconds: 5400 }] };
+    expect(parseSystemDocument(serializeSystemDocument(limited)).readings[0]?.max_silence_seconds).toBe(5400);
+    const stored = JSON.parse(serializeSystemDocument(system));
+    stored.readings[0].max_silence_seconds = null;
+    expect(parseSystemDocument(JSON.stringify(stored)).readings[0]).not.toHaveProperty("max_silence_seconds");
+    stored.readings[0].max_silence_seconds = 10;
+    expect(() => parseSystemDocument(JSON.stringify(stored))).toThrow(/whole seconds/);
+  });
+
   it("roundtrips connection access, structure and stream bindings independently of a domain", () => {
     const system = systemFixture();
     expect(parseSystemDocument(serializeSystemDocument(system))).toEqual(

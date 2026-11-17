@@ -210,3 +210,17 @@ def test_a_silence_limit_names_a_bound_input():
         RadarStartConfig.model_validate(
             config.model_dump() | {"silence_after_seconds": {"nope": 60}}
         )
+
+
+@pytest.mark.parametrize("name", CONFIGS)
+def test_a_launch_without_silence_limits_reads_as_before(name):
+    """A release rolled back to rejects fields it does not know."""
+    assert "silence_after_seconds" not in CONFIGS[name]().model_dump(mode="json")
+
+
+def test_a_reading_without_a_silence_limit_reads_as_before():
+    from off_key_core.schemas.system import SystemStream
+
+    stream = SystemStream(id="r", label="R", connection_id="c", topic="t")
+    assert "max_silence_seconds" not in stream.model_dump(mode="json")
+    assert "max_silence_seconds" not in stream.model_dump(mode="json", by_alias=True)

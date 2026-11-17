@@ -183,7 +183,11 @@ class SystemStream(NamedEntity):
     policy: CollectionPolicy | None = None
     # A reading known to pause, such as one sent once an hour: a monitor raises
     # a silence alarm after this many quiet seconds instead of learning when.
-    max_silence_seconds: int | None = Field(default=None, ge=60, le=30 * 86400)
+    # Left out while unset, so an earlier release rolled back to still reads
+    # the catalogue.
+    max_silence_seconds: int | None = Field(
+        default=None, ge=60, le=30 * 86400, exclude_if=lambda value: value is None
+    )
 
     @field_validator("topic")
     @classmethod

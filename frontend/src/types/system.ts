@@ -39,6 +39,8 @@ export type SystemStream = {
   unit?: string;
   category: string;
   policy?: CollectionPolicy;
+  /** Quiet seconds after which a monitor raises a silence alarm; unset, it learns them. */
+  max_silence_seconds?: number;
 };
 
 export type SystemGroup = {

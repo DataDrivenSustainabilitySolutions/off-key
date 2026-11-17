@@ -118,6 +118,9 @@ class RadarConfig(AnomalyDetectionConfig):
     # Monitoring
     health_check_interval: float = 30.0
     log_level: str = "INFO"
+    # Quiet seconds after which a reading raises a silence alarm, by input key,
+    # from its catalogue entry; other readings learn theirs.
+    silence_after_seconds: dict[str, float] = Field(default_factory=dict)
 
     # Input validation
     max_feature_count: int = 100
@@ -154,6 +157,9 @@ class RadarSettings(BaseSettings):
     RADAR_PIPELINE_CONFIG: PipelineExecutionConfig
     # TACTIC sets it for a shadow run only: every alarm is kept back as muted.
     RADAR_SHADOW: bool = False
+    # TACTIC sets it only when a bound reading's catalogue entry names its
+    # longest expected quiet: {input key: seconds}.
+    RADAR_SILENCE_AFTER: dict[str, float] = Field(default_factory=dict)
 
     # Telemetry log reads
     RADAR_LOG_POLL_SECONDS: float = Field(default=0.5, gt=0, le=30)
@@ -230,6 +236,7 @@ class RadarSettings(BaseSettings):
             monitoring=monitoring,
             pipeline=pipeline,
             shadow=self.RADAR_SHADOW,
+            silence_after_seconds=self.RADAR_SILENCE_AFTER,
             max_queue_size=self.RADAR_MAX_QUEUE_SIZE,
             log_poll_seconds=self.RADAR_LOG_POLL_SECONDS,
             log_batch_size=self.RADAR_LOG_BATCH_SIZE,

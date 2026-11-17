@@ -7,8 +7,9 @@ sends for a few minutes every hour pauses far longer than its usual gap. A
 reading is silent once it has sent nothing for ``SILENCE_FACTOR`` times the
 longest gap it had over the last day, and never before its stale limit. A
 reading the monitor has heard for less than a day raises nothing, since its
-rhythm is not known yet. It raises again only after it has sent a value and
-gone quiet anew.
+rhythm is not known yet. A reading whose catalogue entry names its longest
+expected quiet uses that instead, from the start. It raises again only after it
+has sent a value and gone quiet anew.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -36,8 +37,10 @@ def silence_limit(
 class SilenceAlarms:
     """Remember which readings have raised for their current silence."""
 
-    def __init__(self) -> None:
+    def __init__(self, configured: dict[str, float] | None = None) -> None:
         self._raised: set[str] = set()
+        # Seconds of quiet set for a reading, which replace the learned limit.
+        self._configured = dict(configured or {})
 
     def due(
         self,
@@ -58,7 +61,7 @@ class SilenceAlarms:
         budget = max(activity.stale_after_seconds.values(), default=0.0)
         silent: dict[str, tuple[float, float]] = {}
         for sensor, age in ages.items():
-            limit = silence_limit(
+            limit = self._configured.get(sensor) or silence_limit(
                 activity.stale_after_seconds.get(sensor, budget),
                 longest.get(sensor),
                 heard.get(sensor, 0.0),

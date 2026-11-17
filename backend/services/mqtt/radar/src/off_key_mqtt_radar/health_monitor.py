@@ -42,6 +42,7 @@ class HealthMonitor:
         self,
         health_check_interval: float = 30.0,
         max_processing_times: int = 1000,
+        silence_after_seconds: dict[str, float] | None = None,
     ):
         """
         Initialize health monitor.
@@ -69,7 +70,7 @@ class HealthMonitor:
         self._publication_suspended = False
 
         self.run_events = RunEventRecorder()
-        self.silence = SilenceAlarms()
+        self.silence = SilenceAlarms(silence_after_seconds)
         self._activity: RadarActivityStatus | None = None
         self._activity_snapshot: dict[str, Any] | None = None
         self._started_at_utc: datetime | None = None

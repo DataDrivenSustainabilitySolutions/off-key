@@ -181,6 +181,9 @@ class SystemStream(NamedEntity):
     unit: str | None = Field(default=None, max_length=32)
     category: str = Field(default="Other", min_length=1, max_length=60)
     policy: CollectionPolicy | None = None
+    # A reading known to pause, such as one sent once an hour: a monitor raises
+    # a silence alarm after this many quiet seconds instead of learning when.
+    max_silence_seconds: int | None = Field(default=None, ge=60, le=30 * 86400)
 
     @field_validator("topic")
     @classmethod

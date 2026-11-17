@@ -228,3 +228,34 @@ async def test_a_silence_is_stored_as_an_alarm(member_database):
 @pytest.mark.asyncio
 async def test_a_shadow_run_stores_no_silence(member_database):
     assert await _stored_silences(member_database, shadow=True) == []
+
+
+def test_a_catalogue_limit_replaces_the_learned_one_from_the_start():
+    silence = SilenceAlarms({"a": 7200.0})
+    # Heard only briefly, and past 1.5 times its longest gap, yet within limit.
+    snapshot = _snapshot(heard=60.0, a=3600.0)
+    assert silence.due(_activity(), snapshot, service_id="m") == []
+    rows = silence.due(_activity(), _snapshot(heard=60.0, a=7300.0), service_id="m")
+    assert [row["telemetry_type"] for row in rows] == ["a"]
+
+
+def test_activation_copies_each_bound_readings_catalogue_limit():
+    from off_key_tactic_middleware.services.pipelines.activation import (
+        PipelineActivations,
+    )
+
+    streams = [
+        SimpleNamespace(id="hourly", max_silence_seconds=5400),
+        SimpleNamespace(id="steady", max_silence_seconds=None),
+        SimpleNamespace(id="unbound", max_silence_seconds=60),
+    ]
+    snapshot = SimpleNamespace(
+        catalog=SimpleNamespace(document=SimpleNamespace(streams=streams))
+    )
+    bindings = [
+        SimpleNamespace(reading_id="hourly", input_key="pump/hourly"),
+        SimpleNamespace(reading_id="steady", input_key="pump/steady"),
+    ]
+    assert PipelineActivations._silence_limits(bindings, snapshot) == {
+        "pump/hourly": 5400
+    }

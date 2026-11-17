@@ -182,3 +182,31 @@ def test_only_a_shadow_run_carries_its_flag(name, monkeypatch):
         for key, value in environment.items():
             monkeypatch.setenv(key, value)
         assert RadarSettings(_env_file=None).config.shadow is expected
+
+
+@pytest.mark.parametrize("name", CONFIGS)
+def test_only_a_catalogue_silence_limit_adds_its_key(name, monkeypatch):
+    """Silence limits arrived without reconfiguring monitors that set none."""
+    config = CONFIGS[name]()
+    plain = _environment(config)
+    key = config.pipeline.bindings[0].input_key
+    limited = _environment(
+        config.model_copy(update={"silence_after_seconds": {key: 3600}})
+    )
+    assert "RADAR_SILENCE_AFTER" not in plain
+    assert limited == plain | {"RADAR_SILENCE_AFTER": json.dumps({key: 3600})}
+    for environment, expected in ((plain, {}), (limited, {key: 3600.0})):
+        for setting in RadarSettings.model_fields:
+            monkeypatch.delenv(setting, raising=False)
+        for setting, value in environment.items():
+            monkeypatch.setenv(setting, value)
+        loaded = RadarSettings(_env_file=None).config
+        assert loaded.silence_after_seconds == expected
+
+
+def test_a_silence_limit_names_a_bound_input():
+    config = _pipeline_config()
+    with pytest.raises(ValueError, match="Silence limits must name bound input"):
+        RadarStartConfig.model_validate(
+            config.model_dump() | {"silence_after_seconds": {"nope": 60}}
+        )

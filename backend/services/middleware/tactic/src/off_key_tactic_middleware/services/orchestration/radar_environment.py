@@ -122,6 +122,12 @@ def build_radar_environment(
         # Only a shadow run carries the key, so the environment of every other
         # monitor, and with it its configuration fingerprint, stays as it was.
         environment["RADAR_SHADOW"] = "true"
+    if config.silence_after_seconds:
+        # Only readings with a catalogue silence limit add the key, so other
+        # monitors keep their configuration fingerprint.
+        environment["RADAR_SILENCE_AFTER"] = json.dumps(
+            config.silence_after_seconds, sort_keys=True
+        )
     if config.runtime_image is not None:
         environment["RADAR_RUNTIME_IMAGE"] = config.runtime_image
     return environment

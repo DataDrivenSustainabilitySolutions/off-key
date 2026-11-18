@@ -461,8 +461,17 @@ class DojoDatasets:
                 )
             )
             await self._measure(copy)
-        intervals = [(label.start_at, label.end_at, label.note) for label in labels]
-        intervals += [(*item.interval, item.note()) for item in planned]
+        intervals = [
+            (
+                label.start_at,
+                label.end_at,
+                label.note,
+                label.rule,
+                label.suggested_by_agent,
+            )
+            for label in labels
+        ]
+        intervals += [(*item.interval, item.note(), "", None) for item in planned]
         self.session.add_all(
             DojoLabel(
                 id=str(uuid4()),
@@ -470,9 +479,11 @@ class DojoDatasets:
                 start_at=start,
                 end_at=end,
                 note=note,
+                rule=rule,
+                suggested_by_agent=agent,
                 created_by=created_by,
             )
-            for start, end, note in intervals
+            for start, end, note, rule, agent in intervals
         )
         return await self._finish(dataset, copies.values())
 

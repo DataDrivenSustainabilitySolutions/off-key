@@ -35,6 +35,7 @@ from .alarm_deletions import AlarmDeletion as AlarmDeletion
 from .base import Base
 from .dojo import DojoDataset as DojoDataset
 from .dojo import DojoLabel as DojoLabel
+from .dojo import DojoPendingLabel as DojoPendingLabel
 from .dojo import DojoPoint as DojoPoint
 from .dojo import DojoRun as DojoRun
 from .dojo import DojoRunResult as DojoRunResult

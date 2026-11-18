@@ -1,10 +1,10 @@
 import { epochMilliseconds } from "@/lib/timestamps";
 import { useAuth } from "@/auth/AuthContext";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Tag, Trash2 } from "lucide-react";
 import { useConfirm } from "@/hooks/use-confirm";
 import { getErrorMessage } from "@/lib/errors";
-import type { DatasetView, LabelSuggestion, LabelView } from "@/types/dojo.generated";
+import type { DatasetView, LabelSuggestion, LabelView, PendingLabelView } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import { EChart } from "../charts/EChart";
 import { useChartColors } from "../charts/use-chart-colors";
@@ -13,6 +13,7 @@ import { datasetChartOption } from "./dojo-chart";
 import { CHART_POINTS, useSeriesPoints } from "./hooks";
 import { LabelSuggestions } from "./LabelSuggestions";
 import { formatInstant, fromLocalInput, suggestionNote, toLocalInput } from "./model";
+import { PendingLabels, type RuleRequest } from "./PendingLabels";
 
 const SHOWN_SERIES = 4;
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -21,7 +22,7 @@ const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   dataset: DatasetView; labels: LabelView[]; onLabelsChange: () => Promise<void>;
 }) {
-  const { can } = useAuth();
+  const { can, userId } = useAuth();
   const editable = can("use_dojo");
   const { resolvedTheme, colors } = useChartColors();
   const [shown, setShown] = useState(() => dataset.series.slice(0, SHOWN_SERIES).map(item => item.id));
@@ -34,6 +35,17 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirm, confirmation] = useConfirm();
+  const [pending, setPending] = useState<PendingLabelView[]>([]);
+  // The pending label the form is changing, added in its place when the form is sent.
+  const [adjusting, setAdjusting] = useState<string | null>(null);
+  const loadPending = useCallback(async () => setPending((await dojoApi.pendingLabels(dataset.id)).items), [dataset.id]);
+  useEffect(() => {
+    const controller = new AbortController();
+    dojoApi.pendingLabels(dataset.id, controller.signal)
+      .then(found => { if (!controller.signal.aborted) setPending(found.items); })
+      .catch(reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
+    return () => controller.abort();
+  }, [dataset.id]);
   const option = useMemo(() => datasetChartOption({
     series: series.flatMap(item => loaded[item.id] ? [{ id: item.id, name: item.name, unit: item.unit, points: loaded[item.id]!.points }] : []),
     labels: labels.map(label => ({ id: label.id, start: epochMilliseconds(label.start_at), end: epochMilliseconds(label.end_at), note: label.note })),
@@ -42,15 +54,18 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   const truncated = series.filter(item => loaded[item.id]?.truncated);
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true); setError("");
-    try { await action(); await onLabelsChange(); return true; }
+    try { await action(); await Promise.all([onLabelsChange(), loadPending()]); return true; }
     catch (reason) { setError(getErrorMessage(reason)); return false; }
     finally { setBusy(false); }
   };
   const startAt = fromLocalInput(start), endAt = fromLocalInput(end);
   const create = async () => {
     if (!startAt || !endAt) return;
-    if (await act(() => dojoApi.createLabel(dataset.id, { start_at: startAt, end_at: endAt, note: note.trim() }))) {
-      setStart(""); setEnd(""); setNote("");
+    const added = adjusting
+      ? act(() => dojoApi.acceptPendingLabels(dataset.id, { items: [{ id: adjusting, start_at: startAt, end_at: endAt, note: note.trim() }] }))
+      : act(() => dojoApi.createLabel(dataset.id, { start_at: startAt, end_at: endAt, note: note.trim() }));
+    if (await added) {
+      setStart(""); setEnd(""); setNote(""); setAdjusting(null);
     }
   };
   const loadSuggestions = useCallback((signal: AbortSignal) => dojoApi.labelSuggestions(dataset.id, {}, signal), [dataset.id]);
@@ -58,7 +73,26 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   const addSuggested = (items: LabelSuggestion[]) => void act(() => dojoApi.createLabels(dataset.id, {
     labels: items.map(item => ({ start_at: item.start_at, end_at: item.end_at, note: suggestionNote(item) })) }));
   const adjust = (item: LabelSuggestion) => {
-    setStart(toLocalInput(item.start_at)); setEnd(toLocalInput(item.end_at)); setNote(suggestionNote(item));
+    setStart(toLocalInput(item.start_at)); setEnd(toLocalInput(item.end_at)); setNote(suggestionNote(item)); setAdjusting(null);
+  };
+  const proposeByRule = async (request: RuleRequest) => {
+    let said: string | null = null;
+    await act(async () => {
+      const made = await dojoApi.proposeLabelsByRule(dataset.id, { condition: request.condition, note: request.note,
+        min_duration_seconds: request.minMinutes * 60, merge_gap_seconds: request.joinMinutes * 60 });
+      const count = made.items.length;
+      said = `${count === 0 ? "No interval" : count === 1 ? "One interval" : `${count} intervals`} found`
+        + (made.skipped ? `, ${made.skipped} more on a label already` : "")
+        + (made.truncated ? "; only the earliest 200 are proposed" : "") + ".";
+    });
+    return said;
+  };
+  const addPending = (items: PendingLabelView[]) => void act(() => dojoApi.acceptPendingLabels(dataset.id,
+    { items: items.map(item => ({ id: item.id })) }));
+  const dismissPending = (items: PendingLabelView[]) => void act(() => dojoApi.dismissPendingLabels(dataset.id,
+    { ids: items.map(item => item.id) }));
+  const adjustPending = (item: PendingLabelView) => {
+    setStart(toLocalInput(item.start_at)); setEnd(toLocalInput(item.end_at)); setNote(item.note); setAdjusting(item.id);
   };
   const remove = async (label: LabelView) => {
     if (!await confirm({ title: "Delete label?", description: `${formatInstant(label.start_at)} – ${formatInstant(label.end_at)}`,
@@ -95,12 +129,19 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
         onChange={event => setEnd(event.target.value)} /></label>
       <label className="dj-field dj-field--grow"><span>Note <small>(optional)</small></span><input maxLength={500}
         value={note} disabled={busy} placeholder="What happened" onChange={event => setNote(event.target.value)} /></label>
-      <button type="submit" className="dj-primary" disabled={busy || !startAt || !endAt || endAt <= startAt}>Add label</button>
+      <button type="submit" className="dj-primary" disabled={busy || !startAt || !endAt || endAt <= startAt}>
+        {adjusting ? "Add proposed label" : "Add label"}</button>
+      {adjusting && <button type="button" className="dj-action" disabled={busy} onClick={() => {
+        setStart(""); setEnd(""); setNote(""); setAdjusting(null);
+      }}>Cancel</button>}
     </form>}
     {error && <p className="dj-error" role="alert">{error}</p>}
     {labels.length > 0 && <ul className="dj-labels" aria-label="Labels">{labels.map(label =>
       <li key={label.id}>
-        <span>{formatInstant(label.start_at)} – {formatInstant(label.end_at)}</span>
+        <span>{formatInstant(label.start_at)} – {formatInstant(label.end_at)}
+          {(label.rule || label.suggested_by_agent) && <small className="dj-muted dj-label-origin">
+            {label.suggested_by_agent ? `Proposed by ${label.suggested_by_agent}` : "Found by a rule"}
+            {label.rule ? <>: <code>{label.rule}</code></> : null}</small>}</span>
         {editable ? <input aria-label="Label note" maxLength={500} defaultValue={label.note} placeholder="Add a note" disabled={busy}
           onBlur={event => {
             const value = event.target.value.trim();
@@ -109,6 +150,8 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
         {editable && <button type="button" className="dj-danger" disabled={busy} aria-label="Delete label"
           onClick={() => void remove(label)}><Trash2 size={14} /></button>}
       </li>)}</ul>}
+    <PendingLabels dataset={dataset} labels={labels} pending={pending} userId={userId} editable={editable} busy={busy}
+      onRule={proposeByRule} onAdd={addPending} onAdjust={adjustPending} onDismiss={dismissPending} />
     {editable && <LabelSuggestions dataset={dataset} labels={labels} busy={busy} load={loadSuggestions} onAdd={addSuggested}
       onAdjust={adjust} />}
     {confirmation}

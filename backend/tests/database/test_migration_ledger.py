@@ -18,6 +18,9 @@ APPLIED_CHECKSUMS = {
     "003_session_persistence.sql": (
         "1b812d875f62d022c530010b3d8dc9b12354c70b41195c9bda2033ca7721872e"
     ),
+    "004_dojo_pending_labels.sql": (
+        "ea43cb766cc073b55a192932cc7d66d2e75cf12c2ab0e1d299f27b80a29c38c9"
+    ),
 }
 
 

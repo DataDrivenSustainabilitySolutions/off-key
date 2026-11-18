@@ -6,7 +6,7 @@ import { dojoApi } from "@/features/dojo/api";
 import { pipelinesApi } from "@/features/pipelines/api";
 import type { Comparison, DatasetView, LabelView, MethodMetrics, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
-import { fromLocalInput } from "@/features/dojo/model";
+import { fromLocalInput, toLocalInput } from "@/features/dojo/model";
 
 const access = vi.hoisted(() => ({ allowed: true, monitors: false, guest: false }));
 const selectSource = vi.hoisted(() => vi.fn());
@@ -35,6 +35,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), importCsv: vi.fn(), importHistory: vi.fn(), changeDataset: vi.fn(), deleteDataset: vi.fn(),
   points: vi.fn(), labels: vi.fn(), labelSuggestions: vi.fn(), createLabel: vi.fn(), createLabels: vi.fn(), changeLabel: vi.fn(), deleteLabel: vi.fn(), runs: vi.fn(), run: vi.fn(),
+  pendingLabels: vi.fn(), proposeLabelsByRule: vi.fn(), acceptPendingLabels: vi.fn(), dismissPendingLabels: vi.fn(),
   createRun: vi.fn(), cancelRun: vi.fn(), deleteRun: vi.fn(), promoteRun: vi.fn(), results: vi.fn(), metrics: vi.fn(), compare: vi.fn(),
   calibration: vi.fn(),
 } }));
@@ -78,6 +79,7 @@ beforeEach(() => {
   vi.mocked(dojoApi.dataset).mockResolvedValue(dataset);
   vi.mocked(dojoApi.labels).mockResolvedValue({ items: [label] });
   vi.mocked(dojoApi.labelSuggestions).mockResolvedValue({ items: [], truncated: false });
+  vi.mocked(dojoApi.pendingLabels).mockResolvedValue({ items: [] });
   vi.mocked(dojoApi.points).mockResolvedValue({ items: [{ timestamp: T0, value: 1 }], next_after: null });
   vi.mocked(dojoApi.runs).mockResolvedValue({ items: [run("r1", "Forest"), run("r2", "Baseline")], next_offset: null });
   vi.mocked(dojoApi.results).mockResolvedValue({ items: [], next_after: null });
@@ -290,6 +292,52 @@ describe("Dojo workspace", () => {
     ] }));
     expect(dojoApi.createLabels).toHaveBeenCalledTimes(2);
     expect(dojoApi.createLabel).not.toHaveBeenCalled();
+  });
+
+  it("labels by a rule and lets a member add, adjust or dismiss what members and agents proposed", async () => {
+    const proposed = (id: string, start: string, end: string, agent: string | null) => ({
+      id, dataset_id: "d1", start_at: `2024-01-01T${start}Z`, end_at: `2024-01-01T${end}Z`, note: agent ? "Hot" : "",
+      rule: "Voltage > 230", created_by: agent ? null : 1, created_by_agent: agent, created_at: T0 });
+    const waiting = [
+      proposed("p1", "00:05:00", "00:09:00", "Labeller"),
+      // On the label already, so it cannot be added.
+      proposed("p2", "00:35:00", "00:36:00", null),
+      proposed("p3", "01:10:00", "01:12:00", null),
+    ];
+    vi.mocked(dojoApi.pendingLabels).mockResolvedValue({ items: waiting });
+    vi.mocked(dojoApi.proposeLabelsByRule).mockResolvedValue({ items: [waiting[2]!], skipped: 1, truncated: false, replaced: 0 });
+    vi.mocked(dojoApi.acceptPendingLabels).mockResolvedValue({ items: [] });
+    vi.mocked(dojoApi.dismissPendingLabels).mockResolvedValue(undefined);
+    mount("/dojo?dataset=d1");
+    const list = await screen.findByRole("list", { name: "Pending labels" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    within(items[0]!).getByText(/Hot · by Labeller/);
+    within(items[1]!).getByText(/by you/);
+    screen.getByText("Series: Voltage, Current. Combine comparisons with and, or and not, as in a Gate step. Each series keeps its last value until its next one.");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Condition" }), { target: { value: "Voltage > 230" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "At least (min)" }), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find intervals" }));
+    await waitFor(() => expect(dojoApi.proposeLabelsByRule).toHaveBeenCalledWith("d1",
+      { condition: "Voltage > 230", note: "", min_duration_seconds: 120, merge_gap_seconds: 0 }));
+    expect(await screen.findByText("One interval found, 1 more on a label already.")).toBeTruthy();
+
+    fireEvent.click(within(items[0]!).getByRole("button", { name: "Add as label" }));
+    await waitFor(() => expect(dojoApi.acceptPendingLabels).toHaveBeenCalledWith("d1", { items: [{ id: "p1" }] }));
+
+    fireEvent.click(within(items[1]!).getByRole("button", { name: "Adjust" }));
+    expect(fromLocalInput((screen.getByLabelText("From") as HTMLInputElement).value)).toBe("2024-01-01T01:10:00.000Z");
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: toLocalInput("2024-01-01T01:15:00Z") } });
+    fireEvent.click(screen.getByRole("button", { name: "Add proposed label" }));
+    await waitFor(() => expect(dojoApi.acceptPendingLabels).toHaveBeenLastCalledWith("d1", { items: [
+      { id: "p3", start_at: "2024-01-01T01:10:00.000Z", end_at: "2024-01-01T01:15:00.000Z", note: "" }] }));
+    expect(dojoApi.createLabel).not.toHaveBeenCalled();
+
+    const dismissAll = screen.getByRole("button", { name: "Dismiss all" }) as HTMLButtonElement;
+    await waitFor(() => expect(dismissAll.disabled).toBe(false));
+    fireEvent.click(dismissAll);
+    await waitFor(() => expect(dojoApi.dismissPendingLabels).toHaveBeenCalledWith("d1", { ids: ["p1", "p2", "p3"] }));
   });
 
   it("looks for no recorded alarms on an uploaded dataset", async () => {

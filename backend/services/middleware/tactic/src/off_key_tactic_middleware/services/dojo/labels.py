@@ -44,6 +44,8 @@ def label_view(row: DojoLabel) -> LabelView:
         start_at=row.start_at,
         end_at=row.end_at,
         note=row.note,
+        rule=row.rule,
+        suggested_by_agent=row.suggested_by_agent,
         created_by=row.created_by,
         created_at=row.created_at,
     )
@@ -91,7 +93,7 @@ class DojoLabels:
         Only series copied from recorded readings have a reading to look up,
         and only while the catalogue still collects it; an upload has none.
         """
-        dataset = await self._dataset(dataset_id)
+        dataset = await self.dataset_row(dataset_id)
         none = LabelSuggestionList(items=[], truncated=False)
         reading_ids = list(
             (
@@ -157,7 +159,7 @@ class DojoLabels:
         )
 
     async def list(self, dataset_id: str) -> LabelList:
-        await self._dataset(dataset_id)
+        await self.dataset_row(dataset_id)
         rows = await dataset_labels(self.session, dataset_id)
         return LabelList(items=[label_view(row) for row in rows])
 
@@ -176,7 +178,7 @@ class DojoLabels:
     ) -> builtins.list[LabelView]:
         """Add labels in one transaction: all of them, or none when one is refused."""
         await require_application_writes(self.session)
-        dataset = await self._dataset(dataset_id, lock=True)
+        dataset = await self.dataset_row(dataset_id, lock=True)
         count = await self.session.scalar(
             select(func.count()).where(DojoLabel.dataset_id == dataset.id)
         )
@@ -186,7 +188,7 @@ class DojoLabels:
         for request in requests:
             # The session flushes earlier rows before this query, so labels of
             # one batch may not overlap each other either.
-            await self._check(dataset, request.start_at, request.end_at, None)
+            await self.check_free(dataset, request.start_at, request.end_at, None)
             row = DojoLabel(
                 id=str(uuid4()),
                 dataset_id=dataset.id,
@@ -204,13 +206,13 @@ class DojoLabels:
         self, dataset_id: str, label_id: str, change: LabelChange
     ) -> LabelView:
         await require_application_writes(self.session)
-        dataset = await self._dataset(dataset_id, lock=True)
+        dataset = await self.dataset_row(dataset_id, lock=True)
         row = await self._row(dataset_id, label_id)
         start_at = change.start_at or row.start_at
         end_at = change.end_at or row.end_at
         if end_at <= start_at:
             raise ValidationError("end_at must be after start_at")
-        await self._check(dataset, start_at, end_at, row.id)
+        await self.check_free(dataset, start_at, end_at, row.id)
         row.start_at = start_at
         row.end_at = end_at
         if change.note is not None:
@@ -220,12 +222,12 @@ class DojoLabels:
 
     async def remove(self, dataset_id: str, label_id: str) -> None:
         await require_application_writes(self.session)
-        await self._dataset(dataset_id, lock=True)
+        await self.dataset_row(dataset_id, lock=True)
         row = await self._row(dataset_id, label_id)
         await self.session.delete(row)
         await self.session.commit()
 
-    async def _check(
+    async def check_free(
         self,
         dataset: DojoDataset,
         start_at: datetime,
@@ -258,7 +260,7 @@ class DojoLabels:
                 "already covers part of this interval"
             )
 
-    async def _dataset(self, dataset_id: str, *, lock: bool = False) -> DojoDataset:
+    async def dataset_row(self, dataset_id: str, *, lock: bool = False) -> DojoDataset:
         row = await self.session.get(
             DojoDataset, dataset_id, with_for_update=lock, populate_existing=True
         )

@@ -35,6 +35,7 @@ from off_key_tactic_middleware.services.data.alarm_actions import AlarmActions
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
+from off_key_tactic_middleware.services.dojo.pending_labels import DojoPendingLabels
 from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
@@ -143,6 +144,12 @@ def get_dojo_runs(session: AsyncSession = RequestSession) -> DojoRuns:
 
 def get_dojo_labels(session: AsyncSession = RequestSession) -> DojoLabels:
     return DojoLabels(session)
+
+
+def get_dojo_pending_labels(
+    session: AsyncSession = RequestSession,
+) -> DojoPendingLabels:
+    return DojoPendingLabels(session)
 
 
 def get_dojo_metrics(session: AsyncSession = RequestSession) -> DojoMetrics:

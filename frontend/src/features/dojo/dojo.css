@@ -55,7 +55,9 @@
 .dj-labels input { width: 100%; border: 1px solid transparent; background: hsl(var(--card)); color: var(--ex-ink); border-radius: var(--radius-control); padding: 4px 6px; font: inherit; font-size: var(--text-caption); }
 .dj-labels input:hover,.dj-labels input:focus { border-color: var(--ex-line); }
 .dj-suggestion-list li { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; }
-.dj-suggestion-actions { display: inline-flex; gap: 8px; }
+.dj-suggestion-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.dj-label-origin { display: block; margin-top: 2px; overflow-wrap: anywhere; }
+.dj-suggestion-list code, .dj-label-origin code { font-size: var(--text-caption); overflow-wrap: anywhere; }
 .dj-label-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 14px; }
 .dj-label-form .dj-field { margin: 0; }
 .dj-outcome { display: inline-flex; gap: 6px; align-items: center; }

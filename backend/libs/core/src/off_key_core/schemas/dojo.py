@@ -23,6 +23,8 @@ MAX_DATASET_LABELS = 500
 # Recorded alarms read for label suggestions, and suggestions returned.
 MAX_SUGGESTION_ALARMS = 50_000
 MAX_LABEL_SUGGESTIONS = 200
+# Proposed labels waiting for review on one dataset.
+MAX_PENDING_LABELS = 1_000
 # A comparison puts this many runs on one dataset side by side; each run keeps
 # its own colour in the chart beside two series of values.
 MAX_COMPARED_RUNS = 6
@@ -469,6 +471,14 @@ class LabelView(DojoModel):
     start_at: datetime
     end_at: datetime
     note: str
+    rule: str = Field(
+        default="",
+        description="The rule that found it, for a label added from a pending "
+        "label; empty otherwise.",
+    )
+    suggested_by_agent: str | None = Field(
+        default=None, description="The agent that proposed it, if one did."
+    )
     created_by: int | None
     created_at: datetime
 
@@ -477,6 +487,110 @@ class LabelList(DojoModel):
     items: list[LabelView] = Field(
         max_length=MAX_DATASET_LABELS, description="Ordered by start_at."
     )
+
+
+class PendingLabelView(DojoModel):
+    """A proposed label, waiting for a member to add or dismiss it."""
+
+    id: str
+    dataset_id: str
+    start_at: datetime
+    end_at: datetime
+    note: str
+    rule: str = Field(description="The condition or reasoning that found it.")
+    created_by: int | None = Field(description="The member who proposed it.")
+    created_by_agent: str | None = Field(description="The agent that proposed it.")
+    created_at: datetime
+
+
+class PendingLabelList(DojoModel):
+    items: list[PendingLabelView] = Field(
+        max_length=MAX_PENDING_LABELS, description="Ordered by start_at."
+    )
+
+
+class PendingLabelProposal(DojoModel):
+    """Propose intervals as labels, for a member to review."""
+
+    labels: list[LabelCreate] = Field(max_length=MAX_LABEL_SUGGESTIONS)
+    rule: str = Field(
+        default="",
+        max_length=500,
+        description="How the intervals were chosen, for example 'speed above "
+        "3000 while the temperature rose'. Members read it when they review.",
+    )
+    replace: bool = Field(
+        default=False,
+        description="Dismiss your own pending labels on the dataset first.",
+    )
+
+
+class LabelRule(DojoModel):
+    """Propose a label for every interval where a condition holds."""
+
+    condition: str = Field(
+        min_length=1,
+        max_length=512,  # the formula parser's limit
+        description="A condition over the dataset's series by name, as a Gate "
+        "step writes it: `speed > 3000 and temperature > 80`. Write a name that "
+        "is not a plain word between backticks. Each series keeps its last value "
+        "until its next one.",
+    )
+    min_duration_seconds: float = Field(
+        default=0,
+        ge=0,
+        le=365 * 86400,
+        description="Leave out intervals shorter than this.",
+    )
+    merge_gap_seconds: float = Field(
+        default=0,
+        ge=0,
+        le=7 * 86400,
+        description="Join intervals less than this far apart, before the "
+        "shortest are left out.",
+    )
+    note: str = Field(default="", max_length=500)
+    replace: bool = Field(
+        default=False,
+        description="Dismiss your own pending labels on the dataset first.",
+    )
+
+
+class PendingLabelsMade(DojoModel):
+    items: list[PendingLabelView] = Field(
+        max_length=MAX_LABEL_SUGGESTIONS, description="The new pending labels."
+    )
+    skipped: int = Field(description="Intervals left out because they overlap a label.")
+    truncated: bool = Field(
+        description="The condition held in more intervals than are proposed; "
+        "the earliest are kept."
+    )
+    replaced: int = Field(description="Your earlier pending labels dismissed.")
+
+
+class PendingLabelChoice(DojoModel):
+    """Add a pending label, optionally changed first."""
+
+    id: str
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def interval(self):
+        _aware(self.start_at, "start_at")
+        _aware(self.end_at, "end_at")
+        return self
+
+
+class PendingLabelAccept(DojoModel):
+    items: list[PendingLabelChoice] = Field(
+        min_length=1, max_length=MAX_LABEL_SUGGESTIONS
+    )
+
+
+class PendingLabelDismiss(DojoModel):
+    ids: list[str] = Field(min_length=1, max_length=MAX_PENDING_LABELS)
 
 
 class LabelSuggestionQuery(DojoModel):

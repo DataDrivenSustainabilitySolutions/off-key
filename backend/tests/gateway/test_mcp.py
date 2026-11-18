@@ -25,6 +25,7 @@ from tests.support.gateway import BY_KEY, BY_MEMBER, Callers, agent, member, ret
 URL = "http://gateway/v1/mcp"
 THEN = datetime(2026, 3, 1, tzinfo=UTC).isoformat()
 SAID = "2026-03-01T00:00:00Z"  # THEN, as an answer of the API writes it
+LATER = datetime(2026, 3, 1, 1, tzinfo=UTC).isoformat()
 WITHOUT_THE_GRANT = [
     "get_access",
     "list_devices",
@@ -43,6 +44,9 @@ WITHOUT_THE_GRANT = [
     "withdraw_proposal",
     "list_my_tests",
     "delete_mine",
+    "get_dataset",
+    "get_dataset_values",
+    "propose_labels",
     "list_monitors",
     "get_monitor",
     "get_values",
@@ -64,6 +68,8 @@ class Stores:
         self.datasets = AsyncMock()
         self.runs = AsyncMock()
         self.metrics = AsyncMock()
+        self.labels = AsyncMock()
+        self.pending = AsyncMock()
 
     def overrides(self) -> dict:
         return {
@@ -76,6 +82,8 @@ class Stores:
             providers.get_dojo_datasets: returning(self.datasets),
             providers.get_dojo_runs: returning(self.runs),
             providers.get_dojo_metrics: returning(self.metrics),
+            providers.get_dojo_labels: returning(self.labels),
+            providers.get_dojo_pending_labels: returning(self.pending),
         }
 
     def asked(self) -> list:
@@ -194,6 +202,7 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
         "propose_design",
         "withdraw_proposal",
         "delete_mine",
+        "propose_labels",
         "start_monitor",
         "stop_monitor",
     }
@@ -203,7 +212,7 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
     }
     # An agent reads the whole list with every session, so it stays short.
     listing = [tool.model_dump(mode="json", exclude_none=True) for tool in granted]
-    assert len(json.dumps(listing)) < 28_500
+    assert len(json.dumps(listing)) < 31_500
 
 
 def test_a_schema_says_nothing_twice():
@@ -1307,3 +1316,116 @@ async def test_a_test_counts_alarms_beyond_one_page_of_results():
     alarms, _ = mcp_tools._episodes(results, complete)
     # One alarm runs on across the pages instead of being cut where one ends.
     assert [item["end"][11:16] for item in alarms["listed"]] == ["00:03", "00:09"]
+
+
+async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
+    gateway, stores, key
+):
+    series = {
+        "id": "s1",
+        "position": 0,
+        "name": "motor temperature",
+        "unit": "°C",
+        "reading_id": None,
+        "point_count": 2,
+        "start_at": THEN,
+        "end_at": THEN,
+    }
+    stores.datasets.get.return_value = {
+        "id": "d1",
+        "name": "Drives",
+        "description": "",
+        "origin": "csv",
+        "source": {},
+        "point_count": 2,
+        "series_count": 1,
+        "start_at": THEN,
+        "end_at": THEN,
+        "created_by": 1,
+        "created_at": THEN,
+        "series": [series],
+    }
+    label = {
+        "id": "l1",
+        "dataset_id": "d1",
+        "start_at": THEN,
+        "end_at": THEN,
+        "note": "Overheated",
+        "rule": "",
+        "suggested_by_agent": None,
+        "created_by": 1,
+        "created_at": THEN,
+    }
+    stores.labels.list.return_value = {"items": [label]}
+    pending = {
+        "id": "p1",
+        "dataset_id": "d1",
+        "start_at": THEN,
+        "end_at": THEN,
+        "note": "",
+        "rule": "`motor temperature` > 80",
+        "created_by": None,
+        "created_by_agent": "Claude",
+        "created_at": THEN,
+    }
+    stores.pending.list.return_value = {"items": [pending]}
+    stores.datasets.points.return_value = {
+        "items": [{"timestamp": THEN, "value": 81.5}],
+        "next_after": None,
+    }
+    made = {"items": [pending], "skipped": 0, "truncated": False, "replaced": 0}
+    stores.pending.propose.return_value = made
+    stores.pending.propose_by_rule.return_value = made
+    async with connected(gateway) as client:
+        dataset = said(await client.call_tool("get_dataset", {"dataset_id": "d1"}))
+        values = said(
+            await client.call_tool(
+                "get_dataset_values",
+                {"dataset_id": "d1", "series": "motor temperature", "limit": 5},
+            )
+        )
+        unknown = await client.call_tool(
+            "get_dataset_values", {"dataset_id": "d1", "series": "speed"}
+        )
+        by_rule = said(
+            await client.call_tool(
+                "propose_labels",
+                {"dataset_id": "d1", "condition": "`motor temperature` > 80"},
+            )
+        )
+        intervals = said(
+            await client.call_tool(
+                "propose_labels",
+                {
+                    "dataset_id": "d1",
+                    "labels": [{"start_at": THEN, "end_at": LATER}],
+                    "rule": "Where the motor ran hot",
+                    "replace": True,
+                },
+            )
+        )
+        both = await client.call_tool(
+            "propose_labels",
+            {"dataset_id": "d1", "condition": "speed > 1", "labels": []},
+        )
+    assert [item["name"] for item in dataset["series"]] == ["motor temperature"]
+    assert dataset["labels"][0]["note"] == "Overheated"
+    assert dataset["pending_labels"][0]["created_by_agent"] == "Claude"
+    assert values["rows"] == [[SAID, 81.5]]
+    assert stores.datasets.points.await_args.args[:2] == ("d1", "s1")
+    assert unknown.is_error and "motor temperature" in said(unknown)
+    assert by_rule == intervals
+    assert [item["rule"] for item in by_rule["items"]] == ["`motor temperature` > 80"]
+    assert both.is_error
+    dataset_id, rule, caller = stores.pending.propose_by_rule.await_args.args
+    assert (dataset_id, rule.condition, caller) == (
+        "d1",
+        "`motor temperature` > 80",
+        key,
+    )
+    dataset_id, proposal, _ = stores.pending.propose.await_args.args
+    assert (proposal.rule, proposal.replace, len(proposal.labels)) == (
+        "Where the motor ran hot",
+        True,
+        1,
+    )

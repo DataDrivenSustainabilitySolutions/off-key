@@ -124,6 +124,12 @@ class DojoLabel(Base):
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # A label added from a pending label keeps the rule that found it and,
+    # when an agent proposed it, the agent's name.
+    rule: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=text("''")
+    )
+    suggested_by_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -133,6 +139,38 @@ class DojoLabel(Base):
     __table_args__ = (
         CheckConstraint("end_at > start_at", name="ck_dojo_label_interval"),
         Index("ix_dojo_labels_dataset", "dataset_id", "start_at"),
+    )
+
+
+class DojoPendingLabel(Base):
+    """A label a member or an agent proposed, waiting for a member's review.
+
+    Pending labels score no run. A member adds one as a label, maybe changed
+    first, or dismisses it. They may overlap each other, never a label.
+    """
+
+    __tablename__ = "dojo_pending_labels"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("dojo_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # The condition that found it, or how an agent says it chose the interval.
+    rule: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Like a dataset, an agent's keeps its name and id, not a foreign key.
+    created_by_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_agent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint("end_at > start_at", name="ck_dojo_pending_label_interval"),
+        Index("ix_dojo_pending_labels_dataset", "dataset_id", "start_at"),
     )
 
 

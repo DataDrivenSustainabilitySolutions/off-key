@@ -13,10 +13,15 @@ import type {
   LabelChange,
   LabelCreate,
   LabelList,
+  LabelRule,
   LabelSuggestionList,
   LabelSuggestionQuery,
   LabelView,
   MethodComparison,
+  PendingLabelAccept,
+  PendingLabelDismiss,
+  PendingLabelList,
+  PendingLabelsMade,
   RunCreate,
   RunListPage,
   RunListQuery,
@@ -69,6 +74,15 @@ export const dojoApi = {
     apiUtils.patch<LabelView>(`${dataset(datasetId)}/labels/${segment(labelId)}`, change),
   deleteLabel: (datasetId: string, labelId: string) =>
     apiUtils.delete<void>(`${dataset(datasetId)}/labels/${segment(labelId)}`),
+  // Proposed labels wait for a member to add or dismiss them; they score no run until then.
+  pendingLabels: (datasetId: string, signal?: AbortSignal) =>
+    apiUtils.get<PendingLabelList>(`${dataset(datasetId)}/pending-labels`, { signal }),
+  proposeLabelsByRule: (datasetId: string, rule: LabelRule) =>
+    apiUtils.post<PendingLabelsMade>(`${dataset(datasetId)}/pending-labels/by-rule`, rule),
+  acceptPendingLabels: (datasetId: string, choice: PendingLabelAccept) =>
+    apiUtils.post<LabelList>(`${dataset(datasetId)}/pending-labels/accept`, choice),
+  dismissPendingLabels: (datasetId: string, dismissal: PendingLabelDismiss) =>
+    apiUtils.post<void>(`${dataset(datasetId)}/pending-labels/dismiss`, dismissal),
 
   runs: (query: RunListQuery = {}, signal?: AbortSignal) =>
     apiUtils.get<RunListPage>(`${base}/runs`, { signal, params: query }),

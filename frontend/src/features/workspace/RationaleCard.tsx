@@ -12,11 +12,16 @@ const RATIONALE_FIELDS: { key: keyof MonitorRationale; label: string }[] = [
   { key: "limits", label: "Limits" },
 ];
 
-/** Who designed it: an agent by its key's name, a member by name. */
-export function AuthorChip({ author, kind }: { author: string; kind: "agent" | "member" }) {
-  return <span className="rationale-author" title={kind === "agent" ? `Designed by the agent ${author}` : `Designed by ${author}`}>
-    {kind === "agent" ? <Bot size={13} aria-hidden="true" /> : <User size={13} aria-hidden="true" />}
-    {kind === "agent" ? `Agent · ${author}` : author}
+/**
+ * Who designed it: an agent by its key's name, a member by name. Where the name of the key says
+ * nothing to the reader, `named` off leaves an agent as "Agent".
+ */
+export function AuthorChip({ author, kind, named = true }: { author: string; kind: "agent" | "member"; named?: boolean }) {
+  const agent = kind === "agent";
+  const title = !agent ? `Designed by ${author}` : named ? `Designed by the agent ${author}` : undefined;
+  return <span className="rationale-author" title={title}>
+    {agent ? <Bot size={13} aria-hidden="true" /> : <User size={13} aria-hidden="true" />}
+    {!agent ? author : named ? `Agent · ${author}` : "Agent"}
   </span>;
 }
 

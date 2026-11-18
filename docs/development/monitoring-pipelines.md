@@ -127,7 +127,8 @@ the way back from a decision. `?view=proposals` lists them (`PipelineProposals.t
 replaces a running service (`showProposals`, `reviewProposal` in
 `monitoringView.ts`). The list is one card per proposal with one layout
 (`ProposalCard`): the name, a byline (author, age, new service or replacement,
-tested or not), the rationale's watches, evidence and limits under their labels
+tested or not; an agent reads as "Agent" without the name of its key,
+`AuthorChip` with `named` off), the rationale's watches, evidence and limits under their labels
 (`RationaleFields` with `only`), and the actions at the bottom. **Start** and
 **Decline** open Radix popovers at their buttons (`StartProposal`,
 `DeclineProposal`), so the page under them does not move; a start under way

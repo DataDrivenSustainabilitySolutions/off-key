@@ -120,7 +120,9 @@ describe("proposals", () => {
     const open = await card("Pump vibration");
     // Without a rationale the reason is the case made; who handed it in, as what and how tested reads under the name.
     expect(within(open).getByText("Reason").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
-    expect(within(open).getByRole("list").textContent).toContain("Agent · Night shift agent");
+    // An agent reads as an agent: the name of its key says nothing to the member who decides.
+    expect(within(open).getAllByRole("listitem")[0]?.textContent).toMatch(/^Agent/);
+    expect(open.textContent).not.toContain("Night shift agent");
     expect(within(open).getAllByRole("listitem").slice(1).map((item) => item.textContent)).toEqual(["New service", "Not tested"]);
     // A list of waiting proposals need not say of each that it waits.
     expect(within(open).queryByText("Waiting for a decision")).toBeNull();
@@ -283,8 +285,9 @@ describe("proposals", () => {
 
   it("reads a proposal's rationale beside its design, each part under its name", () => {
     const view = render(<MemoryRouter><PipelineProposalBrief proposal={summary({ rationale, reason: rationale.watches })} canDecide={false} /></MemoryRouter>);
-    const brief = screen.getByRole("group", { name: "Proposal by Night shift agent" });
-    expect(brief.textContent).toContain("Agent · Night shift agent");
+    const brief = screen.getByRole("group", { name: "Proposal by an agent" });
+    expect(within(brief).getAllByRole("listitem")[0]?.textContent).toMatch(/^Agent/);
+    expect(brief.textContent).not.toContain("Night shift agent");
     for (const [label, text] of [["Watches", rationale.watches], ["Why this design", rationale.why], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
       expect(screen.getByText(label).nextElementSibling?.textContent).toBe(text);
     // The reason it fell back to is not said twice.
@@ -318,6 +321,14 @@ describe("proposals", () => {
     expect(screen.queryByRole("button", { name: "Open the test" })).toBeNull();
   });
 
+  it("names a member who handed a proposal in, and an agent only as an agent", () => {
+    const view = render(<MemoryRouter><PipelineProposalBrief proposal={summary({ author: "dana@example.com", author_kind: "member" })} canDecide={false} /></MemoryRouter>);
+    const brief = screen.getByRole("group", { name: "Proposal by dana@example.com" });
+    expect(within(brief).getAllByRole("listitem")[0]?.textContent).toMatch(/^dana@example\.com/);
+    view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide={false} /></MemoryRouter>);
+    expect(screen.getByRole("group", { name: "Proposal by an agent" }).textContent).not.toContain("Night shift agent");
+  });
+
   it("says where a proposal stands, and leaves the decision to a member who manages monitors", () => {
     const view = render(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide={false} /></MemoryRouter>);
     expect(screen.getByText("Waiting for a decision")).toBeTruthy();
@@ -336,12 +347,12 @@ describe("proposals", () => {
     expect(address()).toBe("?create=monitoring&proposal=p1");
     expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Pump vibration");
     // The proposal opens beside its design, under a button of its own, and leaves the canvas whole when closed.
-    expect(screen.getByRole("group", { name: "Proposal by Night shift agent" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Proposal" }).getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Close proposal" }));
-    expect(screen.queryByRole("group", { name: "Proposal by Night shift agent" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Proposal by an agent" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Proposal" }));
-    expect(screen.getByRole("group", { name: "Proposal by Night shift agent" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
     // The design on the canvas is the proposed one, and it names the reading it was made for.
     expect(screen.getByRole("button", { name: "Input: Room, 1 of 1 readings" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Proposals" }));
@@ -397,7 +408,7 @@ describe("proposals", () => {
     workspace("/?create=monitoring&proposal=p1&replace=old", [old]);
     expect(await screen.findByText("Compared with what runs now: 1 changed step.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Update monitoring" })).toBeTruthy();
-    expect(screen.getByRole("group", { name: "Proposal by Night shift agent" }).textContent).toContain("Replaces Pump watch");
+    expect(screen.getByRole("group", { name: "Proposal by an agent" }).textContent).toContain("Replaces Pump watch");
     // A proposal for a service of its own has nothing to be compared with.
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal());
     workspace("/?create=monitoring&proposal=p1");
@@ -422,9 +433,9 @@ describe("proposals", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open the test" }));
     expect(screen.getByText("The panel of the test")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Test run-7 by Night shift agent, 5 steps, open" })).toBeTruthy();
-    expect(screen.queryByRole("group", { name: "Proposal by Night shift agent" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Proposal by an agent" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Proposal" }));
-    expect(screen.getByRole("group", { name: "Proposal by Night shift agent" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
     view.unmount();
     // A proposal without a test offers to run one.
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal());

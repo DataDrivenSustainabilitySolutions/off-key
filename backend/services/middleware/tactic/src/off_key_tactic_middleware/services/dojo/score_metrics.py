@@ -187,6 +187,18 @@ ORDER BY CAST(:sign AS double precision) * score DESC, timestamp ASC LIMIT 1
 """
 )
 
+# Scores this many results apart: a slow level still correlates there, the
+# scores of a detector that sees each change stand apart.
+PERSISTENCE_LAG = 20
+PERSISTENCE = text(
+    """
+SELECT CASE WHEN min(score) < max(score) THEN corr(score, earlier) END FROM (
+    SELECT score, lag(score, :lag) OVER (ORDER BY sequence) AS earlier
+    FROM dojo_run_results WHERE run_id = :run_id AND score IS NOT NULL
+) AS paired WHERE earlier IS NOT NULL
+"""
+)
+
 
 async def score_metrics(
     session,
@@ -236,7 +248,13 @@ async def score_metrics(
             <= top_at.timestamp()
             <= end.timestamp() + tolerance
         )
+    persistence = (
+        await session.scalar(PERSISTENCE, {"run_id": run_id, "lag": PERSISTENCE_LAG})
+        if scored >= 2 * PERSISTENCE_LAG
+        else None
+    )
     return ScoreMetrics(
+        score_autocorrelation=None if persistence is None else round(persistence, 3),
         scored_results=scored,
         labelled_results=inside,
         pr_auc=ranges[0] if inside else None,

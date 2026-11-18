@@ -514,6 +514,7 @@ export type ScoreMetrics = {
   vus_pr: number | null;
   top_score_at: string | null;
   top1_hit: boolean | null;
+  score_autocorrelation?: number | null;
 };
 
 export type Season = {

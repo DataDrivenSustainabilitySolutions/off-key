@@ -44,6 +44,11 @@ const ROWS: Row[] = [
   { label: "AUROC", value: item => formatScore(item.scores?.auroc),
     best: { score: item => item.scores?.auroc, prefer: "high" } },
   { label: "Top score at the label", value: item => item.scores?.top1_hit == null ? "–" : item.scores.top1_hit ? "Yes" : "No" },
+  // Near 1 the scores follow a slow level: the detector sees where the series is, not what is unusual.
+  { label: "Score persistence (20 back)", value: item => {
+    const value = item.scores?.score_autocorrelation;
+    return value == null ? "–" : `${value.toFixed(2)}${value > 0.7 ? " · follows the level" : ""}`;
+  } },
   { label: "Scored from", value: item => formatInstant(item.scored_from) },
 ];
 

@@ -1,6 +1,8 @@
 """Dojo labels and event metrics: labels as events, alarms scored against them."""
 
 import asyncio
+import math
+import random
 import tracemalloc
 from datetime import UTC, datetime, timedelta
 
@@ -911,6 +913,27 @@ async def test_a_run_without_labels_or_scores_has_no_ranking_metrics(sessions):
         None,
         None,
     )
+
+
+@pytest.mark.asyncio
+async def test_scores_that_follow_a_slow_level_are_said_to_persist(sessions):
+    _, factory = sessions
+    _, view = await dataset(factory, minutes=200)
+    # A score that drifts with the level, and one that stands apart each time.
+    drifting = [round(math.sin(minute / 30), 4) for minute in range(200)]
+    noise = random.Random(5)
+    apart = [round(noise.random(), 4) for _ in range(200)]
+    slow = await scored_run(factory, view, drifting)
+    quick = await scored_run(factory, view, apart, run_id="run-apart")
+    flat = await scored_run(factory, view, [0.2] * 200, run_id="run-flat")
+    async with factory() as session:
+        metrics = DojoMetrics(session)
+        slow_scores = (await metrics.run(slow)).scores
+        quick_scores = (await metrics.run(quick)).scores
+        flat_scores = (await metrics.run(flat)).scores
+    assert slow_scores is not None and slow_scores.score_autocorrelation > 0.7
+    assert quick_scores is not None and abs(quick_scores.score_autocorrelation) < 0.2
+    assert flat_scores is not None and flat_scores.score_autocorrelation is None
 
 
 @pytest.mark.asyncio

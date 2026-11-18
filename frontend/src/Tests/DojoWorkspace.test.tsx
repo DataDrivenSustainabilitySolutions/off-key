@@ -61,7 +61,8 @@ const metrics = (runId: string, name: string, detected: number, falseAlarms: num
   max_delay_seconds: detected ? 120 : null, alarm_count: 3, false_alarms: falseAlarms, evaluated_seconds: 6600,
   false_alarms_per_day: falseAlarms * 86400 / 6600,
   scores: { scored_results: 110, labelled_results: 10, pr_auc: detected ? 0.42 : 0.091, auroc: detected ? 0.88 : 0.5,
-    vus_pr: detected ? 0.5 : 0.1, top_score_at: T0, top1_hit: detected > 0 },
+    vus_pr: detected ? 0.5 : 0.1, top_score_at: T0, top1_hit: detected > 0,
+    score_autocorrelation: detected ? 0.1 : 0.93 },
   labels: [{ label_id: "l1", start_at: label.start_at, end_at: label.end_at, outcome: detected ? "detected" : "missed",
     first_alarm_at: detected ? "2024-01-01T00:32:00Z" : null, delay_seconds: detected ? 120 : null }] });
 
@@ -485,6 +486,7 @@ describe("Dojo workspace", () => {
     const prAuc = within(table).getByRole("row", { name: /^PR-AUC/ });
     expect(within(prAuc).getByText("0.420").className).toBe("dj-metric-best");
     within(table).getByRole("row", { name: /^Top score at the label Yes No$/ });
+    within(table).getByRole("row", { name: /^Score persistence \(20 back\) 0.10 0.93 · follows the level$/ });
   });
 
   it("starts with three runs and lets more join up to the limit", async () => {

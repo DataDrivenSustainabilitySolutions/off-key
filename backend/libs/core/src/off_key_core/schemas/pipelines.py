@@ -1927,6 +1927,15 @@ class DeseasonParameters(PrepareScopeParameters):
             "daylight saving time."
         ),
     )
+    trend: bool = Field(
+        default=False,
+        title="Take out the trend too",
+        description=(
+            "Also follow a slow trend, over about one cycle, and take it out, "
+            "as STL does, so a series that drifts up or down keeps its usual "
+            "pattern around the drift."
+        ),
+    )
 
     @field_validator("timezone")
     @classmethod

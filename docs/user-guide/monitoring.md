@@ -550,7 +550,12 @@ their windows never restart.
   the cycle, such as each hour, on the clock of its **Time zone**, remembers
   about **Memory in cycles** cycles of it, and lets one unusual day barely
   move it. It has output once a whole cycle has passed. The reading's profile
-  says whether a reading has a daily or weekly cycle.
+  says whether a reading has a daily or weekly cycle. Tick **Take out the
+  trend too** for a reading that also drifts up or down, as STL does: the
+  step then follows a slow trend over about one cycle and takes out both.
+  For a reading with both a daily and a weekly pattern, chain two Deseason
+  steps: a daily one with **Result** Replace, then a weekly one on its output
+  with longer slots, such as 6 hours. Put the trend on only one of them.
 - **Rolling statistic** adds the mean, median, minimum, maximum, standard
   deviation, range, sum, quantile, interquartile range (IQR), median absolute
   deviation (MAD), or fitted slope of the last **Window** values. Quantiles use

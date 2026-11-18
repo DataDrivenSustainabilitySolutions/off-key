@@ -158,8 +158,10 @@ _STEPS: tuple[_Step, ...] = (
         "Take out the usual level at this time of day or week.",
         "Learns each slot of the day or week, such as 14:00 to 15:00, and "
         "passes on how far a value lies from it, so a detector sees what is "
-        "unusual for the time rather than the daily rhythm. It has output "
-        "once a whole cycle has passed.",
+        "unusual for the time rather than the daily rhythm. With trend it "
+        "also takes out a slow drift, as STL does. For a daily and a weekly "
+        "pattern, chain a daily step and a weekly one. It has output once a "
+        "whole cycle has passed.",
     ),
     _Step(
         "prepare.cusum",

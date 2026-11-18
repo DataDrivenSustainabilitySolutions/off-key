@@ -94,6 +94,52 @@ def test_a_weekly_pattern_keeps_weekdays_and_weekends_apart():
     assert max(abs(item) for item in by_day[later]) > 5
 
 
+def test_with_trend_a_drifting_series_keeps_its_pattern_and_a_shift_shows():
+    noise = random.Random(5)
+    # A daily pattern on a drift of 0.5 per hour, 120 over the twenty days.
+    values = [daily(hour) + 0.5 * hour + noise.gauss(0, 0.3) for hour in range(24 * 20)]
+    plain = kernel("prepare.deseason", {"memory": 3})
+    _, without = run(plain, values)
+    trended = kernel("prepare.deseason", {"trend": True, "memory": 3})
+    state, outputs = run(trended, values)
+    later = slice(24 * 14, None)
+    # Without trend the drift piles up in the output; with it, once the levels
+    # have settled on the trend, the output is near the noise.
+    assert sum(without[later]) / len(without[later]) > 10
+    assert max(abs(item) for item in outputs[later]) < 1.5
+    assert len(state[0]) == 3 and trended.window == 3 * 24 + 3
+    assert prepared_bounds("prepare.deseason", {"trend": True}, (-1.0, 4.0)) == (
+        None,
+        None,
+    )
+    # A step of 20 the trend has not followed yet shows at once.
+    after = [daily(hour) + 0.5 * hour + 20 for hour in range(24 * 20, 24 * 20 + 3)]
+    _, shifted = run(trended, [*values, *after])
+    assert min(shifted[-3:]) > 15
+
+
+def test_a_daily_and_a_weekly_step_stack():
+    def level(hour):
+        weekend = (hour // 24) % 7 >= 5
+        return daily(hour) + (0.0 if weekend else 15.0)
+
+    values = [level(hour) for hour in range(24 * 7 * 5)]
+    day = kernel("prepare.deseason", {})
+    week = kernel("prepare.deseason", {"cycle": "week", "slot_minutes": 360})
+    _, by_day = run(day, values)
+    state, outputs = week.initial(), []
+    for hour, value in enumerate(by_day):
+        if value is not None:
+            state, value = week.advance(state, value, MONDAY + hour * HOUR)
+        outputs.append(value)
+    # The day step leaves most of the weekday shift of 15; the week step on its
+    # output takes out what repeats each week. A little stays, because the
+    # daily levels themselves move between weekdays and weekends.
+    later = slice(24 * 7 * 3, None)
+    assert max(abs(item) for item in by_day[later]) > 10
+    assert max(abs(item) for item in outputs[later]) < 3
+
+
 def test_the_cycle_follows_the_clock_of_its_time_zone():
     berlin = ZoneInfo("Europe/Berlin")
     step = kernel("prepare.deseason", {"timezone": "Europe/Berlin", "memory": 2})
@@ -116,6 +162,7 @@ def test_settings_divide_a_day_and_name_a_known_clock():
         "slot_minutes": 60,
         "memory": 7,
         "timezone": "UTC",
+        "trend": False,
     }
     with pytest.raises(ValidationError, match="divides a day"):
         DeseasonParameters(slot_minutes=7)

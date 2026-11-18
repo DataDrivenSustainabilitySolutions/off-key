@@ -19,6 +19,11 @@
 .rationale-fields > div { display: contents; }
 .rationale-fields dt { color: hsl(var(--muted-foreground)); }
 .rationale-fields dd { margin: 0; overflow-wrap: anywhere; line-height: var(--leading-body); }
+/* In a narrow column each label stands above its text. */
+.rationale-fields--stacked { grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; }
+.rationale-fields--stacked dt { font-size: var(--text-caption); line-height: var(--leading-caption); font-weight: 550; }
+.rationale-fields--stacked dd { margin-bottom: 12px; }
+.rationale-fields--stacked > div:last-child dd { margin-bottom: 0; }
 .rationale-history { list-style: none; margin: 14px 0 0; padding: 10px 0 0; border-top: 1px dashed hsl(var(--border)); display: grid; gap: 8px; font-size: var(--text-caption); }
 .rationale-history li { display: grid; gap: 2px; color: hsl(var(--muted-foreground)); }
 .rationale-history strong { color: hsl(var(--foreground)); font-weight: 550; }

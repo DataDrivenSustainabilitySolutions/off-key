@@ -160,7 +160,11 @@ export function HistoryTestPanel({ session: key, definition, readings, name, sco
     [current, definition]);
   const progress = testProgress(test);
   const run = current?.run;
-  return <div className="dj-test">
+  const result = current && !progress && <Result tested={current} previous={test.previous} stale={stale} />;
+  // A test the design came with is what the panel is opened for: its result reads first, and testing again comes after it.
+  const came = !!current?.by && !!result;
+  return <div className={`dj-test${came ? " dj-test--came" : ""}`}>
+    {came && <>{result}<h4 className="dj-test-again">Test again</h4></>}
     <p className="pl-help">Runs this design over recorded values in time order, as a live service would.
       Nothing reaches Monitoring or Reporting.</p>
     <label className="pl-field"><span>Values</span>
@@ -209,6 +213,6 @@ export function HistoryTestPanel({ session: key, definition, readings, name, sco
           {copies && unread && !blocked && onChooseReadings && <> <button type="button" className="dj-test-inline"
             onClick={onChooseReadings}>Choose readings</button></>}</p>}
       </div>}
-    {current && !progress && <Result tested={current} previous={test.previous} stale={stale} />}
+    {!came && result}
   </div>;
 }

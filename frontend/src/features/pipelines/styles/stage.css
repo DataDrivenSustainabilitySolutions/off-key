@@ -239,6 +239,10 @@
   overflow: hidden;
   pointer-events: auto;
 }
+/* A brief is read, not set: its column is a little wider, for a comfortable line of prose. */
+.pl-stage .pl-settings-panel--brief {
+  width: 384px;
+}
 .pl-stage .pl-settings-panel .pl-inspector {
   flex: 1 1 auto;
   height: auto;
@@ -262,6 +266,7 @@
 @media (max-width: 1050px) {
   .pl-stage { --pl-stage-gap: 12px; }
   .pl-stage .pl-settings-panel { width: 300px; }
+  .pl-stage .pl-settings-panel--brief { width: 320px; }
 }
 
 @media (max-width: 760px) {
@@ -299,7 +304,8 @@
   .pl-stage-body {
     align-items: flex-end;
   }
-  .pl-stage .pl-settings-panel {
+  .pl-stage .pl-settings-panel,
+  .pl-stage .pl-settings-panel--brief {
     position: static;
     width: 100%;
     max-height: 58%;

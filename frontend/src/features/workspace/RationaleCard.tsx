@@ -20,10 +20,18 @@ export function AuthorChip({ author, kind }: { author: string; kind: "agent" | "
   </span>;
 }
 
-/** The four fields as labelled rows; `skip` leaves out one a summary line already says. */
-export function RationaleFields({ rationale, skip }: { rationale: MonitorRationale; skip?: keyof MonitorRationale }) {
-  return <dl className="rationale-fields">
-    {RATIONALE_FIELDS.filter(({ key }) => key !== skip).map(({ key, label }) => <div key={key}><dt>{label}</dt><dd>{rationale[key]}</dd></div>)}
+/**
+ * The fields as labelled rows. `only` names the ones a summary shows, in the order a member reads them;
+ * `stacked` puts each label above its text, where the column is too narrow for both side by side.
+ */
+export function RationaleFields({ rationale, only, stacked = false }: {
+  rationale: MonitorRationale;
+  only?: (keyof MonitorRationale)[];
+  stacked?: boolean;
+}) {
+  return <dl className={`rationale-fields${stacked ? " rationale-fields--stacked" : ""}`}>
+    {RATIONALE_FIELDS.filter(({ key }) => !only || only.includes(key)).map(({ key, label }) =>
+      <div key={key}><dt>{label}</dt><dd>{rationale[key]}</dd></div>)}
   </dl>;
 }
 

@@ -125,11 +125,22 @@ waits. It counts only where the button shows, so the number is read again on
 the way back from a decision. `?view=proposals` lists them (`PipelineProposals.tsx`), and
 `?create=monitoring&proposal=<id>` opens one, with `&replace=<service>` when it
 replaces a running service (`showProposals`, `reviewProposal` in
-`monitoringView.ts`). `PipelineWorkspace` reads the proposal and gives
-`PipelineCreate` its design, name and bindings and the notice above the canvas.
-The setup knows nothing of proposals: it takes a `notice` and calls
-`onRequested` once the server has taken a start request, and the workspace
-answers that with the accepting decision. The proposal is therefore accepted
+`monitoringView.ts`). The list is one card per proposal with one layout
+(`ProposalCard`): the name, a byline (author, age, new service or replacement,
+tested or not), the rationale's watches, evidence and limits under their labels
+(`RationaleFields` with `only`), and the actions at the bottom. **Start** and
+**Decline** open Radix popovers at their buttons (`StartProposal`,
+`DeclineProposal`), so the page under them does not move; a start under way
+puts `PipelineApplyStatus` in their place. `PipelineWorkspace` reads the
+proposal and gives `PipelineCreate` its design, name and bindings.
+The setup knows nothing of proposals. It takes a `brief`, a label and the
+content of a panel of its own in the settings dock (`InspectorPanel` `"brief"`
+in `PipelineWorkbench`), which it opens with and which gets a way to open the
+test panel; a `menu` for an action beside Start; and a `notice` for what keeps
+the design from starting. The workspace fills them with
+`PipelineProposalBrief`, `DeclineProposal` and `PipelineProposalWarning`. The
+setup calls `onRequested` once the server has taken a start request, and the
+workspace answers that with the accepting decision. The proposal is therefore accepted
 when its start is requested, not when the service runs, so leaving the page
 during the start loses nothing; a start the server refuses decides nothing.
 
@@ -459,7 +470,10 @@ accepted the latest edit, so no values are copied for a run that cannot start.
 A design can come with a test, as a proposal with a `test_run_id` does.
 `PipelineWorkspace` hands it to `PipelineCreate` as `tested` (`DesignEvidence`
 in `designTest.ts`: the run, who ran it and the design as it came), and the
-setup opens on the test panel and passes it to `Status` as `evidence`.
+setup passes it to `Status` as `evidence`. A setup with a `brief` opens on that
+panel, whose **Open the test** leads to the test panel; without one it opens on
+the test panel. The panel shows the result of a test the design came with
+(`TestedRun.by`) first, above the controls that test again.
 `HistoryTestStatus` takes the run as the composer's test (`adopt` in
 `historyTest.ts`): it reads the run, its dataset and its metrics, chooses that
 dataset and the series the run read, and keeps who ran it in `TestedRun.by`.

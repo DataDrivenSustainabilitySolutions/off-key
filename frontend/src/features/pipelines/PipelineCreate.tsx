@@ -48,8 +48,13 @@ export type PipelineSetupProps = {
   initialName?: string;
   /** What the setup was opened from, such as a proposal. It keeps that setup's unsaved changes apart. */
   origin?: string;
-  /** Said above the canvas for as long as the setup is open, such as who proposed the design. */
+  /** Said above the canvas for as long as the setup is open, such as what keeps a proposal from starting. */
   notice?: ReactNode;
+  /**
+   * What the design answers to, such as the proposal it came as. It has a panel of its own beside the
+   * canvas, which the setup opens with; `test` opens the test from it, where the setup has one.
+   */
+  brief?: { label: string; content: (open: { test?: () => void }) => ReactNode };
   /** The test the design came with, such as a proposal's. The setup opens with it beside the design. */
   tested?: DesignEvidence;
   /** The start of the service was requested and the server took the request. */
@@ -119,7 +124,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const [opensAtInput] = useState(!initialDesign && !initialDocument && !replaceId);
   const designTest = useContext(DesignTestContext);
   const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(
-    opensAtInput ? "component" : props.tested && designTest ? "test" : null);
+    opensAtInput ? "component" : props.brief ? "brief" : props.tested && designTest ? "test" : null);
   const completed = useCallback((id: string) => { session.discard(initial()); onStarted(id); }, [initial, onStarted, session]);
   const apply = usePipelineApply(`${creationKey}:apply`, completed);
   const locked = !!apply.request || !!apply.operation;
@@ -321,6 +326,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
     <PipelineWorkbench stage header={header} catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
       inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
+      brief={props.brief && { label: props.brief.label,
+        content: props.brief.content({ test: designTest ? () => setInspectorPanel("test") : undefined }) }}
       validationError={metadata.error} onRetryValidation={metadata.retry}
       selected={selected} changes={comparison?.steps} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
       onPlace={graph.place}

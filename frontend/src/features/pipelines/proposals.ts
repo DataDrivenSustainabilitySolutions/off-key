@@ -3,13 +3,16 @@ import { usePollingLoop } from "@/hooks/use-polling";
 import type { PipelineProposalSummary } from "@/types/pipelines.generated";
 import { pipelinesApi } from "./api";
 
-/** What became of a proposal, or nothing while it waits. */
+/** What became of a proposal and who decided it, or nothing while it waits. A note that came with the decision reads on its own. */
 export function proposalOutcome(proposal: PipelineProposalSummary): string {
   if (proposal.status === "open") return "";
   if (proposal.status === "withdrawn") return "Withdrawn by its author";
-  const outcome = `${proposal.status === "accepted" ? "Accepted" : "Declined"}${proposal.decided_by ? ` by ${proposal.decided_by}` : ""}`;
-  return proposal.decision_note ? `${outcome}: ${proposal.decision_note}` : outcome;
+  return `${proposal.status === "accepted" ? "Accepted" : "Declined"}${proposal.decided_by ? ` by ${proposal.decided_by}` : ""}`;
 }
+
+/** The colour of a proposal's state: waiting asks for attention, a decision says how it went. */
+export const proposalTone = (proposal: PipelineProposalSummary) =>
+  ({ open: "warning", accepted: "positive", declined: "danger", withdrawn: "neutral" } as const)[proposal.status];
 
 /** The Dojo's runs, with the test a proposal was handed in with picked out. */
 export const testRunHref = (runId: string) => `/dojo?run=${encodeURIComponent(runId)}`;

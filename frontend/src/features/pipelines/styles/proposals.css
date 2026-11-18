@@ -1,0 +1,101 @@
+/* Proposals: designs handed in for a decision. The page reads like the Monitoring overview: a title
+   with the room to start, filters, and under them one card per proposal. */
+.pl-proposals-heading { margin-top: 4px; }
+.pl-proposals-intro { margin: 8px 0 0; max-width: 72ch; color: var(--ex-muted); font-size: var(--text-body); line-height: var(--leading-body); }
+.pl-proposals-tools { margin: 28px 0 0; }
+.ex-shell .pl-proposals .mn-filters button { border: 0; background: none; padding: 5px 9px; font-size: var(--text-control); }
+.ex-shell .pl-proposals .mn-filters button:hover { background: var(--ex-hover); }
+.ex-shell .pl-proposals .mn-filters button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-side); }
+.pl-capacity { display: inline-flex; align-items: center; gap: 10px; font-size: var(--text-control); color: var(--ex-muted); }
+.pl-capacity-meter { display: inline-flex; gap: 3px; }
+.pl-capacity-meter i { width: 6px; height: 14px; border-radius: 2px; background: var(--ex-line); }
+.pl-capacity-meter i.is-taken { background: var(--ex-accent); }
+.pl-capacity.is-full { color: hsl(var(--destructive)); }
+.pl-capacity.is-full .pl-capacity-meter i.is-taken { background: hsl(var(--destructive)); }
+
+/* Every card is laid out the same, so two proposals compare line by line: the name, who handed it
+   in and as what, the rationale under its names, and what a member may do with it at the bottom. */
+.pl-proposal-cards { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
+.pl-proposal-card > article { display: grid; gap: 8px; padding: 18px 20px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); }
+.pl-proposal-card h2 { margin: 0; font-size: var(--text-title3); line-height: var(--leading-title3); font-weight: 600; overflow-wrap: anywhere; }
+.pl-proposals .pl-proposal-card h2 > button { display: inline; padding: 0; border: 0; border-radius: var(--radius-control); background: none; font: inherit; color: inherit; text-align: left; }
+.pl-proposals .pl-proposal-card h2 > button:hover { color: var(--ex-accent); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Who, when, as what, and whether it was tested: one quiet line, also at the head of the brief. A rule
+   stands between two facts; the one that would open a line falls outside the list and is cut off. */
+.pl-proposal-meta { display: flex; flex-wrap: wrap; align-items: center; row-gap: 2px; overflow: hidden; margin: 0 0 0 -9px; padding: 0; list-style: none;
+  color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: 22px; }
+.pl-proposal-meta > li { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-left: -1px; padding: 0 9px 0 10px; overflow-wrap: anywhere; }
+.pl-proposal-meta > li::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 1px; background: hsl(var(--border)); }
+.pl-proposal-meta > .pl-proposal-tested { gap: 4px; color: hsl(var(--foreground)); }
+
+.pl-proposal-card .rationale-fields { grid-template-columns: 72px minmax(0, 1fr); gap: 6px 16px; margin: 6px 0 0; }
+.pl-proposal-card .rationale-fields dt { font-size: var(--text-caption); line-height: var(--leading-body); font-weight: 550; }
+.pl-proposal-card .rationale-fields dd { max-width: 78ch; font-variant-numeric: tabular-nums; }
+/* A reason may run to a page; the card shows how it begins and the review shows all of it. */
+.pl-proposal-reason { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Where a proposal stands. The dot carries the state's colour; the word says it too. */
+.pl-proposal-decision { display: grid; gap: 4px; margin: 4px 0 0; padding: 8px 12px; border-left: 2px solid hsl(var(--border)); background: hsl(var(--muted) / 0.55); }
+.pl-proposal-decision p { margin: 0; }
+.pl-proposal-decision .mn-state { font-weight: 500; }
+.pl-proposal-decision time { margin-left: 4px; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); }
+.pl-proposal-decision .pl-help { margin: 0; font-size: var(--text-caption); line-height: var(--leading-caption); }
+.pl-proposal-decision blockquote { margin: 0; max-width: 78ch; overflow-wrap: anywhere; white-space: pre-line; }
+
+.pl-proposal-missing { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0 0; color: hsl(var(--destructive)); font-size: var(--text-caption); line-height: var(--leading-caption); overflow-wrap: anywhere; }
+.pl-proposal-missing svg { flex: none; margin-top: 2px; }
+
+/* The actions stand together under what they act on: the review first, then the two decisions. */
+.pl-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.pl-proposals .pl-proposal-actions > button { min-height: 34px; padding: 6px 14px; font-size: var(--text-control); }
+.pl-proposals .pl-proposal-actions > button.mn-primary { background: var(--ex-accent); border-color: var(--ex-accent); color: hsl(var(--primary-foreground)); font-weight: 500; }
+.pl-proposals .pl-proposal-actions > button:not(.mn-primary):not(:disabled):hover,
+.pl-proposals .pl-proposal-actions > button[data-state="open"] { background: var(--ex-hover); }
+.pl-proposals .pl-proposal-actions > .pl-decline { border-color: transparent; background: none; color: var(--ex-muted); }
+.pl-proposals .pl-proposal-actions > .pl-decline:hover,
+.pl-proposals .pl-proposal-actions > .pl-decline[data-state="open"] { color: var(--ex-ink); }
+.pl-proposal-hint { margin-left: 4px; font-size: var(--text-caption); color: var(--ex-muted); }
+.pl-proposal-actions :is(.pl-apply-status, .pl-field-error) { flex: 1 1 100%; margin: 0; }
+
+/* A decision is made in a small dialog at its button: the page under it does not move. */
+.pl-decision { width: min(340px, calc(100vw - 24px)); max-height: var(--radix-popover-content-available-height); overflow: auto; padding: 16px;
+  background: hsl(var(--card)); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border)); border-radius: 10px;
+  box-shadow: 0 10px 30px #0002; z-index: 50; font-size: var(--text-body); line-height: var(--leading-body); }
+.pl-decision h3 { margin: 0 0 12px; font-size: var(--text-body); font-weight: 600; }
+.pl-decision .pl-field { margin: 0 0 8px; }
+.pl-decision .pl-field textarea { min-height: 76px; }
+.pl-decision .pl-help { margin: 0; font-size: var(--text-caption); line-height: var(--leading-caption); }
+.pl-decision .pl-field-error { margin: 10px 0 0; }
+/* Each way to start is a row to press: its name, and under it what it does. */
+.pl-decision-choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pl-library .pl-decision-choices button { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 2px; width: 100%; padding: 10px 12px; text-align: left; }
+.pl-library .pl-decision-choices button:not(:disabled):hover { border-color: hsl(var(--primary)); background: hsl(var(--accent)); }
+.pl-decision-choices strong { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-control); font-weight: 550; }
+.pl-decision-choices strong svg { color: hsl(var(--primary)); }
+.pl-decision-choices small { color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: var(--leading-caption); }
+.pl-decision-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.pl-decision-actions small { margin-right: auto; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); }
+.pl-library .pl-decision-actions button { min-height: 32px; padding: 6px 12px; font-size: var(--text-control); }
+.pl-library .pl-decision-actions .pl-decision-decline { background: hsl(var(--destructive)); border-color: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); font-weight: 500; }
+
+/* The proposal beside its design: where it stands, the way to its test, then the rationale and the author's note, each under its name. */
+.pl-brief { display: grid; gap: 14px; font-size: var(--text-body); line-height: var(--leading-body); }
+.pl-brief .pl-proposal-decision { margin: 0; }
+.pl-brief .pl-help { margin: 0; }
+.pl-brief section { display: grid; gap: 2px; }
+.pl-inspector .pl-brief h4 { margin: 0; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: var(--leading-caption); font-weight: 550; }
+.pl-brief-note { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.pl-brief-test { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.pl-inspector .pl-brief-test button { min-height: 32px; padding: 6px 12px; font-size: var(--text-control); }
+.pl-brief-test a { color: hsl(var(--primary)); font-size: var(--text-caption); text-decoration: underline; text-underline-offset: 3px; }
+.pl-brief .rationale-fields--stacked { padding-top: 14px; border-top: 1px solid hsl(var(--border)); }
+
+@media (max-width: 680px) {
+  .pl-proposal-card > article { padding: 16px; }
+  .pl-proposal-card .rationale-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .pl-proposal-card .rationale-fields dt { line-height: var(--leading-caption); }
+  .pl-proposals .pl-proposal-actions > button, .pl-library .pl-decision button { min-height: 44px; }
+  .pl-proposal-hint { flex: 1 1 100%; margin-left: 0; }
+  .pl-decision textarea { font-size: 16px; }
+}

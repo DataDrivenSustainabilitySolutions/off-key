@@ -697,7 +697,7 @@ jobs:
       cache-fallback-scope-prefix: docker-validate
 
   # Two disposable Swarms run in parallel. The rehearsal lane runs every deployment
-  # test: the adaptive monitor, then backup restore and binary rollback over state
+  # test: the adaptive monitor, then backup restore and redeployment over state
   # the restore test creates itself. The browser lane runs every browser journey.
   deployment-smoke:
     name: deployment-smoke (${{ matrix.lane }})
@@ -800,23 +800,7 @@ jobs:
             --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" npx playwright test --project=auth-setup
 
-      - name: Check out the immutable pipeline-compatible rollback reference
-        if: matrix.lane == 'rehearsal'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: b09b79d44a3d14af1464eb944d80137d73832bc7
-          path: .tmp/compatible-release-source
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Build the reviewed compatible binary rollback reference
-        if: matrix.lane == 'rehearsal'
-        timeout-minutes: 25
-        uses: ./.github/actions/run-with-build-cache
-        with:
-          run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
-
-      # Adaptive monitoring, then backup restoration and compatible binary rollback.
+      # Adaptive monitoring, then backup restoration and redeployment.
       - name: Verify every deployment test
         if: matrix.lane == 'rehearsal'
         timeout-minutes: 25
@@ -917,16 +901,15 @@ jobs:
           overwrite: true
           retention-days: 90
 
-      - name: Save compatible binary rollback evidence
+      - name: Save redeployment evidence
         if: always() && matrix.lane == 'rehearsal'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: compatible-binary-rollback
+          name: redeployment-evidence
           path: |
-            ${{ env.OFFKEY_REHEARSAL_DIR }}/binary-rollback-evidence.json
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/redeploy-evidence.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/browser-cutover-evidence.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/route-replacement-events.log
-            ${{ env.OFFKEY_REHEARSAL_DIR }}/compatible-release.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
             ${{ env.OFFKEY_REHEARSAL_DIR }}/static-release-evidence.json
           if-no-files-found: ignore

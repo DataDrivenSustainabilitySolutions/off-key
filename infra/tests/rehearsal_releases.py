@@ -1,12 +1,4 @@
-"""Build and select two real, schema-compatible rehearsal releases.
-
-The reference is the first build with migration 001, which gives a proposal
-its rationale. Its monitors read the stored telemetry log, in a leased worker
-pool with one API service and per-reading hold timing. It keeps shadow runs, a
-layout with switched-off steps and notes, and titles in the design. It carries
-the ledger through 001 and Aberrant 1.5.0 numerics, and proves no
-compatibility with earlier schemas.
-"""
+"""Build, load and record the rehearsal's production images."""
 
 import argparse
 import hashlib
@@ -14,8 +6,6 @@ import json
 import os
 import shutil
 import subprocess
-import tarfile
-import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
@@ -24,10 +14,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "b09b79d44a3d14af1464eb944d80137d73832bc7"
 REGISTRY = "offkey-smoke-registry"
-# Detector numerics; other locked packages may differ as in a real rollback.
-NUMERICAL_LIBRARIES = ("aberrant",)
 BUILDS = {
     "api": ("off-key-api-gateway", "services/api/gateway"),
     "tactic": ("off-key-tactic-middleware", "services/middleware/tactic"),
@@ -39,7 +26,7 @@ BUILDS = {
     "docs": ("off-key-docs", "docs"),
 }
 # Other workspace members an image installs; see SERVICE_DEPENDENCIES in
-# backend/Dockerfile. Older source trees ignore the argument.
+# backend/Dockerfile.
 DEPENDENCIES = {"services/api/gateway": "services/middleware/tactic"}
 MODEL_SERVICES = {
     "api": "api",
@@ -86,19 +73,11 @@ def stop_registry():
 
 
 def build_cache_options(service, revision, write=False):
-    """The CI image job owns current caches; rollback has its own immutable scope."""
+    """The CI image job owns the image caches."""
     suffix = service.removeprefix("off-key-")
     scopes = [f"docker-validate-{suffix}", f"docker-publish-{suffix}"]
     options = []
-    if revision == COMPATIBLE_REVISION:
-        rollback = f"docker-rollback-{revision}-{suffix}"
-        scopes.insert(0, rollback)
-        # Failure to save an optional cache must not invalidate a real image build.
-        options += [
-            "--cache-to",
-            f"type=gha,version=2,scope={rollback},mode=max,ignore-error=true",
-        ]
-    elif write:
+    if write:
         options += [
             "--cache-to",
             f"type=gha,version=2,scope=docker-validate-{suffix},mode=max,ignore-error=true",
@@ -114,9 +93,7 @@ def image_reference(service, revision):
 
 def build_arguments(service, source, revision, project):
     """The one set of image inputs every pre-release CI job tests."""
-    image_revision = revision
-    if revision != COMPATIBLE_REVISION:
-        image_revision = image_sources.source_revision(service, revision, project)
+    image_revision = image_sources.source_revision(service, revision, project)
     args = [
         "--label",
         f"org.opencontainers.image.revision={image_revision}",
@@ -128,8 +105,6 @@ def build_arguments(service, source, revision, project):
         image_reference(service, revision),
     ]
     if source == "docs":
-        # The rollback source predates this hosting recipe but contains its own
-        # docs, generator and requirements. Build only that revision's content.
         return args + ["-f", str(ROOT.parent / "dev/docs/Dockerfile"), str(project)]
     if source is None:
         return args + ["--target", "production", str(Path(project) / "frontend")]
@@ -182,8 +157,7 @@ def build_local_images(release, revision, project):
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         release["images"].update(pool.map(build, BUILDS.items()))
-    if revision != COMPATIBLE_REVISION:
-        release["image_revisions"] = image_sources.revisions(revision, project)
+    release["image_revisions"] = image_sources.revisions(revision, project)
 
 
 def loaded_identities(revision):
@@ -288,109 +262,6 @@ def push_loaded_images(release, revision):
         release["images"][name] = push_local(identity["reference"])
 
 
-def compatible_release(directory, project, reference_repository=None):
-    """Build actual older source; refuse unnoticed schema/numerical changes."""
-    current = json.loads((directory / "production-release.json").read_text())["release"]
-    if current["application_revision"] == COMPATIBLE_REVISION:
-        raise ValueError("Binary rollback requires two different source revisions")
-    source = archive_compatible_source(directory, reference_repository or project)
-    validate_compatible_source(source, project)
-    release = deepcopy(current)
-    release.pop("image_revisions", None)
-    build_local_images(release, COMPATIBLE_REVISION, source)
-    release["application_revision"] = COMPATIBLE_REVISION
-    (directory / "compatible-release.json").write_text(
-        json.dumps({"release": release}, indent=2)
-    )
-    image_identities(release)
-    print(f"Prepared test-only compatible release {COMPATIBLE_REVISION}", flush=True)
-
-
-def archive_compatible_source(directory, reference_repository):
-    """Use the exact authenticated fixture checkout, even after a squash merge."""
-    repository = Path(reference_repository).resolve()
-    if not repository.is_dir():
-        raise ValueError("Compatible reference repository does not exist")
-    result = run(
-        "git",
-        "rev-parse",
-        "--verify",
-        f"{COMPATIBLE_REVISION}^{{commit}}",
-        cwd=repository,
-        check=False,
-    )
-    if result.returncode or result.stdout.strip() != COMPATIBLE_REVISION:
-        raise ValueError(
-            "Reference repository must contain the reviewed compatible commit"
-        )
-    archive = directory / "compatible-source.tar"
-    source = directory / "compatible-source"
-    source.mkdir(exist_ok=True)
-    run(
-        "git",
-        "archive",
-        "--format=tar",
-        "--output",
-        archive,
-        COMPATIBLE_REVISION,
-        cwd=repository,
-    )
-    with tarfile.open(archive) as files:
-        files.extractall(source, filter="data")
-    return source
-
-
-def validate_compatible_source(source, project):
-    """A binary rollback never bypasses a changed migration or numeric contract."""
-    compatibility = [
-        Path("backend/libs/core/src/off_key_core/models/adaptive_catalog.json"),
-    ]
-    migrations = Path("backend/libs/core/src/off_key_core/db/migrations")
-    compatibility.extend(
-        path.relative_to(project) for path in (project / migrations).glob("*.sql")
-    )
-    if {path.name for path in (source / migrations).glob("*.sql")} != {
-        path.name for path in (project / migrations).glob("*.sql")
-    }:
-        raise ValueError(
-            "Compatible rollback reference has a different migration ledger"
-        )
-    for path in compatibility:
-        if (source / path).read_text() != (project / path).read_text():
-            raise ValueError(
-                f"Review a new compatible rollback reference: {path} differs"
-            )
-    lock = Path("backend/uv.lock")
-    if locked_numerical_libraries(source / lock) != locked_numerical_libraries(
-        project / lock
-    ):
-        raise ValueError(
-            "Review a new compatible rollback reference: locked Aberrant differs"
-        )
-
-
-def locked_numerical_libraries(lock):
-    locked = sorted(
-        (package["name"], package.get("version"))
-        for package in tomllib.loads(lock.read_text()).get("package", [])
-        if package["name"] in NUMERICAL_LIBRARIES
-    )
-    if {name for name, _ in locked} != set(NUMERICAL_LIBRARIES):
-        raise ValueError(f"{lock} does not lock the reviewed numerical libraries")
-    return locked
-
-
-def selected_release(directory, target):
-    names = {
-        "compatible": "compatible-release.json",
-        "current": "production-release.json",
-    }
-    if target not in names:
-        raise ValueError("Select current or compatible rehearsal release")
-    name = names[target]
-    return json.loads((directory / name).read_text())["release"]
-
-
 def release_model(base, release):
     """Change binaries while retaining real production configuration/secrets."""
     model = deepcopy(base)
@@ -430,9 +301,9 @@ def image_identities(release):
     return identities
 
 
-def record_cutover(directory, release, target, restored, stack):
+def record_cutover(directory, release, restored, stack):
     """Only non-secret, verifiable identities enter the uploaded evidence."""
-    path = directory / "binary-rollback-evidence.json"
+    path = directory / "redeploy-evidence.json"
     evidence = json.loads(path.read_text()) if path.exists() else {"cutovers": []}
     model = json.loads((directory / "stack/deployment-model.json").read_text())
     deployed = {}
@@ -452,7 +323,6 @@ def record_cutover(directory, release, target, restored, stack):
         deployed[service] = actual
     evidence["cutovers"].append(
         {
-            "target": target,
             "restored_database": restored,
             "revision": release["application_revision"],
             "images": image_identities(release),

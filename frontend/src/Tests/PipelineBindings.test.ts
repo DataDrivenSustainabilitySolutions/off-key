@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bindingsReady, predecessorSource, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings,
-  suggestedTarget,
+  suggestedTarget, unitFits,
 } from "@/features/pipelines/bindings";
 import type { PipelineServiceView } from "@/features/pipelines/contracts";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
@@ -35,6 +35,16 @@ describe("reading selection", () => {
       expect(bindingsReady(slots, target, bindings, () => false)).toBe(false);
     expect(bindingsReady(slots, target, { one: "a", two: "b" }, (id) => id === "b")).toBe(false);
     expect(bindingsReady([{ id: "one", label: "Voltage", unit: "V" }], target, { one: "a" }, () => false)).toBe(false);
+  });
+  it("lets a reading of unknown unit fill an input that declares one", () => {
+    const unknown = { inputs: [
+      { stream: { id: "v1", label: "Voltage AC1", unit: null }, binding: { policy: { mode: "original" } } },
+      { stream: { id: "f", label: "Frequency" }, binding: { policy: { mode: "original" } } },
+    ] } as unknown as MonitoringTarget;
+    const slots = [{ id: "v", label: "Voltage AC1", unit: "V" }, { id: "hz", label: "Frequency", unit: "Hz" }];
+    expect(suggestBindings(slots, unknown, { v: "v1", hz: "f" })).toEqual({ v: "v1", hz: "f" });
+    expect(bindingsReady(slots, unknown, { v: "v1", hz: "f" }, () => false)).toBe(true);
+    expect(unitFits("V", "A")).toBe(false);
   });
 });
 

@@ -64,7 +64,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 | Entity | Primary key | Purpose |
 | --- | --- | --- |
-| `dojo_datasets` | `id` | A frozen dataset: name, origin (`csv` or `history`), provenance, size and time span |
+| `dojo_datasets` | `id` | A frozen dataset: name, origin (`csv`, `history` or `benchmark`), provenance, size and time span |
 | `dojo_dataset_series` | `id` | One named series of a dataset, with its unit and, for copies, the catalogue reading it came from |
 | `dojo_dataset_points` | `(series_id, timestamp)` | The values; independent of `telemetry`, so retention never removes them |
 | `dojo_dataset_labels` | `id` | A known problem on a dataset: an interval with a note; labels of one dataset never overlap. One added from a proposed label keeps its `rule` and `suggested_by_agent` |

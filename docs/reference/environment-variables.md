@@ -228,6 +228,7 @@ ask the service which models it holds for the composer.
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
 | `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry, monitoring evidence and anomalies; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
 | `TELEMETRY_STORAGE_CAP_GB` | empty | Optional storage ceiling for telemetry and monitoring evidence, `0.1–100000` GB (decimal). Every 15 minutes, while over the cap, the oldest completed daily chunk is dropped, even if it is inside the retention window. Empty disables the cap. Restart/redeploy DB Sync after changing it. |
+| `DOJO_BENCHMARK_MIRROR` | empty | Optional base URL the API gateway downloads Dojo benchmark files from, instead of each collection's pinned mirror. Every file is still checked against the SHA-256 the catalogue records, so a mirror must serve identical files. The gateway needs outbound HTTPS to it. |
 | `LOG_LEVEL` | `INFO` | Standard log-level token |
 | `LOG_FORMAT` | `simple` | `simple` writes text lines that end with any `extra=` context as `key=value` pairs; `json` writes one object per line with that context under `extra` |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |

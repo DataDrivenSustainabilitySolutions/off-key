@@ -97,3 +97,9 @@
 .dj-empty p { color: var(--ex-muted); font-size: var(--text-body); }
 .dj-loading { font-size: var(--text-caption); color: var(--ex-muted); margin: 15px 0 0; }
 .ex-main-content > .dj-page:first-child { margin-top: 0; }
+.dj-benchmark-source { margin: 4px 0 12px; padding: 10px 12px; border: 1px solid var(--ex-line); border-radius: var(--radius-control); font-size: var(--text-control); }
+.dj-benchmark-source a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.dj-benchmark-source p { margin: 4px 0 0; color: var(--ex-muted); }
+.dj-benchmark-list { max-height: 300px; }
+.dj-benchmark-list label > span { display: flex; flex-direction: column; min-width: 0; }
+.dj-benchmark-list label > span small { margin-left: 0; }

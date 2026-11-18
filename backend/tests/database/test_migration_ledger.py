@@ -21,6 +21,9 @@ APPLIED_CHECKSUMS = {
     "004_dojo_pending_labels.sql": (
         "ea43cb766cc073b55a192932cc7d66d2e75cf12c2ab0e1d299f27b80a29c38c9"
     ),
+    "005_dojo_benchmark_origin.sql": (
+        "1990dc1fcfa9406218ee9e468bfdab5a84ede89492b4ccf203c85b5909772b09"
+    ),
 }
 
 

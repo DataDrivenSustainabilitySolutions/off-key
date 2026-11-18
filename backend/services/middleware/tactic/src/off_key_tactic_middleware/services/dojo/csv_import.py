@@ -76,6 +76,8 @@ class _Layout:
     value_columns: tuple[tuple[str, int], ...] = ()
     series_index: int | None = None
     value_index: int | None = None
+    # Wide only: the column of 0 and 1 that marks known anomalies.
+    label_index: int | None = None
 
     def cells(self, row: list[str]) -> list[tuple[str, str]]:
         if self.series_index is None or self.value_index is None:
@@ -93,10 +95,13 @@ def _layout(header: list[str], query: CsvImportQuery) -> _Layout:
     time_index = (
         _column(header, query.timestamp_column) if query.timestamp_column else 0
     )
+    label_index = _column(header, query.label_column) if query.label_column else None
+    if label_index == time_index:
+        raise ValidationError("The label column cannot be the timestamp column")
     columns = tuple(
         (name.strip(), index)
         for index, name in enumerate(header)
-        if index != time_index
+        if index not in (time_index, label_index)
     )
     names = [name for name, _ in columns]
     if not columns:
@@ -107,11 +112,56 @@ def _layout(header: list[str], query: CsvImportQuery) -> _Layout:
         raise ValidationError("Series names hold at most 256 characters")
     if len(set(names)) != len(names):
         raise ValidationError("Value column names must be unique")
-    return _Layout(time_index=time_index, value_columns=columns)
+    return _Layout(
+        time_index=time_index, value_columns=columns, label_index=label_index
+    )
+
+
+MARKED = {"1", "1.0", "true", "yes"}
+UNMARKED = {"", "0", "0.0", "false", "no"}
+
+
+class LabelRuns:
+    """Turn a label column into intervals: each run of marked rows is one.
+
+    Rows must come in time order, so a run is closed by the first unmarked
+    row after it without keeping every row.
+    """
+
+    def __init__(self) -> None:
+        self.intervals: list[tuple[datetime, datetime]] = []
+        self._start: datetime | None = None
+        self._end: datetime | None = None
+        self._last: datetime | None = None
+
+    def add(self, line: int, timestamp: datetime, cell: str) -> None:
+        mark = cell.strip().casefold()
+        if mark not in MARKED and mark not in UNMARKED:
+            raise ValidationError(f"Line {line}: the label {cell!r} is not 0 or 1")
+        if self._last is not None and timestamp < self._last:
+            raise ValidationError(
+                f"Line {line}: with a label column, rows must be in time order"
+            )
+        self._last = timestamp
+        if mark in MARKED:
+            if self._start is None:
+                self._start = timestamp
+            self._end = timestamp
+        else:
+            self.close()
+
+    def close(self) -> None:
+        if self._start is not None and self._end is not None:
+            self.intervals.append((self._start, self._end))
+        self._start = self._end = None
 
 
 def _row_points(
-    line: int, row: list[str], layout: _Layout, decimal_comma: bool
+    line: int,
+    row: list[str],
+    layout: _Layout,
+    decimal_comma: bool,
+    labels: LabelRuns | None = None,
 ) -> Iterator[tuple[str, datetime, float]]:
     stamp = _cell(row, layout.time_index)
     try:
@@ -121,6 +171,8 @@ def _row_points(
             f"Line {line}: {stamp!r} is not a timestamp "
             "(use ISO 8601 or Unix epoch time)"
         ) from None
+    if labels is not None and layout.label_index is not None:
+        labels.add(line, timestamp, _cell(row, layout.label_index))
     for name, cell in layout.cells(row):
         if not cell:
             continue
@@ -179,12 +231,13 @@ def _rows(text, first: str, delimiter: str) -> Iterator[list[str]]:
 
 
 def read_points(
-    body: bytes, query: CsvImportQuery
+    body: bytes, query: CsvImportQuery, labels: LabelRuns | None = None
 ) -> tuple[list[str], Iterator[tuple[str, datetime, float]]]:
     """Return the declared series names and an iterator over the points.
 
     'wide' declares its value columns in order; 'long' declares none and
-    names each series where it first appears. Empty cells are skipped.
+    names each series where it first appears. Empty cells are skipped. With
+    a label column, ``labels`` collects its intervals once the points are read.
     """
     try:
         text = io.TextIOWrapper(io.BytesIO(body), encoding="utf-8-sig", newline="")
@@ -205,7 +258,9 @@ def read_points(
         try:
             for line, row in enumerate(rows, start=2):
                 if any(cell.strip() for cell in row):
-                    yield from _row_points(line, row, layout, decimal_comma)
+                    yield from _row_points(line, row, layout, decimal_comma, labels)
+            if labels is not None:
+                labels.close()
         except UnicodeDecodeError:
             raise ValidationError("The CSV must be UTF-8 text") from None
         except csv.Error as exc:

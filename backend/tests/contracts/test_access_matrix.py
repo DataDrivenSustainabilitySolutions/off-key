@@ -129,6 +129,8 @@ GATEWAY_ACCESS = {
         "PUT /v1/recording",
     },
     "use_dojo": {
+        "GET /v1/dojo/benchmarks",
+        "POST /v1/dojo/benchmarks/import",
         "GET /v1/dojo/datasets",
         "POST /v1/dojo/datasets/csv",
         "POST /v1/dojo/datasets/history",
@@ -186,6 +188,8 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/detectors",
         "GET /v1/devices",
         "GET /v1/devices/{device_id}/readings",
+        "GET /v1/dojo/benchmarks",
+        "POST /v1/dojo/benchmarks/import",
         "GET /v1/dojo/datasets",
         "POST /v1/dojo/datasets/history",
         "POST /v1/dojo/datasets/{dataset_id}/faults",
@@ -326,7 +330,8 @@ def test_a_key_reaches_only_the_listed_gateway_routes():
 def test_a_key_changes_nothing_it_did_not_make():
     """Beyond reads, a key validates, edits what it holds, tests, proposes
     designs and labels, withdraws its own proposal and, where it may, starts.
-    Its labels wait for a member's review, and it replaces only its own. It cancels and
+    Its labels wait for a member's review, and it replaces only its own; a
+    benchmark import labels only what the collection itself labelled. It cancels and
     deletes only its own tests and its own withdrawn or declined proposals,
     which the services check (test_dojo_agent_cleanup)."""
     writes = {
@@ -337,6 +342,7 @@ def test_a_key_changes_nothing_it_did_not_make():
     }
     assert writes == {
         "POST /v1/alarms/query",
+        "POST /v1/dojo/benchmarks/import",
         "POST /v1/dojo/datasets/history",
         "POST /v1/dojo/datasets/{dataset_id}/faults",
         "POST /v1/dojo/datasets/{dataset_id}/pending-labels",

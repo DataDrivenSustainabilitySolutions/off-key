@@ -2,6 +2,57 @@
 
 import type { PipelineDefinition, PipelineNodePreview } from "./pipelines.generated";
 
+export type BenchmarkCollectionView = {
+  id: string;
+  name: string;
+  description: string;
+  authors: string;
+  citation: string;
+  url: string;
+  license: string;
+  series_count: number;
+  domains: Array<string>;
+};
+
+export type BenchmarkImport = {
+  series_ids: Array<string>;
+};
+
+export type BenchmarkImportResult = {
+  items: Array<DatasetSummary>;
+  imported: number;
+};
+
+export type BenchmarkListPage = {
+  collections: Array<BenchmarkCollectionView>;
+  items: Array<BenchmarkSeriesView>;
+  total: number;
+  next_offset?: number | null;
+};
+
+export type BenchmarkListQuery = {
+  text?: string;
+  domain?: string | null;
+  variant?: "original" | "distorted" | "noise" | null;
+  limit?: number;
+  offset?: number;
+};
+
+export type BenchmarkSeriesView = {
+  id: string;
+  collection: string;
+  number: number;
+  name: string;
+  domain: string;
+  variant: "original" | "distorted" | "noise";
+  points: number;
+  train_points: number;
+  anomaly_first: number;
+  anomaly_last: number;
+  train_holds_anomaly?: boolean;
+  dataset_id?: string | null;
+};
+
 export type Comparison = {
   dataset_id: string;
   labels: Array<LabelView>;
@@ -21,6 +72,7 @@ export type CsvImportQuery = {
   series_column?: string;
   value_column?: string;
   delimiter?: "," | ";" | "\t" | "|" | null;
+  label_column?: string | null;
 };
 
 export type DatasetChange = {
@@ -77,7 +129,7 @@ export type DatasetSummary = {
   id: string;
   name: string;
   description: string;
-  origin: "csv" | "history";
+  origin: "csv" | "history" | "benchmark";
   point_count: number;
   series_count: number;
   start_at: string | null;
@@ -91,7 +143,7 @@ export type DatasetView = {
   id: string;
   name: string;
   description: string;
-  origin: "csv" | "history";
+  origin: "csv" | "history" | "benchmark";
   point_count: number;
   series_count: number;
   start_at: string | null;
@@ -426,4 +478,4 @@ export type StepSample = {
   steps: Record<string, PipelineNodePreview>;
 };
 
-export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, outlineBuckets: 2000, labels: 500, comparedRuns: 6 } as const;
+export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, outlineBuckets: 2000, labels: 500, benchmarkImport: 20, comparedRuns: 6 } as const;

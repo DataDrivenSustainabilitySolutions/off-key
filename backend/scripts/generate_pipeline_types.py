@@ -146,6 +146,7 @@ def dojo_contracts(shared: dict) -> str:
         f"resultsPage: {dojo.MAX_RESULTS_PAGE}, "
         f"outlineBuckets: {dojo.MAX_OUTLINE_BUCKETS}, "
         f"labels: {dojo.MAX_DATASET_LABELS}, "
+        f"benchmarkImport: {dojo.MAX_BENCHMARK_IMPORT}, "
         f"comparedRuns: {dojo.MAX_COMPARED_RUNS} }} as const;\n"
     )
     return text

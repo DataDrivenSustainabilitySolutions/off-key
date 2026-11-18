@@ -132,7 +132,7 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const slot = amount("slot_minutes", 60);
       const memory = amount("memory", 7);
       const cycle = value("cycle") === "week" ? "week" : "day";
-      return `Less the usual level per ${slot >= 60 ? `${number(slot / 60)} h` : `${number(slot)} min`} of the ${cycle} · ${count(memory, cycle)} remembered · ${value("timezone") || "UTC"}`;
+      return `Less ${value("trend") === true ? "the trend and " : ""}the usual level per ${slot >= 60 ? `${number(slot / 60)} h` : `${number(slot)} min`} of the ${cycle} · ${count(memory, cycle)} remembered · ${value("timezone") || "UTC"}`;
     }
     case "prepare.rolling": {
       const statistic = String(value("statistic"));

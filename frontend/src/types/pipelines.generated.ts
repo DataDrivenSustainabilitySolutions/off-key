@@ -123,6 +123,7 @@ export type DeseasonParameters = {
   slot_minutes?: number;
   memory?: number;
   timezone?: string;
+  trend?: boolean;
 };
 
 export type DespikeParameters = {

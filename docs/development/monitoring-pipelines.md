@@ -815,8 +815,16 @@ and then forget at that pace; from five values on, a deviation beyond four
 spreads moves them as if it lay at four, so one unusual day barely shifts the
 profile. The output is the value less the level read before the update, from
 the first observation a whole cycle after the first. `waiting()` holds the
-stage until then. Its state holds `3 * slots + 2` values: 74 for a day of
-hours, 6,050 for a week of 5-minute slots.
+stage until then. With `trend`, an online take on STL, the slots learn the
+value less a trend and the output is the value less both. The trend is the
+running mean during the first cycle, then an exponential average over one
+cycle of time of the value less its slot's level, clipped at the same four
+spreads; a trend lagging a straight drift by a constant is absorbed by the
+levels. Without `trend` the base stays 0. Its bounds are open with trend.
+Several seasons stack: a daily step, then a weekly one with longer slots on
+its output. Its state holds `3 * slots + 3` values (first and last time, the
+trend, then the slots): 75 for a day of hours, 6,051 for a week of 5-minute
+slots.
 
 `models/autocorrelation.py` gives the context for choosing lags: ACF, PACF by
 Durbin-Levinson, a 1.96/√n bound, suggested lags and cycles, on an even grid

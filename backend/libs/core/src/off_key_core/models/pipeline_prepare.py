@@ -914,15 +914,26 @@ class Deseason(Kernel):
     four, so one unusual day leaves the profile where it was. The level is
     read before the value updates it, and the step has output once a whole
     cycle has passed and the slot has a level.
+
+    With trend, as in STL, the slots learn the value less a trend rather than
+    the value itself, and the output is the value less both. The trend is the
+    mean of the values so far during the first cycle, then a moving average
+    of the value less its slot's level, centred on the levels' mean as STL
+    centres its seasonal part, that forgets over one cycle, so the pattern of
+    the day does not leak into it. The same four spreads bound how far one
+    value moves it.
     """
 
-    def __init__(self, cycle: int, slot: int, memory: int, zone: tzinfo):
+    def __init__(
+        self, cycle: int, slot: int, memory: int, zone: tzinfo, trend: bool = False
+    ):
         self.cycle = float(cycle)
         self.slot = slot
         self.slots = cycle // slot
         self.memory = memory
         self.zone = zone
-        self.window = 3 * self.slots + 2
+        self.trend = trend
+        self.window = 3 * self.slots + 3
 
     def initial(self) -> State:
         empty = array("d", bytes(8 * self.slots))
@@ -946,26 +957,41 @@ class Deseason(Kernel):
         if now is None:
             raise ValueError("Taking out a daily pattern needs each observation's time")
         start, levels, spreads, counts = state
-        first = start[0] if start else now
-        if start and now < start[1]:
+        first, last = (start[0], start[1]) if start else (now, now)
+        if start and now < last:
             raise PrepareFailure("out_of_order", "The observation is not newer")
         index = self._index(now)
         level, spread, count = levels[index], spreads[index], counts[index]
+        # Without trend the base stays 0 and the slots learn the value itself.
+        base = (start[2] if start else value) if self.trend else 0.0
+        detrended = value - base
         ready = count > 0 and now - first >= self.cycle
-        result = value - level if ready else None
+        result = detrended - level if ready else None
         # The slot's observations per cycle so far set how many make memory
         # cycles, so a slot forgets at the same pace however often it reports.
         cycles = max((now - first) / self.cycle, 1.0)
         horizon = self.memory * max(count / cycles, 1.0)
         weight = 1.0 / min(count + 1.0, horizon)
-        deviation = value - level if count else 0.0
-        if count >= 5 and spread > 0:
-            deviation = min(max(deviation, -4 * spread), 4 * spread)
+        limit = 4 * spread if count >= 5 and spread > 0 else math.inf
+        deviation = min(max(detrended - level, -limit), limit) if count else 0.0
+        if self.trend and start:
+            if now - first < self.cycle:
+                pace = 1.0 / (sum(counts) + 1.0)
+            else:
+                pace = -math.expm1(-(now - last) / self.cycle)
+            # As in STL the seasonal part is centred on 0: the mean of the
+            # levels belongs to the trend, or the trend's lag behind a drift
+            # would settle in the levels and the trend would stop moving.
+            known = [item for item, seen in zip(levels, counts, strict=True) if seen]
+            centre = sum(known) / len(known) if known else 0.0
+            # The value less the trend and the centred season; the clip
+            # bounds the part the levels do not explain.
+            base += pace * (deviation + centre if count else detrended)
         levels, spreads, counts = levels[:], spreads[:], counts[:]
-        levels[index] = level + weight * deviation if count else value
+        levels[index] = level + weight * deviation if count else detrended
         spreads[index] = spread + weight * (abs(deviation) - spread)
         counts[index] = count + 1.0
-        return (array("d", [first, now]), levels, spreads, counts), result
+        return (array("d", [first, now, base]), levels, spreads, counts), result
 
     def accepts(self, state: State) -> bool:
         if len(state) != 4 or not all(
@@ -974,7 +1000,7 @@ class Deseason(Kernel):
             return False
         start, *slots = state
         return (
-            len(start) in (0, 2)
+            len(start) in (0, 3)
             and all(len(item) == self.slots for item in slots)
             and all(math.isfinite(item) for part in state for item in part)
         )
@@ -1125,6 +1151,7 @@ _KERNELS: dict[type[PipelineModel], Callable[[Any], Kernel]] = {
         60 * item.slot_minutes,
         item.memory,
         UTC if item.timezone == "UTC" else ZoneInfo(item.timezone),
+        item.trend,
     ),
     RollingParameters: lambda item: Rolling(
         item.window_size, item.statistic, item.quantile
@@ -1274,10 +1301,14 @@ def _relation_bounds(params: dict[str, Any], _bounds: Bounds) -> Bounds:
     return None, None
 
 
-def _deseasoned_bounds(_params: dict[str, Any], bounds: Bounds) -> Bounds:
-    """A value less a level that lies within the same range."""
+def _deseasoned_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
+    """A value less a level that lies within the same range.
+
+    A trend learns from values less their level, which can leave the range, so
+    with trend there is no bound.
+    """
     low, high = bounds
-    if low is None or high is None:
+    if params.get("trend") or low is None or high is None:
         return None, None
     return low - high, high - low
 

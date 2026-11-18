@@ -1639,8 +1639,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The reference is immutable commit
-`b09b79d44a3d14af1464eb944d80137d73832bc7`, a build whose ledger runs through
-migration 005 (Dojo benchmark imports). Its monitors read the stored
+`c33c69f4b21ead330d205740bc89c31f71726c68`, a build whose ledger runs through
+migration 006 (Dojo benchmark suites and studies). Its monitors read the stored
 telemetry log, RADAR runs in a leased worker pool and readings have per-reading
 hold timing. Its layout holds switched-off steps and notes, and a step's title
 lives in the design, as in the current release. The rehearsal still switches

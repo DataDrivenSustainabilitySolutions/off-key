@@ -177,6 +177,76 @@ class DojoPendingLabel(Base):
     )
 
 
+class DojoSuite(Base):
+    """A benchmark suite: labelled datasets fixed to test designs on, again
+    and again. Its datasets never change, so its studies stay comparable; a
+    changed list is a new suite derived from it. A suite a key made counts as
+    reviewed once a member says so.
+    """
+
+    __tablename__ = "dojo_suites"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    derived_from: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("dojo_suites.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Like a dataset, an agent's keeps its name and id, not a foreign key.
+    created_by_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_agent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reviewed_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class DojoSuiteDataset(Base):
+    __tablename__ = "dojo_suite_datasets"
+    suite_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("dojo_suites.id", ondelete="CASCADE"), primary_key=True
+    )
+    # A dataset in a suite cannot be deleted, so the suite never shrinks.
+    dataset_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("dojo_datasets.id", ondelete="RESTRICT"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    __table_args__ = (Index("ix_dojo_suite_datasets_dataset", "dataset_id"),)
+
+
+class DojoStudy(Base):
+    """One design replayed over every dataset of a suite, one run each.
+
+    ``config`` keeps the compiled design, the slot bindings by series name
+    and the alignment. The runs name the study; deleting it through the
+    service deletes them too.
+    """
+
+    __tablename__ = "dojo_studies"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    suite_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("dojo_suites.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    config: Mapped[Any] = mapped_column(document(), nullable=False)
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Like a run, an agent's study keeps its id, and its name in ``config``.
+    created_by_agent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (Index("ix_dojo_studies_suite", "suite_id", "created_at"),)
+
+
 class DojoRun(Base):
     """One detection design replayed over one dataset by the Dojo worker.
 
@@ -193,6 +263,9 @@ class DojoRun(Base):
         Text, ForeignKey("dojo_datasets.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    study_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("dojo_studies.id", ondelete="SET NULL"), nullable=True
+    )
     # queued, running, succeeded, failed or cancelled.
     status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
     config: Mapped[Any] = mapped_column(document(), nullable=False)
@@ -236,6 +309,7 @@ class DojoRun(Base):
         # The worker's claim and the active-run limit read by status.
         Index("ix_dojo_runs_status", "status", "created_at"),
         Index("ix_dojo_runs_dataset", "dataset_id"),
+        Index("ix_dojo_runs_study", "study_id"),
     )
 
 

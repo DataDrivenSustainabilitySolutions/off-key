@@ -75,10 +75,7 @@ class DojoRuns:
         dataset = await self.session.get(DojoDataset, request.dataset_id)
         if dataset is None:
             raise NotFoundError("Dataset not found")
-        try:
-            compiled = compile_pipeline(request.definition)
-        except ValueError as exc:
-            raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
+        compiled = compile_design(request.definition)
         comparison = None
         if request.compare_calibration:
             comparison = calibration_comparison(compiled)
@@ -89,19 +86,61 @@ class DojoRuns:
                     "martingale, which has none; give it a detector that learns "
                     "continuously or a calibration method that adapts"
                 )
-        series = {
-            item.id: item
-            for item in (
-                await self.session.scalars(
-                    select(DojoSeries).where(DojoSeries.dataset_id == dataset.id)
-                )
-            ).all()
-        }
+        series = await dataset_series(self.session, dataset.id)
         unknown = sorted(set(request.bindings.values()) - series.keys())
         if unknown:
             raise ValidationError(
                 f"The dataset has no series {', '.join(map(repr, unknown))}"
             )
+        await self.require_queue_room()
+        run_id = self.queue(
+            dataset,
+            compiled,
+            {slot: series[series_id] for slot, series_id in request.bindings.items()},
+            name=request.name,
+            alignment=request.alignment,
+            comparison=comparison,
+            created_by=created_by,
+            created_by_agent=created_by_agent,
+        )
+        await self.session.commit()
+        return await self.get(run_id)
+
+    async def require_queue_room(self) -> None:
+        """Hold the queue lock and refuse when it is full.
+
+        A study's runs take one place together, so one study cannot fill the
+        queue; the worker claims single runs before a study's, so a long
+        study never holds up a quick test.
+        """
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": DOJO_QUEUE_LOCK}
+        )
+        active = await self.session.scalar(
+            select(
+                func.count(func.distinct(func.coalesce(DojoRun.study_id, DojoRun.id)))
+            ).where(DojoRun.status.in_(ACTIVE))
+        )
+        if active >= MAX_ACTIVE_RUNS:
+            raise ConflictError(
+                f"At most {MAX_ACTIVE_RUNS} runs or studies can wait or run at "
+                "once; wait for one to finish or cancel one"
+            )
+
+    def queue(
+        self,
+        dataset: DojoDataset,
+        compiled,
+        bound_series: dict[str, DojoSeries],
+        *,
+        name: str,
+        alignment: RunAlignment,
+        comparison=None,
+        created_by: int | None,
+        created_by_agent: Agent | None,
+        study_id: str | None = None,
+    ) -> str:
+        """Bind the compiled design to the dataset's series and add a queued run."""
         run_id = str(uuid4())
         try:
             execution = bind_dataset(
@@ -113,64 +152,51 @@ class DojoRuns:
                         name=item.name,
                         unit=item.unit,
                     )
-                    for slot, item in (
-                        (slot, series[series_id])
-                        for slot, series_id in request.bindings.items()
-                    )
+                    for slot, item in bound_series.items()
                 },
                 run_id=run_id,
             )
         except ValueError as exc:
             raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
-        await self.session.execute(
-            text("SELECT pg_advisory_xact_lock(:key)"), {"key": DOJO_QUEUE_LOCK}
-        )
-        active = await self.session.scalar(
-            select(func.count()).where(DojoRun.status.in_(ACTIVE))
-        )
-        if active >= MAX_ACTIVE_RUNS:
-            raise ConflictError(
-                f"At most {MAX_ACTIVE_RUNS} runs can wait or run at once; "
-                "wait for one to finish or cancel one"
+        bound = [bound_series[item.slot_id] for item in execution.bindings]
+        self.session.add(
+            DojoRun(
+                id=run_id,
+                dataset_id=dataset.id,
+                study_id=study_id,
+                name=name.strip(),
+                status="queued",
+                config={
+                    "execution": execution.model_dump(mode="json"),
+                    "alignment": alignment.model_dump(mode="json"),
+                    "series": [
+                        {
+                            "id": item.id,
+                            "topic": binding.accepted_topic,
+                            "slot_id": binding.slot_id,
+                            "name": item.name,
+                        }
+                        for item, binding in zip(bound, execution.bindings, strict=True)
+                    ],
+                    **({"calibration_comparison": comparison} if comparison else {}),
+                    # A key is no member, so the run keeps the agent's name.
+                    **(
+                        {"created_by_agent": created_by_agent.name}
+                        if created_by_agent
+                        else {}
+                    ),
+                },
+                cancel_requested=False,
+                points_total=sum(item.point_count for item in bound),
+                points_read=0,
+                result_count=0,
+                alarm_count=0,
+                stats={},
+                created_by=created_by,
+                created_by_agent_id=created_by_agent.id if created_by_agent else None,
             )
-        bound = [series[request.bindings[item.slot_id]] for item in execution.bindings]
-        row = DojoRun(
-            id=run_id,
-            dataset_id=dataset.id,
-            name=request.name.strip(),
-            status="queued",
-            config={
-                "execution": execution.model_dump(mode="json"),
-                "alignment": request.alignment.model_dump(mode="json"),
-                "series": [
-                    {
-                        "id": item.id,
-                        "topic": binding.accepted_topic,
-                        "slot_id": binding.slot_id,
-                        "name": item.name,
-                    }
-                    for item, binding in zip(bound, execution.bindings, strict=True)
-                ],
-                **({"calibration_comparison": comparison} if comparison else {}),
-                # A key is no member, so the run keeps the agent's name.
-                **(
-                    {"created_by_agent": created_by_agent.name}
-                    if created_by_agent
-                    else {}
-                ),
-            },
-            cancel_requested=False,
-            points_total=sum(item.point_count for item in bound),
-            points_read=0,
-            result_count=0,
-            alarm_count=0,
-            stats={},
-            created_by=created_by,
-            created_by_agent_id=created_by_agent.id if created_by_agent else None,
         )
-        self.session.add(row)
-        await self.session.commit()
-        return await self.get(run_id)
+        return run_id
 
     async def list(
         self, query: RunListQuery, caller: User | Agent | None = None
@@ -444,7 +470,28 @@ class DojoRuns:
             started_at=row.started_at,
             finished_at=row.finished_at,
             compares_calibration="calibration_comparison" in row.config,
+            study_id=row.study_id,
         )
+
+
+def compile_design(definition: PipelineDefinition):
+    try:
+        return compile_pipeline(definition)
+    except ValueError as exc:
+        raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
+
+
+async def dataset_series(session, dataset_id: str) -> dict[str, DojoSeries]:
+    return {
+        item.id: item
+        for item in (
+            await session.scalars(
+                select(DojoSeries)
+                .where(DojoSeries.dataset_id == dataset_id)
+                .order_by(DojoSeries.position)
+            )
+        ).all()
+    }
 
 
 def _require_queued_by(row: DojoRun, agent: Agent) -> None:

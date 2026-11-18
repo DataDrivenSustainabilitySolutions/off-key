@@ -534,6 +534,18 @@ change it. A run replays one design over one dataset. Every route needs
 | `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
 | `GET` | `/dojo/runs/{run_id}/outline` | The results summed up over equal stretches of time: per stretch the number of results and alarms and the lowest and highest score and threshold | `buckets` (300 by default, at most 2,000) |
 | `GET` | `/dojo/runs/{run_id}/steps` | What 12 to 23 observations of an ended run looked like at every step: the values that went in and came out, or why the step gave none | Path: `run_id` |
+| `GET` | `/dojo/suites` | List benchmark suites, newest first, each with its dataset and study counts and whether it is reviewed | `limit`, `offset`, optional `mine` |
+| `POST` | `/dojo/suites` | Make a suite of up to 50 datasets in the given order; a member's is reviewed at once, a key's waits for a member. 201 with the suite | Body: `name`, `dataset_ids`, optional `description`, `derived_from` |
+| `GET` | `/dojo/suites/{suite_id}` | One suite with its datasets, the complete studies ranked by VUS-PR, then PR-AUC, then detection rate, and the studies still running or missing metrics | Path: `suite_id` |
+| `PATCH` | `/dojo/suites/{suite_id}` | Rename or describe a suite; its datasets never change. A key changes only a suite it made (403 otherwise) | Body: `name`, `description` |
+| `DELETE` | `/dojo/suites/{suite_id}` | Delete a suite with its studies and their runs, keeping its datasets; 204. A key deletes only a suite it made whose studies are all its own (403), none of whose runs a monitor or an open or accepted proposal names as its test (409) | Path: `suite_id` |
+| `POST` | `/dojo/suites/{suite_id}/review` | Mark a suite a key made as reviewed by the calling member. Members only | Path: `suite_id` |
+| `GET` | `/dojo/suites/{suite_id}/comparison` | Two complete studies of the suite paired dataset by dataset on one metric: per dataset both values and the difference, wins, losses and ties of the challenger, mean and median difference, and the two-sided Wilcoxon signed-rank p-value | Query: `baseline`, `challenger` (study ids), `metric` (`vus_pr` by default, `pr_auc`, `auroc` or `detection_rate`) |
+| `GET` | `/dojo/studies` | List studies, newest first | Optional `suite_id`, `mine`; `limit`, `offset` |
+| `POST` | `/dojo/studies` | Queue one run of a design on every dataset of a suite, binding each slot to a series by name: the given name, the only series for a one-slot design, or the series named like the slot. Nothing is queued when a dataset lacks a series (422). A study takes one place in the queue, and single runs go first. 201 with the study | Body: `suite_id`, `definition`, optional `name`, `bindings` (slot id to series name), `alignment` |
+| `GET` | `/dojo/studies/{study_id}` | One study with each dataset's run and metrics and the totals over the suite; reading it calculates metrics that are missing, for up to eight seconds | Path: `study_id` |
+| `POST` | `/dojo/studies/{study_id}/cancel` | Cancel the study's waiting and running runs. A key cancels only a study it made (403 otherwise) | Path: `study_id` |
+| `DELETE` | `/dojo/studies/{study_id}` | Delete a study and its runs once none waits or runs (409); 204. A key deletes only a study it made (403), none of whose runs is named as evidence (409) | Path: `study_id` |
 
 A wide CSV has one timestamp column (the first unless `timestamp_column`
 names another) and one series per remaining column; a long CSV has one value

@@ -71,6 +71,9 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `dojo_pending_labels` | `id` | A label a member or an agent proposed, by a condition over the series or as an interval, with the `rule` that found it; waits for a member to add or dismiss it and scores no run |
 | `dojo_runs` | `id` | One design replayed over one dataset: the bound configuration, status, progress, worker heartbeat and counts |
 | `dojo_run_results` | `(run_id, sequence)` | One detector result of a run: time, phase, score, threshold and alarm; for a run that compares calibration methods, `method_alarms` has one bit per method that would have alarmed |
+| `dojo_suites` | `id` | A benchmark suite: a fixed list of datasets that studies are run over, with who made it, the suite it was derived from and, for one an agent's key made, the member who reviewed it |
+| `dojo_suite_datasets` | `(suite_id, dataset_id)` | One dataset of a suite and its position; a suite's datasets never change |
+| `dojo_studies` | `id` | One design run over every dataset of a suite: its name, design and bindings by series name; its runs carry its `study_id` |
 
 ## Relationship highlights
 
@@ -83,6 +86,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - `dojo_dataset_series.dataset_id → dojo_datasets.id`, deleted with the dataset. `dojo_dataset_points.series_id` names its series without a foreign key, which would slow large imports; the Dojo service deletes points with their dataset. `dojo_datasets.created_by → users.id` is cleared when the member is removed.
 - `dojo_dataset_labels.dataset_id → dojo_datasets.id`, deleted with the dataset. `dojo_dataset_labels.created_by → users.id` is cleared when the member is removed. `dojo_pending_labels.dataset_id → dojo_datasets.id`, deleted with the dataset; its `created_by → users.id` is cleared when the member is removed, and an agent's keeps its name and id like a dataset.
 - `dojo_runs.dataset_id → dojo_datasets.id`, deleted with the dataset, which is refused while one of its runs waits or runs. `dojo_run_results.run_id` has no foreign key, like dataset points; the Dojo service deletes results with their run. `dojo_runs.created_by → users.id` is cleared when the member is removed.
+- `dojo_suite_datasets.suite_id → dojo_suites.id`, deleted with the suite; `dojo_suite_datasets.dataset_id → dojo_datasets.id` refuses to delete a dataset a suite holds. `dojo_suites.derived_from → dojo_suites.id` is cleared when that suite goes. `dojo_studies.suite_id → dojo_suites.id`, deleted with the suite, and the Dojo service deletes a study's runs with it. `dojo_runs.study_id → dojo_studies.id` is cleared if a study row goes some other way.
 
 ## Time-series characteristics
 

@@ -13,6 +13,9 @@ from off_key_core.db.models import (
     DojoDataset,
     DojoRun,
     DojoRunResult,
+    DojoStudy,
+    DojoSuite,
+    DojoSuiteDataset,
     PipelineProposal,
     User,
 )
@@ -101,6 +104,9 @@ async def library(member_database, monkeypatch):
             PipelineProposal,
             DeploymentMaintenance,
             DojoDataset,
+            DojoSuite,
+            DojoSuiteDataset,
+            DojoStudy,
             DojoRun,
             DojoRunResult,
         ):

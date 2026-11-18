@@ -24,7 +24,7 @@ Use this page for account, device, favourites, monitoring-service, and anomaly w
 | `/services` | Legacy link to Monitoring | Authenticated |
 | `/sources` | Sources: configure brokers, HTTP APIs and recorded readings | Authenticated |
 | `/anomalies` | Reporting: review recent anomaly events | Authenticated |
-| `/dojo` | Dojo: datasets, labels, offline runs and comparisons; `?dataset=<id>&tab=values\|runs\|compare` opens one dataset | Members who may use the Dojo |
+| `/dojo` | Dojo: datasets, labels, offline runs and comparisons; `?dataset=<id>&tab=values\|runs\|compare` opens one dataset, `?suite=<id>` one benchmark suite and `&study=<id>` one of its studies | Members who may use the Dojo |
 | `?settings=<section>` | Settings overlay above any workspace page: `account`, `preferences`, `catalogue` or `status` | Authenticated |
 | `/account` | Legacy link: opens the Account settings section above Monitoring | Authenticated |
 | `/system/status` | Legacy link: opens the System status settings section above Monitoring | Authenticated |
@@ -363,6 +363,23 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    then opens the template in Monitoring with each input set to the recorded
    reading its series was copied from, where that reading is still collected
    and fits. Inputs fed by an uploaded series are chosen there.
+6. **New suite** gathers labelled datasets into a benchmark suite, up to 50 in
+   the order you tick them. A suite's datasets never change, so its studies stay
+   comparable, and a dataset in a suite cannot be deleted until the suite is.
+   A suite an agent made says **Not yet reviewed** until a member opens it and
+   chooses **Mark reviewed**. On the suite's page, **New study** runs one design
+   over every dataset: each input reads the series of the name you choose, or,
+   left **Automatic**, a dataset's only series or the series named like the
+   input. A study is refused, with nothing queued, when a dataset lacks a series.
+   It takes one place in the run queue, and single runs go before it.
+   The **Leaderboard** ranks only studies whose runs all finished and were
+   scored, by VUS-PR, then PR-AUC, then detection rate, averaged over the
+   datasets; the rest wait under **Not yet ranked**, where a running study can
+   be cancelled. **Compare two studies** pairs two ranked studies dataset by
+   dataset on one metric, counts where the challenger is better or worse, and
+   gives a Wilcoxon signed-rank p-value: a small one means the difference is
+   unlikely to be chance across these datasets, not that it holds elsewhere.
+   Choosing a study's name lists its run and metrics for each dataset.
 
 A design that is still being built is tested without leaving it: **Test** in
 the monitoring setup copies the recorded values of its readings into a dataset

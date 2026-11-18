@@ -52,6 +52,17 @@ from off_key_core.schemas.dojo import (
     RunResultsQuery,
     RunSteps,
     RunView,
+    StudyComparison,
+    StudyComparisonQuery,
+    StudyCreate,
+    StudyListPage,
+    StudyListQuery,
+    StudyView,
+    SuiteChange,
+    SuiteCreate,
+    SuiteListPage,
+    SuiteListQuery,
+    SuiteView,
 )
 from off_key_tactic_middleware.services.dojo.benchmarks import DojoBenchmarks
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
@@ -59,6 +70,7 @@ from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
 from off_key_tactic_middleware.services.dojo.pending_labels import DojoPendingLabels
 from off_key_tactic_middleware.services.dojo.runs import DojoRuns
+from off_key_tactic_middleware.services.dojo.suites import DojoSuites
 
 from ...providers import (
     get_dojo_benchmarks,
@@ -67,6 +79,7 @@ from ...providers import (
     get_dojo_metrics,
     get_dojo_pending_labels,
     get_dojo_runs,
+    get_dojo_suites,
 )
 from ..access import agent_of, caller_key, member_id, require_permission
 from ..errors import DomainErrorRoute
@@ -768,3 +781,203 @@ async def sample_dojo_run_steps(
     is empty until the run has ended.
     """
     return await runs.steps(run_id)
+
+
+@router.get("/suites", response_model=SuiteListPage, openapi_extra=OPEN_TO_AGENTS)
+@read_limit
+async def list_dojo_suites(
+    request: Request,
+    query: Annotated[SuiteListQuery, Query()],
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Benchmark suites, newest first. `mine=true` keeps the caller's own."""
+    return await suites.list_suites(query, caller)
+
+
+@router.post(
+    "/suites", response_model=SuiteView, status_code=201, openapi_extra=OPEN_TO_AGENTS
+)
+@write_limit
+async def create_dojo_suite(
+    request: Request,
+    suite: SuiteCreate,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Fix up to 50 labelled datasets as a benchmark suite.
+
+    A suite's datasets never change, so its studies stay comparable; to
+    change the list, create a new suite with `derived_from`. A dataset in a
+    suite cannot be deleted while the suite exists. A suite a key makes
+    counts as `reviewed` only once a member reviews it.
+    """
+    return await suites.create_suite(
+        suite, created_by=member_id(caller), created_by_agent=agent_of(caller)
+    )
+
+
+@router.get(
+    "/suites/{suite_id}", response_model=SuiteView, openapi_extra=OPEN_TO_AGENTS
+)
+@read_limit
+async def get_dojo_suite(
+    request: Request,
+    suite_id: str,
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """A suite with its datasets and its leaderboard.
+
+    `leaderboard` ranks the complete studies, those with a finished, scored
+    run on every dataset, by mean VUS-PR, then PR-AUC, then detection rate.
+    `unfinished` lists the others. Metrics are calculated when a study is
+    read with `GET /v1/dojo/studies/{study_id}`.
+    """
+    return await suites.get_suite(suite_id)
+
+
+@router.patch("/suites/{suite_id}", response_model=SuiteView)
+@write_limit
+async def change_dojo_suite(
+    request: Request,
+    suite_id: str,
+    change: SuiteChange,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Rename a suite or change its description; its datasets stay."""
+    return await suites.change_suite(suite_id, change, caller)
+
+
+@router.post("/suites/{suite_id}/review", response_model=SuiteView)
+@write_limit
+async def review_dojo_suite(
+    request: Request,
+    suite_id: str,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Vouch for a suite a key made, so its results count as reviewed."""
+    if isinstance(caller, Agent):
+        raise HTTPException(status_code=403, detail="Only a member reviews a suite")
+    return await suites.review_suite(suite_id, reviewed_by=caller.id)
+
+
+@router.delete("/suites/{suite_id}", status_code=204, openapi_extra=OPEN_TO_AGENTS)
+@write_limit
+async def delete_dojo_suite(
+    request: Request,
+    suite_id: str,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Delete a suite with its studies and their runs. This cannot be undone.
+
+    A key deletes only a suite it made, holding only its own studies.
+    """
+    await suites.remove_suite(suite_id, caller)
+    return Response(status_code=204)
+
+
+@router.get(
+    "/suites/{suite_id}/comparison",
+    response_model=StudyComparison,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@read_limit
+async def compare_dojo_studies(
+    request: Request,
+    suite_id: str,
+    query: Annotated[StudyComparisonQuery, Query()],
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Two studies of a suite, dataset by dataset.
+
+    For `metric` (default `vus_pr`) each dataset gets the baseline's value,
+    the challenger's and their difference; `wins`, `losses` and `ties` count
+    the datasets, and `p_value` is the two-sided Wilcoxon signed-rank test of
+    the differences.
+    """
+    return await suites.compare_studies(suite_id, query)
+
+
+@router.get("/studies", response_model=StudyListPage, openapi_extra=OPEN_TO_AGENTS)
+@read_limit
+async def list_dojo_studies(
+    request: Request,
+    query: Annotated[StudyListQuery, Query()],
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Studies, newest first, optionally of one suite."""
+    return await suites.list_studies(query, caller)
+
+
+@router.post(
+    "/studies", response_model=StudyView, status_code=201, openapi_extra=OPEN_TO_AGENTS
+)
+@write_limit
+async def create_dojo_study(
+    request: Request,
+    study: StudyCreate,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Queue one design over every dataset of a suite, one run each.
+
+    `bindings` maps input slot ids to a series name looked up in every
+    dataset; a slot left out takes the series named like the slot, or a
+    dataset's only series when the design has one input. Every dataset must
+    bind, or nothing is queued. The study's runs take one place among the 20
+    that may wait or run at once, and the worker runs single runs first.
+    """
+    return await suites.create_study(
+        study, created_by=member_id(caller), created_by_agent=agent_of(caller)
+    )
+
+
+@router.get(
+    "/studies/{study_id}", response_model=StudyView, openapi_extra=OPEN_TO_AGENTS
+)
+@read_limit
+async def get_dojo_study(
+    request: Request,
+    study_id: str,
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """A study with each dataset's run and metrics.
+
+    Reading it calculates the metrics of finished runs for a few seconds;
+    `metrics_pending` counts those still to come, so read it again until it
+    is 0.
+    """
+    return await suites.get_study(study_id, calculate=True)
+
+
+@router.post(
+    "/studies/{study_id}/cancel",
+    response_model=StudyView,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@write_limit
+async def cancel_dojo_study(
+    request: Request,
+    study_id: str,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Cancel the study's waiting and running runs."""
+    return await suites.cancel_study(study_id, caller)
+
+
+@router.delete("/studies/{study_id}", status_code=204, openapi_extra=OPEN_TO_AGENTS)
+@write_limit
+async def delete_dojo_study(
+    request: Request,
+    study_id: str,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Delete a study and its runs. A key deletes only a study it queued."""
+    await suites.remove_study(study_id, caller)
+    return Response(status_code=204)

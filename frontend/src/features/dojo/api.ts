@@ -38,12 +38,24 @@ import type {
   RunResultsQuery,
   RunSteps,
   RunView,
+  StudyComparison,
+  StudyComparisonQuery,
+  StudyCreate,
+  StudyListPage,
+  StudyListQuery,
+  StudyView,
+  SuiteCreate,
+  SuiteListPage,
+  SuiteListQuery,
+  SuiteView,
 } from "@/types/dojo.generated";
 
 const base = "/v1/dojo";
 const segment = encodeURIComponent;
 const dataset = (id: string) => `${base}/datasets/${segment(id)}`;
 const run = (id: string) => `${base}/runs/${segment(id)}`;
+const suite = (id: string) => `${base}/suites/${segment(id)}`;
+const study = (id: string) => `${base}/studies/${segment(id)}`;
 // An upload may be 100 MB; the server copies it in one transaction.
 const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
@@ -114,4 +126,21 @@ export const dojoApi = {
   compare: (datasetId: string, runIds: string[], signal?: AbortSignal) =>
     apiUtils.get<Comparison>(`${dataset(datasetId)}/comparison?${
       new URLSearchParams(runIds.map(id => ["run_ids", id])).toString()}`, { signal }),
+
+  // A suite is a fixed list of datasets; a study runs one design over all of them.
+  suites: (query: SuiteListQuery = {}, signal?: AbortSignal) =>
+    apiUtils.get<SuiteListPage>(`${base}/suites`, { signal, params: query }),
+  suite: (id: string, signal?: AbortSignal) => apiUtils.get<SuiteView>(suite(id), { signal }),
+  createSuite: (request: SuiteCreate) => apiUtils.post<SuiteView>(`${base}/suites`, request),
+  deleteSuite: (id: string) => apiUtils.delete<void>(suite(id)),
+  reviewSuite: (id: string) => apiUtils.post<SuiteView>(`${suite(id)}/review`),
+  compareStudies: (suiteId: string, query: StudyComparisonQuery, signal?: AbortSignal) =>
+    apiUtils.get<StudyComparison>(`${suite(suiteId)}/comparison`, { signal, params: query }),
+  studies: (query: StudyListQuery = {}, signal?: AbortSignal) =>
+    apiUtils.get<StudyListPage>(`${base}/studies`, { signal, params: query }),
+  // Reading a study calculates the metrics its finished runs still lack, for a few seconds.
+  study: (id: string, signal?: AbortSignal) => apiUtils.get<StudyView>(study(id), { signal }),
+  createStudy: (request: StudyCreate) => apiUtils.post<StudyView>(`${base}/studies`, request),
+  cancelStudy: (id: string) => apiUtils.post<StudyView>(`${study(id)}/cancel`),
+  deleteStudy: (id: string) => apiUtils.delete<void>(study(id)),
 };

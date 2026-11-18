@@ -16,6 +16,9 @@ from off_key_core.db.models import (
     DojoRun,
     DojoRunResult,
     DojoSeries,
+    DojoStudy,
+    DojoSuite,
+    DojoSuiteDataset,
 )
 from off_key_core.models.dojo_runs import (
     BoundSeries,
@@ -254,7 +257,16 @@ def test_a_held_reading_keeps_pairing_after_it_stops_changing():
 
 async def create_tables(engine):
     async with engine.begin() as connection:
-        for table in (DojoDataset, DojoSeries, DojoPoint, DojoRun, DojoRunResult):
+        for table in (
+            DojoDataset,
+            DojoSeries,
+            DojoPoint,
+            DojoSuite,
+            DojoSuiteDataset,
+            DojoStudy,
+            DojoRun,
+            DojoRunResult,
+        ):
             await connection.run_sync(table.__table__.create)
 
 

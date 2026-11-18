@@ -15,6 +15,9 @@ from off_key_core.db.models import (
     DojoRun,
     DojoRunResult,
     DojoSeries,
+    DojoStudy,
+    DojoSuite,
+    DojoSuiteDataset,
     User,
 )
 from off_key_core.models.pipeline_calibration import CALIBRATORS
@@ -142,6 +145,9 @@ async def sessions(member_database, monkeypatch):
             DojoSeries,
             DojoPoint,
             DojoLabel,
+            DojoSuite,
+            DojoSuiteDataset,
+            DojoStudy,
             DojoRun,
             DojoRunResult,
         ):

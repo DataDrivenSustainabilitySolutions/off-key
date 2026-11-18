@@ -37,7 +37,7 @@ vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   points: vi.fn(), labels: vi.fn(), labelSuggestions: vi.fn(), createLabel: vi.fn(), createLabels: vi.fn(), changeLabel: vi.fn(), deleteLabel: vi.fn(), runs: vi.fn(), run: vi.fn(),
   pendingLabels: vi.fn(), proposeLabelsByRule: vi.fn(), acceptPendingLabels: vi.fn(), dismissPendingLabels: vi.fn(),
   createRun: vi.fn(), cancelRun: vi.fn(), deleteRun: vi.fn(), promoteRun: vi.fn(), results: vi.fn(), metrics: vi.fn(), compare: vi.fn(),
-  calibration: vi.fn(),
+  calibration: vi.fn(), suites: vi.fn(),
 } }));
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { catalog: vi.fn(), list: vi.fn(), get: vi.fn() } }));
 
@@ -78,6 +78,7 @@ beforeEach(() => {
   access.monitors = false;
   access.guest = false;
   vi.mocked(dojoApi.datasets).mockResolvedValue({ items: [dataset], next_offset: null });
+  vi.mocked(dojoApi.suites).mockResolvedValue({ items: [], next_offset: null });
   vi.mocked(dojoApi.dataset).mockResolvedValue(dataset);
   vi.mocked(dojoApi.labels).mockResolvedValue({ items: [label] });
   vi.mocked(dojoApi.labelSuggestions).mockResolvedValue({ items: [], truncated: false });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -9,9 +9,16 @@ import { PromoteRunDialog } from "./PromoteRunDialog";
 import { RunCreateDialog } from "./RunCreateDialog";
 import { formatInstant, isActive, resultKindLabel, runName, runState } from "./model";
 
-export function RunsPanel({ dataset, runs, onRunsChange }: {
+export function RunsPanel({ dataset, runs, current, onRunsChange }: {
   dataset: DatasetView; runs: RunSummary[]; onRunsChange: () => Promise<void>;
+  /** The run a link pointed to: marked and scrolled to once it is listed. */
+  current?: string;
 }) {
+  const currentRow = useRef<HTMLTableRowElement>(null);
+  const listed = runs.some(run => run.id === current);
+  useEffect(() => {
+    if (listed) currentRow.current?.scrollIntoView?.({ block: "center" });
+  }, [listed]);
   const { can } = useAuth();
   const [creating, setCreating] = useState(false);
   const [promoting, setPromoting] = useState<RunSummary | null>(null);
@@ -40,7 +47,9 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
         <thead><tr><th>Run</th><th>Status</th><th>Results</th><th>Alarms</th><th>Started</th><th><span className="ex-sr-only">Actions</span></th></tr></thead>
         <tbody>{runs.map(run => {
           const state = runState(run);
-          return <tr key={run.id}>
+          const picked = run.id === current;
+          return <tr key={run.id} ref={picked ? currentRow : undefined} className={picked ? "dj-row-current" : undefined}
+            aria-current={picked ? "true" : undefined}>
             <td>{runName(run)}<small>{resultKindLabel(run.strategy)}{run.compares_calibration && " · compares calibration methods"}{run.created_by_agent && ` · Agent · ${run.created_by_agent}`}</small></td>
             <td><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
               {run.error && <small title={run.error}>{run.error}</small>}</td>

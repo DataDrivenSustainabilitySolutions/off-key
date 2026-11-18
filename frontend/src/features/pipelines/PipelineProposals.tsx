@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, FlaskConical, Play, TriangleAlert, User } from "lucide-react";
 import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { RelativeTime } from "@/components/RelativeTime";
 import { getErrorMessage } from "@/lib/errors";
@@ -9,7 +10,7 @@ import type { MonitorCapacity, PipelineProposalSummary } from "@/types/pipelines
 import { pipelinesApi } from "./api";
 import { usePipelineApply } from "./applySession";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
-import { proposalOutcome } from "./proposals";
+import { proposalOutcome, testRunHref } from "./proposals";
 import { AuthorChip, RationaleFields } from "../workspace/RationaleCard";
 
 /** A note that an open proposal binds readings the catalogue no longer has. */
@@ -285,6 +286,8 @@ export function PipelineProposalNotice({ proposal, canDecide, onDeclined }: {
       </div>
     </details>
     {missing && <p className="pl-proposal-missing">{missing}</p>}
+    {proposal.test_run_id && <Link className="pl-proposal-test" to={testRunHref(proposal.test_run_id)}>
+      <FlaskConical size={13} aria-hidden="true" />See the test run</Link>}
     {open && canDecide && <DeclineProposal proposal={proposal} onDeclined={onDeclined} />}
   </div>;
 }

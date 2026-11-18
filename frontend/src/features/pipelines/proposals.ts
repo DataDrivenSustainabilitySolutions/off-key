@@ -11,6 +11,9 @@ export function proposalOutcome(proposal: PipelineProposalSummary): string {
   return proposal.decision_note ? `${outcome}: ${proposal.decision_note}` : outcome;
 }
 
+/** The Dojo's runs, with the test a proposal was handed in with picked out. */
+export const testRunHref = (runId: string) => `/dojo?run=${encodeURIComponent(runId)}`;
+
 /** How many proposals wait for a decision; read when enabled and every minute while the page shows. */
 export function useOpenProposals(enabled: boolean): number {
   const [count, setCount] = useState(0);

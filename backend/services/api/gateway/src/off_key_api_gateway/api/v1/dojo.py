@@ -53,6 +53,7 @@ from off_key_core.schemas.dojo import (
     RunResultsQuery,
     RunSteps,
     RunView,
+    SeriesProfile,
     StudyComparison,
     StudyComparisonQuery,
     StudyCreate,
@@ -327,6 +328,23 @@ async def list_dojo_points(
     last page.
     """
     return await datasets.points(dataset_id, series_id, query)
+
+
+@router.get(
+    "/datasets/{dataset_id}/series/{series_id}/profile",
+    response_model=SeriesProfile,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@read_limit
+async def profile_dojo_series(
+    request: Request,
+    dataset_id: str,
+    series_id: str,
+    datasets: DojoDatasets = Depends(get_dojo_datasets),
+):
+    """How a series relates to its own past: autocorrelation, suggested lags
+    and cycles, from its first values and over the whole series."""
+    return await datasets.profile(dataset_id, series_id)
 
 
 @router.get(

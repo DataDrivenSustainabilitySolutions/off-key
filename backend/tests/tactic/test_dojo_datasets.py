@@ -1,5 +1,6 @@
 """Dojo datasets: CSV parsing, frozen copies of history, and admin-only routes."""
 
+import math
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -221,6 +222,33 @@ async def test_csv_import_stores_series_and_pages_points(dojo_database, monkeypa
     assert [item.value for item in rest.items] == [3, 4]
     assert rest.next_after is None
     assert [(item.id, item.series_count) for item in listed.items] == [(view.id, 2)]
+
+
+@pytest.mark.asyncio
+async def test_a_series_profile_reads_its_first_values(dojo_database, monkeypatch):
+    monkeypatch.setattr(dataset_module, "PROFILE_POINTS", 200)
+    rows = "\n".join(
+        f"{(T0 + timedelta(hours=i)).isoformat()},{math.sin(2 * math.pi * i / 24)}"
+        for i in range(240)
+    )
+    async with dojo_database() as session:
+        view = await DojoDatasets(session).import_csv(
+            f"time,load\n{rows}\n".encode(),
+            CsvImportQuery(name="Load"),
+            created_by=None,
+        )
+    async with dojo_database() as session:
+        service = DojoDatasets(session)
+        profile = await service.profile(view.id, view.series[0].id)
+        with pytest.raises(NotFoundError):
+            await service.profile("elsewhere", view.series[0].id)
+    assert (profile.name, profile.count, profile.interval_seconds) == (
+        "load",
+        240,
+        3600,
+    )
+    assert profile.autocorrelation[0].seasons[0].observations == 24
+    assert profile.notes == ["The profile reads the first 200 of 240 values."]
 
 
 @pytest.mark.asyncio

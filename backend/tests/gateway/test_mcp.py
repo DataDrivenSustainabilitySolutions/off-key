@@ -46,6 +46,7 @@ WITHOUT_THE_GRANT = [
     "delete_mine",
     "get_dataset",
     "get_dataset_values",
+    "profile_series",
     "propose_labels",
     "get_suite",
     "create_suite",
@@ -1385,6 +1386,12 @@ async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
         "items": [{"timestamp": THEN, "value": 81.5}],
         "next_after": None,
     }
+    stores.datasets.profile.return_value = {
+        "series_id": "s1",
+        "name": "motor temperature",
+        "count": 500,
+        "notes": ["It follows a cycle of 24 steps."],
+    }
     made = {"items": [pending], "skipped": 0, "truncated": False, "replaced": 0}
     stores.pending.propose.return_value = made
     stores.pending.propose_by_rule.return_value = made
@@ -1398,6 +1405,11 @@ async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
         )
         unknown = await client.call_tool(
             "get_dataset_values", {"dataset_id": "d1", "series": "speed"}
+        )
+        profile = said(
+            await client.call_tool(
+                "profile_series", {"dataset_id": "d1", "series": "motor temperature"}
+            )
         )
         by_rule = said(
             await client.call_tool(
@@ -1426,6 +1438,8 @@ async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
     assert values["rows"] == [[SAID, 81.5]]
     assert stores.datasets.points.await_args.args[:2] == ("d1", "s1")
     assert unknown.is_error and "motor temperature" in said(unknown)
+    assert profile["count"] == 500 and profile["autocorrelation"] == []
+    assert stores.datasets.profile.await_args.args == ("d1", "s1")
     assert by_rule == intervals
     assert [item["rule"] for item in by_rule["items"]] == ["`motor temperature` > 80"]
     assert both.is_error

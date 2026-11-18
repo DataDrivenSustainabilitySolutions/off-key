@@ -279,3 +279,58 @@
 .dark .pl-notice {
   color: #86efac;
 }
+
+.pl-lag-context {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid hsl(var(--border));
+}
+.pl-lag-context h4 {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.pl-lag-context .pl-help {
+  margin: 0;
+}
+.pl-correlogram {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+.pl-correlogram figcaption,
+.pl-correlogram small {
+  font-size: var(--text-caption);
+  color: hsl(var(--muted-foreground));
+}
+.pl-correlogram svg {
+  width: 100%;
+  height: 64px;
+}
+.pl-correlogram-band {
+  fill: hsl(var(--muted-foreground) / 0.12);
+}
+.pl-correlogram-axis {
+  stroke: hsl(var(--border));
+  stroke-width: 1;
+}
+.pl-correlogram-bar {
+  fill: hsl(var(--primary));
+}
+.pl-correlogram-hit {
+  fill: transparent;
+}
+.pl-correlogram-hit:hover {
+  fill: hsl(var(--foreground) / 0.06);
+}
+.pl-lag-suggestion {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.pl-lag-suggestion button {
+  flex: none;
+}

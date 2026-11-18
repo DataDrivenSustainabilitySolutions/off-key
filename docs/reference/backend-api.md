@@ -200,6 +200,24 @@ The window fields come from the lowest and highest value of each bucket, so
 they hold for windows of any length. `recent` looks at the newest values one by
 one, up to 5000 of them. A window without values answers with nulls.
 
+`autocorrelation` says how the reading relates to its own past, as context for
+lags, a season or a subsequence length. Its first entry reads the newest
+values, its second the window's buckets, so it spans daily and weekly cycles.
+Each puts the values on an even grid of `step_seconds` (the last value at or
+before each step; `regular` says the values arrived evenly) and gives `acf`
+and `pacf` from lag 1, a `bound` beyond which a value differs from noise,
+`suggested_lags` by partial autocorrelation, `seasons` from the peaks of the
+autocorrelation, and `persistent` where it stays above 0.7 twenty lags back: a
+level that wanders, which a Change step or a forecaster takes out before lags
+or a detector. A Dojo series has the same profile:
+
+```http
+GET /v1/dojo/datasets/{dataset_id}/series/{series_id}/profile
+```
+
+It reads the first 200,000 values: its first entry the first 4096 of them,
+where a design learns, its second all of them on a coarser grid.
+
 Measurement cursors:
 
 - Use `after_timestamp` for historical event-time pagination.
@@ -511,6 +529,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset with its values and runs; 204. A key deletes only a dataset it made that holds only runs it queued (403 otherwise), none of them a test a monitor or an open or accepted proposal names (409) | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Values of one series in time order | `after`, `limit` (at most 10,000); continue with `next_after` |
+| `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/profile` | How a series relates to its own past: autocorrelation, suggested lags and cycles | Reads the first 200,000 values |
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | The dataset's labels, ordered by start | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Alarms live monitors recorded on the readings the dataset was copied from, inside its span, grouped into episodes as candidate labels; nothing is stored, and an upload gets none | Optional `gap_seconds` (default 600): alarms closer together form one suggestion |
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Mark a known problem as an interval | Body: `start_at`, `end_at`, optional `note` |
@@ -646,7 +665,7 @@ hold open and any replica answers any request.
 | `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised, and when; with `faults`, over a copy with labelled faults written in, and how many it caught and how late. Given a `dataset_id`, it binds a series by reading or by name, so uploaded and benchmark series can be tested too | `POST /dojo/datasets/history`, `POST /dojo/datasets/{dataset_id}/faults`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` and `/results` |
 | `propose_design`, `list_proposals`, `withdraw_proposal` | Hands a design to a member and learns what they decided | `/pipeline-proposals` |
 | `list_my_tests`, `delete_mine` | Cleans up after itself: lists the datasets and tests its key made, and deletes one of them, cancelling a test or study that still runs; a suite holding only its own studies; or a proposal of its own once withdrawn or declined. Nothing a member or another key made can be deleted, nor a monitor, alarm or reading, nor a test a monitor or an open or accepted proposal names as evidence | `GET /dojo/datasets` and `GET /dojo/runs` with `mine`, `POST /dojo/runs/{run_id}/cancel`, `DELETE /dojo/runs/{run_id}`, `DELETE /dojo/datasets/{dataset_id}`, `GET /dojo/studies`, `GET /dojo/studies/{study_id}`, `POST /dojo/studies/{study_id}/cancel`, `DELETE /dojo/studies/{study_id}`, `DELETE /dojo/suites/{suite_id}`, `DELETE /pipeline-proposals/{proposal_id}` |
-| `get_dataset`, `get_dataset_values`, `propose_labels` | Labels a Dojo dataset on request: reads its series, labels and waiting labels, pages through a series' values, and proposes labels where a condition holds or as intervals it chose, which wait for a member to add or dismiss | `GET /dojo/datasets`, `GET /dojo/datasets/{dataset_id}` and its `/labels`, `/pending-labels` and `/series/{series_id}/points`, `POST /dojo/datasets/{dataset_id}/pending-labels` and `/by-rule` |
+| `get_dataset`, `get_dataset_values`, `profile_series`, `propose_labels` | Labels a Dojo dataset on request: reads its series, labels and waiting labels, pages through a series' values, profiles how a series relates to its own past, and proposes labels where a condition holds or as intervals it chose, which wait for a member to add or dismiss | `GET /dojo/datasets`, `GET /dojo/datasets/{dataset_id}` and its `/labels`, `/pending-labels`, `/series/{series_id}/points` and `/series/{series_id}/profile`, `POST /dojo/datasets/{dataset_id}/pending-labels` and `/by-rule` |
 | `get_suite`, `create_suite`, `run_study`, `get_study` | Chooses between candidate designs on many labelled datasets: lists suites or reads one with its ranked studies, gathers datasets into a suite that waits for a member's review, or labelled copies of one dataset with drawn faults to test on unlabelled history, replays one design over every dataset of a suite, and reads a study once its runs end, paired with another complete study by dataset with a Wilcoxon signed-rank p-value when asked | `GET /dojo/suites`, `GET /dojo/suites/{suite_id}` and its `/comparison`, `POST /dojo/suites` and `/suites/faults`, `POST /dojo/studies`, `GET /dojo/studies/{study_id}` |
 | `start_monitor`, `get_start` | Starts a monitor without a member's decision, in shadow with `shadow` set | `POST /pipelines/apply`, `GET /pipeline-activations/{activation_id}` |
 

@@ -15,6 +15,7 @@ from itertools import pairwise
 from statistics import fmean, median
 
 from ..schemas.devices import ReadingProfile, RecentValues
+from .autocorrelation import autocorrelation
 
 DAY = timedelta(days=1)
 # A window is cut into at most this many stretches, none shorter than the first.
@@ -189,6 +190,15 @@ def profile_reading(
         profile.weekly_rhythm = _explained(
             levels, [(at.weekday(), at.hour) for at in middles]
         )
+    # The newest values show short lags; the window's buckets show daily and
+    # weekly cycles that the newest values are too few to span.
+    newest_points = [(at, value) for at, value in inside if value is not None]
+    window_points = list(zip(middles, levels, strict=True))
+    profile.autocorrelation = [
+        item
+        for item in (autocorrelation(newest_points), autocorrelation(window_points))
+        if item is not None
+    ]
     profile.notes = _notes(profile, span, len(newest) >= RECENT_VALUES)
     return profile
 
@@ -267,9 +277,34 @@ def _notes(profile: ReadingProfile, span: timedelta, capped: bool) -> list[str]:
             f"{recent.first.isoformat()} only, so its median and percentiles "
             "describe those; minimum and maximum describe the whole window."
         )
+    notes.extend(_time_notes(profile))
     if capped and profile.recent:
         notes.append(
             f"recent looks at the newest {RECENT_VALUES} values only, from "
             f"{profile.recent.first.isoformat()}; get_values reads older ones."
         )
+    return notes
+
+
+def _time_notes(profile: ReadingProfile) -> list[str]:
+    """What the autocorrelation says to take out before a detector scores."""
+    notes = []
+    if any(item.persistent for item in profile.autocorrelation):
+        notes.append(
+            "The values wander: autocorrelation stays high many lags back. A "
+            "detector that treats observations as unrelated then scores the "
+            "level, not what is unusual. Take the time out first, with a "
+            "difference (Change), a forecaster or lags, and prefer a boundary "
+            "that adapts over a split fixed at training."
+        )
+    for item in profile.autocorrelation:
+        if item.seasons:
+            season = item.seasons[0]
+            notes.append(
+                f"A cycle of {_duration(season.seconds)} "
+                f"({season.observations} steps of {_duration(item.step_seconds)}, "
+                f"autocorrelation {season.strength:g}): a seasonal forecaster's "
+                "season length, a matrix profile's or DAMP's subsequence length, "
+                "or a lag of that time."
+            )
     return notes

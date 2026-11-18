@@ -36,6 +36,7 @@ import { starterTemplate, withoutDetector } from "./detectorSlot";
 import { startupEstimate } from "./startup";
 import { DesignTestContext, type DesignEvidence } from "./designTest";
 import { downloadDesign, openDesignFile } from "./designFile";
+import { LagReadingsContext } from "./lagContext";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -156,6 +157,10 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const differs = comparison && comparisonSummary(comparison);
   const slots = draft.document.definition.input_slots;
   const bindings = Object.fromEntries(slots.filter((slot) => draft.bindings?.[slot.id]).map((slot) => [slot.id, draft.bindings![slot.id]!]));
+  const boundKey = Object.values(bindings).join();
+  // The bound readings, labelled, so steps such as Lags can show how each relates to its past.
+  const lagReadings = useMemo(() => (boundKey ? boundKey.split(",") : []).map((id) => ({ id,
+    label: target?.inputs.find((input) => input.stream.id === id)?.stream.label ?? id })), [boundKey, target]);
   const validateGraph = () => graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected));
   const owned = readingOwnedElsewhere(props.services, props.byStream, replaceService?.id);
   const ready = bindingsReady(slots, target, bindings, owned);
@@ -327,6 +332,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     </div>
   </>;
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
+    <LagReadingsContext.Provider value={lagReadings}>
     <PipelineWorkbench stage header={header} catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
       inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
       brief={props.brief && { label: props.brief.label,
@@ -366,6 +372,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
           commit(document, history);
           if (document.definition.input_slots !== slots) setDraft((previous) => ({ ...previous, startingId: undefined }));
         }} />} />
+    </LagReadingsContext.Provider>
     {confirmation}
   </section>;
 }

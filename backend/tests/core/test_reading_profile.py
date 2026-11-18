@@ -58,6 +58,7 @@ def test_a_window_without_values_answers_with_nulls():
         "weekly_rhythm": None,
         "level_change": None,
         "recent": None,
+        "autocorrelation": [],
         "notes": ["The window holds no value of this reading."],
     }
 
@@ -260,3 +261,27 @@ def test_a_recent_view_of_a_short_stretch_says_what_it_describes():
         item for item in profile.notes if item.startswith("recent holds 3 values")
     ]
     assert "minimum and maximum describe the whole window" in note
+
+
+def test_a_daily_cycle_and_a_wandering_level_are_named_with_what_to_do():
+    start, end = window(28)
+    cyclic = profile_reading("r1", start, end, extremes(start, end, daily), [])
+    assert cyclic.autocorrelation
+    # The window's buckets are a fixed share of it, so a day is a day to a step.
+    assert any(
+        abs(season.seconds - 86400) <= item.step_seconds
+        for item in cyclic.autocorrelation
+        for season in item.seasons
+    )
+    assert any("subsequence length" in note for note in cyclic.notes)
+
+    noise = random.Random(11)
+    level = [50.0]
+
+    def wandering(at):
+        level[0] += noise.gauss(0, 1)
+        return level[0], level[0] + 0.1
+
+    wanders = profile_reading("r1", start, end, extremes(start, end, wandering), [])
+    assert any(item.persistent for item in wanders.autocorrelation)
+    assert any("values wander" in note for note in wanders.notes)

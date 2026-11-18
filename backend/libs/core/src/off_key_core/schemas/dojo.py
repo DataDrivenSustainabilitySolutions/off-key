@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .devices import Autocorrelation
 from .pipelines import PipelineDefinition, PipelineNodePreview
 
 # One dataset stays a size a single comparison run can replay quickly.
@@ -304,6 +305,28 @@ class DatasetPointsPage(DojoModel):
     next_after: datetime | None = Field(
         default=None, description="Pass as 'after' to read the next page."
     )
+
+
+class SeriesProfile(DojoModel):
+    """What a series looks like over time, so a design can be fitted to it."""
+
+    series_id: str
+    name: str
+    count: int = Field(description="Values in the series.")
+    first: datetime | None = None
+    last: datetime | None = None
+    interval_seconds: float | None = Field(
+        default=None, description="The usual time between two values."
+    )
+    autocorrelation: list[Autocorrelation] = Field(
+        default_factory=list,
+        description=(
+            "How the series relates to its own past: over its first values, "
+            "where a design learns, then over the whole series on a coarser "
+            "grid. Empty where too few values vary."
+        ),
+    )
+    notes: list[str] = Field(default_factory=list)
 
 
 class RunAlignment(DojoModel):

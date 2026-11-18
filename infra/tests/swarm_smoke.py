@@ -19,11 +19,9 @@ from pathlib import Path
 import yaml
 from rehearsal_releases import (
     build_local_images,
-    compatible_release,
     push_loaded_images,
     record_cutover,
     release_model,
-    selected_release,
     stop_registry,
 )
 from support import ROOT, render, run
@@ -393,12 +391,6 @@ def prepare(directory):
         "networks": ["app-network"],
     }
     expose_rehearsal_ports(model)
-    # The compatible release predates broker routes and ignores their secret. An
-    # allowlist entry lets it dial the test broker directly; the current release
-    # still takes the route, whose proxy wins over a direct connection.
-    model["services"]["tactic"]["environment"].update(
-        SYSTEM_LIVE_ALLOWED_HOSTS='["source-broker"]'
-    )
     used_configs = {
         item["source"]
         for service in model["services"].values()
@@ -490,9 +482,9 @@ def prepare(directory):
     print("Production Swarm is ready for the existing E2E suite", flush=True)
 
 
-def redeploy(directory, restore, target="current"):
+def redeploy(directory, restore):
     model_path = directory / "stack/deployment-model.json"
-    release = selected_release(directory, target)
+    release = json.loads((directory / "production-release.json").read_text())["release"]
     inputs_path = directory / "inputs.json"
     inputs = json.loads(inputs_path.read_text())
     inputs["release"] = release
@@ -506,7 +498,7 @@ def redeploy(directory, restore, target="current"):
     model_path.write_text(json.dumps(model))
     report(
         directory,
-        f"Redeployment of the {target} release"
+        "Redeployment of the current release"
         + (" with a PostgreSQL restore" if restore else ""),
     )
     deploy(
@@ -517,7 +509,7 @@ def redeploy(directory, restore, target="current"):
     )
     ready(directory)
     deploy(directory, "verify", persist_postgres=not restore)
-    record_cutover(directory, release, target, restore, STACK)
+    record_cutover(directory, release, restore, STACK)
     print(
         f"Production deployment and verification completed: {release['application_revision']}",
         flush=True,
@@ -650,23 +642,15 @@ def assert_replaced_stopped_before_successor(path: Path, replaced: list[str]) ->
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "action", choices=("prepare", "prepare-rollback", "redeploy", "cleanup")
-    )
+    parser.add_argument("action", choices=("prepare", "redeploy", "cleanup"))
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--restore", action="store_true")
-    parser.add_argument("--reference-repository", type=Path)
-    parser.add_argument(
-        "--release", choices=("current", "compatible"), default="current"
-    )
     args = parser.parse_args()
     args.directory = args.directory.resolve()
     args.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.action == "prepare":
         prepare(args.directory)
-    elif args.action == "prepare-rollback":
-        compatible_release(args.directory, PROJECT, args.reference_repository)
     elif args.action == "redeploy":
-        redeploy(args.directory, args.restore, args.release)
+        redeploy(args.directory, args.restore)
     else:
         cleanup(args.directory)

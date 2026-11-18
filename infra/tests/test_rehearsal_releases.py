@@ -1,4 +1,4 @@
-"""Guard the two-release rehearsal's schema floor and coupled image selection."""
+"""Guard the rehearsal's image builds and coupled image selection."""
 
 import json
 import subprocess
@@ -13,8 +13,6 @@ import rehearsal_releases
 from rehearsal_releases import (
     MODEL_SERVICES,
     release_model,
-    selected_release,
-    validate_compatible_source,
 )
 
 
@@ -28,23 +26,13 @@ class RehearsalReleaseTests(unittest.TestCase):
             )
         )
 
-    def test_current_builds_only_read_caches_and_rollback_writes_its_own_scope(self):
+    def test_rehearsal_builds_only_read_the_ci_image_caches(self):
         current = rehearsal_releases.build_cache_options(
             "off-key-api-gateway", "a" * 40
         )
         self.assertNotIn("--cache-to", current)
         self.assertIn("type=gha,version=2,scope=docker-validate-api-gateway", current)
         self.assertIn("type=gha,version=2,scope=docker-publish-api-gateway", current)
-        rollback = rehearsal_releases.build_cache_options(
-            "off-key-api-gateway", rehearsal_releases.COMPATIBLE_REVISION
-        )
-        destination = rollback[rollback.index("--cache-to") + 1]
-        self.assertIn(
-            f"scope=docker-rollback-{rehearsal_releases.COMPATIBLE_REVISION}-api-gateway",
-            destination,
-        )
-        self.assertIn("mode=max", destination)
-        self.assertIn("ignore-error=true", destination)
 
     def test_cached_and_local_builds_keep_the_same_production_inputs(self):
         revision = "a" * 40
@@ -88,42 +76,6 @@ class RehearsalReleaseTests(unittest.TestCase):
                         self.assertIn(argument, build)
                     self.assertEqual(build[-1], "/source/backend")
                     self.assertEqual(release["images"], {"api": digest})
-
-    def test_documentation_rollback_build_uses_the_selected_source_tree(self):
-        digest = "localhost:5010/off-key-docs@sha256:" + "b" * 64
-        with (
-            patch.object(rehearsal_releases, "start_registry"),
-            patch.object(
-                rehearsal_releases, "BUILDS", {"docs": ("off-key-docs", "docs")}
-            ),
-            patch.object(
-                rehearsal_releases,
-                "run",
-                return_value=SimpleNamespace(stdout=json.dumps([digest])),
-            ) as docker,
-        ):
-            release = {"images": {}}
-            rehearsal_releases.build_local_images(
-                release, rehearsal_releases.COMPATIBLE_REVISION, Path("/older-source")
-            )
-            build = docker.call_args_list[0].args
-            self.assertEqual(build[-1], "/older-source")
-            self.assertEqual(
-                build[build.index("-f") + 1],
-                str(rehearsal_releases.ROOT.parent / "dev/docs/Dockerfile"),
-            )
-            self.assertEqual(release["images"]["docs"], digest)
-
-    def test_reference_archive_refuses_missing_or_unreviewed_repository(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            with self.assertRaisesRegex(ValueError, "does not exist"):
-                rehearsal_releases.archive_compatible_source(
-                    directory, directory / "missing"
-                )
-            with self.assertRaisesRegex(ValueError, "reviewed compatible commit"):
-                rehearsal_releases.archive_compatible_source(directory, directory)
-            self.assertFalse((directory / "compatible-source").exists())
 
     def test_foreign_registry_name_is_never_deleted_even_after_prepare_rejection(self):
         inspected = SimpleNamespace(
@@ -201,70 +153,6 @@ class RehearsalReleaseTests(unittest.TestCase):
             selected["services"]["dojo-worker"]["image"],
             release["images"]["mqtt_radar"],
         )
-
-    def test_release_selection_reads_the_requested_immutable_manifest(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            for name, revision in (("production", "new"), ("compatible", "older")):
-                (directory / f"{name}-release.json").write_text(
-                    json.dumps({"release": {"application_revision": revision}})
-                )
-            self.assertEqual(
-                selected_release(directory, "compatible")["application_revision"],
-                "older",
-            )
-            self.assertEqual(
-                selected_release(directory, "current")["application_revision"], "new"
-            )
-            with self.assertRaisesRegex(ValueError, "current or compatible"):
-                selected_release(directory, "unreviewed")
-
-    def test_changed_migration_or_numeric_dependency_rejects_the_rollback_reference(
-        self,
-    ):
-        paths = [
-            "backend/libs/core/src/off_key_core/models/adaptive_catalog.json",
-            "backend/libs/core/src/off_key_core/db/migrations/000_baseline.sql",
-        ]
-
-        def lock(aberrant, fastapi):
-            return "".join(
-                f'[[package]]\nname = "{name}"\nversion = "{version}"\n\n'
-                for name, version in (("aberrant", aberrant), ("fastapi", fastapi))
-            )
-
-        with tempfile.TemporaryDirectory() as temporary:
-            source, current = Path(temporary) / "older", Path(temporary) / "current"
-            for root in (source, current):
-                for name in paths:
-                    path = root / name
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("reviewed contract")
-                (root / "backend/uv.lock").write_text(lock("1.3.0", "0.143.0"))
-            validate_compatible_source(source, current)
-            for name in paths:
-                path = current / name
-                path.write_text("unreviewed contract")
-                with self.assertRaisesRegex(ValueError, "Review a new compatible"):
-                    validate_compatible_source(source, current)
-                path.write_text("reviewed contract")
-            # Unrelated dependency bumps no longer require a new reference.
-            locked = current / "backend/uv.lock"
-            locked.write_text(lock("1.3.0", "0.143.2"))
-            validate_compatible_source(source, current)
-            locked.write_text(lock("1.4.0", "0.143.2"))
-            with self.assertRaisesRegex(ValueError, "locked Aberrant differs"):
-                validate_compatible_source(source, current)
-            locked.write_text('[[package]]\nname = "fastapi"\nversion = "1"\n')
-            with self.assertRaisesRegex(ValueError, "reviewed numerical libraries"):
-                validate_compatible_source(source, current)
-            locked.write_text(lock("1.3.0", "0.143.0"))
-            (
-                current
-                / "backend/libs/core/src/off_key_core/db/migrations/001_future.sql"
-            ).write_text("new schema")
-            with self.assertRaisesRegex(ValueError, "different migration ledger"):
-                validate_compatible_source(source, current)
 
 
 REVISION = "c" * 40

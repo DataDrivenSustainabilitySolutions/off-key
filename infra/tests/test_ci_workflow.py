@@ -235,7 +235,7 @@ class CiWorkflowTests(unittest.TestCase):
         # The marker alone selects the deployment tests, and none may be skipped.
         self.assertIn("pytest -m deployment -q --tb=short --junitxml", rehearsal)
         self.assertIn("require_executed_tests.py", rehearsal)
-        self.assertIn("swarm_smoke.py prepare-rollback", rehearsal)
+        self.assertNotIn("prepare-rollback", rehearsal)
         # That lane only signs the operator in; every journey runs in the other.
         self.assertIn("playwright test --project=auth-setup", rehearsal)
         self.assertNotIn("npm run test:e2e", rehearsal)
@@ -400,13 +400,7 @@ class CiWorkflowTests(unittest.TestCase):
             for step in job.get("steps", [])
             if step.get("uses") == "./.github/actions/run-with-build-cache"
         }
-        self.assertEqual(
-            cached,
-            {
-                "Build every application image once",
-                "Build the reviewed compatible binary rollback reference",
-            },
-        )
+        self.assertEqual(cached, {"Build every application image once"})
 
     def test_radar_image_selection_runs_on_push_and_pull_request(self):
         step = next(

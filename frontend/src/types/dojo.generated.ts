@@ -148,6 +148,14 @@ export type LabelOutcome = {
   delay_seconds: number | null;
 };
 
+export type LabelRule = {
+  condition: string;
+  min_duration_seconds?: number;
+  merge_gap_seconds?: number;
+  note?: string;
+  replace?: boolean;
+};
+
 export type LabelSuggestion = {
   start_at: string;
   end_at: string;
@@ -171,6 +179,8 @@ export type LabelView = {
   start_at: string;
   end_at: string;
   note: string;
+  rule?: string;
+  suggested_by_agent?: string | null;
   created_by: number | null;
   created_at: string;
 };
@@ -212,6 +222,50 @@ export type OutlineBucket = {
   threshold_min: number | null;
   threshold_max: number | null;
   alarms: number;
+};
+
+export type PendingLabelAccept = {
+  items: Array<PendingLabelChoice>;
+};
+
+export type PendingLabelChoice = {
+  id: string;
+  start_at?: string | null;
+  end_at?: string | null;
+  note?: string | null;
+};
+
+export type PendingLabelDismiss = {
+  ids: Array<string>;
+};
+
+export type PendingLabelList = {
+  items: Array<PendingLabelView>;
+};
+
+export type PendingLabelProposal = {
+  labels: Array<LabelCreate>;
+  rule?: string;
+  replace?: boolean;
+};
+
+export type PendingLabelView = {
+  id: string;
+  dataset_id: string;
+  start_at: string;
+  end_at: string;
+  note: string;
+  rule: string;
+  created_by: number | null;
+  created_by_agent: string | null;
+  created_at: string;
+};
+
+export type PendingLabelsMade = {
+  items: Array<PendingLabelView>;
+  skipped: number;
+  truncated: boolean;
+  replaced: number;
 };
 
 export type PromotedBinding = {

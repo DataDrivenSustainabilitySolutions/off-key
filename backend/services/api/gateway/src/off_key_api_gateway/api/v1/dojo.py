@@ -26,10 +26,16 @@ from off_key_core.schemas.dojo import (
     LabelChange,
     LabelCreate,
     LabelList,
+    LabelRule,
     LabelSuggestionList,
     LabelSuggestionQuery,
     LabelView,
     MethodComparison,
+    PendingLabelAccept,
+    PendingLabelDismiss,
+    PendingLabelList,
+    PendingLabelProposal,
+    PendingLabelsMade,
     RunCreate,
     RunListPage,
     RunListQuery,
@@ -46,12 +52,14 @@ from off_key_core.schemas.dojo import (
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
+from off_key_tactic_middleware.services.dojo.pending_labels import DojoPendingLabels
 from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 
 from ...providers import (
     get_dojo_datasets,
     get_dojo_labels,
     get_dojo_metrics,
+    get_dojo_pending_labels,
     get_dojo_runs,
 )
 from ..access import agent_of, caller_key, member_id, require_permission
@@ -329,6 +337,104 @@ async def create_dojo_labels(
     """
     created = await labels.create_many(dataset_id, batch.labels, created_by=user.id)
     return LabelList(items=created)
+
+
+@router.get(
+    "/datasets/{dataset_id}/pending-labels",
+    response_model=PendingLabelList,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@read_limit
+async def list_dojo_pending_labels(
+    request: Request,
+    dataset_id: str,
+    pending: DojoPendingLabels = Depends(get_dojo_pending_labels),
+):
+    """Labels members and agents proposed, waiting for a member to add or
+    dismiss them. They score no run until added."""
+    return await pending.list(dataset_id)
+
+
+@router.post(
+    "/datasets/{dataset_id}/pending-labels",
+    response_model=PendingLabelsMade,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@write_limit
+async def propose_dojo_labels(
+    request: Request,
+    dataset_id: str,
+    proposal: PendingLabelProposal,
+    caller: User | Agent = Depends(use_dojo),
+    pending: DojoPendingLabels = Depends(get_dojo_pending_labels),
+):
+    """Propose up to 200 intervals as labels, for a member to review.
+
+    Say in `rule` how they were chosen. Intervals that overlap a label are
+    left out and counted in `skipped`. With `replace`, your own pending labels
+    on the dataset are dismissed first; with no intervals, that withdraws them.
+    """
+    return await pending.propose(dataset_id, proposal, caller)
+
+
+@router.post(
+    "/datasets/{dataset_id}/pending-labels/by-rule",
+    response_model=PendingLabelsMade,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@write_limit
+async def propose_dojo_labels_by_rule(
+    request: Request,
+    dataset_id: str,
+    rule: LabelRule,
+    caller: User | Agent = Depends(use_dojo),
+    pending: DojoPendingLabels = Depends(get_dojo_pending_labels),
+):
+    """Propose a label for every interval where a condition over the
+    dataset's series holds, for a member to review.
+
+    The condition is written as a Gate step writes one, with the series by
+    name. Up to 200 intervals are proposed, the earliest first; those that
+    overlap a label are left out.
+    """
+    return await pending.propose_by_rule(dataset_id, rule, caller)
+
+
+@router.post(
+    "/datasets/{dataset_id}/pending-labels/accept",
+    response_model=LabelList,
+    status_code=201,
+)
+@write_limit
+async def accept_dojo_pending_labels(
+    request: Request,
+    dataset_id: str,
+    choice: PendingLabelAccept,
+    user: User = Depends(use_dojo),
+    pending: DojoPendingLabels = Depends(get_dojo_pending_labels),
+):
+    """Add pending labels as labels, each changed first if given.
+
+    All of them are added, or none when one is refused, as with a batch of
+    labels. A label keeps the rule that found it and the agent that proposed it.
+    """
+    added = await pending.accept(dataset_id, choice, created_by=user.id)
+    return LabelList(items=added)
+
+
+@router.post("/datasets/{dataset_id}/pending-labels/dismiss", status_code=204)
+@write_limit
+async def dismiss_dojo_pending_labels(
+    request: Request,
+    dataset_id: str,
+    dismissal: PendingLabelDismiss,
+    pending: DojoPendingLabels = Depends(get_dojo_pending_labels),
+):
+    """Dismiss pending labels without adding them."""
+    await pending.dismiss(dataset_id, dismissal)
+    return Response(status_code=204)
 
 
 @router.patch("/datasets/{dataset_id}/labels/{label_id}", response_model=LabelView)

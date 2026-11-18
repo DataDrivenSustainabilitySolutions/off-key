@@ -97,6 +97,14 @@ A warning that observations "are skipped" means nothing is scored for them, \
 such as a division by 0. When that case is the incident (zero messages from a \
 broker), score it: write the case with if, or add a rule branch for it.
 
+Labelling: a label marks a known problem on a Dojo dataset as a time \
+interval, and runs on the dataset are scored against the labels. Asked to \
+label where some conditions hold, find the dataset and its series with \
+get_dataset and pass the conditions to propose_labels. When they cannot be \
+written as one condition, read get_dataset_values, work the intervals out and \
+propose those, saying in `rule` how. A member adds or dismisses each; \
+get_dataset shows which still wait.
+
 Pass a design between tools as you received it: keep `definition` and `layout` \
 together, and let edit_design make a change instead of rewriting them by hand.\
 """
@@ -1139,6 +1147,114 @@ async def delete_mine(api: Api, args: Mine):
         await _ended(api, await api.get(path))
         await api.delete(path)
     return {"deleted": named}
+
+
+class DatasetRef(Args):
+    dataset_id: str | None = Field(default=None, description="Out: list them.")
+
+
+@tool(DatasetRef)
+async def get_dataset(api: Api, args: DatasetRef):
+    """Without an id, the Dojo's datasets, the newest first. With one, its
+    series, its labels and the labels proposed for it that still wait."""
+    if args.dataset_id is None:
+        page = await api.get("/v1/dojo/datasets", {"limit": 100})
+        keys = ("id", "name", "description", "start_at", "end_at")
+        return {
+            "datasets": [{key: item[key] for key in keys} for item in page["items"]]
+        }
+    path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}"
+    dataset = await api.get(path)
+    keys = ("id", "start_at", "end_at", "note", "rule")
+    return {
+        "id": dataset["id"],
+        "name": dataset["name"],
+        "series": [
+            {key: item[key] for key in ("name", "unit", "start_at", "end_at")}
+            for item in dataset["series"]
+        ],
+        "labels": [
+            {key: item.get(key) for key in (*keys, "suggested_by_agent")}
+            for item in (await api.get(f"{path}/labels"))["items"]
+        ],
+        "pending_labels": [
+            {key: item.get(key) for key in (*keys, "created_by_agent")}
+            for item in (await api.get(f"{path}/pending-labels"))["items"]
+        ],
+    }
+
+
+class DatasetValues(Args):
+    dataset_id: str
+    series: str = Field(description="Its name.")
+    after: datetime | None = Field(default=None, description="Pass `next_after`.")
+    limit: int = Field(default=1000, ge=1, le=2000)
+
+
+@tool(DatasetValues)
+async def get_dataset_values(api: Api, args: DatasetValues):
+    """The values of a dataset's series in time order, a page at a time."""
+    path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}"
+    dataset = await api.get(path)
+    found = next(
+        (item for item in dataset["series"] if item["name"] == args.series), None
+    )
+    if found is None:
+        names = ", ".join(item["name"] for item in dataset["series"])
+        raise ApiRefusal(404, f"No series {args.series!r}; the dataset has {names}")
+    query: dict[str, Any] = {"limit": args.limit}
+    if args.after is not None:
+        query["after"] = args.after.isoformat()
+    page = await api.get(f"{path}/series/{_segment(found['id'])}/points", query)
+    return {
+        "rows": [[item["timestamp"], item["value"]] for item in page["items"]],
+        "next_after": page.get("next_after"),
+    }
+
+
+class ProposedLabel(Args):
+    start_at: datetime
+    end_at: datetime
+    note: str = Field(default="", max_length=500)
+
+
+class LabelProposal(Args):
+    dataset_id: str
+    condition: str | None = Field(
+        default=None,
+        max_length=512,
+        description="Label where this holds, as a Gate step writes it over the "
+        "series: `speed > 3000 and temperature > 80`.",
+    )
+    min_duration_seconds: float = Field(default=0, ge=0)
+    merge_gap_seconds: float = Field(default=0, ge=0)
+    labels: list[ProposedLabel] | None = Field(
+        default=None, max_length=200, description="Or intervals you chose."
+    )
+    rule: str = Field(default="", max_length=500, description="How you chose `labels`.")
+    note: str = Field(default="", max_length=500)
+    replace: bool = Field(
+        default=False, description="Take back your waiting labels here first."
+    )
+
+
+@tool(LabelProposal, changes=True)
+async def propose_labels(api: Api, args: LabelProposal):
+    """Propose labels on a dataset where a condition holds, or as intervals.
+    A member adds or dismisses each; until then they score no test. Intervals
+    on a label are left out and counted in `skipped`."""
+    path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}/pending-labels"
+    if (args.condition is None) == (args.labels is None):
+        raise ApiRefusal(422, "Give a condition or labels, not both")
+    if args.condition is not None:
+        body = _sent(args)
+        for key in ("dataset_id", "labels", "rule"):
+            body.pop(key, None)
+        return await api.post(f"{path}/by-rule", body)
+    labels = [item.model_dump(mode="json") for item in args.labels or []]
+    return await api.post(
+        path, {"labels": labels, "rule": args.rule, "replace": args.replace}
+    )
 
 
 async def _ended(api: Api, run: dict[str, Any]) -> None:

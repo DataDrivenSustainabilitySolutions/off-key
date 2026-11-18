@@ -144,6 +144,11 @@ GATEWAY_ACCESS = {
         "POST /v1/dojo/datasets/{dataset_id}/labels/batch",
         "DELETE /v1/dojo/datasets/{dataset_id}/labels/{label_id}",
         "PATCH /v1/dojo/datasets/{dataset_id}/labels/{label_id}",
+        "GET /v1/dojo/datasets/{dataset_id}/pending-labels",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels/by-rule",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels/accept",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels/dismiss",
         "GET /v1/dojo/runs",
         "POST /v1/dojo/runs",
         "DELETE /v1/dojo/runs/{run_id}",
@@ -190,6 +195,9 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/dojo/datasets/{dataset_id}/comparison",
         "GET /v1/dojo/datasets/{dataset_id}/labels",
         "GET /v1/dojo/datasets/{dataset_id}/label-suggestions",
+        "GET /v1/dojo/datasets/{dataset_id}/pending-labels",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels/by-rule",
         "GET /v1/dojo/runs",
         "POST /v1/dojo/runs",
         "GET /v1/dojo/runs/{run_id}",
@@ -316,8 +324,9 @@ def test_a_key_reaches_only_the_listed_gateway_routes():
 
 
 def test_a_key_changes_nothing_it_did_not_make():
-    """Beyond reads, a key validates, edits what it holds, tests, proposes,
-    withdraws its own proposal and, where it may, starts. It cancels and
+    """Beyond reads, a key validates, edits what it holds, tests, proposes
+    designs and labels, withdraws its own proposal and, where it may, starts.
+    Its labels wait for a member's review, and it replaces only its own. It cancels and
     deletes only its own tests and its own withdrawn or declined proposals,
     which the services check (test_dojo_agent_cleanup)."""
     writes = {
@@ -330,6 +339,8 @@ def test_a_key_changes_nothing_it_did_not_make():
         "POST /v1/alarms/query",
         "POST /v1/dojo/datasets/history",
         "POST /v1/dojo/datasets/{dataset_id}/faults",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels",
+        "POST /v1/dojo/datasets/{dataset_id}/pending-labels/by-rule",
         "POST /v1/dojo/runs",
         "POST /v1/dojo/runs/{run_id}/cancel",
         "DELETE /v1/dojo/runs/{run_id}",

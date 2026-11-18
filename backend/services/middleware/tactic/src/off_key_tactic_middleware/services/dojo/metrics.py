@@ -141,6 +141,27 @@ def evaluate(
     )
 
 
+def _cache_key(run: DojoRun, labels: Sequence[DojoLabel], kind: str) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            [
+                3,
+                run.result_count,
+                run.alarm_count,
+                run.config.get("calibration_comparison")
+                if kind == "calibration"
+                else None,
+                [
+                    (label.id, label.start_at.isoformat(), label.end_at.isoformat())
+                    for label in labels
+                ],
+            ],
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+
+
 def _overlap(label: Interval, start: datetime | None, end: datetime | None) -> float:
     if start is None or end is None:
         return 0.0
@@ -220,6 +241,27 @@ class DojoMetrics:
                 run, labels, "calibration", MethodComparison, self._calibration
             )
 
+    @staticmethod
+    def cached(run: DojoRun, labels: list[DojoLabel]) -> RunMetrics | None:
+        """The run's metrics if they were calculated against these labels."""
+        cache = (run.metrics_cache or {}).get("run", {})
+        if run.status != "succeeded" or cache.get("key") != _cache_key(
+            run, labels, "run"
+        ):
+            return None
+        return RunMetrics.model_validate(cache["value"])
+
+    async def calculate(
+        self, run: DojoRun, labels: list[DojoLabel]
+    ) -> RunMetrics | None:
+        """Calculate a finished run's metrics, or none while another
+        calculation holds the slot or this one runs out of time."""
+        try:
+            async with self._budget():
+                return await self._metrics(run, labels)
+        except ConflictError:
+            return None
+
     async def _run(self, run_id: str) -> DojoRun:
         run = await self.session.get(DojoRun, run_id)
         if run is None:
@@ -241,24 +283,7 @@ class DojoMetrics:
         model: type[T],
         calculate: Callable[[DojoRun, list[DojoLabel]], Awaitable[T]],
     ) -> T:
-        key = hashlib.sha256(
-            json.dumps(
-                [
-                    3,
-                    run.result_count,
-                    run.alarm_count,
-                    run.config.get("calibration_comparison")
-                    if kind == "calibration"
-                    else None,
-                    [
-                        (label.id, label.start_at.isoformat(), label.end_at.isoformat())
-                        for label in labels
-                    ],
-                ],
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode()
-        ).hexdigest()
+        key = _cache_key(run, labels, kind)
         cache = (run.metrics_cache or {}).get(kind, {})
         if cache.get("key") == key:
             return model.model_validate(cache["value"])

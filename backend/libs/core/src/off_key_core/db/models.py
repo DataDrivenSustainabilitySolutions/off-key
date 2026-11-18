@@ -40,6 +40,9 @@ from .dojo import DojoPoint as DojoPoint
 from .dojo import DojoRun as DojoRun
 from .dojo import DojoRunResult as DojoRunResult
 from .dojo import DojoSeries as DojoSeries
+from .dojo import DojoStudy as DojoStudy
+from .dojo import DojoSuite as DojoSuite
+from .dojo import DojoSuiteDataset as DojoSuiteDataset
 from .evidence_clock import MonitoringEvidenceClock as MonitoringEvidenceClock
 from .pipelines import (
     MonitorEventRecord as MonitorEventRecord,

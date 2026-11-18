@@ -24,6 +24,8 @@ from off_key_core.db.models import (
     DojoRun,
     DojoRunResult,
     DojoSeries,
+    DojoSuite,
+    DojoSuiteDataset,
     Telemetry,
     User,
 )
@@ -188,6 +190,20 @@ class DojoDatasets:
         )
         if active:
             raise ConflictError("Cancel the dataset's runs before deleting it")
+        suites = (
+            await self.session.scalars(
+                select(DojoSuite.name)
+                .join(DojoSuiteDataset, DojoSuiteDataset.suite_id == DojoSuite.id)
+                .where(DojoSuiteDataset.dataset_id == row.id)
+                .order_by(DojoSuite.name)
+            )
+        ).all()
+        if suites:
+            # A suite's datasets never change, so its studies stay comparable.
+            raise ConflictError(
+                "The dataset belongs to the benchmark suite "
+                f"{', '.join(map(repr, suites[:3]))}; delete the suite first"
+            )
         # Points and results carry no foreign key, so they go first; the
         # runs themselves cascade with the dataset.
         await self.session.execute(

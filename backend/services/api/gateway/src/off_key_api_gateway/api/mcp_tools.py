@@ -49,6 +49,10 @@ the first ones. Compare variants on the same `dataset_id`, so they replay the \
 same values. To show that a design catches a problem the history lacks, pass \
 `faults`: a step, drift, freeze or gap written into a copy, which get_test \
 scores as caught or missed, with the delay.
+To choose between candidates, put labelled datasets (such as several \
+fault-injected copies of a setup's history) in a suite with create_suite, \
+run_study each candidate over it, and get_study with `compare_with` pairs two \
+complete ones. Their paired result is stronger evidence than one test.
 5. propose_design hands the design to a member with your reason and the test. \
 A member decides, and list_proposals shows the decision with their note. A key \
 that may start monitors also has start_monitor. In shadow, a monitor records \
@@ -585,7 +589,10 @@ class InjectedFault(Args):
 
 class Test(Args):
     definition: Design = Field(description=DESIGN)
-    bindings: dict[str, str] = Field(min_length=1, description=BINDINGS)
+    bindings: dict[str, str] = Field(
+        min_length=1,
+        description=BINDINGS + " With `dataset_id`, a series name works too.",
+    )
     days: int = Field(
         default=7,
         ge=1,
@@ -595,8 +602,8 @@ class Test(Args):
     dataset_id: str | None = Field(
         default=None,
         description=(
-            "An earlier test's `dataset_id`, to replay the same values so the "
-            "results compare. `days` is then not used."
+            "A Dojo dataset to replay, such as an earlier test's, so results "
+            "compare. `days` is then not used."
         ),
     )
     name: str = Field(
@@ -636,13 +643,13 @@ async def test_design(api: Api, args: Test):
                 "end": now.isoformat(),
             },
         )
-    series = {item["reading_id"]: item["id"] for item in dataset["series"]}
+    series = _bound(dataset)
     missing = sorted(set(args.bindings.values()) - series.keys())
     if missing:
         raise ApiRefusal(422, f"The dataset holds no values of {', '.join(missing)}")
     if args.faults:
         dataset = await _with_faults(api, dataset, series, args)
-        series = {item["reading_id"]: item["id"] for item in dataset["series"]}
+        series = _bound(dataset)
     run = await api.post(
         "/v1/dojo/runs",
         {
@@ -684,6 +691,17 @@ async def test_design(api: Api, args: Test):
     if notes := [note for note in notes if note]:
         answer["notes"] = notes
     return answer
+
+
+def _bound(dataset: Mapping[str, Any]) -> dict[str, str]:
+    """A dataset's series by the reading they were copied from and by name, so
+    a test binds an uploaded or benchmark series too."""
+    named = {item["name"]: item["id"] for item in dataset["series"]}
+    return named | {
+        item["reading_id"]: item["id"]
+        for item in dataset["series"]
+        if item.get("reading_id")
+    }
 
 
 async def _with_faults(api: Api, dataset: dict, series: dict, args: Test) -> dict:
@@ -1098,6 +1116,8 @@ class Mine(Args):
     run_id: str | None = None
     dataset_id: str | None = None
     proposal_id: str | None = None
+    study_id: str | None = None
+    suite_id: str | None = None
 
 
 @tool(Nothing)
@@ -1126,13 +1146,26 @@ async def list_my_tests(api: Api, args: Nothing):
 
 @tool(Mine, deletes=True)
 async def delete_mine(api: Api, args: Mine):
-    """Delete one thing your key made: a test, cancelled first if it runs; a
-    dataset with only your tests on it; or a proposal once withdrawn or
-    declined. A test a proposal or monitor names as evidence stays."""
+    """Delete one thing your key made: a test or study, cancelled first if it
+    runs; a dataset with only your tests on it; a suite with only your
+    studies; or a proposal once withdrawn or declined. A test a proposal or
+    monitor names as evidence stays."""
     named = {key: value for key, value in _sent(args).items() if isinstance(value, str)}
     if len(named) != 1:
-        raise ApiRefusal(422, "Name one of run_id, dataset_id or proposal_id")
-    if args.proposal_id is not None:
+        raise ApiRefusal(
+            422, "Name one of run_id, dataset_id, study_id, suite_id or proposal_id"
+        )
+    if args.study_id is not None:
+        await _study_ended(api, args.study_id)
+        await api.delete(f"/v1/dojo/studies/{_segment(args.study_id)}")
+    elif args.suite_id is not None:
+        studies = await api.get(
+            "/v1/dojo/studies", {"suite_id": args.suite_id, "limit": 100}
+        )
+        for item in studies["items"]:
+            await _study_ended(api, item["id"])
+        await api.delete(f"/v1/dojo/suites/{_segment(args.suite_id)}")
+    elif args.proposal_id is not None:
         await api.delete(f"/v1/pipeline-proposals/{_segment(args.proposal_id)}")
     elif args.dataset_id is not None:
         runs = await api.get(
@@ -1257,6 +1290,144 @@ async def propose_labels(api: Api, args: LabelProposal):
     )
 
 
+class SuiteRef(Args):
+    suite_id: str | None = Field(default=None, description="Out: list them.")
+
+
+_TOTALS = ("vus_pr", "pr_auc", "auroc", "detection_rate", "labels_detected")
+
+
+def _study(item: Mapping[str, Any]) -> dict[str, Any]:
+    """A study as an agent reads it: its state and the averages over the suite."""
+    totals = item["totals"]
+    return {
+        "study_id": item["id"],
+        "name": item["name"],
+        "complete": item["complete"],
+        "runs": item["runs"],
+        **{key: totals[key] for key in _TOTALS},
+        "labels_scored": totals["labels_scored"],
+        "median_false_alarms_per_day": totals["median_false_alarms_per_day"],
+        **(
+            {"by_agent": item["created_by_agent"]}
+            if item.get("created_by_agent")
+            else {}
+        ),
+    }
+
+
+@tool(SuiteRef)
+async def get_suite(api: Api, args: SuiteRef):
+    """Without an id, the benchmark suites: fixed sets of labelled datasets.
+    With one, its datasets and studies, the complete ones ranked."""
+    if args.suite_id is None:
+        page = await api.get("/v1/dojo/suites", {"limit": 100})
+        keys = ("id", "name", "description", "datasets", "studies", "reviewed")
+        return {"suites": [{key: item[key] for key in keys} for item in page["items"]]}
+    suite = await api.get(f"/v1/dojo/suites/{_segment(args.suite_id)}")
+    return {
+        "id": suite["id"],
+        "name": suite["name"],
+        "reviewed": suite["reviewed"],
+        "datasets": [
+            {key: item[key] for key in ("dataset_id", "name", "series_names", "labels")}
+            for item in suite["items"]
+        ],
+        "leaderboard": [_study(item) for item in suite["leaderboard"]],
+        "unfinished": [_study(item) for item in suite["unfinished"]],
+    }
+
+
+class SuiteMade(Args):
+    name: str = Field(min_length=1, max_length=120)
+    dataset_ids: list[str] = Field(min_length=1, max_length=50)
+    description: str = Field(default="", max_length=2000)
+
+
+@tool(SuiteMade, changes=True)
+async def create_suite(api: Api, args: SuiteMade):
+    """Put labelled datasets in a suite to run studies on. A member reviews
+    a suite your key made."""
+    suite = await api.post("/v1/dojo/suites", _sent(args))
+    return {"suite_id": suite["id"], "datasets": len(suite["items"])}
+
+
+class StudyMade(Args):
+    suite_id: str
+    definition: Design = Field(description=DESIGN)
+    bindings: dict[str, str] = Field(
+        default_factory=dict,
+        description="Slot id to series name. Out: the only series, or one named so.",
+    )
+    name: str = Field(default="Study by an agent", min_length=1, max_length=120)
+
+
+@tool(StudyMade, changes=True)
+async def run_study(api: Api, args: StudyMade):
+    """Replay one design on every dataset of a suite; then get_study."""
+    study = await api.post("/v1/dojo/studies", _sent(args))
+    return {"study_id": study["id"], "runs": len(study["items"])}
+
+
+class StudyRef(Args):
+    study_id: str
+    wait_seconds: int = WAIT
+    compare_with: str | None = Field(
+        default=None, description="A complete study of the same suite."
+    )
+    metric: Literal["vus_pr", "pr_auc", "auroc", "detection_rate"] = "vus_pr"
+
+
+def _finished(study: Mapping[str, Any]) -> bool:
+    waiting = sum(study["runs"].get(key, 0) for key in ACTIVE_RUN)
+    return not waiting and not study["metrics_pending"]
+
+
+@tool(StudyRef)
+async def get_study(api: Api, args: StudyRef):
+    """A study's averages over its suite and each dataset's scores, once its
+    runs end. With `compare_with`, both paired by dataset on `metric`: wins,
+    losses, mean difference and a Wilcoxon p-value, which holds for these
+    datasets only."""
+    path = f"/v1/dojo/studies/{_segment(args.study_id)}"
+    study = await _settled(lambda: api.get(path), _finished, args.wait_seconds)
+    items = []
+    for item in study["items"]:
+        metrics = item.get("metrics") or {}
+        scores = metrics.get("scores") or {}
+        items.append(
+            {
+                "dataset": item["dataset_name"],
+                "run_id": item["run_id"],
+                "status": item["status"],
+                **({"error": item["error"]} if item.get("error") else {}),
+                **(
+                    {
+                        "vus_pr": scores.get("vus_pr"),
+                        "pr_auc": scores.get("pr_auc"),
+                        "auroc": scores.get("auroc"),
+                        "detected": f"{metrics['labels_detected']} of "
+                        f"{metrics['labels_scored']}",
+                        "false_alarms_per_day": metrics["false_alarms_per_day"],
+                    }
+                    if metrics
+                    else {}
+                ),
+            }
+        )
+    answer = {**_study(study), "datasets": items}
+    if args.compare_with is not None:
+        answer["comparison"] = await api.get(
+            f"/v1/dojo/suites/{_segment(study['suite_id'])}/comparison",
+            {
+                "baseline": args.compare_with,
+                "challenger": args.study_id,
+                "metric": args.metric,
+            },
+        )
+    return answer
+
+
 async def _ended(api: Api, run: dict[str, Any]) -> None:
     """Cancel a run that still waits or runs, and wait for its end."""
     if run["status"] not in ACTIVE_RUN:
@@ -1272,6 +1443,24 @@ async def _ended(api: Api, run: dict[str, Any]) -> None:
         raise ApiRefusal(
             409,
             f"Test {run['id']} is cancelled and still ending; call delete_mine "
+            "again in a few seconds.",
+        )
+
+
+async def _study_ended(api: Api, study_id: str) -> None:
+    """Cancel a study whose runs still wait or run, and wait for their end."""
+    path = f"/v1/dojo/studies/{_segment(study_id)}"
+
+    def ended(study: Mapping[str, Any]) -> bool:
+        return not any(study["runs"].get(key) for key in ACTIVE_RUN)
+
+    if ended(await api.get(path)):
+        return
+    await api.post(f"{path}/cancel")
+    if not ended(await _settled(lambda: api.get(path), ended, CANCEL_WAIT)):
+        raise ApiRefusal(
+            409,
+            f"Study {study_id} is cancelled and still ending; call delete_mine "
             "again in a few seconds.",
         )
 

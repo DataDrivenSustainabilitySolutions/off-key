@@ -44,7 +44,9 @@ CLAIM = text(
     "UPDATE dojo_runs SET status = 'running', worker = :worker, "
     "started_at = now(), heartbeat_at = now() "
     "WHERE id = (SELECT id FROM dojo_runs WHERE status = 'queued' "
-    "ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1) "
+    # Single runs first: a study of many datasets never holds up a quick test.
+    "ORDER BY study_id IS NOT NULL, created_at, id "
+    "FOR UPDATE SKIP LOCKED LIMIT 1) "
     "RETURNING id, config"
 )
 PROGRESS = text(

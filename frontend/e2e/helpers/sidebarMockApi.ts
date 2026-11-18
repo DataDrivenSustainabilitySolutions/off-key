@@ -97,6 +97,8 @@ export async function installSidebarMockApi(page: Page, {
       });
     }
     if (path === "/v1/monitors/overview") return fulfillJson(route, { monitors: [], services: [] });
+    // The Dojo lists read paged bodies, not bare arrays.
+    if (path === "/v1/dojo/datasets" || path === "/v1/dojo/suites") return fulfillJson(route, { items: [], next_offset: null });
     // Lists the pages read; none of them is needed for navigation.
     return fulfillJson(route, []);
   });

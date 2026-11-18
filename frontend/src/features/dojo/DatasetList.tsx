@@ -1,19 +1,21 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { FileUp, FlaskConical, History } from "lucide-react";
-import { Link } from "react-router-dom";
+import { FileUp, FlaskConical, History, ListChecks } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { getErrorMessage } from "@/lib/errors";
-import type { DatasetSummary, DatasetView } from "@/types/dojo.generated";
+import type { DatasetSummary, DatasetView, SuiteSummary } from "@/types/dojo.generated";
 import type { SystemStream } from "@/types/system";
 import { dojoApi } from "./api";
 import { BenchmarkImportDialog, CsvImportDialog, HistoryImportDialog } from "./DatasetImport";
 import { formatInstant, formatSpan } from "./model";
+import { SuiteCreateDialog } from "./SuiteDialogs";
 
 const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Benchmark" } as const;
 
-export function DatasetList({ datasetHref, onCreated, scope, readings, selection }: {
+export function DatasetList({ datasetHref, suiteHref, onCreated, scope, readings, selection }: {
   datasetHref: (id: string) => string;
+  suiteHref: (id: string) => string;
   onCreated: (dataset: DatasetView) => void;
   scope?: string;
   readings: SystemStream[];
@@ -24,11 +26,13 @@ export function DatasetList({ datasetHref, onCreated, scope, readings, selection
   const editable = can("use_dojo");
   const [datasets, setDatasets] = useState<DatasetSummary[] | null>(null);
   const [error, setError] = useState("");
-  const [importing, setImporting] = useState<"csv" | "history" | "benchmark" | null>(null);
+  const [suites, setSuites] = useState<SuiteSummary[]>([]);
+  const [importing, setImporting] = useState<"csv" | "history" | "benchmark" | "suite" | null>(null);
+  const navigate = useNavigate();
   const load = useCallback(async (signal: AbortSignal) => {
     try {
-      const page = await dojoApi.datasets({ limit: 100 }, signal);
-      if (!signal.aborted) { setDatasets(page.items); setError(""); }
+      const [page, suitePage] = await Promise.all([dojoApi.datasets({ limit: 100 }, signal), dojoApi.suites({ limit: 100 }, signal)]);
+      if (!signal.aborted) { setDatasets(page.items); setSuites(suitePage.items); setError(""); }
     } catch (reason) {
       if (!signal.aborted) setError(getErrorMessage(reason));
     }
@@ -44,6 +48,7 @@ export function DatasetList({ datasetHref, onCreated, scope, readings, selection
         <button type="button" className="dj-action" onClick={() => setImporting("csv")}><FileUp size={15} />Upload CSV</button>
         <button type="button" className="dj-action" onClick={() => setImporting("history")}><History size={15} />Copy recorded readings</button>
         <button type="button" className="dj-action" onClick={() => setImporting("benchmark")}><FlaskConical size={15} />Add benchmark</button>
+        <button type="button" className="dj-action" disabled={!datasets?.length} onClick={() => setImporting("suite")}><ListChecks size={15} />New suite</button>
       </div>}
     </header>
     {error && <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => void reload()}>Retry</button></p>}
@@ -60,6 +65,23 @@ export function DatasetList({ datasetHref, onCreated, scope, readings, selection
           <td>{formatInstant(item.created_at)}</td>
         </tr>)}</tbody>
       </table></div>}
+    {suites.length > 0 && <>
+      <h2 className="dj-section-head">Benchmark suites</h2>
+      <p className="dj-help">Fixed sets of datasets. A study runs one design over all of them, and complete studies are ranked.</p>
+      <div className="dj-table-scroll"><table className="dj-table" aria-label="Benchmark suites">
+        <thead><tr><th>Suite</th><th>Datasets</th><th>Studies</th><th>Made by</th><th>Created</th></tr></thead>
+        <tbody>{suites.map(item => <tr key={item.id}>
+          <td><Link to={suiteHref(item.id)}>{item.name}</Link>{item.description && <small>{item.description}</small>}</td>
+          <td>{item.datasets}</td>
+          <td>{item.studies}</td>
+          <td>{item.created_by_agent ? `Agent ${item.created_by_agent}` : "A member"}
+            {!item.reviewed && <small>Not yet reviewed</small>}</td>
+          <td>{formatInstant(item.created_at)}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </>}
+    <SuiteCreateDialog open={importing === "suite"} datasets={datasets ?? []} onOpenChange={open => setImporting(open ? "suite" : null)}
+      onCreated={suite => navigate(suiteHref(suite.id))} />
     <CsvImportDialog open={importing === "csv"} onOpenChange={open => setImporting(open ? "csv" : null)} onCreated={onCreated} />
     <BenchmarkImportDialog open={importing === "benchmark"} onOpenChange={open => setImporting(open ? "benchmark" : null)}
       onImported={result => {

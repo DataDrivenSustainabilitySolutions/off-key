@@ -193,6 +193,33 @@ def profile_reading(
     return profile
 
 
+# A reading whose longest quiet is this many times its usual interval, with no
+# value repeated, is sent on change rather than on a clock.
+_ON_CHANGE_QUIET = 50
+
+
+def _on_change(recent: RecentValues) -> bool:
+    return (
+        recent.flat_share is not None
+        and recent.flat_share < 0.01
+        and recent.count >= 10
+        and bool(recent.interval_seconds)
+        and recent.longest_gap_seconds is not None
+        and recent.longest_gap_seconds
+        > _ON_CHANGE_QUIET * (recent.interval_seconds or 0)
+    )
+
+
+def _duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "an unknown time"
+    if seconds >= 3600:
+        return f"{seconds / 3600:.1f} h"
+    if seconds >= 60:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds:g} s"
+
+
 def _days(span: timedelta) -> str:
     return f"{span / DAY:.1f} days"
 
@@ -222,6 +249,23 @@ def _notes(profile: ReadingProfile, span: timedelta, capped: bool) -> list[str]:
         notes.append(
             "weekly_rhythm is null: the values do not vary, or too few "
             "buckets hold one."
+        )
+    recent = profile.recent
+    if recent and _on_change(recent):
+        quiet = _duration(recent.longest_gap_seconds)
+        notes.append(
+            "It looks sent only when it changes: a value rarely repeats the "
+            f"one before, and it went quiet for up to {quiet} "
+            f"against a usual {_duration(recent.interval_seconds)}. A quiet "
+            "stretch then holds the last value, so coverage and "
+            "longest_outage_seconds count idle time as gaps. Pair it with "
+            "other readings through the source step's `hold`."
+        )
+    if recent and recent.last - recent.first < span / 10:
+        notes.append(
+            f"recent holds {recent.count} values from "
+            f"{recent.first.isoformat()} only, so its median and percentiles "
+            "describe those; minimum and maximum describe the whole window."
         )
     if capped and profile.recent:
         notes.append(

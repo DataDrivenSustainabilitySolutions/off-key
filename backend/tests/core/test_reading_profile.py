@@ -235,3 +235,28 @@ def test_last_is_the_newest_value_and_a_capped_recent_says_so(monkeypatch):
         f"recent looks at the newest 50 values only, from "
         f"{profile.recent.first.isoformat()}; get_values reads older ones."
     )
+
+
+def test_a_reading_sent_on_change_is_named_and_its_quiet_is_no_outage():
+    """A setpoint: a burst of values a quarter second apart, then hours idle."""
+    start, end = window(2)
+    newest = []
+    for burst, at in enumerate((end - timedelta(hours=30), end - timedelta(hours=6))):
+        newest += [
+            (at + timedelta(seconds=0.25 * step), float(burst * 100 + step))
+            for step in range(20)
+        ]
+    profile = profile_reading("r1", start, end, extremes(start, end, daily), newest)
+    [note] = [item for item in profile.notes if "sent only when it changes" in item]
+    assert "quiet for up to 24.0 h against a usual 0.25 s" in note
+    assert "`hold`" in note
+
+
+def test_a_recent_view_of_a_short_stretch_says_what_it_describes():
+    start, end = window(2)
+    newest = [(end - timedelta(minutes=minute), 400.0) for minute in (90, 60, 30)]
+    profile = profile_reading("r1", start, end, extremes(start, end, daily), newest)
+    [note] = [
+        item for item in profile.notes if item.startswith("recent holds 3 values")
+    ]
+    assert "minimum and maximum describe the whole window" in note

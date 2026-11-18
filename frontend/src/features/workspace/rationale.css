@@ -15,6 +15,8 @@
   background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: 1.6; }
 .rationale-body { padding: 0 0 14px 18px; }
 .rationale-fields { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr); gap: 8px 16px; margin: 4px 0 0; font-size: var(--text-body); }
+/* Each label and its text share one row of the two columns. */
+.rationale-fields > div { display: contents; }
 .rationale-fields dt { color: hsl(var(--muted-foreground)); }
 .rationale-fields dd { margin: 0; overflow-wrap: anywhere; line-height: var(--leading-body); }
 .rationale-history { list-style: none; margin: 14px 0 0; padding: 10px 0 0; border-top: 1px dashed hsl(var(--border)); display: grid; gap: 8px; font-size: var(--text-caption); }

@@ -20,10 +20,10 @@ export function AuthorChip({ author, kind }: { author: string; kind: "agent" | "
   </span>;
 }
 
-/** The four fields as labelled rows. */
-export function RationaleFields({ rationale }: { rationale: MonitorRationale }) {
+/** The four fields as labelled rows; `skip` leaves out one a summary line already says. */
+export function RationaleFields({ rationale, skip }: { rationale: MonitorRationale; skip?: keyof MonitorRationale }) {
   return <dl className="rationale-fields">
-    {RATIONALE_FIELDS.map(({ key, label }) => <div key={key}><dt>{label}</dt><dd>{rationale[key]}</dd></div>)}
+    {RATIONALE_FIELDS.filter(({ key }) => key !== skip).map(({ key, label }) => <div key={key}><dt>{label}</dt><dd>{rationale[key]}</dd></div>)}
   </dl>;
 }
 

@@ -253,8 +253,9 @@ export function PipelineProposalList({ onReview, onBack, onStarted, canDecide = 
 }
 
 /**
- * Who proposed the design on the canvas and why, above the setup. A member who may start services
- * declines it here; starting the service accepts it.
+ * Who proposed the design on the canvas and why, above the setup: one line with the author and what
+ * it watches, closed by default so the canvas stays first, and opening into the full rationale. A
+ * member who may start services declines it here; starting the service accepts it.
  */
 export function PipelineProposalNotice({ proposal, canDecide, onDeclined }: {
   proposal: PipelineProposalSummary;
@@ -263,16 +264,27 @@ export function PipelineProposalNotice({ proposal, canDecide, onDeclined }: {
 }) {
   const open = proposal.status === "open";
   const missing = missingReadings(proposal);
+  const rationale = proposal.rationale;
+  // Without a rationale, the reason is the line; with one, a reason that adds to it reads below the fields.
+  const extra = rationale && proposal.reason && proposal.reason !== rationale.watches ? proposal.reason : "";
 
   return <div className="pl-proposal" role="group" aria-label={`Proposal by ${proposal.author}`}>
-    <div className="pl-proposal-text">
-      <p><strong>Proposed by</strong> <AuthorChip author={proposal.author} kind={proposal.author_kind} /> <RelativeTime value={proposal.created_at} /></p>
-      {proposal.rationale ? <RationaleFields rationale={proposal.rationale} /> : <p>{proposal.reason}</p>}
-      {proposal.rationale && proposal.reason && proposal.reason !== proposal.rationale.watches && <p>{proposal.reason}</p>}
-      {missing && <p className="pl-proposal-missing">{missing}</p>}
-      <p className="pl-proposal-state">{open ? canDecide ? "Starting the service accepts the proposal." : "It waits for a member who manages monitors."
-        : `${proposalOutcome(proposal)}.`}</p>
-    </div>
+    <details className="pl-proposal-details">
+      <summary>
+        <span className="pl-proposal-by"><strong>Proposed by</strong> <AuthorChip author={proposal.author} kind={proposal.author_kind} />{" "}
+          <RelativeTime value={proposal.created_at} />{!open && <> · <span className="pl-proposal-state">{proposalOutcome(proposal)}.</span></>}</span>
+        <span className="pl-proposal-line">
+          {rationale ? <><span className="rationale-label">Watches</span> <span>{rationale.watches}</span></> : <span>{proposal.reason}</span>}
+        </span>
+        <span className="pl-proposal-toggle" aria-hidden="true" />
+      </summary>
+      <div className="pl-proposal-more">
+        {rationale && <RationaleFields rationale={rationale} skip="watches" />}
+        {extra && <p className="pl-proposal-extra">{extra}</p>}
+        {open && <p className="pl-proposal-state">{canDecide ? "Starting the service accepts the proposal." : "It waits for a member who manages monitors."}</p>}
+      </div>
+    </details>
+    {missing && <p className="pl-proposal-missing">{missing}</p>}
     {open && canDecide && <DeclineProposal proposal={proposal} onDeclined={onDeclined} />}
   </div>;
 }

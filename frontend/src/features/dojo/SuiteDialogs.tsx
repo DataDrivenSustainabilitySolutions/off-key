@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
-import { DOJO_LIMITS, type DatasetSummary, type StudyView, type SuiteView } from "@/types/dojo.generated";
+import { DOJO_LIMITS, type DatasetSummary, type DatasetView, type FaultSuiteCreate, type StudyView, type SuiteView } from "@/types/dojo.generated";
 import { pipelinesApi } from "../pipelines/api";
 import type { PipelineDefinition } from "../pipelines/contracts";
 import { dojoApi } from "./api";
@@ -176,6 +176,81 @@ export function StudyCreateDialog({ open, suite, onOpenChange, onCreated }: {
           <div className="ex-dialog-actions">
             <Button type="button" variant="outline" disabled={busy} onClick={() => close(false)}>Cancel</Button>
             <Button type="submit" disabled={busy || !definition}>{busy ? "Queueing…" : "Start study"}</Button>
+          </div>
+        </form>
+      </Dialog.Content>
+    </Dialog.Portal>
+  </Dialog.Root>;
+}
+
+type FaultKind = NonNullable<FaultSuiteCreate["kinds"]>[number];
+const FAULT_KINDS: { id: FaultKind; label: string }[] = [
+  { id: "step", label: "Step" }, { id: "drift", label: "Drift" }, { id: "freeze", label: "Frozen value" }, { id: "gap", label: "Gap" },
+];
+
+/** Labelled copies of one dataset with faults at drawn places, gathered into a suite. */
+export function FaultSuiteDialog({ open, dataset, onOpenChange, onCreated }: {
+  open: boolean; dataset: DatasetView; onOpenChange: (open: boolean) => void; onCreated: (suite: SuiteView) => void;
+}) {
+  const [name, setName] = useState(`${dataset.name} · faults`);
+  const [copies, setCopies] = useState("8");
+  const [perCopy, setPerCopy] = useState("2");
+  const [kinds, setKinds] = useState<FaultKind[]>(FAULT_KINDS.map(item => item.id));
+  const [cleanShare, setCleanShare] = useState("30");
+  const [seed, setSeed] = useState("0");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const numbers = { copies: Number(copies), perCopy: Number(perCopy), clean: Number(cleanShare), seed: Number(seed) };
+  const valid = name.trim() !== "" && kinds.length > 0
+    && Number.isInteger(numbers.copies) && numbers.copies >= 1 && numbers.copies <= 20
+    && Number.isInteger(numbers.perCopy) && numbers.perCopy >= 1 && numbers.perCopy <= 5
+    && numbers.clean >= 0 && numbers.clean <= 80 && Number.isInteger(numbers.seed) && numbers.seed >= 0;
+  const submit = async () => {
+    setBusy(true); setError("");
+    try {
+      const suite = await dojoApi.createFaultSuite({ dataset_id: dataset.id, name: name.trim(), copies: numbers.copies,
+        faults_per_copy: numbers.perCopy, kinds, clean_share: numbers.clean / 100, seed: numbers.seed });
+      onOpenChange(false);
+      onCreated(suite);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Dialog.Root open={open} onOpenChange={next => { if (!busy) { setError(""); onOpenChange(next); } }}>
+    <Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" />
+      <Dialog.Content className="ex-dialog dj-dialog">
+        <Dialog.Title>Fault suite</Dialog.Title>
+        <Dialog.Description className="dj-help">Makes labelled copies of this dataset with faults written in at drawn places,
+          and gathers them into a suite. Designs can then be compared on your own data even though it has no labels. The same
+          seed writes the same faults again.</Dialog.Description>
+        <form onSubmit={event => { event.preventDefault(); if (valid && !busy) void submit(); }}>
+          <label className="dj-field">Suite name<input required maxLength={120} value={name} disabled={busy}
+            onChange={event => setName(event.target.value)} /></label>
+          <div className="dj-field-row">
+            <label className="dj-field">Copies<input type="number" min={1} max={20} value={copies} disabled={busy}
+              onChange={event => setCopies(event.target.value)} /></label>
+            <label className="dj-field">Faults per copy<input type="number" min={1} max={5} value={perCopy} disabled={busy}
+              onChange={event => setPerCopy(event.target.value)} /></label>
+          </div>
+          <fieldset className="dj-field"><legend>Kinds</legend>
+            <div className="dj-choices">{FAULT_KINDS.map(item => <label key={item.id} className="dj-check">
+              <input type="checkbox" checked={kinds.includes(item.id)} disabled={busy}
+                onChange={event => setKinds(previous => event.target.checked ? [...previous, item.id]
+                  : previous.filter(kind => kind !== item.id))} />{item.label}</label>)}</div>
+          </fieldset>
+          <div className="dj-field-row">
+            <label className="dj-field"><span>Clean start <small>(% of the span, for warm-up)</small></span>
+              <input type="number" min={0} max={80} value={cleanShare} disabled={busy}
+                onChange={event => setCleanShare(event.target.value)} /></label>
+            <label className="dj-field">Seed<input type="number" min={0} step={1} value={seed} disabled={busy}
+              onChange={event => setSeed(event.target.value)} /></label>
+          </div>
+          {error && <p className="dj-error" role="alert">{error}</p>}
+          <div className="ex-dialog-actions">
+            <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={busy || !valid}>{busy ? "Writing faults…" : "Create suite"}</Button>
           </div>
         </form>
       </Dialog.Content>

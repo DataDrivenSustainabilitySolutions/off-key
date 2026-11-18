@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { ArrowLeft, Trash2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ArrowLeft, ListChecks, Trash2 } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { InlineName } from "@/components/InlineName";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useDetailDocumentTitle } from "@/hooks/use-document-title";
@@ -13,6 +13,7 @@ import { dojoApi } from "./api";
 import { ComparePanel } from "./ComparePanel";
 import { LabelsPanel } from "./LabelsPanel";
 import { RunsPanel } from "./RunsPanel";
+import { FaultSuiteDialog } from "./SuiteDialogs";
 import { DATASET_TABS as TABS, formatSpan, injectedFaults, isActive, type DatasetTab } from "./model";
 
 const RUN_POLL_MS = 3000;
@@ -33,6 +34,8 @@ export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [confirm, confirmation] = useConfirm();
+  const [faulting, setFaulting] = useState(false);
+  const navigate = useNavigate();
   const name = dataset?.name ?? "Dataset";
   const tabLabel = TABS.find(item => item.id === tab)!.label;
   useDetailDocumentTitle(tab === "values" ? name : `${name} — ${tabLabel}`, "Dojo");
@@ -88,6 +91,7 @@ export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
       <div><h1><InlineName value={dataset.name} onSave={rename} editable={editable} ariaLabel="Rename dataset" /></h1>
         {dataset.description && <small>{dataset.description}</small>}</div>
       {editable && <div className="dj-detail-actions">
+        <button type="button" className="dj-action" onClick={() => setFaulting(true)}><ListChecks size={15} />Fault suite</button>
         <button type="button" className="dj-action" onClick={() => void remove()}><Trash2 size={15} />Delete</button>
       </div>}
     </div>
@@ -112,6 +116,8 @@ export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
       {tab !== "values" && moreRuns && <button type="button" className="dj-action" disabled={loadingRuns}
         onClick={() => setRunPages(count => count + 1)}>{loadingRuns ? "Loading runs…" : "Load more runs"}</button>}
     </div>
+    {editable && <FaultSuiteDialog open={faulting} dataset={dataset} onOpenChange={setFaulting}
+      onCreated={suite => navigate(`/dojo?suite=${encodeURIComponent(suite.id)}`)} />}
     {confirmation}
   </section>;
 }

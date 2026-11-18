@@ -1555,6 +1555,7 @@ async def test_an_agent_runs_and_compares_studies_over_a_suite(
     }
     stores.suites.get_suite.return_value = suite
     stores.suites.create_suite.return_value = suite
+    stores.suites.create_fault_suite.return_value = suite
     stores.suites.create_study.return_value = study_view()
     # The study is read until its runs end and their metrics are in.
     states = iter([study_view(runs={"running": 1}, complete=False), study_view()])
@@ -1581,6 +1582,13 @@ async def test_an_agent_runs_and_compares_studies_over_a_suite(
                 "create_suite", {"name": "Pump faults", "dataset_ids": ["d1"]}
             )
         )
+        faulted = said(
+            await client.call_tool(
+                "create_suite",
+                {"name": "Pump faults", "faults_of": "d1", "copies": 4, "seed": 3},
+            )
+        )
+        neither = await client.call_tool("create_suite", {"name": "Empty"})
         queued = said(
             await client.call_tool(
                 "run_study",
@@ -1614,6 +1622,10 @@ async def test_an_agent_runs_and_compares_studies_over_a_suite(
     assert made == {"suite_id": "su1", "datasets": 1}
     request = stores.suites.create_suite.await_args.args[0]
     assert request.dataset_ids == ["d1"]
+    assert faulted == {"suite_id": "su1", "datasets": 1}
+    request = stores.suites.create_fault_suite.await_args.args[0]
+    assert (request.dataset_id, request.copies, request.seed) == ("d1", 4, 3)
+    assert neither.is_error and "dataset_ids or faults_of" in said(neither)
     assert queued == {"study_id": "st1", "runs": 1}
     request = stores.suites.create_study.await_args.args[0]
     assert (request.suite_id, request.bindings) == ("su1", {"value": "power"})

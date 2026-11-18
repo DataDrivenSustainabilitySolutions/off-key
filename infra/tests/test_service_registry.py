@@ -1,4 +1,4 @@
-"""Every copy of the service-to-image map and the rollback revision agrees.
+"""Every copy of the service-to-image map agrees.
 
 pin_release.APPLICATION_IMAGES and rehearsal_releases.BUILDS are canonical;
 the image workflow, both Compose files, dev/local/run.py and the docs follow.
@@ -11,7 +11,6 @@ import unittest
 import yaml
 from rehearsal_releases import (
     BUILDS,
-    COMPATIBLE_REVISION,
     DEPENDENCIES,
     MODEL_SERVICES,
 )
@@ -118,18 +117,6 @@ class ServiceRegistryTests(unittest.TestCase):
         self.assertEqual(compose, {root: expected[root] for root in compose})
         dockerfile = (REPOSITORY / "backend/Dockerfile").read_text()
         self.assertIn('ARG SERVICE_DEPENDENCIES=""', dockerfile)
-
-    def test_rollback_revision_is_the_same_everywhere(self):
-        steps = workflow("ci.yml")["jobs"]["deployment-smoke"]["steps"]
-        (checkout,) = [
-            step
-            for step in steps
-            if step.get("name")
-            == "Check out the immutable pipeline-compatible rollback reference"
-        ]
-        self.assertEqual(checkout["with"]["ref"], COMPATIBLE_REVISION)
-        docs = (REPOSITORY / "docs/development/monitoring-pipelines.md").read_text()
-        self.assertIn(f"`{COMPATIBLE_REVISION}`", docs)
 
 
 if __name__ == "__main__":

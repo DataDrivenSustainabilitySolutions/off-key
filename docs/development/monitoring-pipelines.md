@@ -1256,7 +1256,7 @@ run whose detectors all follow a rule (`_learns_nothing()`) starts in
 `calibrating` instead of `warmup` and reports a warm-up requirement of 0;
 beside a detector that learns, the run warms up as that detector needs.
 TACTIC's `available_models()`, which `/v1/detectors` serves to the setup form,
-leaves it out: a rule needs a step before it, and the rollback rehearsal
+leaves it out: a rule needs a step before it, and the deployment rehearsal
 expects settings for every model that field discovery lists.
 
 No design stores a lane. `PipelineDefinition.lane` is derived: the strategy all
@@ -1661,43 +1661,16 @@ rendering checks.
 
 ## Rollout
 
-The production rehearsal restores the current release's backup, runs an older
-pipeline-compatible build, then returns to the current build. Each cutover checks
-the actual application and worker image digests, fresh graph scoring, bindings,
-layout, retained run history and single-worker ownership with authoring disabled.
-The reference is immutable commit
-`c33c69f4b21ead330d205740bc89c31f71726c68`, a build whose ledger runs through
-migration 006 (Dojo benchmark suites and studies). Its monitors read the stored
-telemetry log, RADAR runs in a leased worker pool and readings have per-reading
-hold timing. Its layout holds switched-off steps and notes, and a step's title
-lives in the design, as in the current release. The rehearsal still switches
-between different application binaries.
-It shares the current
-migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
-and field discovery metadata, so an already-open new browser keeps its controls
-while the backend rolls back. It also serves the current pipeline REST paths and field
-names, so the rehearsal calls and reads both releases the same way.
-The test uses the current API directly, without compatibility adapters or
-response rewriting.
-Monitors are started on the current release, by reading id.
-Every earlier build predates the baseline: it records the retired migrations
-001–035, which this release refuses, and cannot read a baseline database either.
-Rolling back past the baseline means restoring a verified backup onto a release
-from before it, as [recovery](../operations/recovery.md) describes.
-The binary rollback floor for this release is ABERRANT 1.5.0; migration from
-earlier versions is checked separately and incompatible checkpoints relearn. Its migration ledger, numerical
-catalog and locked Aberrant version must match the current source before it can
-build. Other locked dependencies may differ, as they would in a real rollback:
-each release calibrates its own run, and detector checkpoints refuse a changed
-runtime. This fixture is not an eligible production release. Changes to those
-contracts require review of the rollback reference. CI retains nonsecret
-source/image identities and the asserted graph invariants as its
-compatible-binary-rollback artifact.
+The production rehearsal restores the current release's backup onto the current
+build, then redeploys that build once more. Each cutover checks the actual
+application and worker image digests, fresh graph scoring, bindings, layout,
+retained run history and single-worker ownership with authoring disabled.
+CI retains nonsecret image identities and the asserted graph invariants as its
+redeployment-evidence artifact.
 
-The [production rollback rehearsal](https://github.com/DataDrivenSustainabilitySolutions/off-key/actions/runs/38897782186)
-passed both integration tests with zero skips in 625.685 seconds on 2026-10-16.
-Its retained artifact records all three cutovers and verifies the deployed image
-digests and graph invariants; the following browser phase is a separate gate.
+The project makes clean breaks: no release promises to run on a newer database,
+so the rehearsal no longer switches to an older pinned build. A new migration
+needs no change to the rehearsal.
 
 The initial compatibility release shipped with authoring off. The visual
 workbench is now enabled by default with `TACTIC_PIPELINE_AUTHORING_ENABLED=true`;
@@ -1706,7 +1679,7 @@ before release. An explicit operator override to `false` is preserved. Disabling
 authoring blocks new designs and workbench activations while the setup forms,
 existing graph runs, inspection, stopping and release recovery remain supported.
 
-The software rollback floor is a pipeline-compatible release. Older binaries
-cannot interpret the migration ledger or graph configurations. Use a compatible
-binary, or the reviewed release database backup/restore procedure. Never erase
-migration history to make an old binary accept a newer database.
+Older binaries cannot interpret a newer migration ledger or graph
+configurations. To go back, deploy the older release onto a fresh database, or
+onto a backup taken before the newer release. Never erase migration history to
+make an old binary accept a newer database.

@@ -382,11 +382,15 @@ class PipelineExecutionConfig(PipelineModel):
         if len({item.entity_id for item in self.bindings}) != 1:
             raise ValueError("A monitoring run requires one runtime entity")
         by_id = {item.slot_id: item for item in self.bindings}
+        # A reading whose unit the catalogue does not know fits any declared
+        # unit, as in the Dojo; only two known units that differ conflict.
         if any(
-            slot.unit is not None and slot.unit != by_id[slot.id].unit
+            slot.unit is not None
+            and by_id[slot.id].unit is not None
+            and slot.unit != by_id[slot.id].unit
             for slot in self.definition.input_slots
         ):
-            raise ValueError("Bound reading units must exactly match declared units")
+            raise ValueError("Bound reading units must match declared units")
         if not fits_json_budget(self, MAX_PIPELINE_EXECUTION_BYTES):
             raise ValueError(
                 "Bound pipeline exceeds the 96 KiB executable configuration budget"

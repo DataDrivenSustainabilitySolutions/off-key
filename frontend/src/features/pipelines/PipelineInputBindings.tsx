@@ -2,6 +2,7 @@ import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { PipelineDefinition } from "./contracts";
 import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
 import { addReading } from "./slots";
+import { unitFits } from "./bindings";
 
 export function PipelineInputBindings({ slots, target, bindings, disabled, owned, onChange, onSlotsChange }: {
   slots: PipelineDefinition["input_slots"]; target?: MonitoringTarget; bindings: Record<string, string>;
@@ -17,7 +18,7 @@ export function PipelineInputBindings({ slots, target, bindings, disabled, owned
         <option value="">Choose a reading</option>
         {target.inputs.map((input) => {
           const reason = input.binding.policy.mode === "off" ? "collection off" : owned(input.stream.id) ? "already monitored"
-            : slot.unit != null && slot.unit !== input.stream.unit ? "unit mismatch"
+            : !unitFits(slot.unit, input.stream.unit) ? "unit mismatch"
               : slots.some((other) => other.id !== slot.id && bindings[other.id] === input.stream.id) ? "already selected" : "";
           return <option key={input.stream.id} value={input.stream.id} disabled={!!reason}>
             {input.stream.label}{input.stream.unit ? ` · ${input.stream.unit}` : ""}{reason ? ` (${reason})` : ""}

@@ -2,13 +2,21 @@ import type { ActiveService } from "@/types/monitoring";
 import { monitoringTargetId, type MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { PipelineDefinition, PipelineServiceView } from "./contracts";
 
+/**
+ * Whether a reading's unit fits an input's declared unit. A reading whose unit
+ * is unknown fits any input, as the server and the Dojo agree; only two known
+ * units that differ are a mismatch.
+ */
+export const unitFits = (slotUnit?: string | null, readingUnit?: string | null) =>
+  slotUnit == null || readingUnit == null || slotUnit === readingUnit;
+
 /** Suggest only unambiguous matches; never guess between two equivalent readings. */
 export function suggestBindings(slots: PipelineDefinition["input_slots"], target?: MonitoringTarget, previous: Record<string, string> = {}) {
   const bindings: Record<string, string> = {};
   const used = new Set<string>();
   for (const slot of slots) {
     const candidates = target?.inputs.filter((input) => input.binding.policy.mode !== "off"
-      && !used.has(input.stream.id) && (slot.unit == null || slot.unit === input.stream.unit)) ?? [];
+      && !used.has(input.stream.id) && unitFits(slot.unit, input.stream.unit)) ?? [];
     const exact = candidates.filter((input) => input.stream.label === slot.label);
     const chosen = candidates.find((input) => input.stream.id === previous[slot.id])
       ?? (exact.length === 1 ? exact[0] : candidates.length === 1 ? candidates[0] : undefined);
@@ -22,7 +30,7 @@ export function bindingsReady(slots: PipelineDefinition["input_slots"], target: 
   return slots.length > 0 && new Set(slots.map((slot) => bindings[slot.id])).size === slots.length
     && slots.every((slot) => target?.inputs.some((input) => input.stream.id === bindings[slot.id]
       && input.binding.policy.mode !== "off" && !owned(input.stream.id)
-      && (slot.unit == null || slot.unit === input.stream.unit)));
+      && unitFits(slot.unit, input.stream.unit)));
 }
 
 /** The predecessor run's slot-to-reading bindings. */

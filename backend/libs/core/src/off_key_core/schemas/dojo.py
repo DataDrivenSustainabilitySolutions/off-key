@@ -749,7 +749,8 @@ class ScoreMetrics(DojoModel):
 
     Threshold-free: they judge the detector's scores, not the alarms its
     calibration and alarm rule made of them. Only scored results count, so a
-    run's warm-up is left out.
+    run's warm-up is left out. Results are ranked most unusual first: the
+    highest anomaly scores, or the lowest p-values of a static baseline.
     """
 
     scored_results: int
@@ -769,10 +770,11 @@ class ScoreMetrics(DojoModel):
         "peak just before or after a label."
     )
     top_score_at: datetime | None = Field(
-        description="When the highest score came, the earliest of equal ones."
+        description="When the most unusual score came, the earliest of equal "
+        "ones: the highest score, or a static baseline's lowest p-value."
     )
     top1_hit: bool | None = Field(
-        description="With exactly one label: whether the highest score lies "
+        description="With exactly one label: whether the most unusual score lies "
         "within 100 typical intervals of it, as the UCR archive scores a "
         "series. Null with more or fewer labels."
     )

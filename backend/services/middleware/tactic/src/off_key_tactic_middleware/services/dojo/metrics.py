@@ -244,7 +244,7 @@ class DojoMetrics:
         key = hashlib.sha256(
             json.dumps(
                 [
-                    2,
+                    3,
                     run.result_count,
                     run.alarm_count,
                     run.config.get("calibration_comparison")
@@ -339,6 +339,13 @@ class DojoMetrics:
                     self.session,
                     run.id,
                     [(label.start_at, label.end_at) for label in labels],
+                    # A static baseline stores p-values: the low ones are unusual.
+                    unusual=(
+                        "low"
+                        if result_kind(run.config["execution"]["definition"])
+                        == "static_baseline"
+                        else "high"
+                    ),
                 )
                 await self.session.execute(text("SET LOCAL statement_timeout = '25s'"))
                 return scores

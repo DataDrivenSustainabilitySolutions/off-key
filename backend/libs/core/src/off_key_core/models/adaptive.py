@@ -325,6 +325,29 @@ def _damp_warmup(settings: Mapping[str, Any]) -> int:
     return start + length - 2
 
 
+# Detectors that score each observation on its own, as if it had no past. On a
+# series that follows its past they score the level unless a step before them
+# carries time: lags, a change, a rolling window or the clock.
+POINT_DETECTORS = frozenset(
+    {
+        "mondrian_isolation_forest",
+        "graph_gated_one_class_svm",
+        "asd_isolation_forest",
+        "half_space_trees",
+        "online_isolation_forest",
+        "random_cut_forest",
+        "stream_random_histogram_forest",
+        "x_stream",
+        "knn",
+        "local_outlier_factor",
+        "incremental_one_class_svm_adaptive_kernel",
+        "online_ecod",
+        "online_copod",
+        "streaming_loda",
+    }
+)
+
+
 def detector_component(model_type: str) -> str:
     """The pipeline component of a streaming detector's model type."""
     own = model_type in PRETRAINED_FORECASTERS or model_type in RULE_DETECTORS

@@ -81,6 +81,7 @@ def _issues(definition):
     return [
         (item.code, item.node_id, item.message)
         for item in validate_pipeline(definition).issues
+        if item.code != "point_detector_without_time"
     ]
 
 

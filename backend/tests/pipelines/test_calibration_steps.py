@@ -109,7 +109,10 @@ def test_the_exceedance_rule_runs_over_any_detectors(detectors):
     result = validate_pipeline(boundary_definition(detectors))
 
     assert result.valid, result.issues
-    assert result.issues == []
+    assert [item.code for item in result.issues] in (
+        [],
+        ["point_detector_without_time"],
+    )
 
 
 @pytest.mark.parametrize(
@@ -203,16 +206,20 @@ def test_a_small_alarm_rate_warns_of_a_short_window(
 
     short = run(needed - 1)
     assert short.valid
+    found = [
+        item for item in short.issues if item.code != "point_detector_without_time"
+    ]
     assert [
-        (item.code, item.node_id, item.severity, item.parameter_path)
-        for item in short.issues
+        (item.code, item.node_id, item.severity, item.parameter_path) for item in found
     ] == [("calibration_window", "calibrate", "warning", ["alpha"])]
-    assert f"{needed:,} calibration observations" in short.issues[0].message
+    assert f"{needed:,} calibration observations" in found[0].message
     # Why two detectors under max need twice the window is said too.
-    assert ("detectors combined by max" in short.issues[0].message) == (
+    assert ("detectors combined by max" in found[0].message) == (
         len(detectors) > 1 and fusion == "max"
     )
-    assert run(needed).issues == []
+    assert all(
+        item.code == "point_detector_without_time" for item in run(needed).issues
+    )
 
 
 def test_more_exceedances_in_a_row_than_the_window_lets_above_go_blind():

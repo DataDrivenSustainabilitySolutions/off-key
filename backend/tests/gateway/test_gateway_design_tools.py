@@ -66,7 +66,11 @@ async def test_small_edits_need_manage_monitors_and_answer_with_the_design():
     assert response.status_code == 200, response.text
     result = response.json()
     assert result["added"] == ["prepare_smooth_1", "note_1"]
-    assert result["report"]["valid"] and result["report"]["issues"] == []
+    assert result["report"]["valid"]
+    assert [item["code"] for item in result["report"]["issues"]] in (
+        [],
+        ["point_detector_without_time"],
+    )
     # The design is in the form the editor reads, with its calibration step.
     definition = result["definition"]
     assert definition["schema_version"] == 2

@@ -384,7 +384,12 @@ def test_a_range_check_satisfies_a_detector_that_needs_values_in_the_unit_interv
         model = next(node for node in definition.nodes if node.id == "model")
         model.component = "detector:aberrant_half_space_trees"
         model.params = {"n_trees": 1, "height": 2, "window_size": 2, "seed": 1}
-        return validate_pipeline(definition)
+        report = validate_pipeline(definition)
+        # The forest sees values alone, which is said apart from its domain.
+        report.issues = [
+            item for item in report.issues if item.code != "point_detector_without_time"
+        ]
+        return report
 
     assert [item.code for item in needs_unit_interval(smoothed).issues] == [
         "model_domain"

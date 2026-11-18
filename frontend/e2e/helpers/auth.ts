@@ -66,7 +66,7 @@ export const acceptInvitationAndLogin = async (page: Page, email: string): Promi
   return email;
 };
 
-/** Remembered access tokens live only in page memory; mint one from the session cookie. */
+/** Access tokens live only in page memory; mint one from the session cookie. */
 export const accessToken = async (page: Page): Promise<string | null> =>
   page.evaluate(async () => {
     const unchecked = sessionStorage.getItem("auth_token");

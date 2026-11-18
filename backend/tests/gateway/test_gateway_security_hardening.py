@@ -46,6 +46,9 @@ def test_client_ip_uses_the_nearest_untrusted_hop(peer, forwarded, expected):
 
 
 class _RotatingSessions:
+    def __init__(self, persistent=True):
+        self.persistent = persistent
+
     async def refresh(self, token):
         return {
             "id": 42,
@@ -53,16 +56,21 @@ class _RotatingSessions:
             "session_version": 3,
             "token": "n" * 43,
             "expires_in": 1234,
+            "session_expires_in": 1234,
+            "persistent": self.persistent,
         }
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("persistent", [True, False])
 async def test_refresh_replaces_the_cookie_without_extending_its_deadline(
-    monkeypatch,
+    monkeypatch, persistent
 ):
     set_auth_env(monkeypatch)
     app = gateway_app(
-        overrides={get_remembered_session_service: returning(_RotatingSessions())}
+        overrides={
+            get_remembered_session_service: returning(_RotatingSessions(persistent))
+        }
     )
     async with asgi_client(app, base_url="https://test") as client:
         client.cookies.set(auth_api.REMEMBERED_SESSION_COOKIE, "r" * 43)
@@ -70,9 +78,12 @@ async def test_refresh_replaces_the_cookie_without_extending_its_deadline(
             "/v1/auth/refresh", headers={"X-Off-Key-Session": "1"}
         )
     assert response.status_code == 200
+    assert response.json()["session_expires_in"] == 1234
     cookie = response.headers["set-cookie"]
     assert cookie.startswith(f"{auth_api.REMEMBERED_SESSION_COOKIE}={'n' * 43}")
-    assert "Max-Age=1234" in cookie and "HttpOnly" in cookie
+    assert "HttpOnly" in cookie
+    # A browser-only session stays a browser-only cookie when it rotates.
+    assert ("Max-Age=1234" in cookie) is persistent
 
 
 @pytest.mark.asyncio

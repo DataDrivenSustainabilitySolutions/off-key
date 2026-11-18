@@ -2,7 +2,7 @@ import { apiUtils } from "./api-client";
 import type { Member, Permission, PermissionInfo, Role } from "./member-types";
 export type { Member, Permission, PermissionInfo, Role } from "./member-types";
 
-export const getCurrentMember = () => apiUtils.get<Member>("/v1/me", { redirectOnUnauthorized: false });
+export const getCurrentMember = () => apiUtils.get<Member>("/v1/me");
 export const getMembers = () => apiUtils.get<Member[]>("/v1/members");
 export const inviteMember = (email: string, role: Member["role"]) =>
   apiUtils.post<{ message: string }>("/v1/invitations", { email, role });

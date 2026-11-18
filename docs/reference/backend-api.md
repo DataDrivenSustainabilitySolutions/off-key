@@ -56,10 +56,10 @@ refused. Administrator tokens continue to use normal membership and permissions.
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
 | `POST` | `/auth/accept-invitation` | Activate an invited account | Body: `token`, `password` |
-| `POST` | `/auth/login` | Authenticate and mint a JWT | Body: `email`, `password` |
+| `POST` | `/auth/login` | Authenticate, mint a JWT and set the session cookie; `expires_in` and `session_expires_in` count seconds | Body: `email`, `password`, optional `remember_me` (keep the cookie across browser restarts for 30 days instead of 12 hours) |
 | `POST` | `/auth/password-reset` | Send reset mail when the account exists; the answer is the same either way | Body: `email` |
 | `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the reset mail | Body: `token`, `new_password` |
-| `POST` | `/auth/refresh` | Rotate the remembered session cookie and mint a new JWT; 401 clears the cookie | Session cookie |
+| `POST` | `/auth/refresh` | Mint a new JWT from the session cookie, rotating it daily without extending the sign-in; 401 clears the cookie | Session cookie |
 | `POST` | `/auth/logout` | Revoke the supplied bearer token and remembered session, then clear its cookie | Current bearer token and session cookie, when present |
 
 ```http
@@ -73,7 +73,9 @@ Content-Type: application/json
 {
   "access_token": "<bearer-token>",
   "token_type": "bearer",
-  "member_id": 7
+  "expires_in": 1800,
+  "member_id": 7,
+  "session_expires_in": 43200
 }
 ```
 

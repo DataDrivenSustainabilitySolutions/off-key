@@ -39,13 +39,30 @@ export const getUserIdFromToken = (token: string): number | null => {
   return payload ? parseNumericUserId(payload.user_id) ?? parseNumericUserId(payload.sub) : null;
 };
 
+// Seconds the server's clock runs ahead of this browser's. Token expiry is
+// judged on the server's clock, so a browser whose clock is off neither signs
+// out early nor rejects every renewed token.
+let serverClockOffset = 0;
+
+/** Learn the server's clock from a token that was issued `expiresIn` seconds before its expiry. */
+export const syncServerClock = (token: string, expiresIn: unknown): void => {
+  const exp = getTokenPayload(token)?.exp;
+  if (typeof exp !== "number" || typeof expiresIn !== "number" || !Number.isFinite(exp) || !(expiresIn > 0)) return;
+  const offset = exp - expiresIn - Date.now() / 1000;
+  // Ignore request latency; only a real clock difference matters.
+  serverClockOffset = Math.abs(offset) < 5 ? 0 : offset;
+};
+
+/** Now, in seconds, on the server's clock. */
+const serverNow = (): number => Date.now() / 1000 + serverClockOffset;
+
+/** Milliseconds until the token expires (negative once it has). */
+export const tokenRemainingMs = (token: string): number | null => {
+  const exp = getTokenPayload(token)?.exp;
+  return typeof exp === "number" && Number.isFinite(exp) ? (exp - serverNow()) * 1000 : null;
+};
+
 export const isTokenExpired = (token: string): boolean => {
-  const payload = getTokenPayload(token);
-  const exp = payload?.exp;
-
-  if (typeof exp !== "number" || !Number.isFinite(exp)) {
-    return true;
-  }
-
-  return exp <= Date.now() / 1000;
+  const remaining = tokenRemainingMs(token);
+  return remaining === null || remaining <= 0;
 };

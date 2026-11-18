@@ -4,6 +4,7 @@ import { JSX } from "react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { Button } from "@/components/ui/button";
 import { loginHref } from "./login-navigation";
+import { SessionNotice } from "@/components/SessionNotice";
 
 export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   const location = useLocation();
@@ -41,5 +42,5 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
     return <Navigate to={loginHref(location)} replace />;
   }
 
-  return children;
+  return <>{children}{!isGuest && <SessionNotice />}</>;
 };

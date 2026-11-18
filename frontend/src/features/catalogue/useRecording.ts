@@ -27,7 +27,7 @@ export function useRecording(snapshot: SystemSnapshot | null,
     setProblem("");
     try {
       if (!pause) {
-        const preview = await systemApi.previewCollection(change, { redirectOnUnauthorized: false });
+        const preview = await systemApi.previewCollection(change);
         if (preview.affected_monitors.length) {
           setPending({ edits, monitors: preview.affected_monitors });
           return false;

@@ -385,7 +385,7 @@ describe("service-centred monitoring workspace", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
     expect(screen.queryByText("Waiting for recording settings to apply.")).toBeNull();
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/recording/status", { reading_ids: ["temperature", "humidity"] }, expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/recording/status", { reading_ids: ["temperature", "humidity"] }, expect.anything());
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
@@ -559,7 +559,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(screen.getByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/catalogue")).toHaveLength(1);
-    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/overview", expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/overview", expect.anything());
     expect(apiUtils.put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Air temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
@@ -782,7 +782,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor(imported)] } });
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText("Catalogue imported and saved.");
-    expect(apiUtils.put).toHaveBeenCalledExactlyOnceWith("/v1/catalogue", { expected_revision: 7, document: imported }, expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.put).toHaveBeenCalledExactlyOnceWith("/v1/catalogue", { expected_revision: 7, document: imported }, expect.anything());
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Air temperature, preview" })).toBeNull();

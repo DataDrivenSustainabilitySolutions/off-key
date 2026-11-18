@@ -49,7 +49,7 @@ export function AgentSettings() {
   // What each agent did is a hint beside its key; the keys read without it.
   useEffect(() => {
     const controller = new AbortController();
-    const read = { signal: controller.signal, redirectOnUnauthorized: false };
+    const read = { signal: controller.signal };
     void Promise.all([apiUtils.get<PipelineProposalList>("/v1/pipeline-proposals", read).then(list => list.items),
       apiUtils.get<MonitorSummary[]>(API_CONFIG.ENDPOINTS.MONITORING.LIST, read)])
       .then(([proposals, monitors]) => { if (!controller.signal.aborted) setActivity({ proposals, monitors }); }, () => undefined);

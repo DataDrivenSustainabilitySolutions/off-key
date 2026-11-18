@@ -10,7 +10,7 @@ from off_key_core.auth.tokens import (
 )
 from off_key_core.config.logs import log_security_event
 from off_key_core.db.models import RememberedSession, RevokedAccessToken, User
-from off_key_core.schemas.sessions import REMEMBERED_SESSION_SECONDS
+from off_key_core.schemas.sessions import session_lifetime_seconds
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +42,7 @@ class RememberedSessionService:
         family_id: str | None,
         expires_at: datetime,
         issued_at: datetime,
+        persistent: bool,
     ) -> str:
         token = secrets.token_urlsafe(32)
         token_hash = digest_token(token)
@@ -53,13 +54,20 @@ class RememberedSessionService:
                 session_version=session_version,
                 expires_at=expires_at,
                 issued_at=issued_at,
+                persistent=persistent,
             )
         )
         return token
 
-    async def create(self, *, user_id: int, session_version: int) -> dict:
-        """Remember a sign-in that has just checked the member's password."""
+    async def create(
+        self, *, user_id: int, session_version: int, persistent: bool = True
+    ) -> dict:
+        """Remember a sign-in that has just checked the member's password.
+
+        A persistent session keeps its cookie across browser restarts.
+        """
         now = datetime.now(UTC)
+        lifetime = session_lifetime_seconds(persistent)
         await self.session.execute(
             delete(RememberedSession).where(RememberedSession.expires_at <= now)
         )
@@ -67,13 +75,15 @@ class RememberedSessionService:
             user_id=user_id,
             session_version=session_version,
             family_id=None,
-            expires_at=now + timedelta(seconds=REMEMBERED_SESSION_SECONDS),
+            expires_at=now + timedelta(seconds=lifetime),
             issued_at=now,
+            persistent=persistent,
         )
         await self.session.commit()
         return {
             "token": token,
-            "expires_in": REMEMBERED_SESSION_SECONDS,
+            "expires_in": lifetime,
+            "persistent": persistent,
             "session_family": digest_token(token),
         }
 
@@ -119,11 +129,15 @@ class RememberedSessionService:
             or user.session_version != remembered.session_version
         ):
             raise AuthenticationError("This remembered session is no longer valid")
+        expires_at = _utc(remembered.expires_at)
         identity = {
             "id": user.id,
             "email": user.email,
             "session_version": user.session_version,
             "session_family": remembered.family_id,
+            # Seconds until the sign-in ends, so the browser can warn first.
+            "session_expires_in": max(1, int((expires_at - now).total_seconds())),
+            "persistent": remembered.persistent,
         }
         if remembered.replaced_at is not None:
             if now - _utc(remembered.replaced_at) <= ROTATION_GRACE:
@@ -150,13 +164,13 @@ class RememberedSessionService:
             family_id=remembered.family_id,
             expires_at=remembered.expires_at,
             issued_at=now,
+            persistent=remembered.persistent,
         )
         await self.session.commit()
-        expires_at = _utc(remembered.expires_at)
         return {
             **identity,
             "token": replacement,
-            "expires_in": max(1, int((expires_at - now).total_seconds())),
+            "expires_in": identity["session_expires_in"],
         }
 
     async def revoke(self, token: str) -> None:

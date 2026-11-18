@@ -123,7 +123,6 @@ export function useSystemDocument({
     try {
       const snapshot = await systemApi.get({
         signal: controller.signal,
-        redirectOnUnauthorized: false,
       });
       if (
         controller.signal.aborted ||
@@ -157,7 +156,7 @@ export function useSystemDocument({
     runtimeController.current = controller;
     const context = generation.current;
     try {
-      const snapshot = await systemApi.get({ signal: controller.signal, redirectOnUnauthorized: false });
+      const snapshot = await systemApi.get({ signal: controller.signal });
       if (!controller.signal.aborted && context === generation.current && !busy.current) accept(snapshot, context);
     } catch { /* Keep the last acknowledged state; the controls can retry. */ }
     finally { if (runtimeController.current === controller) runtimeController.current = undefined; }
@@ -222,7 +221,7 @@ export function useSystemDocument({
     let changedRevision = false;
     const streamIds = current.document.readings.filter(stream => !runtimeConnectionId || stream.broker_id === runtimeConnectionId).map(stream => stream.id);
     try {
-      const next = await systemApi.collectionStatus(streamIds, { signal: controller.signal, redirectOnUnauthorized: false });
+      const next = await systemApi.collectionStatus(streamIds, { signal: controller.signal });
       if (controller.signal.aborted || context !== generation.current || busy.current) return;
       changedRevision = next.revision !== latest.current?.revision;
       if (!changedRevision) updateRuntime(next, runtimeConnectionId);
@@ -251,7 +250,7 @@ export function useSystemDocument({
     saveController.current = controller;
     const active = () => !controller.signal.aborted && context === generation.current;
     try {
-      const response = await write({ signal: controller.signal, redirectOnUnauthorized: false });
+      const response = await write({ signal: controller.signal });
       return active() && !!accept(response, context, true);
     } catch (error) {
       if (!active()) return false;

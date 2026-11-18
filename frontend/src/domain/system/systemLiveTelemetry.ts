@@ -27,7 +27,7 @@ type Transport = {
   read: (sequence: number, signal: AbortSignal) => Promise<LiveBatch>;
   release: (leaseId: string) => Promise<unknown>;
 };
-const options = { redirectOnUnauthorized: false, timeout: 10000 };
+const options = { timeout: 10000 };
 const transport: Transport = {
   create: (revision, streamIds) =>
     apiUtils.post(

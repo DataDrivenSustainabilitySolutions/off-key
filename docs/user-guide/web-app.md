@@ -123,7 +123,9 @@ your session expires. Opening the login page directly takes you to Monitoring.
 Application invitations and member roles control access; the GitHub allowlist for
 infrastructure administration is separate.
 
-With **Remember this device**, the access token stays in memory and is restored from an HttpOnly session cookie through `/v1/auth/refresh`; otherwise it lives in session storage for the tab. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
+Every sign-in keeps its short access token in memory and renews it silently from an HttpOnly session cookie through `/v1/auth/refresh`, so open tabs stay signed in and new tabs sign in on their own. A sign-in lasts 12 hours and ends when the browser closes; with **Remember this device** it lasts 30 days across restarts. Five minutes before it ends, a notice offers to sign in again. If the server cannot be reached for a moment, the page stays as it is and renewal keeps retrying. When a sign-in does end, unsaved setup work is kept and comes back when you sign in again as the same member; signing out, or another member signing in, discards it.
+
+In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
 
 **Account → Signed in** shows your email, your role and what it lets you change.
 Members whose role can manage members handle invitations, roles and access under

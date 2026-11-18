@@ -44,6 +44,8 @@ async def test_remembered_session_grace_accepts_a_naive_replacement_time():
         session_version=1,
         family_id="a" * 64,
         replaced_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        persistent=True,
     )
     user = SimpleNamespace(
         id=1, email="a@example.com", session_version=1, is_active=True, is_verified=True
@@ -57,7 +59,10 @@ async def test_remembered_session_grace_accepts_a_naive_replacement_time():
         "email": "a@example.com",
         "session_version": 1,
         "session_family": remembered.family_id,
+        "session_expires_in": claims["session_expires_in"],
+        "persistent": True,
     }
+    assert 3590 <= claims["session_expires_in"] <= 3600
     session.commit.assert_awaited_once()
 
 
@@ -88,12 +93,15 @@ async def test_remembered_sessions_store_hashes_expire_and_revoke_individually(
         await session.commit()
         claims = await service.refresh(first["token"])
         rotated = claims.pop("token")
-        assert claims.pop("expires_in") <= 30 * 24 * 60 * 60
+        remaining = claims.pop("expires_in")
+        assert remaining <= 30 * 24 * 60 * 60
         assert claims == {
             "id": user_id,
             "email": user.email,
             "session_version": 1,
             "session_family": stored.family_id,
+            "session_expires_in": remaining,
+            "persistent": True,
         }
         replacement = await session.get(
             RememberedSession, hashlib.sha256(rotated.encode()).hexdigest()

@@ -59,7 +59,7 @@ class ReadingPolls {
 
   async monitoring(signal: AbortSignal) {
     const { binding } = this;
-    const get = <T,>(endpoint: string) => apiUtils.get<T>(endpoint, { signal, redirectOnUnauthorized: false });
+    const get = <T,>(endpoint: string) => apiUtils.get<T>(endpoint, { signal });
     const [evidence, anomalies] = await Promise.allSettled([
       drainForward({
         cursor: this.evidenceCursor,

@@ -13,7 +13,7 @@ export function MonitorWatches({ monitorId }: { monitorId: string }) {
   useEffect(() => {
     const controller = new AbortController();
     void apiUtils.get<{ origin?: MonitorOrigin | null }>(API_CONFIG.ENDPOINTS.MONITORING.ITEM(monitorId),
-      { signal: controller.signal, redirectOnUnauthorized: false }).then(
+      { signal: controller.signal }).then(
       result => { if (!controller.signal.aborted) setOrigin(result.origin ?? null); },
       () => { if (!controller.signal.aborted) setOrigin(null); });
     return () => controller.abort();

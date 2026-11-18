@@ -45,7 +45,7 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   const availableModels = useMemo(() => Object.fromEntries(Object.entries(models).filter(([, model]) => model.strategy === strategy)), [models, strategy]);
   useEffect(() => {
     const controller = new AbortController();
-    void apiUtils.get<Record<string, ModelDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.DETECTORS, { signal: controller.signal, redirectOnUnauthorized: false })
+    void apiUtils.get<Record<string, ModelDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.DETECTORS, { signal: controller.signal })
       .then(result => { if (!controller.signal.aborted) { setModels(result); setLoading(false); setError(""); } }, reason => {
         if (!controller.signal.aborted) { setError(getErrorMessage(reason)); setLoading(false); }
       });

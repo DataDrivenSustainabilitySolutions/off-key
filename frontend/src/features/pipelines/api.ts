@@ -50,21 +50,19 @@ export const pipelinesApi = {
     apiUtils
       .get<PipelineCatalog>("/v1/pipeline-components", {
         signal,
-        redirectOnUnauthorized: false,
       })
       .then(normalizeCatalog),
   /** The forecast service's checkpoints and their download state, for pretrained forecasters. */
   forecastModels: (signal?: AbortSignal) =>
     apiUtils.get<ForecastModelCatalog>("/v1/forecast-models", {
       signal,
-      redirectOnUnauthorized: false,
     }),
   downloadForecastModel: (model: string) =>
     apiUtils.post<ForecastModelInfo>("/v1/forecast-models/downloads", { model }),
   /** The library's blocks: chains of steps to copy into a design. */
   blocks: (signal?: AbortSignal) =>
     apiUtils
-      .get<PipelineBlockList>(blocks, { signal, redirectOnUnauthorized: false })
+      .get<PipelineBlockList>(blocks, { signal })
       .then((list) => list.items.map(normalizeBlock)),
   createBlock: (request: PipelineBlockCreate) =>
     apiUtils.post<PipelineBlockView>(blocks, request).then(normalizeBlock),
@@ -73,28 +71,27 @@ export const pipelinesApi = {
   /** Proposals, the newest first: those that wait for a decision, or all of them. */
   proposals: (status?: PipelineProposalSummary["status"], signal?: AbortSignal) =>
     apiUtils
-      .get<PipelineProposalList>(proposals, { signal, redirectOnUnauthorized: false, params: status ? { status } : undefined })
+      .get<PipelineProposalList>(proposals, { signal, params: status ? { status } : undefined })
       .then((list) => list.items),
   /** How many monitors run now against how many may: starting a proposal needs a free place. */
   capacity: (signal?: AbortSignal) =>
     apiUtils
-      .get<PipelineProposalList>(proposals, { signal, redirectOnUnauthorized: false, params: { status: "open" } })
+      .get<PipelineProposalList>(proposals, { signal, params: { status: "open" } })
       .then((list) => list.capacity ?? undefined),
   proposal: (id: string, signal?: AbortSignal) =>
     apiUtils
-      .get<PipelineProposalView>(`${proposals}/${encodeURIComponent(id)}`, { signal, redirectOnUnauthorized: false })
+      .get<PipelineProposalView>(`${proposals}/${encodeURIComponent(id)}`, { signal })
       .then(normalizeProposal),
   decideProposal: (id: string, decision: PipelineProposalDecision) =>
     apiUtils.post<PipelineProposalSummary>(`${proposals}/${encodeURIComponent(id)}/decision`, decision),
   list: (query: PipelineListQuery = {}, signal?: AbortSignal) =>
     apiUtils.get<PipelineListPage>(base, {
       signal,
-      redirectOnUnauthorized: false,
       params: query,
     }),
   get: (id: string, signal?: AbortSignal) =>
     apiUtils
-      .get<PipelineView>(item(id), { signal, redirectOnUnauthorized: false })
+      .get<PipelineView>(item(id), { signal })
       .then(normalizeView),
   create: (request: PipelineCreate) =>
     apiUtils.post<PipelineView>(base, request).then(normalizeView),
@@ -120,7 +117,7 @@ export const pipelinesApi = {
     apiUtils
       .get<PipelineRevisionView>(
         `${item(id)}/revisions/${encodeURIComponent(revisionId)}`,
-        { signal, redirectOnUnauthorized: false },
+        { signal },
       )
       .then(normalizeRevision),
   service: (id: string, signal?: AbortSignal, selectedNodeId?: string) =>
@@ -129,7 +126,6 @@ export const pipelinesApi = {
         `${monitor(id)}/pipeline`,
         {
           signal,
-          redirectOnUnauthorized: false,
           params: selectedNodeId
             ? { selected_node_id: selectedNodeId }
             : undefined,
@@ -139,12 +135,10 @@ export const pipelinesApi = {
   history: (serviceId: string, signal?: AbortSignal) =>
     apiUtils.get<PipelineHistoryPage>(`${monitor(serviceId)}/pipeline/history`, {
       signal,
-      redirectOnUnauthorized: false,
     }),
   timeline: (serviceId: string, signal?: AbortSignal) =>
     apiUtils.get<PipelineRunTimeline>(`${monitor(serviceId)}/pipeline/timeline`, {
       signal,
-      redirectOnUnauthorized: false,
     }),
   runMetadata: (
     serviceId: string,
@@ -156,7 +150,6 @@ export const pipelinesApi = {
       .get<PipelineValidationReport>(`${monitor(serviceId)}/pipeline/metadata`, {
         signal,
         params: { selected_node_id: selectedNodeId },
-        redirectOnUnauthorized: false,
       })
       .then((report) => normalizeValidation(report, definition)),
   saveLayout: (id: string, layout: PipelineLayout) =>
@@ -169,7 +162,7 @@ export const pipelinesApi = {
   activation: (id: string, signal?: AbortSignal) =>
     apiUtils.get<PipelineActivationView>(
       `${activations}/${encodeURIComponent(id)}`,
-      { signal, redirectOnUnauthorized: false },
+      { signal },
     ),
   cancel: (id: string) =>
     apiUtils.post<PipelineActivationView>(

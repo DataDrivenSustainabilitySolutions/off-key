@@ -11,7 +11,6 @@ import { unsignedJwt as createUnsignedToken } from "./support/fixtures/auth";
 // Public-access discovery is covered by DemoGuest; these tests exercise sessions.
 vi.mock("@/auth/demo", () => ({
   loadDemoStatus: async () => ({ enabled: false }),
-  isPublicDemo: () => false,
 }));
 
 const mockNavigate = vi.fn();
@@ -179,7 +178,7 @@ describe("Login", () => {
     });
   });
 
-  it.each([false, true])("submits and persists the remember setting %s after login", async (rememberMe) => {
+  it.each([false, true])("submits the remember setting %s and keeps a cookie-backed session", async (rememberMe) => {
     const mockToken = createUnsignedToken({
       sub: "test@example.com",
       user_id: 7,
@@ -192,6 +191,8 @@ describe("Login", () => {
           access_token: mockToken,
           token_type: "bearer",
           member_id: 7,
+          expires_in: 3600,
+          session_expires_in: 12 * 3600,
         }),
         {
           status: 200,
@@ -216,10 +217,14 @@ describe("Login", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/", { replace: true });
     expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe("include");
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).remember_me).toBe(rememberMe);
-    // Remembered access tokens stay in memory; only the HttpOnly cookie persists.
+    // Every sign-in renews from its HttpOnly cookie, so the access token stays
+    // in memory; "Remember this device" only decides how long the cookie lasts.
     expect(localStorage.getItem("auth_token")).toBeNull();
-    expect(sessionStorage.getItem("auth_token")).toBe(rememberMe ? null : mockToken);
-    expect(tokenManager.isRemembered()).toBe(rememberMe);
+    expect(sessionStorage.getItem("auth_token")).toBeNull();
+    expect(tokenManager.isRemembered()).toBe(true);
+    const endsIn = (tokenManager.getSessionEndsAt() ?? 0) - Date.now();
+    expect(endsIn).toBeGreaterThan(12 * 3600_000 - 60_000);
+    expect(endsIn).toBeLessThanOrEqual(12 * 3600_000);
   });
 
   it("accepts a valid login response even when the token has no user id claim", async () => {

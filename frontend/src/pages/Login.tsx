@@ -21,6 +21,8 @@ import { clientLogger } from "@/lib/logger";
 interface LoginResponse {
   access_token: string;
   token_type: string;
+  expires_in?: number;
+  session_expires_in?: number;
 }
 
 const Login: React.FC = () => {
@@ -87,8 +89,9 @@ const Login: React.FC = () => {
 
       const data: LoginResponse = await response.json();
 
-      // Use consolidated login function which handles token storage
-      login(data.access_token, rememberMe);
+      // The session cookie renews the token; "Remember this device" only
+      // keeps that cookie across browser restarts.
+      login(data.access_token, { expiresIn: data.expires_in, sessionExpiresIn: data.session_expires_in });
 
       navigate(loginDestination(searchParams.get("returnTo")), { replace: true });
     } catch (error) {

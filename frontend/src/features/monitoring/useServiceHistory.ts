@@ -98,7 +98,7 @@ export function useServiceHistory(
       cursor: cursors.evidence,
       fetchPage: cursor => apiUtils.get<MonitoringChartEvidence[]>(
         API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE({ readingIds: context.readingIds }, cursor, serviceId),
-        { signal, redirectOnUnauthorized: false }),
+        { signal }),
       cursorOf: getMonitoringEvidenceCursor,
       pageSize: EVIDENCE_PAGE_SIZE,
     })]);

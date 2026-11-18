@@ -1,4 +1,4 @@
-import { getUserIdFromToken, isTokenExpired, parseNumericUserId } from './token';
+import { getUserIdFromToken, isTokenExpired, parseNumericUserId, syncServerClock } from './token';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 import { browserVerificationRequired } from '@/lib/browser-verification';
 
@@ -8,10 +8,23 @@ const REMEMBERED = 'remembered';
 // Non-secret marker that tells other tabs a different member signed in.
 const MEMBER_KEY = 'session_member';
 const SESSION_CHANGED = 'off-key-session-changed';
+// Written on an explicit sign-out so other tabs can drop that member's drafts.
+const SIGNED_OUT_KEY = 'session_signed_out';
 let generation = 0;
-// Remembered sessions keep the bearer token in memory only; each tab restores
-// it from the HttpOnly cookie, so injected scripts cannot lift it from storage.
+// Every sign-in is backed by the HttpOnly session cookie ("remembered" below,
+// a name kept from when only "Remember this device" set one). The bearer token
+// stays in memory; each tab restores it from the cookie, so injected scripts
+// cannot lift it from storage. Tokens in sessionStorage come from releases
+// before every sign-in had a cookie and simply run out.
 let rememberedToken: string | null = null;
+// When the sign-in behind the cookie ends, on this browser's clock.
+let sessionEndsAt: number | null = null;
+
+/** Lifetimes from a token response, in seconds from when it was sent. */
+export interface SessionLifetimes {
+  expiresIn?: unknown;
+  sessionExpiresIn?: unknown;
+}
 
 const readStorageType = (): string | null => {
   try {
@@ -46,6 +59,11 @@ export const tokenManager = {
     try { return parseNumericUserId(localStorage.getItem(MEMBER_KEY)); }
     catch { return null; }
   },
+  /** When the sign-in ends and the member must enter their password again. */
+  getSessionEndsAt(): number | null {
+    return sessionEndsAt;
+  },
+
   getToken(): string | null {
     return this.isRemembered()
       ? rememberedToken
@@ -56,7 +74,11 @@ export const tokenManager = {
     return readStorageType() === REMEMBERED;
   },
 
-  setToken(token: string, rememberMe = false): void {
+  setToken(token: string, rememberMe = false, lifetimes: SessionLifetimes = {}): void {
+    syncServerClock(token, lifetimes.expiresIn);
+    const { sessionExpiresIn } = lifetimes;
+    sessionEndsAt = typeof sessionExpiresIn === 'number' && sessionExpiresIn > 0
+      ? Date.now() + sessionExpiresIn * 1000 : null;
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
     rememberedToken = rememberMe ? token : null;
@@ -69,6 +91,7 @@ export const tokenManager = {
 
   removeToken(): void {
     rememberedToken = null;
+    sessionEndsAt = null;
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(STORAGE_TYPE_KEY);
@@ -122,22 +145,37 @@ export const refreshSession = (): Promise<string | null> => {
         response.status,
       );
     }
-    const data: { access_token?: string } = await response.json();
+    const data: { access_token?: string; expires_in?: unknown; session_expires_in?: unknown } = await response.json();
     // Another tab may have renewed or signed out while this request was running.
     if (startedGeneration !== generation || !tokenManager.isRemembered()) return tokenManager.getToken();
+    if (typeof data.access_token === 'string') syncServerClock(data.access_token, data.expires_in);
     if (typeof data.access_token !== 'string' || isTokenExpired(data.access_token)) {
       throw new SessionRequestError('The session service returned an invalid response.', 502);
     }
-    tokenManager.setToken(data.access_token, true);
+    tokenManager.setToken(data.access_token, true, { expiresIn: data.expires_in, sessionExpiresIn: data.session_expires_in });
     return data.access_token;
   })().finally(() => { if (renewal === pending) renewal = null; });
   renewal = pending;
   return pending;
 };
 
+/** Run `onSignOut` when the member signs out on purpose in another tab. */
+export const subscribeToSignOut = (onSignOut: () => void): (() => void) => {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === SIGNED_OUT_KEY && event.newValue) onSignOut();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+};
+
 export const endSession = (): Promise<void> => {
   const token = tokenManager.getToken();
   tokenManager.removeToken();
+  try {
+    localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
+  } catch {
+    // Other tabs then keep their drafts until a different member signs in.
+  }
   logoutRequest ??= sessionRequest(API_CONFIG.ENDPOINTS.AUTH.LOGOUT, token)
     .then(() => undefined)
     .finally(() => { logoutRequest = null; });

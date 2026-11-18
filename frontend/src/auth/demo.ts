@@ -16,8 +16,6 @@ interface DemoSource {
 export const DEMO_VISITOR = { name: 'Demo visitor', initials: 'DV' } as const;
 
 export interface DemoStatus { enabled: boolean; sources?: DemoSource[] }
-let enabled = false;
-export const isPublicDemo = () => enabled;
 
 export async function loadDemoStatus(signal: AbortSignal): Promise<DemoStatus> {
   const response = await fetch(getApiUrl('/v1/demo'), {
@@ -26,10 +24,9 @@ export async function loadDemoStatus(signal: AbortSignal): Promise<DemoStatus> {
   });
   if (response.headers.get('cf-mitigated') === 'challenge') throw browserVerificationRequired();
   // An older/private installation does not expose the capability endpoint.
-  if (response.status === 404) { enabled = false; return { enabled: false }; }
+  if (response.status === 404) return { enabled: false };
   if (!response.ok) throw new Error('The demo could not be reached. Please retry.');
   const status: DemoStatus = await response.json();
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-  enabled = status.enabled === true;
-  return { ...status, enabled };
+  return { ...status, enabled: status.enabled === true };
 }

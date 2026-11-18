@@ -1,11 +1,11 @@
 .source-overview { display: grid; gap: 8px; margin-top: 24px; }
 .ex-main-content .source-overview .source-broker { margin-top: 0; }
-.ex-main-content .source-broker { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0,1fr) auto; text-align: left; gap: 4px 20px; margin-top: 8px; padding: 12px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+.ex-main-content .source-broker { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0,1fr) auto; text-align: left; gap: 4px 20px; margin-top: 8px; padding: 12px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background-color: var(--ex-bg); }
 .source-broker strong { font-weight: 500; }
 /* Connected and unavailable brokers get a left edge in their state colour that
    fades into the card; every other state stays plain. */
 .ex-main-content .source-broker--positive, .ex-main-content .source-broker--danger {
-  background: linear-gradient(90deg, var(--stripe) 0 3px, color-mix(in srgb, var(--stripe) 8%, transparent) 3px, transparent 160px); }
+  background: var(--ex-bg) linear-gradient(90deg, var(--stripe) 0 3px, color-mix(in srgb, var(--stripe) 8%, transparent) 3px, transparent 160px); }
 .ex-main-content .source-broker--positive { --stripe: var(--ex-accent); }
 .ex-main-content .source-broker--danger { --stripe: hsl(var(--destructive)); }
 .source-broker span { font-size: 12px; color: hsl(var(--muted-foreground)); }

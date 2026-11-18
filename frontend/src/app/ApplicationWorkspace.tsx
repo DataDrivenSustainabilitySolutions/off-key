@@ -66,6 +66,8 @@ function WorkspaceFrame() {
         onCommit={sidebarWidth => setPreferences(previous => ({ ...previous, sidebarWidth }))} />}
     </aside>}
     <div className="app-main-column">
+      {/* A faint brand pattern behind every page; it stays put while the page scrolls. */}
+      <div className="app-pattern" aria-hidden="true" />
       {(mobile || !preferences.sidebarOpen) && <div className="app-sidebar-reopen">
         <SidebarToggle ref={show} open={false} onClick={() => mobile ? setDrawerOpen(true) : setDesktopOpen(true)} />
       </div>}

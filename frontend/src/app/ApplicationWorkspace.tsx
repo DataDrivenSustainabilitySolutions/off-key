@@ -11,6 +11,7 @@ import "@/features/explorer/explorer.css";
 import "@/features/workspace/workspace.css";
 import { MonitoringServicesProvider } from "@/domain/monitoring/MonitoringServicesProvider";
 import { settingsSectionOf } from "@/lib/settings-navigation";
+import { BrandPattern } from "@/components/BrandPattern";
 import { AppSidebar } from "./AppSidebar";
 import { SettingsOverlay } from "./SettingsOverlay";
 import { SidebarToggle } from "./SidebarToggle";
@@ -73,6 +74,9 @@ function WorkspaceFrame() {
         {!stored && <p className="ex-banner" role="status">Browser storage is unavailable. Your navigation will last for this session.</p>}
         {favouritesError && <p className="ex-banner" role="status">{favouritesError}</p>}
         <Suspense fallback={<p className="workspace-loading" role="status">Loading page…</p>}><Outlet /></Suspense>
+        {/* A faint brand pattern at the end of every page: below the last item on a long page,
+            at the window's lower edge on a short one. */}
+        <div className="app-pattern-anchor"><BrandPattern /></div>
       </div>
     </div>
     <Dialog.Root open={mobile && drawerOpen} onOpenChange={setDrawerOpen}><Dialog.Portal>

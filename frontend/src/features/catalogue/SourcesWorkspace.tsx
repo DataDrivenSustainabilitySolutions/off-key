@@ -81,7 +81,7 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
       const pending = !!reconnects[id]?.pending;
       return <><Button variant="outline" size="sm" disabled={pending} title="Retry the recording connection to this broker now"
         aria-label={`Reconnect recording for ${label}`} onClick={() => void retryBroker(id)}>
-        <RotateCw size={14} />{pending ? "Reconnecting…" : "Reconnect recording"}</Button>{stop}</>;
+        <RotateCw size={14} /><span className="source-broker-action-text">{pending ? "Reconnecting…" : "Reconnect recording"}</span></Button>{stop}</>;
     }
     if (recorded) return stop;
     const polled = isPolled(id);
@@ -172,7 +172,7 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
             {reason && <> · <span className="source-broker-reason" title={reason}>{reason}</span></>}</span>
           <div className="source-broker-status">{/* A Record button already says that recording is off. */}
             {!(status.tone === "neutral" && system.canEdit) && <span className={`mn-state mn-state--${status.tone}`}>{status.label}</span>}
-            {rowActions(item.id, item.label)}</div>
+            <div className="source-broker-actions">{rowActions(item.id, item.label)}</div></div>
         </div>;
       })}
     </section>}

@@ -1,5 +1,7 @@
 .auth-backdrop {
   position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: grid;
   place-items: center;
   min-height: 100dvh;
@@ -63,6 +65,8 @@
   font-size: 14px;
   font-weight: 400;
 }
+/* The same weave as the workspace, rising from the screen's lower edge. */
+.auth-backdrop > .auth-pattern { inset: auto 0 0; height: min(420px, 42dvh); z-index: -1; }
 .auth-login-form #password { padding-right: 48px; }
 
 .auth-login-form { display: grid; gap: 22px; }

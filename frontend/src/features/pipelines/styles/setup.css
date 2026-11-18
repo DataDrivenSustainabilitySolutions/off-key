@@ -84,8 +84,6 @@
   .pl-setup-header { margin-top: 16px; gap: 12px; }
   .pl-setup .pl-setup-input { min-height: 36px; padding: 6px 12px; }
   .pl-toolbox-grid { grid-template-columns: minmax(0, 1fr); }
-  .pl-setup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .pl-setup-actions > button.mn-primary { grid-column: 1 / -1; min-height: 44px; }
   .pl-setup input, .pl-setup select, .pl-template-dialog input, .pl-template-dialog textarea { font-size: 16px; }
   .pl-setup .pl-canvas-toolbar { gap: 12px; }
 }

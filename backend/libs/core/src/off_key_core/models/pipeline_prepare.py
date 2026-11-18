@@ -20,9 +20,11 @@ from bisect import bisect_left, bisect_right, insort
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 
 from ..schemas.pipelines import (
+    LAG_UNITS,
     AccumulateParameters,
     AggregateParameters,
     CalculateParameters,
@@ -33,6 +35,7 @@ from ..schemas.pipelines import (
     FormulaParameters,
     GateParameters,
     HoldParameters,
+    LagsParameters,
     MathParameters,
     MuteParameters,
     PipelineModel,
@@ -49,6 +52,7 @@ PREPARE_MODELS: dict[str, type[PipelineModel]] = {
     "prepare.smooth": SmoothParameters,
     "prepare.despike": DespikeParameters,
     "prepare.change": ChangeParameters,
+    "prepare.lags": LagsParameters,
     "prepare.rolling": RollingParameters,
     "prepare.math": MathParameters,
     "prepare.range": RangeParameters,
@@ -93,6 +97,8 @@ _FIXED_SUFFIXES = {
     "prepare.despike": "despiked",
     "prepare.range": "clipped",
     "prepare.hold": "held",
+    # Each lag follows: power_lag24.
+    "prepare.lags": "lag",
 }
 _ACCUMULATE_SUFFIXES = {
     "sum": "total",
@@ -137,7 +143,11 @@ def _setting(component: str, params: dict[str, Any], name: str) -> Any:
     """A normalized setting, or the step's default for a draft that leaves it out."""
     if name in params:
         return params[name]
-    return PREPARE_MODELS[component].model_fields[name].default
+    return (
+        PREPARE_MODELS[component]
+        .model_fields[name]
+        .get_default(call_default_factory=True)
+    )
 
 
 def _quantile_label(quantile: float) -> str:
@@ -188,10 +198,25 @@ def default_suffix(component: str, params: dict[str, Any]) -> str:
     raise ValueError(f"Unsupported prepare step: {component}")
 
 
+def output_suffixes(
+    component: str, params: dict[str, Any], suffix: str
+) -> tuple[str, ...]:
+    """What each of a feature's added features appends to its name, in output
+    order: the suffix itself, or for Lags the suffix and each lag."""
+    if component == "prepare.lags":
+        lags = sorted(_setting(component, params, "lags"))
+        unit = LAG_UNITS.get(_setting(component, params, "unit"))
+        ending = "" if unit is None else unit[1]
+        return tuple(f"{suffix}{lag}{ending}" for lag in lags)
+    return (suffix,)
+
+
 def reads_time(component: str, params: dict[str, Any]) -> bool:
     """Whether a step needs the time of each observation it sees."""
     if component == "prepare.smooth":
         return _setting(component, params, "method") == "time_constant"
+    if component == "prepare.lags":
+        return _setting(component, params, "unit") != "observations"
     return component == "prepare.time"
 
 
@@ -206,6 +231,11 @@ class Kernel:
     """Values a feature needs before its first output."""
     window = 0
     """Length of the window of past values a feature keeps."""
+    width = 1
+    """Values a feature gives per observation."""
+    several = False
+    """Whether advance returns its values as a tuple, in the order of
+    output_suffixes, rather than one value: Lags do, even with one lag."""
 
     @property
     def held(self) -> int:
@@ -221,6 +251,11 @@ class Kernel:
     def accepts(self, state: State) -> bool:
         """Whether a restored state has this step's shape."""
         return state == ()
+
+    def waiting(self, state: State) -> bool:
+        """Whether a feature still waits for its first output after its lead,
+        as a step that warms up over time rather than observations does."""
+        return False
 
 
 def _pushed(values: array, value: float, size: int) -> array:
@@ -741,6 +776,126 @@ class Change(Kernel):
         return _window_state(state, self.lag, 1)
 
 
+class Lags(Kernel):
+    """The values several observations back, one output per lag, ascending."""
+
+    def __init__(self, lags: list[int]):
+        self.lags = tuple(sorted(lags))
+        self.width = len(self.lags)
+        self.several = True
+        self.lead = self.lags[-1]
+        self.window = self.lags[-1]
+
+    def initial(self) -> State:
+        return (array("d"),)
+
+    def advance(self, state: State, value: float) -> tuple[State, Any]:
+        """The next state and a value per lag, or None until the largest arrived."""
+        (values,) = state
+        window = _pushed(values, value, self.window)
+        if len(values) < self.window:
+            return (window,), None
+        # values ends with the observation before this one: lag 1 is its last.
+        return (window,), tuple(values[-lag] for lag in self.lags)
+
+    def accepts(self, state: State) -> bool:
+        return _window_state(state, self.window, 1)
+
+
+# How closely a lag in time finds its value: within this share of the lag.
+LAG_PRECISION = 0.01
+# The shortest spacing of observations the memory of a time lag is sized for.
+LAG_SPACING = 0.1
+
+
+class TimeLags(Kernel):
+    """The last values at or before several times back, one output per lag.
+
+    The state holds past observations, thinned with their age: one between
+    two others leaves once those two lie closer together than 1% of the
+    newer one's age. A lag then finds an observation within 1% of itself of
+    the time it asks for, and the memory grows with the log of the longest
+    lag rather than with the observations it spans. The step has output once
+    an observation lies the longest lag back.
+    """
+
+    def __init__(self, seconds: list[float]):
+        self.seconds = tuple(sorted(seconds))
+        self.width = len(self.seconds)
+        self.several = True
+        longest = self.seconds[-1]
+        # Ages below 100 spacings keep every observation; beyond, the spacing
+        # grows by 1% of the age, which takes 100 ln(ratio) points.
+        self.window = (
+            math.ceil(
+                (1 + math.log(max(longest / (LAG_SPACING / LAG_PRECISION), 1)))
+                / LAG_PRECISION
+            )
+            + 2
+        )
+
+    @property
+    def held(self) -> int:
+        """A time and a value per point."""
+        return 2 * self.window
+
+    def initial(self) -> State:
+        return (array("d"), array("d"))
+
+    def advance(
+        self, state: State, value: float, now: float | None = None
+    ) -> tuple[State, Any]:
+        """The next state and a value per lag, or None until the longest is covered."""
+        if now is None:
+            raise ValueError("A lag in time needs the time of each observation")
+        times, values = state
+        oldest = now - self.seconds[-1]
+        result = None
+        if times and times[0] <= oldest:
+            result = tuple(
+                values[bisect_right(times, now - lag) - 1] for lag in self.seconds
+            )
+        return self._thinned(times, values, now, value), result
+
+    def _thinned(self, times: array, values: array, now: float, value: float):
+        kept_times = array("d", [now])
+        kept_values = array("d", [value])
+        # From the newest back: a point leaves where its neighbours lie close
+        # enough for its age, or where a newer one already lies past the
+        # longest lag.
+        newer = now
+        longest = self.seconds[-1]
+        for index in range(len(times) - 1, -1, -1):
+            time = times[index]
+            if now - newer >= longest:
+                break
+            older = times[index - 1] if index else None
+            if older is not None and newer - older <= LAG_PRECISION * (now - newer):
+                continue
+            kept_times.append(time)
+            kept_values.append(values[index])
+            newer = time
+        kept_times.reverse()
+        kept_values.reverse()
+        return (kept_times, kept_values)
+
+    def accepts(self, state: State) -> bool:
+        if len(state) != 2 or not all(
+            isinstance(item, array) and item.typecode == "d" for item in state
+        ):
+            return False
+        times, values = state
+        return (
+            len(times) == len(values)
+            and all(math.isfinite(item) for part in state for item in part)
+            and all(left < right for left, right in pairwise(times))
+        )
+
+    def waiting(self, state: State) -> bool:
+        times = state[0]
+        return not times or times[-1] - times[0] < self.seconds[-1]
+
+
 class Function(Kernel):
     """log, log1p, sqrt, abs, square or scale * x + offset, with domain checks."""
 
@@ -805,11 +960,19 @@ def _smoother(settings: SmoothParameters) -> Kernel:
     return Rolling(settings.window_size, "mean")
 
 
+def _lags(settings: LagsParameters) -> Kernel:
+    if settings.unit == "observations":
+        return Lags(settings.lags)
+    seconds = LAG_UNITS[settings.unit][0]
+    return TimeLags([lag * seconds for lag in settings.lags])
+
+
 # The step each kind of settings builds.
 _KERNELS: dict[type[PipelineModel], Callable[[Any], Kernel]] = {
     SmoothParameters: _smoother,
     DespikeParameters: lambda item: Despike(item.window_size, item.threshold),
     ChangeParameters: lambda item: Change(item.lag, item.mode),
+    LagsParameters: _lags,
     RollingParameters: lambda item: Rolling(
         item.window_size, item.statistic, item.quantile
     ),
@@ -1056,6 +1219,7 @@ __all__ = [
     "StageSplit",
     "default_suffix",
     "kernel",
+    "output_suffixes",
     "prepared_bounds",
     "reads_time",
     "stage_split",

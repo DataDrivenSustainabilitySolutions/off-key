@@ -4,7 +4,7 @@ import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./cont
 import { detectorIds } from "./model";
 import { writtenNames } from "./formula";
 import {
-  addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope, timeFeatures,
+  addedNames, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope, timeFeatures, lagsOf, lagText, lagUnit,
 } from "./scope";
 import { coverage, FIXED_THRESHOLD } from "./learning";
 import { fusionChoice } from "./steps";
@@ -64,8 +64,8 @@ function scopeSummary(
   if (computed !== undefined)
     return scope.add ? { chips: [`+ ${computed}`] } : { text: `Replaces them with ${computed}` };
   if (scope.add && scope.elementwise)
-    return used ? { chips: used.map((name) => `+ ${addedName(name, scope.suffix ?? "new")}`) }
-      : { text: `Adds *_${scope.suffix ?? "new"}` };
+    return used ? { chips: used.flatMap((name) => addedNames(name, scope)).map((name) => `+ ${name}`) }
+      : { text: `Adds ${scope.endings.map((ending) => `*_${ending}`).join(", ")}` };
   return { text: scope.add ? "Keeps its inputs" : undefined, chips: used?.map((name) => labels.get(name) ?? name) };
 }
 
@@ -119,6 +119,12 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const lag = amount("lag", 1);
       if (value("mode") === "lag") return `Value ${count(lag, "observation")} back`;
       return `${value("mode") === "percent" ? "Percent change" : "Difference"} over ${count(lag, "observation")}`;
+    }
+    case "prepare.lags": {
+      const lags = lagsOf(node, component);
+      const unit = lagUnit(node, component);
+      const back = unit.seconds ? `${unit.short} back` : "observations back";
+      return lags.length ? `${lags.length === 1 ? "Lag" : "Lags"} ${lagText(lags)} ${back}` : "No lag yet";
     }
     case "prepare.rolling": {
       const statistic = String(value("statistic"));

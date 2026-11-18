@@ -50,6 +50,7 @@ const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.accumulate": new Set(["reset_when"]),
   "prepare.hold": new Set(["update_when"]),
   "prepare.relation": new Set(["against"]),
+  "prepare.lags": new Set(["lags", "unit"]),
   "prepare.time": new Set([...TIME_FEATURES.map(([name]) => name), "timezone"]),
   "static.expected_value": new Set(["target", "name"]),
   "adaptive.expected_value": new Set(["target", "name"]),

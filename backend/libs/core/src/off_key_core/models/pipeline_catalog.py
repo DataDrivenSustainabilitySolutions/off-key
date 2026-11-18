@@ -140,6 +140,17 @@ _STEPS: tuple[_Step, ...] = (
         "Add the change since earlier observations.",
     ),
     _Step(
+        "prepare.lags",
+        "transform",
+        "prepare",
+        "Lags",
+        "Add values from several observations back, such as lags 1 to 3 and 24.",
+        "With the current value beside its lags, a detector that treats "
+        "observations as unrelated sees how a reading moves over time. Each lag "
+        "adds one feature per feature used; the step has output once the "
+        "largest lag has arrived.",
+    ),
+    _Step(
         "prepare.rolling",
         "transform",
         "prepare",

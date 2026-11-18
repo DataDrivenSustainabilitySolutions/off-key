@@ -10,8 +10,7 @@ RUN zensical build --clean --strict && python dev/docs/llms.py site
 
 FROM nginx:1.31.8-alpine-slim@sha256:4c734d33ee731135dc9f2349914a34551c920f4451fca8bb05bf5880eb9079e8
 COPY --from=build /docs/site /usr/share/nginx/html
-# Keep the server configuration with the build recipe so rollback rehearsals can
-# build older documentation sources with this same static hosting configuration.
+# Keep the server configuration with the build recipe.
 COPY <<'NGINX' /etc/nginx/conf.d/default.conf
 server {
     listen 80;

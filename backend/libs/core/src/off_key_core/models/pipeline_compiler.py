@@ -417,6 +417,93 @@ def _validate_windows(compilation: _Compilation) -> None:
         )
 
 
+# Features one Lags step may add before it is worth a word: distance and tree
+# detectors weigh every feature alike, so many lags drown the current values.
+WIDE_LAGS = 24
+
+
+def _upstream(compilation: _Compilation, identifier: str) -> set[str]:
+    """The nodes whose output reaches a node, along any path."""
+    seen: set[str] = set()
+    pending = [edge.source for edge in compilation.incoming[identifier]]
+    while pending:
+        key = pending.pop()
+        if key not in seen:
+            seen.add(key)
+            pending.extend(edge.source for edge in compilation.incoming[key])
+    return seen
+
+
+def _validate_width(
+    compilation: _Compilation, identifier: str, label: str, added: int
+) -> None:
+    if added > WIDE_LAGS:
+        compilation.warning(
+            "wide_lags",
+            f"{label} adds {added} features. Detectors that weigh every feature "
+            "alike then see mostly the past; keep the lags that carry "
+            "information, such as those a reading's profile suggests.",
+            identifier,
+            parameter_path=["lags"],
+        )
+
+
+def _validate_lags(compilation: _Compilation) -> None:
+    """Lags count observations, which is a fixed time back only on a steady stream."""
+    source = next(
+        (node for node in compilation.nodes.values() if node.kind == "source"), None
+    )
+    held = {
+        item["input"]
+        for item in (source.params.get("hold") or [] if source is not None else [])
+        if isinstance(item, dict) and "input" in item
+    }
+    for identifier in compilation.order:
+        node = compilation.nodes[identifier]
+        edges = compilation.incoming[identifier]
+        if (
+            node.component != "prepare.lags"
+            or identifier not in compilation.features
+            or len(edges) != 1
+        ):
+            continue
+        label = _label(compilation, identifier)
+        columns = compilation.features[edges[0].source]
+        scope = step_scope(node.component, node.params, [item.name for item in columns])
+        _validate_width(compilation, identifier, label, len(scope.added))
+        if node.params.get("unit") != "observations":
+            # Lags in time look back in time, whatever arrives between.
+            continue
+        gates = [
+            key
+            for key in _upstream(compilation, identifier)
+            if compilation.nodes[key].component == "prepare.gate"
+        ]
+        if gates:
+            compilation.warning(
+                "lags_after_gate",
+                f"{label} follows {_label(compilation, gates[0])}, so a lag counts "
+                "only the observations it lets through, not a fixed time back. "
+                "Count the lags in time, or put them before the Gate.",
+                identifier,
+            )
+        position = {item.name: item for item in columns}
+        changing = [
+            name
+            for name in scope.selected
+            if position[name].raw and set(position[name].slots) & held
+        ]
+        if changing:
+            compilation.warning(
+                "lags_of_held_input",
+                f"{changing[0]} is held between the changes it is sent on, so its "
+                "lags in observations repeat one value until it changes and are no "
+                "fixed time back. Count the lags in time.",
+                identifier,
+                parameter_path=["apply_to"],
+            )
+
+
 def _feature_labels(compilation: _Compilation, columns: Columns) -> dict[str, str]:
     """Readings by their label, so a message says DC current, not dc_current."""
     slots = {
@@ -852,6 +939,7 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
     _propagate_features(compilation)
     _validate_stages(compilation)
     _validate_windows(compilation)
+    _validate_lags(compilation)
     _validate_values(compilation)
     _validate_constants(compilation)
     _validate_model(compilation)

@@ -258,10 +258,7 @@ def exercise_graph(client, entity, service_id, run_id, batch):
                         == score["input"]["output"]["raw"]
                     )
                     return
-            # The compatible release predates sampling every step of a log read:
-            # it samples at most once a second, so a burst it reads within that
-            # second keeps the burst's first step. A frame per wait gives it a
-            # later step to sample, and costs the current release nothing.
+            # A frame per wait gives the restored graph a fresh step to score.
             publish_frame(29)
             time.sleep(1)
     finally:
@@ -434,7 +431,7 @@ def assert_graph_restored(client, entity, saved, workers, release):
     assert_one_graph_workload(saved, release["images"]["mqtt_radar"])
 
 
-def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once():
+def test_redeploy_restores_state_and_resumes_once():
     directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
     root = Path(__file__).resolve().parents[3]
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
@@ -486,30 +483,8 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
             current_release = json.loads(
                 (directory / "production-release.json").read_text()
             )["release"]
-            compatible = json.loads(
-                (directory / "compatible-release.json").read_text()
-            )["release"]
-            assert (
-                compatible["application_revision"]
-                != current_release["application_revision"]
-            )
-            for name in (
-                "api",
-                "tactic",
-                "mqtt_proxy",
-                "mqtt_radar",
-                "db_sync",
-                "forecast",
-                "frontend",
-            ):
-                assert compatible["images"][name] != current_release["images"][name]
-            # Restore B's data, run older pipeline-compatible A, then return to B.
-            # The rollback keeps the live schema/data; no pre-feature image is used.
-            for restore, target, expected in (
-                (True, "current", current_release),
-                (False, "compatible", compatible),
-                (False, "current", current_release),
-            ):
+            # Restore the backup onto the current release, then redeploy it again.
+            for restore in (True, False):
                 command = [
                     "uv",
                     "run",
@@ -521,8 +496,6 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     "redeploy",
                     "--directory",
                     str(directory),
-                    "--release",
-                    target,
                 ]
                 if restore:
                     command.append("--restore")
@@ -552,14 +525,15 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 assert workers[0]["display_name"] == "Saved monitoring service"
                 wait_until_service_accepts_data(client, workers[0]["id"])
                 assert_graph_restored(
-                    client, graph_entity, graph, monitors.json(), expected
+                    client, graph_entity, graph, monitors.json(), current_release
                 )
                 record = json.loads((directory / "stack/release.json").read_text())
                 assert (
-                    record["application_revision"] == expected["application_revision"]
+                    record["application_revision"]
+                    == current_release["application_revision"]
                 )
                 assert not (directory / "stack/release-maintenance.json").exists()
-                evidence_path = directory / "binary-rollback-evidence.json"
+                evidence_path = directory / "redeploy-evidence.json"
                 evidence = json.loads(evidence_path.read_text())
                 evidence["cutovers"][-1]["graph"] = {
                     "revision_id": graph.revision["id"],

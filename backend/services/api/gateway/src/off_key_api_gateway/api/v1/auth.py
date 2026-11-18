@@ -12,12 +12,10 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from off_key_core.auth.tokens import AccessClaims, issue_access_token
+from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.logs import log_security_event, logger, redact_email
 from off_key_core.schemas.members import AcceptInvitation, PasswordReset
-from off_key_core.schemas.sessions import (
-    REMEMBERED_SESSION_SECONDS,
-    RememberedSessionToken,
-)
+from off_key_core.schemas.sessions import RememberedSessionToken
 from off_key_core.schemas.user import (
     ForgotPasswordRequest,
     UserLogin,
@@ -47,8 +45,13 @@ auth_client_limit = limiter.shared_limit("30/minute", scope="auth-client")
 
 
 def access_token_response(identity: Mapping[str, Any]) -> dict:
-    """A bearer token for a member whose credentials were just checked."""
-    return {
+    """A bearer token for a member whose credentials were just checked.
+
+    ``expires_in`` and ``session_expires_in`` count seconds from now, so a
+    browser schedules renewal and the end-of-session warning without trusting
+    its own clock.
+    """
+    response = {
         "access_token": issue_access_token(
             AccessClaims(
                 sub=identity["email"],
@@ -58,8 +61,12 @@ def access_token_response(identity: Mapping[str, Any]) -> dict:
             )
         ),
         "token_type": "bearer",
+        "expires_in": get_auth_settings().ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "member_id": identity["id"],
     }
+    if identity.get("session_expires_in") is not None:
+        response["session_expires_in"] = identity["session_expires_in"]
+    return response
 
 
 def secure_session_cookie(request: Request) -> bool:
@@ -72,8 +79,9 @@ def secure_session_cookie(request: Request) -> bool:
 
 
 def set_session_cookie(
-    request: Request, response: Response, token: str, max_age: int
+    request: Request, response: Response, token: str, max_age: int | None
 ) -> None:
+    """Without ``max_age`` the cookie lasts until the browser closes."""
     response.set_cookie(
         REMEMBERED_SESSION_COOKIE,
         token,
@@ -177,10 +185,12 @@ async def login(
 ):
     """Exchange email and password for a bearer access token.
 
-    Send the token as `Authorization: Bearer <token>`. It expires after the
-    installation's token lifetime, 30 minutes unless configured otherwise;
-    sign in again then. `remember_me` is for browsers: it also sets a
-    session cookie that `/v1/auth/refresh` trades for new tokens.
+    Send the token as `Authorization: Bearer <token>`. It expires after
+    `expires_in` seconds, the installation's token lifetime (30 minutes unless
+    configured otherwise); sign in again then. Browsers also get an HttpOnly
+    session cookie that `/v1/auth/refresh` trades for new tokens until the
+    sign-in ends after `session_expires_in` seconds: 12 hours, and the cookie
+    ends with the browser, or 30 days across restarts with `remember_me`.
     """
     try:
         authenticated_user = await users.authenticate(
@@ -192,20 +202,24 @@ async def login(
         raise
 
     await revoke_remembered_cookie(request, sessions)
-    if user.remember_me:
-        session = await sessions.create(
-            user_id=authenticated_user["id"],
-            session_version=authenticated_user["session_version"],
-        )
-        set_session_cookie(
-            request, response, session["token"], REMEMBERED_SESSION_SECONDS
-        )
-        result = access_token_response(
-            authenticated_user | {"session_family": session["session_family"]}
-        )
-    else:
-        clear_session_cookie(request, response)
-        result = access_token_response(authenticated_user)
+    session = await sessions.create(
+        user_id=authenticated_user["id"],
+        session_version=authenticated_user["session_version"],
+        persistent=user.remember_me,
+    )
+    set_session_cookie(
+        request,
+        response,
+        session["token"],
+        session["expires_in"] if user.remember_me else None,
+    )
+    result = access_token_response(
+        authenticated_user
+        | {
+            "session_family": session["session_family"],
+            "session_expires_in": session["expires_in"],
+        }
+    )
 
     safe_email = redact_email(authenticated_user["email"])
     logger.info("event=auth.user_logged_in email=%s", safe_email)
@@ -239,7 +253,12 @@ async def refresh_session(
             response.headers["Cache-Control"] = "no-store"
             if user.get("token"):
                 # Rotation keeps the original deadline; the old secret is spent.
-                set_session_cookie(request, response, user["token"], user["expires_in"])
+                set_session_cookie(
+                    request,
+                    response,
+                    user["token"],
+                    user["expires_in"] if user.get("persistent", True) else None,
+                )
             return access_token_response(user)
     denied = JSONResponse({"detail": "Sign in to continue"}, status_code=401)
     clear_session_cookie(request, denied)

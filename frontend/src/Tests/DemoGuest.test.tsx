@@ -9,7 +9,7 @@ import { loadDemoStatus } from '@/auth/demo';
 import { getCurrentMember } from '@/lib/member-api';
 import { tokenManager } from '@/auth/session';
 
-vi.mock('@/auth/demo', () => ({ loadDemoStatus: vi.fn(), isPublicDemo: () => true, DEMO_VISITOR: { name: 'Demo visitor', initials: 'DV' } }));
+vi.mock('@/auth/demo', () => ({ loadDemoStatus: vi.fn(), DEMO_VISITOR: { name: 'Demo visitor', initials: 'DV' } }));
 vi.mock('@/lib/member-api', () => ({ getCurrentMember: vi.fn() }));
 
 const token = `test.${btoa(JSON.stringify({ user_id: 1, sub: 'admin@example.com', session_version: 0, exp: 4102444800 }))}.signature`;

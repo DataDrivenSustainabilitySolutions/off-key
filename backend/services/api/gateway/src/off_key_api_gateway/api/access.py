@@ -22,7 +22,7 @@ from off_key_core.auth.tokens import (
     decode_access_token,
 )
 from off_key_core.db.models import Agent, RememberedSession, RevokedAccessToken, User
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..providers import RequestSession
@@ -68,6 +68,8 @@ async def signed_in_member(token: str, session: AsyncSession) -> User:
             .where(
                 RememberedSession.family_id == claims.session_family,
                 RememberedSession.user_id == claims.user_id,
+                # A token never outlasts the sign-in it was issued for.
+                RememberedSession.expires_at > func.now(),
             )
             .exists()
         )

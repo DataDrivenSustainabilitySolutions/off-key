@@ -15,6 +15,9 @@ APPLIED_CHECKSUMS = {
     "002_dojo_agent_owner.sql": (
         "3f632463ce68189351f00ab9618febd51457abe28b732cff658657412787af6b"
     ),
+    "003_session_persistence.sql": (
+        "1b812d875f62d022c530010b3d8dc9b12354c70b41195c9bda2033ca7721872e"
+    ),
 }
 
 

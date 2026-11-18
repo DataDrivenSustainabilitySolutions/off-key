@@ -53,7 +53,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   useEffect(() => {
     const controller = new AbortController();
     void apiUtils.get<{ configuration?: Configuration }>(API_CONFIG.ENDPOINTS.MONITORING.ITEM(service.id),
-      { signal: controller.signal, redirectOnUnauthorized: false }).then(result => {
+      { signal: controller.signal }).then(result => {
       if (!controller.signal.aborted) { setConfiguration(result.configuration); setError(""); }
     }, reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
     return () => controller.abort();

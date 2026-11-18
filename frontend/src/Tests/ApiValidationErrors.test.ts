@@ -1,6 +1,6 @@
 import { AxiosError } from "axios";
-import { expect, it } from "vitest";
-import { ApiRequestError, apiClient, apiUtils, type ApiRequestOptions } from "../lib/api-client";
+import { expect, it, vi } from "vitest";
+import { ApiRequestError, apiClient, apiUtils } from "../lib/api-client";
 
 it("shows actionable field errors from catalog validation", async () => {
   const client = apiClient;
@@ -49,17 +49,19 @@ it("preserves a conflict status for safe versioned catalog retries", async () =>
   } finally { apiClient.defaults.adapter = original; }
 });
 
-it("lets optional preview requests surface an expired session without forcing navigation", async () => {
+it("surfaces an ended sign-in without reloading the page", async () => {
   const original = apiClient.defaults.adapter;
+  const replace = vi.fn();
+  vi.stubGlobal("location", { ...window.location, replace });
   apiClient.defaults.adapter = async (config) => {
-    expect((config as typeof config & ApiRequestOptions).redirectOnUnauthorized).toBe(false);
     throw new AxiosError("Unauthorized", "401", config, undefined, {
       status: 401, statusText: "Unauthorized", headers: {}, config, data: { detail: "Login required" },
     });
   };
   try {
-    await expect(apiUtils.get("/v1/catalogue", { redirectOnUnauthorized: false })).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
-  } finally { apiClient.defaults.adapter = original; }
+    await expect(apiUtils.get("/v1/catalogue")).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
+    expect(replace).not.toHaveBeenCalled();
+  } finally { apiClient.defaults.adapter = original; vi.unstubAllGlobals(); }
 });
 
 it("names the server's reference on a server failure so it leads to its logs", async () => {

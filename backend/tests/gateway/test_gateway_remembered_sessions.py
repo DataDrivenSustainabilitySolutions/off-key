@@ -40,15 +40,26 @@ class Sessions:
     def _record(self, name, *args, **kwargs):
         self.calls.append((name, args, kwargs))
 
-    async def create(self, *, user_id, session_version):
-        self._record("create", user_id=user_id, session_version=session_version)
-        return {"token": TOKEN, "session_family": "f" * 64}
+    async def create(self, *, user_id, session_version, persistent):
+        self._record(
+            "create",
+            user_id=user_id,
+            session_version=session_version,
+            persistent=persistent,
+        )
+        lifetime = 30 * 24 * 60 * 60 if persistent else 12 * 60 * 60
+        return {"token": TOKEN, "session_family": "f" * 64, "expires_in": lifetime}
 
     async def refresh(self, token):
         self._record("refresh", token)
         if self.failure:
             raise FAILURES[self.failure]
-        return {"id": 42, "email": LOGIN["email"], "session_version": 3}
+        return {
+            "id": 42,
+            "email": LOGIN["email"],
+            "session_version": 3,
+            "session_expires_in": 600,
+        }
 
     async def revoke(self, token):
         self._record("revoke", token)
@@ -84,6 +95,8 @@ def assert_short_access_token(response):
     assert claims["user_id"] == 42
     assert claims["session_version"] == 3
     assert 29 * 60 < claims["exp"] - datetime.now(UTC).timestamp() <= 30 * 60
+    # Relative lifetimes let the browser schedule renewal without its own clock.
+    assert response.json()["expires_in"] == 30 * 60
 
 
 @pytest.mark.asyncio
@@ -95,7 +108,10 @@ async def test_remembered_login_sets_cookie_and_renews_short_access_token(sessio
         )
         assert response.status_code == 200
         assert_short_access_token(response)
-        assert sessions.calls == [("create", (), {"user_id": 42, "session_version": 3})]
+        assert sessions.calls == [
+            ("create", (), {"user_id": 42, "session_version": 3, "persistent": True})
+        ]
+        assert response.json()["session_expires_in"] == 30 * 24 * 60 * 60
         cookie = response.headers["set-cookie"]
         assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=lax" in cookie
         assert "Max-Age=2592000" in cookie and "Path=/" in cookie
@@ -106,6 +122,7 @@ async def test_remembered_login_sets_cookie_and_renews_short_access_token(sessio
         assert_short_access_token(response)
         assert response.headers["cache-control"] == "no-store"
         assert "set-cookie" not in response.headers  # Never extend the 30-day deadline.
+        assert response.json()["session_expires_in"] == 600
         assert sessions.calls[-1] == ("refresh", (TOKEN,), {})
 
 
@@ -126,16 +143,25 @@ async def test_cookie_security_accommodates_only_loopback_http(
 
 
 @pytest.mark.asyncio
-async def test_unchecked_login_ends_previous_remembered_session(session_api):
+async def test_unchecked_login_keeps_a_browser_session_that_renews(session_api):
     app, sessions = session_api
     async with asgi_client(app, base_url="https://test") as client:
         await client.post("/v1/auth/login", json=LOGIN | {"remember_me": True})
         sessions.calls.clear()
         response = await client.post("/v1/auth/login", json=LOGIN)
         assert response.status_code == 200
-        assert "Max-Age=0" in response.headers["set-cookie"]
-        assert sessions.calls == [("revoke", (TOKEN,), {})]
-        assert COOKIE not in client.cookies
+        # The previous sign-in ends; the new cookie lasts until the browser closes.
+        assert sessions.calls == [
+            ("revoke", (TOKEN,), {}),
+            ("create", (), {"user_id": 42, "session_version": 3, "persistent": False}),
+        ]
+        cookie = response.headers["set-cookie"]
+        assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=lax" in cookie
+        assert "Max-Age" not in cookie and "expires" not in cookie.lower()
+        assert response.json()["session_expires_in"] == 12 * 60 * 60
+        response = await client.post("/v1/auth/refresh", headers=HEADERS)
+        assert response.status_code == 200
+        assert_short_access_token(response)
 
 
 @pytest.mark.asyncio

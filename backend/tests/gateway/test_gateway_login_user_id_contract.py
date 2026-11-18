@@ -25,10 +25,16 @@ async def test_login_includes_server_assigned_id_and_session_version(monkeypatch
         "role": "user",
         "session_version": 3,
     }
+    sessions = AsyncMock()
+    sessions.create.return_value = {
+        "token": "r" * 43,
+        "session_family": "f" * 64,
+        "expires_in": 12 * 60 * 60,
+    }
     app = gateway_app(
         overrides={
             get_user_service: returning(users),
-            get_remembered_session_service: returning(AsyncMock()),
+            get_remembered_session_service: returning(sessions),
         }
     )
     async with asgi_client(app) as client:
@@ -52,3 +58,4 @@ async def test_login_includes_server_assigned_id_and_session_version(monkeypatch
     assert payload["sub"] == "user@example.com"
     assert payload["user_id"] == 42
     assert payload["session_version"] == 3
+    assert payload["session_family"] == "f" * 64

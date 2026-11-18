@@ -11,7 +11,9 @@ export function rememberNavigation(key: string, value: unknown) { drafts.set(key
 export const clearNavigationDrafts = () => {
   generation++;
   drafts.clear();
+  draftOwner = null;
   try {
+    sessionStorage.removeItem(OWNER_KEY);
     const keys = Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index));
     for (const key of keys)
       if (key?.startsWith(STORED_PREFIX)) sessionStorage.removeItem(key);
@@ -19,6 +21,20 @@ export const clearNavigationDrafts = () => {
 };
 
 const STORED_PREFIX = "off-key:draft:";
+// The member whose work the drafts hold. They survive the end of a sign-in, so
+// signing in again picks the work up, and are dropped when someone else signs in.
+const OWNER_KEY = "off-key:draft-owner";
+let draftOwner: string | null = null;
+
+/** Keep the drafts for this member, or drop them when they belong to someone else. */
+export function claimNavigationDrafts(memberId: number) {
+  const member = String(memberId);
+  let owner = draftOwner;
+  try { owner ??= sessionStorage.getItem(OWNER_KEY); } catch { /* Memory still knows the owner. */ }
+  if (owner !== null && owner !== member) clearNavigationDrafts();
+  draftOwner = member;
+  try { sessionStorage.setItem(OWNER_KEY, member); } catch { /* Ownership stays in memory. */ }
+}
 /** Tab-scoped copy of a draft that should survive a reload; cleared with the in-memory drafts. */
 export function readStoredDraft(key: string): unknown {
   try {

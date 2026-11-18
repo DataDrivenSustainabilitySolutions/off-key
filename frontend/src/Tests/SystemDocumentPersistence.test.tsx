@@ -148,7 +148,7 @@ describe("saved system persistence", () => {
     expect(apiUtils.put).toHaveBeenCalledWith(
       "/v1/catalogue",
       { expected_revision: 1, document: document("Saved name") },
-      expect.objectContaining({ redirectOnUnauthorized: false }),
+      expect.anything(),
     );
     await act(async () => {
       expect(await result.current.save(document("Second"))).toBe(false);
@@ -392,6 +392,6 @@ describe("canonical system runtime polling", () => {
     expect(result.current.revision).toBe(3);
     expect(result.current.document?.label).toBe("Changed catalogue");
     expect(apiUtils.get).toHaveBeenCalledTimes(2);
-    expect(apiUtils.get).toHaveBeenLastCalledWith("/v1/catalogue", expect.objectContaining({ signal: expect.any(AbortSignal), redirectOnUnauthorized: false }));
+    expect(apiUtils.get).toHaveBeenLastCalledWith("/v1/catalogue", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 });

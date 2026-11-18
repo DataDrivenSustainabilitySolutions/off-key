@@ -10,8 +10,6 @@ import axios, {
 } from 'axios';
 import { refreshSession, tokenManager } from '@/auth/session';
 import { getUserIdFromToken } from '@/auth/token';
-import { loginHref } from '@/auth/login-navigation';
-import { isPublicDemo } from '@/auth/demo';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 import { browserVerificationRequired, followsUserAction, isBrowserVerificationRequired, verifyBrowser } from './browser-verification';
 
@@ -31,8 +29,6 @@ export interface ApiRequestOptions {
   params?: Record<string, unknown>;
   signal?: AbortSignal;
   timeout?: number;
-  /** Optional views can show a sign-in state instead of navigating away. */
-  redirectOnUnauthorized?: boolean;
 }
 
 export class ApiRequestError extends Error {
@@ -121,7 +117,7 @@ const createApiClient = (): AxiosInstance => {
       }
       // Handle 401 Unauthorized
       if (error.response?.status === 401) {
-        const options = error.config as (InternalAxiosRequestConfig & ApiRequestOptions & { sessionRetried?: boolean }) | undefined;
+        const options = error.config as (InternalAxiosRequestConfig & { sessionRetried?: boolean }) | undefined;
         if (options && !options.sessionRetried && tokenManager.isRemembered()) {
           options.sessionRetried = true;
           // A concurrent request may already have replaced this rejected token.
@@ -142,10 +138,10 @@ const createApiClient = (): AxiosInstance => {
         if (activeToken && !tokenManager.isTokenExpired(activeToken) && options?.headers.Authorization !== `Bearer ${activeToken}`) {
           return Promise.reject(new ApiRequestError('The previous session has ended.', 401));
         }
+        // Signed-in pages then move to the sign-in page within the app, so
+        // drafts survive and signing in again returns to this page.
         tokenManager.removeToken();
-        // Redirect to login page
-        if (options?.redirectOnUnauthorized !== false && !isPublicDemo()) window.location.replace(loginHref(window.location));
-        return Promise.reject(new ApiRequestError('Session expired. Please login again.', 401));
+        return Promise.reject(new ApiRequestError('Your sign-in has ended. Please sign in again.', 401));
       }
 
       // Handle other common errors

@@ -22,7 +22,7 @@ const mockPatch = vi.mocked(apiUtils.patch);
 const mockDelete = vi.mocked(apiUtils.delete);
 
 const signal = new AbortController().signal;
-const optional = { signal, redirectOnUnauthorized: false };
+const optional = { signal };
 const definition: PipelineDefinition = {
   nodes: [{ id: "input", kind: "source", component: "source.aligned" }],
 };

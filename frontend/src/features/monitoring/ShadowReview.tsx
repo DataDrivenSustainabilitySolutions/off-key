@@ -31,7 +31,7 @@ export function ShadowReview({ service, canEdit, onTakeLive, onStopped }: {
     if (!service.reading_ids.length) return;
     const controller = new AbortController();
     void apiUtils.get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.ALARMS(service.id, service.reading_ids),
-      { signal: controller.signal, redirectOnUnauthorized: false }).then(rows => {
+      { signal: controller.signal }).then(rows => {
       if (!controller.signal.aborted) { setAlarms(mutedAlarms(rows, since)); setError(""); }
     }, reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
     return () => controller.abort();

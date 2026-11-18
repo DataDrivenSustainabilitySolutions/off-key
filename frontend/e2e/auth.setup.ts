@@ -29,9 +29,15 @@ setup(
       sessionAuthToken: sessionStorage.getItem("auth_token"),
     }));
 
+    // Every sign-in renews from an HttpOnly cookie; unchecked, it ends with the browser.
     expect(sessionState.localAuthToken).toBeNull();
-    expect(sessionState.storageType).toBe("sessionStorage");
-    expect(sessionState.sessionAuthToken).toBeTruthy();
+    expect(sessionState.storageType).toBe("remembered");
+    expect(sessionState.sessionAuthToken).toBeNull();
+    const browserCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "off_key_remembered_session",
+    );
+    expect(browserCookie?.httpOnly).toBe(true);
+    expect(browserCookie?.expires).toBe(-1);
 
     await page.goto("/login");
     await loginWithEmail(page, email, { rememberMe: true });
@@ -46,11 +52,12 @@ setup(
     expect(persistentState.localAuthToken).toBeNull();
     expect(persistentState.storageType).toBe("remembered");
     expect(persistentState.sessionAuthToken).toBeNull();
-    expect(
-      (await page.context().cookies()).some(
-        (cookie) => cookie.name === "off_key_remembered_session" && cookie.httpOnly,
-      ),
-    ).toBe(true);
+    const rememberedCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "off_key_remembered_session",
+    );
+    expect(rememberedCookie?.httpOnly).toBe(true);
+    // "Remember this device" keeps the cookie across browser restarts.
+    expect(rememberedCookie?.expires).toBeGreaterThan(Date.now() / 1000 + 29 * 24 * 60 * 60);
 
     await mkdir(dirname(AUTH_STATE_FILE), { recursive: true });
     await page.context().storageState({ path: AUTH_STATE_FILE });

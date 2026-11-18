@@ -22,7 +22,7 @@ describe("coordinated monitoring snapshots", () => {
     await waitFor(() => expect(hook.result.current.ready).toBe(true));
     expect(apiUtils.get).toHaveBeenCalledExactlyOnceWith(
       "/v1/monitors/overview?selected_monitor_id=run",
-      expect.objectContaining({ redirectOnUnauthorized: false }),
+      expect.anything(),
     );
     expect(hook.result.current.authoringEnabled).toBe(true);
     expect(hook.result.current.pipelineState).toEqual({ run_id: "run" });

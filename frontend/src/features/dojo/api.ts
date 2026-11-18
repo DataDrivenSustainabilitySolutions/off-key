@@ -35,14 +35,13 @@ const base = "/v1/dojo";
 const segment = encodeURIComponent;
 const dataset = (id: string) => `${base}/datasets/${segment(id)}`;
 const run = (id: string) => `${base}/runs/${segment(id)}`;
-const read = { redirectOnUnauthorized: false } as const;
 // An upload may be 100 MB; the server copies it in one transaction.
 const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
 export const dojoApi = {
   datasets: (query: DatasetListQuery = {}, signal?: AbortSignal) =>
-    apiUtils.get<DatasetListPage>(`${base}/datasets`, { ...read, signal, params: query }),
-  dataset: (id: string, signal?: AbortSignal) => apiUtils.get<DatasetView>(dataset(id), { ...read, signal }),
+    apiUtils.get<DatasetListPage>(`${base}/datasets`, { signal, params: query }),
+  dataset: (id: string, signal?: AbortSignal) => apiUtils.get<DatasetView>(dataset(id), { signal }),
   importCsv: async (file: Blob, query: CsvImportQuery) => {
     const response = await apiClient.post<DatasetView>(`${base}/datasets/csv`, file, {
       params: query, timeout: UPLOAD_TIMEOUT_MS, headers: { "Content-Type": "text/csv" },
@@ -55,12 +54,12 @@ export const dojoApi = {
   deleteDataset: (id: string) => apiUtils.delete<void>(dataset(id)),
   points: (datasetId: string, seriesId: string, query: DatasetPointsQuery, signal?: AbortSignal) =>
     apiUtils.get<DatasetPointsPage>(`${dataset(datasetId)}/series/${segment(seriesId)}/points`,
-      { ...read, signal, params: query }),
+      { signal, params: query }),
 
   labels: (datasetId: string, signal?: AbortSignal) =>
-    apiUtils.get<LabelList>(`${dataset(datasetId)}/labels`, { ...read, signal }),
+    apiUtils.get<LabelList>(`${dataset(datasetId)}/labels`, { signal }),
   labelSuggestions: (datasetId: string, query: LabelSuggestionQuery = {}, signal?: AbortSignal) =>
-    apiUtils.get<LabelSuggestionList>(`${dataset(datasetId)}/label-suggestions`, { ...read, signal, params: query }),
+    apiUtils.get<LabelSuggestionList>(`${dataset(datasetId)}/label-suggestions`, { signal, params: query }),
   createLabel: (datasetId: string, label: LabelCreate) =>
     apiUtils.post<LabelView>(`${dataset(datasetId)}/labels`, label),
   // One write for many labels, so adding every suggestion stays within the write rate limit.
@@ -72,24 +71,24 @@ export const dojoApi = {
     apiUtils.delete<void>(`${dataset(datasetId)}/labels/${segment(labelId)}`),
 
   runs: (query: RunListQuery = {}, signal?: AbortSignal) =>
-    apiUtils.get<RunListPage>(`${base}/runs`, { ...read, signal, params: query }),
-  run: (id: string, signal?: AbortSignal) => apiUtils.get<RunView>(run(id), { ...read, signal }),
+    apiUtils.get<RunListPage>(`${base}/runs`, { signal, params: query }),
+  run: (id: string, signal?: AbortSignal) => apiUtils.get<RunView>(run(id), { signal }),
   createRun: (request: RunCreate) => apiUtils.post<RunView>(`${base}/runs`, request),
   cancelRun: (id: string) => apiUtils.post<RunView>(`${run(id)}/cancel`),
   deleteRun: (id: string) => apiUtils.delete<void>(run(id)),
   promoteRun: (id: string, request: RunPromote) => apiUtils.post<RunPromotion>(`${run(id)}/promote`, request),
   results: (id: string, query: RunResultsQuery, signal?: AbortSignal) =>
-    apiUtils.get<RunResultsPage>(`${run(id)}/results`, { ...read, signal, params: query }),
+    apiUtils.get<RunResultsPage>(`${run(id)}/results`, { signal, params: query }),
   // Scores, boundary and alarms per stretch of time: enough to draw a run without reading every result.
   outline: (id: string, query: RunOutlineQuery = {}, signal?: AbortSignal) =>
-    apiUtils.get<RunOutline>(`${run(id)}/outline`, { ...read, signal, params: query }),
+    apiUtils.get<RunOutline>(`${run(id)}/outline`, { signal, params: query }),
   // What a few observations of an ended run looked like at every step of its design.
-  steps: (id: string) => apiUtils.get<RunSteps>(`${run(id)}/steps`, read),
-  metrics: (id: string, signal?: AbortSignal) => apiUtils.get<RunMetrics>(`${run(id)}/metrics`, { ...read, signal }),
+  steps: (id: string) => apiUtils.get<RunSteps>(`${run(id)}/steps`),
+  metrics: (id: string, signal?: AbortSignal) => apiUtils.get<RunMetrics>(`${run(id)}/metrics`, { signal }),
   calibration: (id: string, signal?: AbortSignal) =>
-    apiUtils.get<MethodComparison>(`${run(id)}/calibration`, { ...read, signal }),
+    apiUtils.get<MethodComparison>(`${run(id)}/calibration`, { signal }),
   // The server reads `run_ids` once per run, which axios would write as run_ids[].
   compare: (datasetId: string, runIds: string[], signal?: AbortSignal) =>
     apiUtils.get<Comparison>(`${dataset(datasetId)}/comparison?${
-      new URLSearchParams(runIds.map(id => ["run_ids", id])).toString()}`, { ...read, signal }),
+      new URLSearchParams(runIds.map(id => ["run_ids", id])).toString()}`, { signal }),
 };

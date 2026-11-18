@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Text, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -27,4 +27,8 @@ class RememberedSession(Base):
     )
     replaced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Whether the cookie outlives the browser ("Remember this device").
+    persistent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=true()
     )

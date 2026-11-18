@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
 import { endSession, refreshSession, subscribeToSession, tokenManager, waitForLogout } from "@/auth/session";
+import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { apiClient, apiUtils, ApiRequestError } from "@/lib/api-client";
 import { readStoredDraft, storeDraft } from "@/lib/navigation-draft";
 import { BrowserVerificationError } from "@/lib/browser-verification";
@@ -13,7 +14,6 @@ import { BrowserVerificationError } from "@/lib/browser-verification";
 // Public-access discovery is covered by DemoGuest; these tests exercise sessions.
 vi.mock("@/auth/demo", () => ({
   loadDemoStatus: async () => ({ enabled: false }),
-  isPublicDemo: () => false,
 }));
 
 const { getCurrentMember } = vi.hoisted(() => ({ getCurrentMember: vi.fn() }));
@@ -237,7 +237,7 @@ describe("remembered session recovery", () => {
     expect(screen.getByText("signed out")).toBeTruthy();
   });
 
-  it("waits for renewal when returning to a tab after its access token expired", async () => {
+  it("keeps the page while renewing when returning to a tab after its access token expired", async () => {
     vi.useFakeTimers();
     const now = Date.now();
     tokenManager.setToken(token(600), true);
@@ -247,7 +247,8 @@ describe("remembered session recovery", () => {
     fetchMock.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
     vi.setSystemTime(now + 601_000);
     act(() => { view.rerender(<AuthProvider><MemoryRouter><ProtectedRoute><Consumer /></ProtectedRoute></MemoryRouter></AuthProvider>); });
-    expect(screen.getByText("Authentication is loading...")).toBeTruthy();
+    // The member is known, so the page stays mounted instead of a loading screen.
+    expect(screen.getByText(member.email)).toBeTruthy();
     act(() => { window.dispatchEvent(new Event("focus")); });
     await act(async () => { complete(response(token(3600, "resumed"))); });
     expect(screen.getByText(member.email)).toBeTruthy();
@@ -281,6 +282,88 @@ describe("remembered session recovery", () => {
       expect(screen.getByRole("button", { name: "Inspection 1" })).toBeTruthy();
       expect(getCurrentMember).toHaveBeenCalledTimes(3);
     }
+  });
+});
+
+describe("gentle session endings", () => {
+  const unavailable = () => new Response("Unavailable", { status: 503 });
+
+  it("keeps the page through a renewal outage and retries with backoff until it recovers", async () => {
+    vi.useFakeTimers();
+    tokenManager.setToken(token(600), true);
+    await act(async () => { renderWorkspace(); });
+    fireEvent.click(screen.getByRole("button", { name: "Inspection 0" }));
+    fetchMock.mockImplementation(async () => unavailable());
+    // Renewal starts two minutes before expiry and keeps failing past it.
+    await act(async () => { await vi.advanceTimersByTimeAsync(700_000); });
+    expect(screen.getByRole("button", { name: "Inspection 1" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("can’t reach your account");
+    expect(screen.queryByRole("alert")).toBeNull();
+    // 480 s, then 5, 10, 20, 40, 60 and 60 s later: a backoff, not a hot loop.
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    const recovered = token(3600, "recovered");
+    fetchMock.mockReset().mockResolvedValue(response(recovered));
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(tokenManager.getToken()).toBe(recovered);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: "Inspection 1" })).toBeTruthy();
+  });
+
+  it("keeps drafts when a sign-in ends and drops them when another member signs in", async () => {
+    clearNavigationDrafts();
+    tokenManager.setToken(token(), true);
+    renderSession();
+    await screen.findByText(member.email);
+    storeDraft("pipeline-setup:42", { name: "Unsaved design" });
+    fetchMock.mockResolvedValueOnce(new Response("Expired", { status: 401 }));
+    await act(async () => { await refreshSession().catch(() => undefined); });
+    expect(tokenManager.getToken()).toBeNull();
+    expect(readStoredDraft("pipeline-setup:42")).toEqual({ name: "Unsaved design" });
+    await act(async () => { tokenManager.setToken(token(3600, "signed-in-again"), true); });
+    expect(readStoredDraft("pipeline-setup:42")).toEqual({ name: "Unsaved design" });
+    await act(async () => { tokenManager.setToken(token(3600, "someone-else", 43), true); });
+    expect(readStoredDraft("pipeline-setup:42")).toBeUndefined();
+  });
+
+  it("drops drafts when the member signs out on purpose, here or in another tab", async () => {
+    clearNavigationDrafts();
+    tokenManager.setToken(token(), true);
+    renderSession();
+    await screen.findByText(member.email);
+    storeDraft("pipeline-setup:42", { name: "Private setup" });
+    act(() => { window.dispatchEvent(new StorageEvent("storage", { key: "session_signed_out", newValue: "1" })); });
+    expect(readStoredDraft("pipeline-setup:42")).toBeUndefined();
+    storeDraft("pipeline-setup:42", { name: "Private setup" });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    fireEvent.click(screen.getByRole("button", { name: "Logout" }));
+    expect(readStoredDraft("pipeline-setup:42")).toBeUndefined();
+    expect(localStorage.getItem("session_signed_out")).toBeTruthy();
+    await act(async () => { await waitForLogout(); });
+  });
+
+  it("warns five minutes before the sign-in ends and lets the member sign in again", async () => {
+    vi.useFakeTimers();
+    tokenManager.setToken(token(3600), true, { expiresIn: 3600, sessionExpiresIn: 10 * 60 });
+    await act(async () => { renderSession(); });
+    expect(screen.queryByRole("status")).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000 + 15_000); });
+    expect(screen.getByRole("status").textContent).toContain("Your sign-in ends at");
+    expect(screen.getByRole("link", { name: "Sign in again" }).getAttribute("href")).toBe("/login");
+    fireEvent.click(screen.getByRole("button", { name: "Later" }));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("judges token expiry on the server's clock, not the browser's", async () => {
+    // This browser's clock runs an hour ahead of the server's.
+    const skewed = (seconds: number, label: string) => `header.${btoa(JSON.stringify({ user_id: 42, exp: Math.floor(Date.now() / 1000) - 3600 + seconds, label }))}.signature`;
+    tokenManager.setToken(token(), true);
+    const renewed = skewed(1800, "skewed");
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: renewed, expires_in: 1800, session_expires_in: 7200 }), { status: 200 }));
+    await expect(refreshSession()).resolves.toBe(renewed);
+    expect(tokenManager.isTokenExpired(renewed)).toBe(false);
+    expect(tokenManager.isTokenExpired(skewed(-1, "expired"))).toBe(true);
+    // Back on a matching clock for the tests that follow.
+    tokenManager.setToken(token(1800), true, { expiresIn: 1800 });
   });
 });
 
@@ -340,7 +423,7 @@ describe("authenticated API renewal", () => {
       calls++;
       throw new AxiosError("Revoked", "401", config, undefined, { status: 401, statusText: "Unauthorized", headers: {}, config, data: {} });
     };
-    await expect(apiUtils.get("/protected", { redirectOnUnauthorized: false })).rejects.toMatchObject({ status: 401 });
+    await expect(apiUtils.get("/protected")).rejects.toMatchObject({ status: 401 });
     expect(calls).toBe(2);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(tokenManager.getToken()).toBeNull();
@@ -364,7 +447,7 @@ describe("authenticated API renewal", () => {
       if (calls === 2) await new Promise<void>(resolve => { complete = resolve; });
       throw new AxiosError("Unauthorized", "401", config, undefined, { status: 401, statusText: "Unauthorized", headers: {}, config, data: {} });
     };
-    const rejected = expect(apiUtils.get("/protected", { redirectOnUnauthorized: false })).rejects.toMatchObject({ status: 401 });
+    const rejected = expect(apiUtils.get("/protected")).rejects.toMatchObject({ status: 401 });
     await waitFor(() => expect(calls).toBe(2));
     const newLogin = token(3600, "new-login");
     tokenManager.setToken(newLogin, true);
@@ -394,7 +477,7 @@ describe("authenticated API renewal", () => {
       throw new AxiosError("Unauthorized", "401", config, undefined, { status: 401, statusText: "Unauthorized", headers: {}, config, data: {} });
     });
     apiClient.defaults.adapter = adapter;
-    const rejected = expect(apiUtils.post("/protected", {}, { redirectOnUnauthorized: false })).rejects.toMatchObject({ status: 401 });
+    const rejected = expect(apiUtils.post("/protected", {})).rejects.toMatchObject({ status: 401 });
     await waitFor(() => expect(adapter).toHaveBeenCalledOnce());
     const newLogin = token(3600, "other-member", 84);
     tokenManager.setToken(newLogin, true);

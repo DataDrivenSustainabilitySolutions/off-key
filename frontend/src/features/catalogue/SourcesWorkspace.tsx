@@ -154,7 +154,6 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
         {configuration}
       </Preview>
     </Suspense> : <section aria-label="Broker overview" className="source-overview">
-      <p className="ex-muted">Record a broker to keep its readings, also while you are signed out.</p>
       {!document.brokers.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}
       {document.brokers.map(item => {
         const readings = document.readings.filter(stream => stream.broker_id === item.id).length;

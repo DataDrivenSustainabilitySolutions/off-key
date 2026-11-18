@@ -286,6 +286,10 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
         }
     ]
     stores.data.profile.return_value = profile
+    stores.data.measurements.return_value = [
+        {"timestamp": f"2026-03-01T00:00:{second:02}Z", "value": 1.0, "created": THEN}
+        for second in (20, 10, 0)
+    ]
     async with connected(gateway) as client:
         devices = said(await client.call_tool("list_devices", {"active": True}))
         assert [item["id"] for item in devices] == ["pump"]
@@ -295,6 +299,8 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
             {"id": "service-1", "name": "Pump power"},
             None,
         ]
+        # And how often its values were recorded, newest first in the answer.
+        assert [item["interval_seconds"] for item in listed] == [10.0, 10.0]
         looked = said(
             await client.call_tool("profile_reading", {"reading_id": "r-power"})
         )
@@ -384,6 +390,8 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
     assert [call[0] for call in stores.asked()] == [
         "devices",
         "device_readings",
+        "measurements",
+        "measurements",
         "profile",
         "list_radar_services",
     ]
@@ -660,6 +668,8 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
                 },
             ],
             "complete": True,
+            # Two alarms in the day that was scored.
+            "per_day": 2.0,
             # Scores from a few results before to a few after the first alarms.
             "excerpts": {
                 "columns": ["time", "score", "threshold", "alarm"],
@@ -1196,7 +1206,12 @@ async def test_an_agent_reads_values_and_a_monitors_alarms(gateway, key, stores)
         }
         [reading], window = stores.data.measurement_buckets.await_args
         assert reading == "r-power"
-        assert (window["buckets"], window["view"]) == (50, "auto")
+        # Real values only, about as many as asked for: never a mean.
+        assert (window["buckets"], window["view"]) == (10, "raw")
+        await client.call_tool(
+            "get_values", {"reading_id": "r-power", "start": THEN, "points": 500}
+        )
+        assert stores.data.measurement_buckets.await_args.kwargs["buckets"] == 42
 
         alarms = said(
             await client.call_tool("get_monitor_alarms", {"monitor_id": "service-1"})
@@ -1235,13 +1250,60 @@ def test_a_design_of_rules_alone_warms_up_only_its_calibration():
         "end_at": "2026-11-02T00:00:00+00:00",
     }
 
-    def design(*components):
+    def design(*components, calibration=True):
         return {
             "settings": settings,
-            "nodes": [{"kind": "detector", "component": item} for item in components],
+            "nodes": [{"kind": "detector", "component": item} for item in components]
+            + (
+                [{"kind": "calibration", "component": "calibrate.split"}]
+                if calibration
+                else []
+            ),
         }
 
     rules = mcp_tools._warm_up(design("rule.score"), dataset, 200, 1)
     assert rules.startswith("Warm-up takes 20 of about 200 observations")
     learned = mcp_tools._warm_up(design("rule.score", "detector:x"), dataset, 200, 1)
     assert "warm-up of 520" in learned
+    # A rule on a fixed threshold has no calibration step to fill.
+    fixed = mcp_tools._warm_up(design("rule.score", calibration=False), dataset, 200, 1)
+    assert fixed.startswith("No warm-up: rules on a fixed threshold")
+
+
+def _alarm(sequence: int, minute: int) -> dict:
+    return {"sequence": sequence, "timestamp": f"2026-03-01T00:{minute:02}:00Z"}
+
+
+def test_a_test_lists_its_false_alarms_first_and_marks_the_caught_ones():
+    results = [_alarm(1, 1), _alarm(2, 2), _alarm(10, 10), _alarm(20, 20)]
+    labels = [{"start_at": "2026-03-01T00:09:00Z", "end_at": "2026-03-01T00:11:00Z"}]
+    alarms, around = mcp_tools._episodes(
+        results, True, {"labels": labels, "evaluated_seconds": 43200.0}
+    )
+    assert alarms["count"] == 3 and alarms["per_day"] == 6.0
+    assert [
+        (item["start"][11:16], item["false_alarm"]) for item in alarms["listed"]
+    ] == [
+        ("00:01", True),
+        ("00:20", True),
+        ("00:10", False),
+    ]
+    # The scores are read around the false alarms first, too.
+    assert around[0]["first"] == 1
+
+
+async def test_a_test_counts_alarms_beyond_one_page_of_results():
+    pages = {
+        None: {"items": [_alarm(1, 1), _alarm(2, 2)], "next_after": 2},
+        2: {"items": [_alarm(3, 3), _alarm(9, 9)], "next_after": None},
+    }
+
+    class Pages:
+        async def get(self, path, query):
+            return pages[query.get("after")]
+
+    results, complete = await mcp_tools._alarmed(Pages(), "/v1/dojo/runs/run-1")
+    assert complete and len(results) == 4
+    alarms, _ = mcp_tools._episodes(results, complete)
+    # One alarm runs on across the pages instead of being cut where one ends.
+    assert [item["end"][11:16] for item in alarms["listed"]] == ["00:03", "00:09"]

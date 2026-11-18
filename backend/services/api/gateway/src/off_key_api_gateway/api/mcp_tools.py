@@ -7,10 +7,13 @@ does so only to spare the agent what it already holds.
 """
 
 import inspect
+import math
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
+from statistics import median
 from types import FunctionType
 from typing import Any, Literal
 from urllib.parse import quote
@@ -85,6 +88,10 @@ reading sent only when it changes, such as a setpoint or a state, goes quiet \
 for hours while it holds, so get_test counts most observations as \
 `stale_reading`. Name such inputs in the source step's `hold`, with how long \
 their last value stays usable, so the design pairs the others with it.
+
+A sensor that stops needs no step: a running monitor raises a `silence` \
+alarm on its own once a bound reading stays quiet past its usual pauses, and \
+get_monitor_alarms lists it. A test replays no silence alarm.
 
 A warning that observations "are skipped" means nothing is scored for them, \
 such as a division by 0. When that case is the incident (zero messages from a \
@@ -325,15 +332,56 @@ async def _holders(api: Api) -> dict[str, dict[str, Any]]:
 @tool(Device)
 async def list_readings(api: Api, args: Device):
     """The readings of one device with their label, unit and kind of value,
-    and `held_by` the running monitor that watches a reading. A design monitors
-    readings: its inputs are bound to reading ids, and a reading belongs to one
-    monitor at a time."""
+    `interval_seconds` measured between its newest values, and `held_by` the
+    running monitor that watches it. A design's inputs are bound to reading
+    ids, and a reading belongs to one monitor at a time."""
     readings = await api.get(f"/v1/devices/{_segment(args.device_id)}/readings")
     held = await _holders(api)
+    intervals: dict[str, float | None] = {}
+    limit = anyio.Semaphore(8)
+
+    async def measure(reading: str) -> None:
+        async with limit:
+            intervals[reading] = await _interval(api, reading)
+
+    async with anyio.create_task_group() as group:
+        for item in readings[:CADENCE_READINGS]:
+            if item.get("id"):
+                group.start_soon(measure, item["id"])
     return [
-        item | ({"held_by": held[item["id"]]} if item.get("id") in held else {})
+        item
+        | {
+            "interval_seconds": intervals.get(item.get("id")),
+            "held_by": held.get(item.get("id")),
+        }
         for item in readings
     ]
+
+
+# A device's readings measured at once, and the newest values each is read from.
+CADENCE_READINGS = 100
+CADENCE_VALUES = 50
+
+
+async def _interval(api: Api, reading: str) -> float | None:
+    """The usual time between a reading's newest values, as they were recorded,
+    which can differ from what its recording policy says."""
+    try:
+        values = await api.get(
+            f"/v1/readings/{_segment(reading)}/measurements", {"limit": CADENCE_VALUES}
+        )
+    except ApiRefusal:
+        return None
+    if not isinstance(values, list):
+        return None
+    times = sorted(
+        _instant(item["timestamp"])
+        for item in values
+        if isinstance(item, dict) and item.get("timestamp")
+    )
+    gaps = [(later - earlier).total_seconds() for earlier, later in pairwise(times)]
+    gaps = [gap for gap in gaps if gap > 0]
+    return round(median(gaps), 3) if gaps else None
 
 
 class Profile(Args):
@@ -664,8 +712,18 @@ def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str
         for node in definition.get("nodes") or []
         if node.get("kind") == "detector"
     ]
-    # Rules learn nothing, so a design of rules alone only calibrates.
+    # Rules learn nothing, so a design of rules alone only calibrates, and
+    # on a fixed threshold, with no calibration step, it does not warm up.
     rules_only = bool(detectors) and all(item == "rule.score" for item in detectors)
+    calibrates = any(
+        node.get("kind") == "calibration" for node in definition.get("nodes") or []
+    )
+    if rules_only and not calibrates:
+        return (
+            "No warm-up: rules on a fixed threshold score from the first "
+            "observation, whatever training_window_size and "
+            "calibration_window_size say."
+        )
     windows = (
         ("calibration_window_size",)
         if rules_only
@@ -725,8 +783,9 @@ async def get_test(api: Api, args: TestRef):
     """How a test stands and, once it has `succeeded`, what it found: how many
     results alarmed, how many separate alarms per day, and against the
     dataset's labels (injected faults among them) how many it caught and how
-    late. `alarms.excerpts` holds the score and threshold around the first
-    alarms; read the input values then with get_values. `stats` says why
+    late, false alarms listed first. `alarms.excerpts` holds the score and
+    threshold around the first alarms; read the input values then with
+    get_values. `stats` says why
     observations gave no result. Call it again while `queued` or `running`."""
     path = f"/v1/dojo/runs/{_segment(args.run_id)}"
     run = await _settled(
@@ -754,13 +813,11 @@ async def get_test(api: Api, args: TestRef):
             answer["note"] = _unscored(run)
         elif run.get("alarm_count"):
             try:
-                alarmed = await api.get(
-                    f"{path}/results", {"alarm": "true", "limit": ALARM_RESULTS}
-                )
+                alarmed = await _alarmed(api, path)
             except ApiRefusal:
                 alarmed = None
             if alarmed is not None:
-                answer["alarms"], around = _episodes(alarmed.get("items", []))
+                answer["alarms"], around = _episodes(*alarmed, metrics)
                 with suppress(ApiRefusal):
                     answer["alarms"]["excerpts"] = {
                         "columns": ["time", "score", "threshold", "alarm"],
@@ -783,6 +840,8 @@ async def get_test(api: Api, args: TestRef):
 
 
 ALARM_RESULTS = 2000
+# Pages of alarmed results read to count the alarms: 50,000 results.
+ALARM_PAGES = 25
 ALARMS_LISTED = 20
 # Several results in a row make one alarm, so the count of results says so.
 ALARMING = "alarming_results"
@@ -850,15 +909,67 @@ def _public(episode: dict[str, Any]) -> dict[str, Any]:
 SEQUENCES = {"first", "last"}
 
 
-def _episodes(results: list[dict]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """The alarms of a test as an agent reads them, and the first few with
-    the sequences they span, to read around."""
+async def _alarmed(api: Api, path: str) -> tuple[list[dict], bool]:
+    """Every alarmed result of a run, page by page, and whether that is all."""
+    results: list[dict] = []
+    after = None
+    for _ in range(ALARM_PAGES):
+        query: dict[str, Any] = {"alarm": "true", "limit": ALARM_RESULTS}
+        if after is not None:
+            query["after"] = after
+        page = await api.get(f"{path}/results", query)
+        results.extend(page.get("items", []))
+        after = page.get("next_after")
+        if after is None:
+            return results, True
+    return results, False
+
+
+def _labelled(episode: dict[str, Any], labels: list[dict[str, Any]]) -> bool:
+    """Whether an alarm overlaps a label of the dataset, such as an injected
+    fault, rather than being a false alarm."""
+    return any(
+        item.get("start_at") is not None
+        and item.get("end_at") is not None
+        and _instant(episode["start"]) <= _instant(item["end_at"])
+        and _instant(item["start_at"]) <= _instant(episode["end"])
+        for item in labels
+    )
+
+
+def _instant(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _episodes(
+    results: list[dict], complete: bool, metrics: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """The alarms of a test as an agent reads them, false alarms first when
+    the dataset has labels, and the first few with the sequences they span,
+    to read around."""
+    metrics = metrics or {}
     episodes = _runs(results, "sequence", "timestamp")
-    return {
+    labels = metrics.get("labels") or []
+    if labels:
+        for item in episodes:
+            item["false_alarm"] = not _labelled(item, labels)
+        # Stable: in time order within each kind.
+        episodes.sort(key=lambda item: not item["false_alarm"])
+    answer: dict[str, Any] = {
         "count": len(episodes),
         "listed": [_public(item) for item in episodes[:ALARMS_LISTED]],
-        "complete": len(results) < ALARM_RESULTS,
-    }, episodes[:EXCERPTS]
+        "complete": complete,
+    }
+    if seconds := metrics.get("evaluated_seconds"):
+        answer["per_day"] = round(len(episodes) * 86400 / seconds, 2)
+    if len(episodes) > ALARMS_LISTED:
+        answer["note"] = f"The first {ALARMS_LISTED} of {len(episodes)} are listed."
+    if not complete:
+        answer["note"] = (
+            f"Over {len(results)} results alarmed; the alarms are counted in "
+            "those only, so there are more."
+        )
+    return answer, episodes[:EXCERPTS]
 
 
 EXCERPTS = 5
@@ -1139,7 +1250,7 @@ class Values(Args):
         default=200,
         ge=10,
         le=500,
-        description="At most this many rows; a long range is summed up in stretches.",
+        description="About this many rows.",
     )
 
 
@@ -1147,12 +1258,13 @@ class Values(Args):
 async def get_values(api: Api, args: Values):
     """Recorded values of one reading over a time range, to look at what a
     profile, a test or an alarm points at. A short range answers with every
-    value; a longer one with the mean, lowest and highest value and count of
-    each stretch, so a spike survives."""
+    value; a longer one with the first, last, lowest and highest of each
+    stretch: recorded values, never a mean, so a step survives."""
     query = {
         "start": args.start.isoformat(),
-        "buckets": args.points,
-        "view": "auto",
+        # Each bucket is drawn as columns of up to four real values each.
+        "buckets": max(10, math.ceil(args.points / VALUES_PER_BUCKET)),
+        "view": "raw",
     } | ({"end": args.end.isoformat()} if args.end else {})
     history = await api.get(
         f"/v1/readings/{_segment(args.reading_id)}/measurements/buckets", query
@@ -1186,6 +1298,10 @@ async def get_values(api: Api, args: Values):
             "and highest value. Narrow the range to see every value."
         )
     return answer
+
+
+# The raw view keeps up to four values in each of three columns per bucket.
+VALUES_PER_BUCKET = 12
 
 
 def _score(row: Mapping[str, Any]) -> float:

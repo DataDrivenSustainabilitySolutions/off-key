@@ -33,21 +33,21 @@ a misspelt setting is reported instead of being ignored.
   "format": "aberration-design",
   "schema_version": 1,
   "name": "Charger current",
-  "description": "Smooths the current of a charger and scores how unusual it is.",
+  "description": "Gives the current of a charger its last minutes and scores how unusual it is.",
   "definition": {
     "schema_version": 2,
     "input_slots": [{ "id": "current", "label": "Current", "unit": "A" }],
     "nodes": [
       { "id": "input", "kind": "source", "component": "source.aligned" },
-      { "id": "smooth", "kind": "transform", "component": "prepare.smooth", "label": "Calm the noise", "params": { "window_size": 10 } },
+      { "id": "lags", "kind": "transform", "component": "prepare.lags", "label": "Look back", "params": { "lags": [1, 5, 15] } },
       { "id": "detector", "kind": "detector", "component": "detector:aberrant_online_isolation_forest" },
       { "id": "calibrate", "kind": "calibration", "component": "calibrate.fixed_split" },
       { "id": "policy", "kind": "policy", "component": "policy.quantile" },
       { "id": "output", "kind": "output", "component": "output.evidence" }
     ],
     "edges": [
-      { "source": "input", "target": "smooth" },
-      { "source": "smooth", "target": "detector" },
+      { "source": "input", "target": "lags" },
+      { "source": "lags", "target": "detector" },
       { "source": "detector", "target": "calibrate" },
       { "source": "calibrate", "target": "policy" },
       { "source": "policy", "target": "output" }
@@ -56,7 +56,7 @@ a misspelt setting is reported instead of being ignored.
   "layout": {
     "nodes": {
       "input": { "x": 0, "y": 96 },
-      "smooth": { "x": 288, "y": 96 },
+      "lags": { "x": 288, "y": 96 },
       "detector": { "x": 576, "y": 96 },
       "calibrate": { "x": 864, "y": 96 },
       "policy": { "x": 1152, "y": 96 },

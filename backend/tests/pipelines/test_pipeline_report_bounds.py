@@ -91,7 +91,7 @@ def test_normal_reports_preserve_full_metadata():
     ]
     assert report.features_complete and report.provenance_complete
     assert not report.definition_omitted and not report.issues_truncated
-    assert not report.issues
+    assert all(item.code == "point_detector_without_time" for item in report.issues)
 
 
 def test_unknown_selected_node_returns_no_stale_metadata(maximum_compilation):

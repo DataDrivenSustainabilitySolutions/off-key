@@ -156,7 +156,11 @@ FROM_NOTHING = [
 
 def test_edits_build_a_design_that_runs_from_nothing():
     result = edited(FROM_NOTHING)
-    assert result.report.valid and result.report.issues == []
+    # The forest sees the current alone, which the design check says once.
+    assert result.report.valid
+    assert [issue.code for issue in result.report.issues] == [
+        "point_detector_without_time"
+    ]
     assert result.report.fingerprint
     assert result.added == [
         "input",
@@ -413,7 +417,11 @@ def test_settings_change_one_at_a_time():
         definition,
         layout,
     )
-    [issue] = wrong.report.issues
+    [issue] = [
+        item
+        for item in wrong.report.issues
+        if item.code != "point_detector_without_time"
+    ]
     assert (issue.code, issue.node_id, issue.parameter_path) == (
         "parameters",
         "smooth",
@@ -468,7 +476,11 @@ def test_connections_are_made_and_taken_away():
     )
     # Both branches carry the same feature, which a merge does not take; the
     # connections themselves are in order.
-    assert [issue.code for issue in result.report.issues] == ["feature_schema"]
+    assert [
+        issue.code
+        for issue in result.report.issues
+        if issue.code != "point_detector_without_time"
+    ] == ["feature_schema"]
     # A merge takes each connection as its last.
     merged = sorted(
         (edge.order, edge.source)

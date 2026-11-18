@@ -788,6 +788,13 @@ source holds, which the compiler reports as `lags_after_gate` and
 `lags_of_held_input`; `wide_lags` warns when one step adds more than 24
 features.
 
+`point_detector_without_time` warns at a detector that scores each
+observation on its own (`POINT_DETECTORS` in `adaptive.py`, and every static
+model) when no step before it carries time (`TEMPORAL_STEPS`: Lags, Change,
+Rolling, Accumulate, Time). On a series that follows its past such a detector
+scores the level; the warning points to Lags or Change and to the detectors
+that read the past themselves.
+
 `models/autocorrelation.py` gives the context for choosing lags: ACF, PACF by
 Durbin-Levinson, a 1.96/√n bound, suggested lags and cycles, on an even grid
 (`on_grid`) that rounds a coarser step to a round time. The reading profile

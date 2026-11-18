@@ -24,7 +24,7 @@ from ..schemas.pipelines import (
     PipelineValidation,
 )
 from ..utils.json_budget import fits_json_budget
-from .adaptive import detector_warmup
+from .adaptive import MODEL_IDS, POINT_DETECTORS, detector_warmup
 from .pipeline_calibration import (
     CALIBRATORS,
     EXCEEDANCE_RULE,
@@ -49,6 +49,7 @@ from .pipeline_prepare import (
     kernel,
 )
 from .pipeline_scope import LEARNED_COMPONENTS, ScopeError, step_scope
+from .static import STATIC_MODELS
 
 
 @dataclass
@@ -504,6 +505,44 @@ def _validate_lags(compilation: _Compilation) -> None:
             )
 
 
+# Steps whose output carries a feature's past or the time of day.
+TEMPORAL_STEPS = frozenset(
+    {
+        "prepare.lags",
+        "prepare.change",
+        "prepare.rolling",
+        "prepare.accumulate",
+        "prepare.time",
+    }
+)
+
+
+def _validate_point_detectors(compilation: _Compilation) -> None:
+    """A detector that scores observations alone sees no time unless a step adds it."""
+    for identifier in compilation.order:
+        node = compilation.nodes[identifier]
+        if node.kind != "detector" or not node.component.startswith("detector:"):
+            continue
+        model = node.component.removeprefix("detector:")
+        if MODEL_IDS.get(model) not in POINT_DETECTORS and model not in STATIC_MODELS:
+            continue
+        if any(
+            compilation.nodes[key].component in TEMPORAL_STEPS
+            for key in _ancestors(compilation, identifier)
+        ):
+            continue
+        compilation.warning(
+            "point_detector_without_time",
+            f"{_label(compilation, identifier)} scores each observation on its "
+            "own, and no step before it carries time. On a reading that follows "
+            "its own past, such as a level that wanders or a daily cycle, it then "
+            "scores where the level is, not what is unusual. Add Lags or Change "
+            "before it, as the reading's profile suggests, or use a detector "
+            "that reads the past: matrix profile, DAMP or a forecaster.",
+            identifier,
+        )
+
+
 def _feature_labels(compilation: _Compilation, columns: Columns) -> dict[str, str]:
     """Readings by their label, so a message says DC current, not dc_current."""
     slots = {
@@ -940,6 +979,7 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
     _validate_stages(compilation)
     _validate_windows(compilation)
     _validate_lags(compilation)
+    _validate_point_detectors(compilation)
     _validate_values(compilation)
     _validate_constants(compilation)
     _validate_model(compilation)

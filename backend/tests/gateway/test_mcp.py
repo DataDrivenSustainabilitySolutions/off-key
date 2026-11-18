@@ -365,7 +365,10 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
             )
         )
         assert edited["added"] == ["prepare_smooth_1"]
-        assert edited["report"]["valid"] and edited["report"]["issues"] == []
+        assert edited["report"]["valid"]
+        assert {item["code"] for item in edited["report"]["issues"]} <= {
+            "point_detector_without_time"
+        }
         # The report leaves out what the agent holds and what says nothing:
         # the design, defaults, and the features after the detector.
         assert edited["report"].keys() == {

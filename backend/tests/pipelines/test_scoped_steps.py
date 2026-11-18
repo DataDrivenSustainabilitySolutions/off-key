@@ -342,7 +342,8 @@ def test_warnings_are_shown_without_blocking_a_design(monkeypatch):
     result = compile_pipeline(plumbing("static_baseline", "static.standard_scaler"))
     assert result.valid and result.fingerprint
     assert [(item.code, item.severity) for item in result.issues] == [
-        ("review", "warning")
+        ("point_detector_without_time", "warning"),
+        ("review", "warning"),
     ]
 
 

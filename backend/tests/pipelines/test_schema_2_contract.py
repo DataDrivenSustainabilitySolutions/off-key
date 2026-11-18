@@ -68,7 +68,12 @@ def design(*detectors, policy="policy.quantile", scaler=None):
 
 
 def issues(definition):
-    return [(item.code, item.node_id) for item in validate_pipeline(definition).issues]
+    # Detectors on raw values are said once; these designs test other rules.
+    return [
+        (item.code, item.node_id)
+        for item in validate_pipeline(definition).issues
+        if item.code != "point_detector_without_time"
+    ]
 
 
 @pytest.mark.parametrize(

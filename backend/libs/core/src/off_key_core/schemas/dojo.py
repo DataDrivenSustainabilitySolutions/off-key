@@ -810,6 +810,14 @@ class ScoreMetrics(DojoModel):
         "within 100 typical intervals of it, as the UCR archive scores a "
         "series. Null with more or fewer labels."
     )
+    score_autocorrelation: float | None = Field(
+        default=None,
+        description="Autocorrelation of the scores 20 results apart. Near 1, "
+        "the scores follow a level that moves slowly, so the detector scores "
+        "where the series is rather than what is unusual: take time out "
+        "before it, with Lags, Change or a forecaster. Null below 40 scored "
+        "results or for scores that never change.",
+    )
 
 
 class RunMetrics(DojoModel):

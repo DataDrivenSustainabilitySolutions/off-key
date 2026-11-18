@@ -347,8 +347,12 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    threshold: how well they rank labelled values above the rest. VUS-PR also
    credits a score that peaks just before or after a label. With exactly one
    label, **Top score at the label** says whether the highest score came
-   within 100 values of it, as the UCR anomaly archive scores a series. The
-   warm-up, which has no scores, is left out. Editing a label re-scores every
+   within 100 values of it, as the UCR anomaly archive scores a series.
+   **Score persistence** is the correlation of the scores 20 values apart:
+   above 0.7 the scores follow the level of the series, so the detector says
+   where the series is rather than what is unusual, and a Lags or Change step,
+   or a forecaster, before it should help. The warm-up, which has no scores,
+   is left out. Editing a label re-scores every
    run at once. Below, **Calibration
    methods** ranks what a run that compared them found: for each method, how
    many labels it would have detected and how soon, its false alarms per day

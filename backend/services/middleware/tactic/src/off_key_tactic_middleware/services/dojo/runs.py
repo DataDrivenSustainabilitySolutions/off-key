@@ -9,9 +9,17 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import uuid4
 
+from off_key_core.config.logs import log_security_event
 from off_key_core.db.locks import DOJO_QUEUE_LOCK
 from off_key_core.db.maintenance import require_application_writes
-from off_key_core.db.models import DojoDataset, DojoRun, DojoRunResult, DojoSeries
+from off_key_core.db.models import (
+    Agent,
+    DojoDataset,
+    DojoRun,
+    DojoRunResult,
+    DojoSeries,
+    User,
+)
 from off_key_core.models.dojo_runs import (
     STEP_SAMPLES_KEY,
     BoundSeries,
@@ -45,8 +53,9 @@ from off_key_core.schemas.pipelines import PipelineCreate, PipelineDefinition
 from off_key_core.utils.json_budget import bounded_utf8_text
 from sqlalchemy import Integer, delete, func, literal, select, text
 
-from ...domain import ConflictError, NotFoundError, ValidationError
+from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from ..pipelines.library import PipelineLibrary
+from .owners import made_by, require_no_evidence
 
 ACTIVE = ("queued", "running")
 
@@ -60,7 +69,7 @@ class DojoRuns:
         request: RunCreate,
         *,
         created_by: int | None,
-        created_by_agent: str | None = None,
+        created_by_agent: Agent | None = None,
     ) -> RunView:
         await require_application_writes(self.session)
         dataset = await self.session.get(DojoDataset, request.dataset_id)
@@ -144,7 +153,11 @@ class DojoRuns:
                 ],
                 **({"calibration_comparison": comparison} if comparison else {}),
                 # A key is no member, so the run keeps the agent's name.
-                **({"created_by_agent": created_by_agent} if created_by_agent else {}),
+                **(
+                    {"created_by_agent": created_by_agent.name}
+                    if created_by_agent
+                    else {}
+                ),
             },
             cancel_requested=False,
             points_total=sum(item.point_count for item in bound),
@@ -153,13 +166,20 @@ class DojoRuns:
             alarm_count=0,
             stats={},
             created_by=created_by,
+            created_by_agent_id=created_by_agent.id if created_by_agent else None,
         )
         self.session.add(row)
         await self.session.commit()
         return await self.get(run_id)
 
-    async def list(self, query: RunListQuery) -> RunListPage:
+    async def list(
+        self, query: RunListQuery, caller: User | Agent | None = None
+    ) -> RunListPage:
         statement = select(DojoRun)
+        if query.mine and caller is not None:
+            statement = statement.where(
+                made_by(caller, DojoRun.created_by, DojoRun.created_by_agent_id)
+            )
         if query.dataset_id is not None:
             statement = statement.where(DojoRun.dataset_id == query.dataset_id)
         if query.status is not None:
@@ -196,10 +216,13 @@ class DojoRuns:
             stats=row.stats or {},
         )
 
-    async def cancel(self, run_id: str) -> RunView:
-        """A queued run ends at once; a running one at the worker's next beat."""
+    async def cancel(self, run_id: str, caller: User | Agent | None = None) -> RunView:
+        """A queued run ends at once; a running one at the worker's next beat.
+        A key cancels only a run it queued."""
         await require_application_writes(self.session)
         row = await self._row(run_id, lock=True)
+        if isinstance(caller, Agent):
+            _require_queued_by(row, caller)
         if row.status == "queued":
             row.status = "cancelled"
             row.finished_at = datetime.now(UTC)
@@ -210,17 +233,27 @@ class DojoRuns:
         await self.session.commit()
         return await self.get(run_id)
 
-    async def remove(self, run_id: str) -> None:
+    async def remove(self, run_id: str, caller: User | Agent | None = None) -> None:
+        """Delete a finished run. A key deletes only a run it queued that no
+        waiting or accepted proposal and no monitor names as its test."""
         await require_application_writes(self.session)
         row = await self._row(run_id, lock=True)
+        if isinstance(caller, Agent):
+            _require_queued_by(row, caller)
         if row.status in ACTIVE:
             raise ConflictError("Cancel the run before deleting it")
+        if isinstance(caller, Agent):
+            await require_no_evidence(self.session, [row.id])
         # Results carry no foreign key (see DojoRunResult).
         await self.session.execute(
             delete(DojoRunResult).where(DojoRunResult.run_id == row.id)
         )
         await self.session.delete(row)
         await self.session.commit()
+        if isinstance(caller, Agent):
+            log_security_event(
+                "dojo_run_deleted_by_agent", caller.name, {"run_id": run_id}
+            )
 
     async def promote(self, run_id: str, request: RunPromote) -> RunPromotion:
         """Save the run's compiled design as a library template.
@@ -412,3 +445,8 @@ class DojoRuns:
             finished_at=row.finished_at,
             compares_calibration="calibration_comparison" in row.config,
         )
+
+
+def _require_queued_by(row: DojoRun, agent: Agent) -> None:
+    if row.created_by_agent_id != agent.id:
+        raise ForbiddenError("A key cancels and deletes only the runs it queued")

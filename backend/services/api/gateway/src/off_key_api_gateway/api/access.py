@@ -134,9 +134,9 @@ def member_id(caller: User | Agent) -> int | None:
     return None if isinstance(caller, Agent) else caller.id
 
 
-def agent_name(caller: User | Agent) -> str | None:
+def agent_of(caller: User | Agent) -> Agent | None:
     """The agent a record names beside its member, when a key made it."""
-    return caller.name if isinstance(caller, Agent) else None
+    return caller if isinstance(caller, Agent) else None
 
 
 def caller_key(caller: User | Agent) -> str:

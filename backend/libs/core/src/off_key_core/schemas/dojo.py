@@ -62,6 +62,9 @@ class DatasetSummary(DojoModel):
     start_at: datetime | None
     end_at: datetime | None
     created_by: int | None
+    created_by_agent: str | None = Field(
+        default=None, description="The agent whose key made the dataset, by name."
+    )
     created_at: datetime
 
 
@@ -82,6 +85,10 @@ class DatasetListPage(DojoModel):
 class DatasetListQuery(DojoModel):
     limit: int = Field(default=25, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+    mine: bool = Field(
+        default=False,
+        description="Only what the caller made: a key's own, or the member's own.",
+    )
 
 
 class CsvImportQuery(DojoModel):
@@ -284,6 +291,10 @@ class RunListQuery(DojoModel):
     status: RunStatus | None = None
     limit: int = Field(default=25, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+    mine: bool = Field(
+        default=False,
+        description="Only what the caller made: a key's own, or the member's own.",
+    )
 
 
 class RunResultsQuery(DojoModel):

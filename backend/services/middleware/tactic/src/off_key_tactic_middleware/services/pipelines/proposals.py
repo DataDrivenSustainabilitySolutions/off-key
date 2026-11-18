@@ -32,6 +32,10 @@ from ...config.config import get_tactic_settings
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from .library import begin_library_write
 
+# What its author may delete: a proposal that asks nothing of a member any more
+# and that no monitor runs on.
+DELETABLE_PROPOSALS = ("withdrawn", "declined")
+
 
 def _fields(row: PipelineProposal, model) -> dict:
     # missing_readings is read from the catalogue, not stored with the row.
@@ -254,6 +258,29 @@ class PipelineProposals:
         row.decided_at = datetime.now(UTC)
         await self.session.commit()
         return proposal_view(row)
+
+    async def remove(self, identifier: str, caller: User | Agent) -> None:
+        """Delete a proposal of the caller's own once it was withdrawn or declined.
+
+        A proposal that waits is withdrawn first, and an accepted one stays: it
+        is why a monitor runs.
+        """
+        row = await self._row(identifier, lock=True)
+        if not _wrote(row, caller):
+            raise ForbiddenError("Only its author can delete a proposal")
+        if row.status not in DELETABLE_PROPOSALS:
+            raise ConflictError(
+                "Withdraw the proposal before deleting it"
+                if row.status == "open"
+                else "An accepted proposal stays: it is why a monitor runs"
+            )
+        await self.session.delete(row)
+        await self.session.commit()
+        log_security_event(
+            "pipeline_proposal_deleted",
+            caller.name if isinstance(caller, Agent) else caller.email,
+            {"proposal_id": identifier, "status": row.status},
+        )
 
     async def _row(self, identifier: str, *, lock: bool = False) -> PipelineProposal:
         statement = select(PipelineProposal).where(PipelineProposal.id == identifier)

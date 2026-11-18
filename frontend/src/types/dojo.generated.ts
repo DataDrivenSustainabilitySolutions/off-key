@@ -44,6 +44,7 @@ export type DatasetListPage = {
 export type DatasetListQuery = {
   limit?: number;
   offset?: number;
+  mine?: boolean;
 };
 
 export type DatasetPoint = {
@@ -82,6 +83,7 @@ export type DatasetSummary = {
   start_at: string | null;
   end_at: string | null;
   created_by: number | null;
+  created_by_agent?: string | null;
   created_at: string;
 };
 
@@ -95,6 +97,7 @@ export type DatasetView = {
   start_at: string | null;
   end_at: string | null;
   created_by: number | null;
+  created_by_agent?: string | null;
   created_at: string;
   source: Record<string, unknown>;
   series: Array<DatasetSeriesView>;
@@ -248,6 +251,7 @@ export type RunListQuery = {
   status?: "queued" | "running" | "succeeded" | "failed" | "cancelled" | null;
   limit?: number;
   offset?: number;
+  mine?: boolean;
 };
 
 export type RunMetrics = {

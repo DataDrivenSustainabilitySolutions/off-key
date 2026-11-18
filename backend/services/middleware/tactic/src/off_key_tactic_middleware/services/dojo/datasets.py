@@ -12,9 +12,11 @@ from typing import cast
 from uuid import uuid4
 
 from asyncpg.exceptions import UniqueViolationError
+from off_key_core.config.logs import log_security_event
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import (
+    Agent,
     DojoDataset,
     DojoLabel,
     DojoPoint,
@@ -22,6 +24,7 @@ from off_key_core.db.models import (
     DojoRunResult,
     DojoSeries,
     Telemetry,
+    User,
 )
 from off_key_core.schemas.dojo import (
     MAX_DATASET_POINTS,
@@ -42,10 +45,11 @@ from off_key_core.schemas.dojo import (
 )
 from sqlalchemy import Text, delete, func, insert, literal, select, update
 
-from ...domain import ConflictError, NotFoundError, ValidationError
+from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from .csv_import import read_points
 from .faults import kept, plan_faults, written_value
 from .labels import dataset_labels
+from .owners import made_by, require_no_evidence
 
 COPY_BATCH = 20_000
 POINT_COLUMNS = ("series_id", "timestamp", "value")
@@ -105,17 +109,23 @@ class DojoDatasets:
     def __init__(self, session):
         self.session = session
 
-    async def list(self, query: DatasetListQuery) -> DatasetListPage:
+    async def list(
+        self, query: DatasetListQuery, caller: User | Agent | None = None
+    ) -> DatasetListPage:
         series_count = (
             select(func.count())
             .where(DojoSeries.dataset_id == DojoDataset.id)
             .correlate(DojoDataset)
             .scalar_subquery()
         )
+        statement = select(DojoDataset, series_count)
+        if query.mine and caller is not None:
+            statement = statement.where(
+                made_by(caller, DojoDataset.created_by, DojoDataset.created_by_agent_id)
+            )
         rows = (
             await self.session.execute(
-                select(DojoDataset, series_count)
-                .order_by(DojoDataset.created_at.desc(), DojoDataset.id)
+                statement.order_by(DojoDataset.created_at.desc(), DojoDataset.id)
                 .offset(query.offset)
                 .limit(query.limit + 1)
             )
@@ -156,9 +166,15 @@ class DojoDatasets:
         await self.session.commit()
         return await self.get(dataset_id)
 
-    async def remove(self, dataset_id: str) -> None:
+    async def remove(self, dataset_id: str, caller: User | Agent | None = None) -> None:
+        """Delete a dataset with its runs. A key deletes only a dataset it made,
+        holding only runs it queued, none of them a proposal's or monitor's test.
+        """
         await require_application_writes(self.session)
         row = await self._row(dataset_id, lock=True)
+        agent = caller if isinstance(caller, Agent) else None
+        if agent is not None:
+            await self._require_agent_may_delete(row, agent)
         runs = select(DojoRun.id).where(DojoRun.dataset_id == row.id)
         active = await self.session.scalar(
             select(func.count()).where(
@@ -182,6 +198,31 @@ class DojoDatasets:
         )
         await self.session.delete(row)
         await self.session.commit()
+        if agent is not None:
+            log_security_event(
+                "dojo_dataset_deleted_by_agent", agent.name, {"dataset_id": dataset_id}
+            )
+
+    async def _require_agent_may_delete(self, row: DojoDataset, agent: Agent) -> None:
+        if row.created_by_agent_id != agent.id:
+            raise ForbiddenError("A key deletes only the datasets it made")
+        run_ids = list(
+            await self.session.scalars(
+                select(DojoRun.id).where(DojoRun.dataset_id == row.id)
+            )
+        )
+        others = await self.session.scalar(
+            select(func.count()).where(
+                DojoRun.dataset_id == row.id,
+                DojoRun.created_by_agent_id.is_distinct_from(agent.id),
+            )
+        )
+        if others:
+            raise ForbiddenError(
+                "The dataset holds runs that a member or another key queued, "
+                "so a key cannot delete it"
+            )
+        await require_no_evidence(self.session, run_ids)
 
     async def points(
         self, dataset_id: str, series_id: str, query: DatasetPointsQuery
@@ -209,7 +250,12 @@ class DojoDatasets:
         )
 
     async def import_csv(
-        self, body: bytes, query: CsvImportQuery, *, created_by: int | None
+        self,
+        body: bytes,
+        query: CsvImportQuery,
+        *,
+        created_by: int | None,
+        created_by_agent: Agent | None = None,
     ) -> DatasetView:
         await require_application_writes(self.session)
         declared, points = read_points(body, query)
@@ -225,6 +271,7 @@ class DojoDatasets:
                 "timestamp_column": query.timestamp_column,
             },
             created_by,
+            created_by_agent,
         )
         series = {
             name: _Series(id=str(uuid4()), position=position, name=name)
@@ -256,7 +303,11 @@ class DojoDatasets:
         return await self._finish(dataset, series.values())
 
     async def import_history(
-        self, request: DatasetFromHistory, *, created_by: int | None
+        self,
+        request: DatasetFromHistory,
+        *,
+        created_by: int | None,
+        created_by_agent: Agent | None = None,
     ) -> DatasetView:
         await require_application_writes(self.session)
         snapshot = await read_collection_runtime(self.session)
@@ -304,6 +355,7 @@ class DojoDatasets:
                 "end": request.end.isoformat(),
             },
             created_by,
+            created_by_agent,
         )
         names = _unique_names(stream.definition.label for stream in chosen)
         series = [
@@ -338,7 +390,12 @@ class DojoDatasets:
         return await self._finish(dataset, series)
 
     async def inject_faults(
-        self, dataset_id: str, request: DatasetWithFaults, *, created_by: int | None
+        self,
+        dataset_id: str,
+        request: DatasetWithFaults,
+        *,
+        created_by: int | None,
+        created_by_agent: Agent | None = None,
     ) -> DatasetView:
         """Copy a dataset with faults written in, each one a new label.
 
@@ -387,6 +444,7 @@ class DojoDatasets:
             source.origin,
             {**source.source, "copied_from": source.id, "faults": faults},
             created_by,
+            created_by_agent,
         )
         await self._store_series(dataset.id, copies.values())
         for original in originals:
@@ -431,7 +489,7 @@ class DojoDatasets:
         ).one()
         item.point_count, item.start_at, item.end_at = count, start, end
 
-    def _dataset(self, name, description, origin, source, created_by):
+    def _dataset(self, name, description, origin, source, created_by, agent=None):
         dataset = DojoDataset(
             id=str(uuid4()),
             name=self._name(name),
@@ -439,6 +497,8 @@ class DojoDatasets:
             origin=origin,
             source=source,
             created_by=created_by,
+            created_by_agent=agent.name if agent else None,
+            created_by_agent_id=agent.id if agent else None,
             point_count=0,
         )
         self.session.add(dataset)
@@ -543,5 +603,6 @@ class DojoDatasets:
             start_at=row.start_at,
             end_at=row.end_at,
             created_by=row.created_by,
+            created_by_agent=row.created_by_agent,
             created_at=row.created_at,
         )

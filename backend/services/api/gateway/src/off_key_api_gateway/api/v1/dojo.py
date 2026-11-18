@@ -54,7 +54,7 @@ from ...providers import (
     get_dojo_metrics,
     get_dojo_runs,
 )
-from ..access import agent_name, caller_key, member_id, require_permission
+from ..access import agent_of, caller_key, member_id, require_permission
 from ..errors import DomainErrorRoute
 from ..rate_limiter import client_ip, limiter
 
@@ -87,10 +87,15 @@ upload_limit = limiter.shared_limit(
 async def list_dojo_datasets(
     request: Request,
     query: Annotated[DatasetListQuery, Query()],
+    caller: User | Agent = Depends(use_dojo),
     datasets: DojoDatasets = Depends(get_dojo_datasets),
 ):
-    """Datasets in the Dojo, newest first, with their size and time span."""
-    return await datasets.list(query)
+    """Datasets in the Dojo, newest first, with their size and time span.
+
+    `mine=true` keeps the datasets the caller made: a key's own, or the
+    member's own.
+    """
+    return await datasets.list(query, caller)
 
 
 @router.post(
@@ -151,7 +156,9 @@ async def import_dojo_history(
     stored up to `end` is copied. The copy is frozen: later retention or
     catalogue edits do not change it.
     """
-    return await datasets.import_history(change, created_by=member_id(caller))
+    return await datasets.import_history(
+        change, created_by=member_id(caller), created_by_agent=agent_of(caller)
+    )
 
 
 @router.post(
@@ -176,7 +183,10 @@ async def inject_dojo_faults(
     dataset's own labels; faults may not overlap them or each other.
     """
     return await datasets.inject_faults(
-        dataset_id, change, created_by=member_id(caller)
+        dataset_id,
+        change,
+        created_by=member_id(caller),
+        created_by_agent=agent_of(caller),
     )
 
 
@@ -205,15 +215,21 @@ async def change_dojo_dataset(
     return await datasets.change(dataset_id, change)
 
 
-@router.delete("/datasets/{dataset_id}", status_code=204)
+@router.delete("/datasets/{dataset_id}", status_code=204, openapi_extra=OPEN_TO_AGENTS)
 @write_limit
 async def delete_dojo_dataset(
     request: Request,
     dataset_id: str,
+    caller: User | Agent = Depends(use_dojo),
     datasets: DojoDatasets = Depends(get_dojo_datasets),
 ):
-    """Delete a dataset and all its values. This cannot be undone."""
-    await datasets.remove(dataset_id)
+    """Delete a dataset and all its values and runs. This cannot be undone.
+
+    A key deletes only a dataset it made, holding only runs it queued, and none
+    of them the test of a proposal that waits or was accepted or of a monitor;
+    others answer 403 or 409.
+    """
+    await datasets.remove(dataset_id, caller)
     return Response(status_code=204)
 
 
@@ -368,10 +384,15 @@ async def compare_dojo_runs(
 async def list_dojo_runs(
     request: Request,
     query: Annotated[RunListQuery, Query()],
+    caller: User | Agent = Depends(use_dojo),
     runs: DojoRuns = Depends(get_dojo_runs),
 ):
-    """Runs, newest first, optionally of one dataset or in one status."""
-    return await runs.list(query)
+    """Runs, newest first, optionally of one dataset or in one status.
+
+    `mine=true` keeps the runs the caller queued: a key's own, or the
+    member's own.
+    """
+    return await runs.list(query, caller)
 
 
 @router.post(
@@ -399,7 +420,7 @@ async def create_dojo_run(
     with `GET /v1/dojo/runs/{run_id}/calibration`.
     """
     return await runs.create(
-        run, created_by=member_id(caller), created_by_agent=agent_name(caller)
+        run, created_by=member_id(caller), created_by_agent=agent_of(caller)
     )
 
 
@@ -418,16 +439,19 @@ async def get_dojo_run(
     return await runs.get(run_id)
 
 
-@router.post("/runs/{run_id}/cancel", response_model=RunView)
+@router.post(
+    "/runs/{run_id}/cancel", response_model=RunView, openapi_extra=OPEN_TO_AGENTS
+)
 @write_limit
 async def cancel_dojo_run(
     request: Request,
     run_id: str,
+    caller: User | Agent = Depends(use_dojo),
     runs: DojoRuns = Depends(get_dojo_runs),
 ):
     """Cancel a run. A waiting run ends at once; a running one within seconds,
-    keeping the results it stored so far."""
-    return await runs.cancel(run_id)
+    keeping the results it stored so far. A key cancels only a run it queued."""
+    return await runs.cancel(run_id, caller)
 
 
 @router.post(
@@ -453,15 +477,20 @@ async def promote_dojo_run(
     return await runs.promote(run_id, promotion)
 
 
-@router.delete("/runs/{run_id}", status_code=204)
+@router.delete("/runs/{run_id}", status_code=204, openapi_extra=OPEN_TO_AGENTS)
 @write_limit
 async def delete_dojo_run(
     request: Request,
     run_id: str,
+    caller: User | Agent = Depends(use_dojo),
     runs: DojoRuns = Depends(get_dojo_runs),
 ):
-    """Delete a finished run and its results. This cannot be undone."""
-    await runs.remove(run_id)
+    """Delete a finished run and its results. This cannot be undone.
+
+    A key deletes only a run it queued that no proposal that waits or was
+    accepted and no monitor names as its test; others answer 403 or 409.
+    """
+    await runs.remove(run_id, caller)
     return Response(status_code=204)
 
 

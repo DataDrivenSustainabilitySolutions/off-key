@@ -55,6 +55,10 @@ and get_monitor one with who started it and why. get_monitor_alarms lists \
 the alarms it raised, or in shadow would have raised. Stop a shadow monitor of \
 yours that is noisy or blind with stop_monitor, which frees its place, or \
 propose it to run live with what it showed. Live monitors stay with members.
+7. Clean up after yourself: list_my_tests shows the datasets and tests your \
+key made, and delete_mine deletes those that have served, and your proposals \
+once withdrawn or declined. Nothing else can be deleted with a key: not what \
+members or other keys made, and no monitor, alarm or reading.
 
 Each start carries a rationale for the members who read it next to the \
 monitor: what it watches, why this design, the evidence and its limits, each \
@@ -135,6 +139,9 @@ class Api:
             await self._client.post(path, json=body, headers=self._headers)
         )
 
+    async def delete(self, path: str) -> Any:
+        return _answered(await self._client.delete(path, headers=self._headers))
+
 
 def _segment(value: str) -> str:
     if value in {"", ".", ".."} or "/" in value or "\\" in value:
@@ -164,6 +171,7 @@ class Tool:
     call: Callable[[Api, Any], Awaitable[Any]]
     changes: bool
     starts: bool
+    deletes: bool
 
     def schema(self) -> dict[str, Any]:
         return _without_titles(self.arguments.model_json_schema())
@@ -190,17 +198,30 @@ def _without_titles(schema: Any, names: bool = False) -> Any:
 TOOLS: dict[str, Tool] = {}
 
 
-def tool(arguments: type[BaseModel], *, changes: bool = False, starts: bool = False):
+def tool(
+    arguments: type[BaseModel],
+    *,
+    changes: bool = False,
+    starts: bool = False,
+    deletes: bool = False,
+):
     """Offer a function as a tool, named after it and described by its docstring.
 
     ``changes`` marks a tool that leaves something others see, ``starts`` one
-    that only a key that may start monitors is offered.
+    that only a key that may start monitors is offered, ``deletes`` one that
+    removes for good what the key made.
     """
 
     def offer(call: FunctionType):
         described = " ".join((inspect.getdoc(call) or "").split())
         TOOLS[call.__name__] = Tool(
-            call.__name__, described, arguments, call, changes, starts
+            call.__name__,
+            described,
+            arguments,
+            call,
+            changes or deletes,
+            starts,
+            deletes,
         )
         return call
 
@@ -942,6 +963,85 @@ async def withdraw_proposal(api: Api, args: ProposalRef):
     return await api.post(
         f"/v1/pipeline-proposals/{_segment(args.proposal_id)}/withdraw"
     )
+
+
+class Mine(Args):
+    run_id: str | None = None
+    dataset_id: str | None = None
+    proposal_id: str | None = None
+
+
+@tool(Nothing)
+async def list_my_tests(api: Api, args: Nothing):
+    """The datasets and tests your key made, the newest first."""
+    datasets = await api.get("/v1/dojo/datasets", {"mine": "true", "limit": 100})
+    runs = await api.get("/v1/dojo/runs", {"mine": "true", "limit": 100})
+    return {
+        "datasets": [
+            {key: item[key] for key in ("id", "name", "created_at")}
+            for item in datasets["items"]
+        ],
+        "tests": [
+            {
+                "run_id": item["id"],
+                "dataset_id": item["dataset_id"],
+                "name": item["name"],
+                "status": item["status"],
+                "created_at": item["created_at"],
+            }
+            for item in runs["items"]
+        ],
+        "more": bool(datasets.get("next_offset") or runs.get("next_offset")),
+    }
+
+
+@tool(Mine, deletes=True)
+async def delete_mine(api: Api, args: Mine):
+    """Delete one thing your key made: a test, cancelled first if it runs; a
+    dataset with only your tests on it; or a proposal once withdrawn or
+    declined. A test a proposal or monitor names as evidence stays."""
+    named = {key: value for key, value in _sent(args).items() if isinstance(value, str)}
+    if len(named) != 1:
+        raise ApiRefusal(422, "Name one of run_id, dataset_id or proposal_id")
+    if args.proposal_id is not None:
+        await api.delete(f"/v1/pipeline-proposals/{_segment(args.proposal_id)}")
+    elif args.dataset_id is not None:
+        runs = await api.get(
+            "/v1/dojo/runs",
+            {"dataset_id": args.dataset_id, "mine": "true", "limit": 100},
+        )
+        for item in runs["items"]:
+            await _ended(api, item)
+        await api.delete(f"/v1/dojo/datasets/{_segment(args.dataset_id)}")
+    elif args.run_id is not None:
+        path = f"/v1/dojo/runs/{_segment(args.run_id)}"
+        await _ended(api, await api.get(path))
+        await api.delete(path)
+    return {"deleted": named}
+
+
+async def _ended(api: Api, run: dict[str, Any]) -> None:
+    """Cancel a run that still waits or runs, and wait for its end."""
+    if run["status"] not in ACTIVE_RUN:
+        return
+    path = f"/v1/dojo/runs/{_segment(run['id'])}"
+    await api.post(f"{path}/cancel")
+    run = await _settled(
+        lambda: api.get(path),
+        lambda state: state["status"] not in ACTIVE_RUN,
+        CANCEL_WAIT,
+    )
+    if run["status"] in ACTIVE_RUN:
+        raise ApiRefusal(
+            409,
+            f"Test {run['id']} is cancelled and still ending; call delete_mine "
+            "again in a few seconds.",
+        )
+
+
+ACTIVE_RUN = {"queued", "running"}
+# A running replay ends at the worker's next beat, within seconds.
+CANCEL_WAIT = 30
 
 
 def _started_by(monitor: Mapping[str, Any]) -> dict[str, Any] | None:

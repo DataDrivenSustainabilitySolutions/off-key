@@ -88,6 +88,7 @@ GATEWAY_ACCESS = {
         "GET /v1/pipeline-proposals",
         "POST /v1/pipeline-proposals",
         "GET /v1/pipeline-proposals/{proposal_id}",
+        "DELETE /v1/pipeline-proposals/{proposal_id}",
         "POST /v1/pipeline-proposals/{proposal_id}/decision",
         "POST /v1/pipeline-proposals/{proposal_id}/withdraw",
         "GET /v1/pipelines",
@@ -184,6 +185,7 @@ GATEWAY_AGENT_ACCESS = {
         "POST /v1/dojo/datasets/history",
         "POST /v1/dojo/datasets/{dataset_id}/faults",
         "GET /v1/dojo/datasets/{dataset_id}",
+        "DELETE /v1/dojo/datasets/{dataset_id}",
         "GET /v1/dojo/datasets/{dataset_id}/series/{series_id}/points",
         "GET /v1/dojo/datasets/{dataset_id}/comparison",
         "GET /v1/dojo/datasets/{dataset_id}/labels",
@@ -191,6 +193,8 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/dojo/runs",
         "POST /v1/dojo/runs",
         "GET /v1/dojo/runs/{run_id}",
+        "DELETE /v1/dojo/runs/{run_id}",
+        "POST /v1/dojo/runs/{run_id}/cancel",
         "GET /v1/dojo/runs/{run_id}/metrics",
         "GET /v1/dojo/runs/{run_id}/calibration",
         "GET /v1/dojo/runs/{run_id}/results",
@@ -212,6 +216,7 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/pipeline-proposals",
         "POST /v1/pipeline-proposals",
         "GET /v1/pipeline-proposals/{proposal_id}",
+        "DELETE /v1/pipeline-proposals/{proposal_id}",
         "POST /v1/pipeline-proposals/{proposal_id}/withdraw",
         "GET /v1/pipeline-components",
         "GET /v1/pipeline-components/search",
@@ -312,7 +317,9 @@ def test_a_key_reaches_only_the_listed_gateway_routes():
 
 def test_a_key_changes_nothing_it_did_not_make():
     """Beyond reads, a key validates, edits what it holds, tests, proposes,
-    withdraws its own proposal and, where it may, starts."""
+    withdraws its own proposal and, where it may, starts. It cancels and
+    deletes only its own tests and its own withdrawn or declined proposals,
+    which the services check (test_dojo_agent_cleanup)."""
     writes = {
         route
         for routes in GATEWAY_AGENT_ACCESS.values()
@@ -324,6 +331,10 @@ def test_a_key_changes_nothing_it_did_not_make():
         "POST /v1/dojo/datasets/history",
         "POST /v1/dojo/datasets/{dataset_id}/faults",
         "POST /v1/dojo/runs",
+        "POST /v1/dojo/runs/{run_id}/cancel",
+        "DELETE /v1/dojo/runs/{run_id}",
+        "DELETE /v1/dojo/datasets/{dataset_id}",
+        "DELETE /v1/pipeline-proposals/{proposal_id}",
         "POST /v1/pipelines/edit",
         "POST /v1/pipelines/validate",
         "POST /v1/pipelines/apply",

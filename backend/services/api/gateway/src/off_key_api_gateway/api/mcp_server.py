@@ -55,7 +55,7 @@ async def _list_tools(
                 input_schema=tool.schema(),
                 annotations=types.ToolAnnotations(
                     read_only_hint=not tool.changes,
-                    destructive_hint=False,
+                    destructive_hint=tool.deletes,
                     open_world_hint=False,
                 ),
             )

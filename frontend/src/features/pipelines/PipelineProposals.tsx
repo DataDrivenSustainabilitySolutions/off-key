@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { FlaskConical, Play, TriangleAlert } from "lucide-react";
+import { ChevronDown, FlaskConical, Play, TriangleAlert } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -226,14 +226,20 @@ function ProposalCard({ proposal, canDecide, stated, full, replaced, onReview, o
   const title = useId();
   const missing = missingReadings(proposal);
   const open = proposal.status === "open";
+  // A phone shows what the design watches and keeps the evidence and the limits one press away.
+  const [more, setMore] = useState(false);
   return <li className="pl-proposal-card">
-    <article aria-labelledby={title}>
+    <article aria-labelledby={title} data-more={proposal.rationale ? more : undefined}>
       {/* The name opens the proposal for the pointer; the keyboard has the button below for it. */}
       <h2 id={title}><button type="button" tabIndex={-1} onClick={onReview}>{proposal.name}</button></h2>
       <ProposalByline proposal={proposal} replaced={replaced} />
       {(stated || !open) && <ProposalDecision proposal={proposal} />}
       {proposal.rationale
-        ? <RationaleFields rationale={proposal.rationale} only={["watches", "evidence", "limits"]} />
+        ? <>
+          <RationaleFields rationale={proposal.rationale} only={["watches", "evidence", "limits"]} />
+          <button type="button" className="pl-proposal-more" aria-expanded={more} onClick={() => setMore(!more)}>
+            <ChevronDown size={14} aria-hidden="true" />Evidence and limits</button>
+        </>
         : <dl className="rationale-fields"><div><dt>Reason</dt><dd className="pl-proposal-reason">{proposal.reason}</dd></div></dl>}
       {missing && <p className="pl-proposal-missing"><TriangleAlert size={14} aria-hidden="true" />{missing}</p>}
       <footer className="pl-proposal-actions">
@@ -309,8 +315,8 @@ export function PipelineProposalList({ onReview, onBack, onStarted, canDecide = 
           : `${free} of ${capacity.limit} monitor places are free.`}</span>
       </div>}
     </div>
-    <p className="pl-proposals-intro">Designs an agent or a member handed in for a decision.
-      {canDecide ? " Review one in the setup, start it as proposed, or decline it." : " Review one in the setup."}
+    <p className="pl-proposals-intro"><span className="pl-proposals-about">Designs an agent or a member handed in for a decision.
+      {canDecide ? " Review one in the setup, start it as proposed, or decline it." : " Review one in the setup."}</span>
       {full && " Starting a proposal needs a free place: stop a monitor first, or start one that replaces a running service."}</p>
     <div className="mn-list-tools pl-proposals-tools">
       <div className="mn-filters" aria-label="Filter proposals">
@@ -358,6 +364,8 @@ export function PipelineProposalBrief({ proposal, canDecide, replaced, onOpenTes
   const note = rationale && proposal.reason === rationale.watches ? "" : proposal.reason;
 
   return <div className="pl-brief" role="group" aria-label={`Proposal by ${proposedBy(proposal)}`}>
+    {/* On a phone the brief is a page of its own and opens with the name the design was handed in under. */}
+    <p className="pl-brief-name">{proposal.name}</p>
     <ProposalDecision proposal={proposal}>
       {open && <p className="pl-help">{canDecide
         ? `${proposal.replace_monitor_id ? "Updating" : "Starting"} the service accepts the proposal. Change the design first if you wish.`

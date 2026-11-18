@@ -224,6 +224,14 @@ so in the list and opens as a change to that service, with the steps that
 differ from the running design marked on their cards. Members whose role cannot
 manage monitors can read a proposal and cannot decide on it.
 
+On a phone the same pages read one thing at a time. A card in the list shows
+what the design watches, and **Evidence and limits** under it opens the rest.
+An opened proposal has two tabs in place of the panel beside the graph:
+**Proposal** is the brief as a page of its own, and **Design** is the graph
+with its toolbar and settings. **Decline** and **Start monitoring** stay in a
+bar at the bottom of the screen on both, and the templates are **Load** and
+**Save** beside the breadcrumb.
+
 A proposal can name the test on history its author ran. The test is of the
 design as it was proposed: a test that ran an earlier version is refused when
 the proposal is made. For members who may use the Dojo, **Open the test** in

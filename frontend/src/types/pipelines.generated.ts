@@ -106,6 +106,15 @@ export type ConstantParameters = {
   value?: number;
 };
 
+export type CusumParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  window_size?: number;
+  slack?: number;
+  reset_at?: number;
+};
+
 export type DeseasonParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";

@@ -791,9 +791,19 @@ features.
 `point_detector_without_time` warns at a detector that scores each
 observation on its own (`POINT_DETECTORS` in `adaptive.py`, and every static
 model) when no step before it carries time (`TEMPORAL_STEPS`: Lags, Change,
-Rolling, Accumulate, Deseason, Time). On a series that follows its past such a detector
+Rolling, Accumulate, Deseason, CUSUM, Time). On a series that follows its past such a detector
 scores the level; the warning points to Lags or Change and to the detectors
 that read the past themselves.
+
+`prepare.cusum` (`Cusum`) keeps six numbers per feature: level, spread
+(mean absolute deviation), a recent level over a tenth of the window, the
+upward and downward sums and the count. The first `window_size` values set
+the level and spread and give no output (`lead`). Then a value adds its
+distance in scaled spreads less `slack` to each one-sided sum, floored at 0,
+and the step outputs the larger. The level and spread follow at the window's
+pace only while that sum is at most half of `reset_at`, so a shift is not
+absorbed while it builds; past `reset_at` both sums go to 0 and the level to
+the recent level. Its output lies in [0, ∞).
 
 `prepare.deseason` (`Deseason`) takes the usual level of the time of day or
 week out of each feature. It reads time like Lags in time: `lane_context`

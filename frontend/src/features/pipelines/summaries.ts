@@ -126,6 +126,8 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const back = unit.seconds ? `${unit.short} back` : "observations back";
       return lags.length ? `${lags.length === 1 ? "Lag" : "Lags"} ${lagText(lags)} ${back}` : "No lag yet";
     }
+    case "prepare.cusum":
+      return `Drift beyond ${number(amount("slack", 0.5))} spreads, summed · starts over at ${number(amount("reset_at", 5))} · learns from ${number(amount("window_size", 200))}`;
     case "prepare.deseason": {
       const slot = amount("slot_minutes", 60);
       const memory = amount("memory", 7);

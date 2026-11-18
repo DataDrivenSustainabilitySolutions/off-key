@@ -34,6 +34,7 @@ from ..schemas.pipelines import (
     ChangeParameters,
     ConditionParameters,
     ConstantParameters,
+    CusumParameters,
     DeseasonParameters,
     DespikeParameters,
     FormulaParameters,
@@ -58,6 +59,7 @@ PREPARE_MODELS: dict[str, type[PipelineModel]] = {
     "prepare.change": ChangeParameters,
     "prepare.lags": LagsParameters,
     "prepare.deseason": DeseasonParameters,
+    "prepare.cusum": CusumParameters,
     "prepare.rolling": RollingParameters,
     "prepare.math": MathParameters,
     "prepare.range": RangeParameters,
@@ -105,6 +107,7 @@ _FIXED_SUFFIXES = {
     # Each lag follows: power_lag24.
     "prepare.lags": "lag",
     "prepare.deseason": "deseasoned",
+    "prepare.cusum": "cusum",
 }
 _ACCUMULATE_SUFFIXES = {
     "sum": "total",
@@ -981,6 +984,64 @@ class Deseason(Kernel):
         return not start or start[1] - start[0] < self.cycle
 
 
+class Cusum(Kernel):
+    """Two-sided cumulative sum of how far values lie from their usual level.
+
+    The usual level and spread are a mean and mean absolute deviation, learned
+    over the first window values and then followed at that pace, but only
+    while the sum stays below half of reset_at: during a shift they hold, so
+    the shift is not absorbed before it is found. Each value adds its distance
+    from the level, in spreads, less the slack, to the upward or the downward
+    sum; a sum never falls below 0. The output is the larger sum. Once it
+    passes reset_at, both sums start over and the level moves to the recent
+    level, a mean over a tenth of the window, so a lasting shift gives one
+    rise rather than a sum that grows without end.
+    """
+
+    def __init__(self, window: int, slack: float, reset_at: float):
+        self.size = window
+        self.recent = max(window // 10, 5)
+        self.slack = slack
+        self.reset_at = reset_at
+        self.lead = window
+        # Level, spread, recent level, upward and downward sums, values seen.
+        self.window = 6
+
+    def initial(self) -> State:
+        return (array("d", [0.0] * 6),)
+
+    def advance(self, state: State, value: float) -> tuple[State, float | None]:
+        level, spread, recent, up, down, seen = state[0]
+        seen += 1
+        recent += (value - recent) / min(seen, self.recent)
+        if seen <= self.size:
+            # The first window: a plain mean and mean absolute deviation.
+            level += (value - level) / seen
+            spread += (abs(value - level) - spread) / seen
+            return (array("d", [level, spread, recent, up, down, seen]),), None
+        scale = spread * MEAN_DEVIATION_SCALE
+        distance = (value - level) / scale if scale > 0 else 0.0
+        up = max(0.0, up + distance - self.slack)
+        down = max(0.0, down - distance - self.slack)
+        result = max(up, down)
+        if result > self.reset_at:
+            level, up, down = recent, 0.0, 0.0
+        elif result <= self.reset_at / 2:
+            level += (value - level) / self.size
+            spread += (abs(value - level) - spread) / self.size
+        return (array("d", [level, spread, recent, up, down, seen]),), result
+
+    def accepts(self, state: State) -> bool:
+        return (
+            len(state) == 1
+            and isinstance(state[0], array)
+            and state[0].typecode == "d"
+            and len(state[0]) == 6
+            and all(math.isfinite(item) for item in state[0])
+            and state[0][1] >= 0
+        )
+
+
 class Function(Kernel):
     """log, log1p, sqrt, abs, square or scale * x + offset, with domain checks."""
 
@@ -1058,6 +1119,7 @@ _KERNELS: dict[type[PipelineModel], Callable[[Any], Kernel]] = {
     DespikeParameters: lambda item: Despike(item.window_size, item.threshold),
     ChangeParameters: lambda item: Change(item.lag, item.mode),
     LagsParameters: _lags,
+    CusumParameters: lambda item: Cusum(item.window_size, item.slack, item.reset_at),
     DeseasonParameters: lambda item: Deseason(
         DESEASON_CYCLES[item.cycle],
         60 * item.slot_minutes,
@@ -1223,6 +1285,7 @@ def _deseasoned_bounds(_params: dict[str, Any], bounds: Bounds) -> Bounds:
 _BOUNDS: dict[str, Callable[[dict[str, Any], Bounds], Bounds]] = {
     "prepare.change": _change_bounds,
     "prepare.deseason": _deseasoned_bounds,
+    "prepare.cusum": lambda _params, _bounds: (0.0, None),
     "prepare.rolling": _rolling_bounds,
     "prepare.accumulate": _accumulated_bounds,
     "prepare.math": _function_bounds,

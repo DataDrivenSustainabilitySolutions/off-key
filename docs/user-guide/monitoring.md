@@ -535,6 +535,15 @@ their windows never restart.
   place of the spike; the evidence keeps the raw reading.
 - **Change** adds the difference or percent change since **Lag** observations
   back, or the value from then.
+- **CUSUM** adds how far values have drifted from their usual level, summed
+  over observations, so a small shift that lasts stands out where a detector
+  of single values misses it. It learns the level and spread over its
+  **Window** first; a value adds its distance in spreads less **Slack**, and
+  the sum never falls below 0, upward or downward. While the sum is high the
+  level holds, so the shift is not learned away before it shows. Past
+  **Reset at** the sum starts over at the new level, so one lasting shift is
+  one rise. With the defaults noise alone passes Reset at roughly once every
+  few hundred observations.
 - **Deseason** takes out the usual level at this time of day, or of the week
   where weekdays and weekends differ, so a detector sees what is unusual for
   the time rather than the daily rhythm. It learns one level per **Slot** of

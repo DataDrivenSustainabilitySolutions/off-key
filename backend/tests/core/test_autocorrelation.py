@@ -8,8 +8,8 @@ from off_key_core.models.autocorrelation import (
     MAX_VALUES,
     autocorrelation,
     on_grid,
-    profile_series,
 )
+from off_key_core.models.dataset_profile import profile_series
 
 T0 = datetime(2026, 1, 5, tzinfo=UTC)
 

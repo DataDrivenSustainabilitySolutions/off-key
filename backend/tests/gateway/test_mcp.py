@@ -1395,6 +1395,11 @@ async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
         "count": 500,
         "notes": ["It follows a cycle of 24 steps."],
     }
+    stores.datasets.profile_dataset.return_value = {
+        "dataset_id": "d1",
+        "name": "Motor",
+        "series": [{"series_id": "s1", "name": "motor temperature", "count": 500}],
+    }
     made = {"items": [pending], "skipped": 0, "truncated": False, "replaced": 0}
     stores.pending.propose.return_value = made
     stores.pending.propose_by_rule.return_value = made
@@ -1414,6 +1419,7 @@ async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
                 "profile_series", {"dataset_id": "d1", "series": "motor temperature"}
             )
         )
+        whole = said(await client.call_tool("profile_series", {"dataset_id": "d1"}))
         by_rule = said(
             await client.call_tool(
                 "propose_labels",
@@ -1443,6 +1449,8 @@ async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
     assert unknown.is_error and "motor temperature" in said(unknown)
     assert profile["count"] == 500 and profile["autocorrelation"] == []
     assert stores.datasets.profile.await_args.args == ("d1", "s1")
+    assert whole["series"][0]["values"] is None and whole["pairs"] == []
+    assert stores.datasets.profile_dataset.await_args.args == ("d1",)
     assert by_rule == intervals
     assert [item["rule"] for item in by_rule["items"]] == ["`motor temperature` > 80"]
     assert both.is_error

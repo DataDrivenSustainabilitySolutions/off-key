@@ -71,7 +71,9 @@ def _explained(levels: Sequence[float], groups: Sequence[object]) -> float | Non
     return round(min(max(adjusted, 0.0), 1.0), 2)
 
 
-def _recent(samples: Sequence[tuple[datetime, float | None]]) -> RecentValues | None:
+def describe_values(
+    samples: Sequence[tuple[datetime, float | None]],
+) -> RecentValues | None:
     """How the newest values arrive and move; ``samples`` are oldest first."""
     kept = [(at, value) for at, value in samples if value is not None]
     if not kept:
@@ -138,7 +140,7 @@ def profile_reading(
         if start <= at <= end:
             buckets[int((at - start) / width)].append(value)
     inside = [(at, value) for at, value in newest if start <= at <= end]
-    recent = _recent(inside)
+    recent = describe_values(inside)
     profile = ReadingProfile(
         reading_id=reading_id,
         start=start,

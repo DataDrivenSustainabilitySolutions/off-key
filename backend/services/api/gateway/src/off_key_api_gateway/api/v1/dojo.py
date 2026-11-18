@@ -24,6 +24,7 @@ from off_key_core.schemas.dojo import (
     DatasetListQuery,
     DatasetPointsPage,
     DatasetPointsQuery,
+    DatasetProfile,
     DatasetView,
     DatasetWithFaults,
     FaultSuiteCreate,
@@ -331,6 +332,22 @@ async def list_dojo_points(
 
 
 @router.get(
+    "/datasets/{dataset_id}/profile",
+    response_model=DatasetProfile,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@read_limit
+async def profile_dojo_dataset(
+    request: Request,
+    dataset_id: str,
+    datasets: DojoDatasets = Depends(get_dojo_datasets),
+):
+    """A whole dataset at a glance: each series' course, values, level change
+    and cycles, which series move together, and where the labels lie."""
+    return await datasets.profile_dataset(dataset_id)
+
+
+@router.get(
     "/datasets/{dataset_id}/series/{series_id}/profile",
     response_model=SeriesProfile,
     openapi_extra=OPEN_TO_AGENTS,
@@ -342,8 +359,8 @@ async def profile_dojo_series(
     series_id: str,
     datasets: DojoDatasets = Depends(get_dojo_datasets),
 ):
-    """How a series relates to its own past: autocorrelation, suggested lags
-    and cycles, from its first values and over the whole series."""
+    """One series in full: its values, course and level change, and how it
+    relates to its own past: autocorrelation, suggested lags and cycles."""
     return await datasets.profile(dataset_id, series_id)
 
 

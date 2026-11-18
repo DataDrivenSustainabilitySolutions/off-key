@@ -29,7 +29,7 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
-from off_key_core.models.autocorrelation import profile_series
+from off_key_core.models.dataset_profile import profile_dataset, profile_series
 from off_key_core.schemas.dojo import (
     MAX_DATASET_LABELS,
     MAX_DATASET_POINTS,
@@ -43,6 +43,7 @@ from off_key_core.schemas.dojo import (
     DatasetPoint,
     DatasetPointsPage,
     DatasetPointsQuery,
+    DatasetProfile,
     DatasetSeriesView,
     DatasetSummary,
     DatasetView,
@@ -60,6 +61,8 @@ from .owners import made_by, require_no_evidence
 COPY_BATCH = 20_000
 # Values a series profile reads, from the start of the series.
 PROFILE_POINTS = 200_000
+# Values a whole dataset's profile reads, shared among its series.
+DATASET_PROFILE_POINTS = 1_000_000
 POINT_COLUMNS = ("series_id", "timestamp", "value")
 # A label needs an end after its start; one marked value gets this much.
 SINGLE_VALUE = timedelta(milliseconds=1)
@@ -274,10 +277,44 @@ class DojoDatasets:
         )
 
     async def profile(self, dataset_id: str, series_id: str) -> SeriesProfile:
-        """How a series relates to its own past, from its first values."""
+        """How a series moves and relates to its own past, from its first values."""
         series = await self.session.get(DojoSeries, series_id)
         if series is None or series.dataset_id != dataset_id:
             raise NotFoundError("Series not found")
+        points, total = await self._profile_points(series_id, PROFILE_POINTS)
+        return profile_series(
+            series_id,
+            series.name,
+            points,
+            total=total,
+            labels=await self._label_intervals(dataset_id),
+        )
+
+    async def profile_dataset(self, dataset_id: str) -> DatasetProfile:
+        """Every series of a dataset, how they move together, and its labels."""
+        dataset = await self._row(dataset_id)
+        rows = list(
+            (
+                await self.session.scalars(
+                    select(DojoSeries)
+                    .where(DojoSeries.dataset_id == dataset_id)
+                    .order_by(DojoSeries.position)
+                )
+            ).all()
+        )
+        share = DATASET_PROFILE_POINTS // max(len(rows), 1)
+        series = []
+        for row in rows:
+            points, total = await self._profile_points(row.id, share)
+            series.append((row.id, row.name, points, total))
+        return profile_dataset(
+            dataset_id,
+            dataset.name,
+            series,
+            await self._label_intervals(dataset_id),
+        )
+
+    async def _profile_points(self, series_id: str, limit: int):
         total = await self.session.scalar(
             select(func.count()).where(DojoPoint.series_id == series_id)
         )
@@ -286,15 +323,16 @@ class DojoDatasets:
                 select(DojoPoint.timestamp, DojoPoint.value)
                 .where(DojoPoint.series_id == series_id)
                 .order_by(DojoPoint.timestamp)
-                .limit(PROFILE_POINTS)
+                .limit(limit)
             )
         ).all()
-        return profile_series(
-            series_id,
-            series.name,
-            [(timestamp, value) for timestamp, value in rows],
-            total=int(total or 0),
-        )
+        return [(timestamp, value) for timestamp, value in rows], int(total or 0)
+
+    async def _label_intervals(self, dataset_id: str):
+        return [
+            (label.start_at, label.end_at)
+            for label in await dataset_labels(self.session, dataset_id)
+        ]
 
     async def import_csv(
         self,

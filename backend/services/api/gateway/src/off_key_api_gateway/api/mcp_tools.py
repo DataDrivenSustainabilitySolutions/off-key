@@ -46,7 +46,8 @@ what its report lists before you go on.
 4. test_design replays the design over recorded values of the readings, and \
 get_test says how many alarms it would have raised, with the scores around \
 the first ones. Compare variants on the same `dataset_id`, so they replay the \
-same values. To show that a design catches a problem the history lacks, pass \
+same values; profile_series on it shows every series at once. To show that \
+a design catches a problem the history lacks, pass \
 `faults`: a step, drift, freeze or gap written into a copy, which get_test \
 scores as caught or missed, with the delay.
 To choose between candidates, put labelled datasets in a suite with \
@@ -1246,15 +1247,20 @@ async def get_dataset_values(api: Api, args: DatasetValues):
     }
 
 
-class SeriesQuery(Args):
+class SeriesProfileQuery(Args):
     dataset_id: str
-    series: str
+    series: str | None = Field(
+        default=None, description="Leave out for the whole dataset."
+    )
 
 
-@tool(SeriesQuery)
-async def profile_series(api: Api, args: SeriesQuery):
-    """profile_reading for a dataset series: autocorrelation, lags, cycles."""
+@tool(SeriesProfileQuery)
+async def profile_series(api: Api, args: SeriesProfileQuery):
+    """A dataset's series, which move together, its labels; or one series'
+    autocorrelation."""
     path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}"
+    if args.series is None:
+        return await api.get(f"{path}/profile")
     dataset = await api.get(path)
     found = next(
         (item for item in dataset["series"] if item["name"] == args.series), None

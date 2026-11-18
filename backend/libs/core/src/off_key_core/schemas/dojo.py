@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .devices import Autocorrelation
+from .devices import Autocorrelation, RecentValues, Season, SuggestedLag
 from .pipelines import PipelineDefinition, PipelineNodePreview
 
 # One dataset stays a size a single comparison run can replay quickly.
@@ -307,8 +307,20 @@ class DatasetPointsPage(DojoModel):
     )
 
 
-class SeriesProfile(DojoModel):
-    """What a series looks like over time, so a design can be fitted to it."""
+class SeriesShape(DojoModel):
+    """A series' course in equal stretches of time: what a chart of it shows."""
+
+    start: datetime
+    bucket_seconds: float = Field(description="The time one stretch covers.")
+    mean: list[float | None] = Field(
+        description="Mean of each stretch; null where it holds no value."
+    )
+    low: list[float | None] = Field(description="Lowest value of each stretch.")
+    high: list[float | None] = Field(description="Highest value of each stretch.")
+
+
+class SeriesBrief(DojoModel):
+    """What a series looks like over time, in a few numbers."""
 
     series_id: str
     name: str
@@ -318,6 +330,41 @@ class SeriesProfile(DojoModel):
     interval_seconds: float | None = Field(
         default=None, description="The usual time between two values."
     )
+    values: RecentValues | None = Field(
+        default=None,
+        description="How the values arrive and move: gaps, spread, quantiles, "
+        "noise, flat stretches and, for a state, its levels.",
+    )
+    level_change: float | None = Field(
+        default=None,
+        description="How far the level moved from the first tenth of the series "
+        "to the last, in spreads. Far from 0, the series is not stationary: a "
+        "detector needs the level taken out, or a model that follows it.",
+    )
+    labelled_shift: float | None = Field(
+        default=None,
+        description="Mean inside the dataset's labels minus the mean outside, in "
+        "spreads. Near 0, the labels do not show in this series' level.",
+    )
+    shape: SeriesShape | None = None
+    persistent: bool | None = Field(
+        default=None,
+        description="Still strongly correlated twenty steps back: the series "
+        "wanders or trends.",
+    )
+    cycles: list[Season] = Field(
+        default_factory=list, description="Repeating cycles, strongest first."
+    )
+    lags: list[SuggestedLag] = Field(
+        default_factory=list,
+        description="Lags that carry information of their own, strongest first.",
+    )
+    notes: list[str] = Field(default_factory=list)
+
+
+class SeriesProfile(SeriesBrief):
+    """What a series looks like over time, so a design can be fitted to it."""
+
     autocorrelation: list[Autocorrelation] = Field(
         default_factory=list,
         description=(
@@ -325,6 +372,55 @@ class SeriesProfile(DojoModel):
             "where a design learns, then over the whole series on a coarser "
             "grid. Empty where too few values vary."
         ),
+    )
+
+
+class SeriesPair(DojoModel):
+    """How two series of a dataset move together, on a shared grid of time."""
+
+    first: str = Field(description="Series name.")
+    second: str = Field(description="Series name.")
+    level: float = Field(
+        description="Correlation of the values, from -1 to 1. Two series that "
+        "both trend correlate by chance; trust change for that."
+    )
+    change: float = Field(
+        description="Correlation of the changes from one step to the next."
+    )
+    lead_seconds: float = Field(
+        description="Where the changes correlate most, within five steps: "
+        "positive when the first series moves before the second, 0 together."
+    )
+    lead_change: float = Field(description="Correlation of the changes at that lead.")
+
+
+class LabelCoverage(DojoModel):
+    count: int
+    labelled_share: float = Field(
+        description="Share of the dataset's span inside a label, from 0 to 1."
+    )
+    median_seconds: float = Field(description="The usual length of a label.")
+
+
+class DatasetProfile(DojoModel):
+    """A whole dataset at a glance: each series, how they move together, and
+    where the labels lie. ``profile_series`` has one series' autocorrelation."""
+
+    dataset_id: str
+    name: str
+    first: datetime | None = None
+    last: datetime | None = None
+    series: list[SeriesBrief]
+    step_seconds: float | None = Field(
+        default=None, description="The shared grid that pairs are measured on."
+    )
+    pairs: list[SeriesPair] = Field(
+        default_factory=list,
+        description="Pairs that move together (|correlation| of 0.5 or more), "
+        "strongest first.",
+    )
+    labels: LabelCoverage | None = Field(
+        default=None, description="Null where the dataset has no label."
     )
     notes: list[str] = Field(default_factory=list)
 

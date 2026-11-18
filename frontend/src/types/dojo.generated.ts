@@ -126,6 +126,18 @@ export type DatasetPointsQuery = {
   limit?: number;
 };
 
+export type DatasetProfile = {
+  dataset_id: string;
+  name: string;
+  first?: string | null;
+  last?: string | null;
+  series: Array<SeriesBrief>;
+  step_seconds?: number | null;
+  pairs?: Array<SeriesPair>;
+  labels?: LabelCoverage | null;
+  notes?: Array<string>;
+};
+
 export type DatasetSeriesView = {
   id: string;
   position: number;
@@ -203,6 +215,12 @@ export type LabelChange = {
   start_at?: string | null;
   end_at?: string | null;
   note?: string | null;
+};
+
+export type LabelCoverage = {
+  count: number;
+  labelled_share: number;
+  median_seconds: number;
 };
 
 export type LabelCreate = {
@@ -357,6 +375,27 @@ export type PromotedBinding = {
   slot_label: string;
   series_name: string;
   reading_id: string | null;
+};
+
+export type RecentValues = {
+  count: number;
+  missing: number;
+  first: string;
+  last: string;
+  interval_seconds: number | null;
+  interval_p90_seconds: number | null;
+  gaps: number;
+  longest_gap_seconds: number | null;
+  mean: number;
+  spread: number;
+  median: number;
+  p05: number;
+  p95: number;
+  typical_change: number | null;
+  flat_share: number | null;
+  longest_flat_seconds: number;
+  distinct: number;
+  levels: Array<number> | null;
 };
 
 export type RunAlignment = {
@@ -523,6 +562,32 @@ export type Season = {
   strength: number;
 };
 
+export type SeriesBrief = {
+  series_id: string;
+  name: string;
+  count: number;
+  first?: string | null;
+  last?: string | null;
+  interval_seconds?: number | null;
+  values?: RecentValues | null;
+  level_change?: number | null;
+  labelled_shift?: number | null;
+  shape?: SeriesShape | null;
+  persistent?: boolean | null;
+  cycles?: Array<Season>;
+  lags?: Array<SuggestedLag>;
+  notes?: Array<string>;
+};
+
+export type SeriesPair = {
+  first: string;
+  second: string;
+  level: number;
+  change: number;
+  lead_seconds: number;
+  lead_change: number;
+};
+
 export type SeriesProfile = {
   series_id: string;
   name: string;
@@ -530,8 +595,23 @@ export type SeriesProfile = {
   first?: string | null;
   last?: string | null;
   interval_seconds?: number | null;
-  autocorrelation?: Array<Autocorrelation>;
+  values?: RecentValues | null;
+  level_change?: number | null;
+  labelled_shift?: number | null;
+  shape?: SeriesShape | null;
+  persistent?: boolean | null;
+  cycles?: Array<Season>;
+  lags?: Array<SuggestedLag>;
   notes?: Array<string>;
+  autocorrelation?: Array<Autocorrelation>;
+};
+
+export type SeriesShape = {
+  start: string;
+  bucket_seconds: number;
+  mean: Array<number | null>;
+  low: Array<number | null>;
+  high: Array<number | null>;
 };
 
 export type StepSample = {

@@ -53,9 +53,9 @@ class MeasurementBucket(BaseModel):
 
 
 class RecentValues(BaseModel):
-    """How the newest values of a reading arrive and move."""
+    """How values arrive and move: the newest of a reading, or a Dojo series."""
 
-    count: int = Field(description="Values looked at, the newest of the window.")
+    count: int = Field(description="Values looked at.")
     missing: int = Field(description="Arrivals among them that carried no value.")
     first: datetime
     last: datetime

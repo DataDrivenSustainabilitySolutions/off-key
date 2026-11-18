@@ -1,11 +1,11 @@
 """Holding the last value of an input sent only when it changes."""
 
+from off_key_core.models.pipeline_edits import edit_design
 from off_key_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
     validate_pipeline,
 )
-from off_key_core.models.pipeline_edits import edit_design
 from off_key_core.schemas.pipeline_tools import DesignEditRequest
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 

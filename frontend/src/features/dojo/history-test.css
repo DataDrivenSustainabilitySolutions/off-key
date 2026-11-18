@@ -76,6 +76,19 @@
   padding-top: 16px;
   border-top: 1px solid hsl(var(--border));
 }
+/* The result of a test the design came with stands first; what follows it tests the design again. */
+.dj-test--came > .dj-test-result {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.pl-inspector .dj-test-again {
+  margin: 20px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--border));
+  font-size: var(--text-body);
+  font-weight: 600;
+}
 .dj-test-heading {
   display: flex;
   align-items: baseline;

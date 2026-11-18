@@ -12,7 +12,7 @@ import type { PipelineCatalog, PipelineProposal, PipelineServiceView } from "./c
 import { PipelineLibrary } from "./PipelineLibrary";
 import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
-import { PipelineProposalList, PipelineProposalNotice } from "./PipelineProposals";
+import { DeclineProposal, PipelineProposalBrief, PipelineProposalList, PipelineProposalWarning } from "./PipelineProposals";
 import { createPipeline, dropReplacement, openPipeline, reviewProposal, setRevision, showLibrary, showProposals, suggestedBindings } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
@@ -55,7 +55,7 @@ export default function PipelineWorkspace({
   const proposalId = params.get("proposal");
   const proposal = opened?.id === proposalId ? opened.proposal : undefined;
   const proposalError = opened?.id === proposalId ? opened.error : undefined;
-  // The test a design was proposed with is shown beside it, as the reason to believe the proposal.
+  // The test a design was proposed with is one step from its proposal, as the reason to believe it.
   const tested = useMemo(() => proposal?.test_run_id
     ? { run: proposal.test_run_id, by: proposal.author, definition: proposal.definition } : undefined, [proposal]);
   const collectionReady = collectionApplied(system.snapshot?.runtime);
@@ -139,7 +139,11 @@ export default function PipelineWorkspace({
     initialDocument={proposal ? { definition: proposal.definition, layout: proposal.layout }
       : sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
     initialBindings={proposal?.bindings} initialName={proposal?.name} origin={proposal && `proposal:${proposal.id}`}
-    notice={proposal && <PipelineProposalNotice proposal={proposal} canDecide={canEdit} onDeclined={proposals} />}
+    notice={proposal && <PipelineProposalWarning proposal={proposal} />}
+    brief={proposal && { label: "Proposal", content: ({ test }) =>
+      <PipelineProposalBrief proposal={proposal} canDecide={canEdit} onOpenTest={test}
+        replaced={services.find((service) => service.id === proposal.replace_monitor_id)} /> }}
+    menu={proposal?.status === "open" && canEdit ? <DeclineProposal proposal={proposal} onDeclined={proposals} /> : undefined}
     tested={tested}
     onRequested={proposal?.status === "open" ? () => accept(proposal.id) : undefined}
     proposalId={proposal?.status === "open" ? proposal.id : undefined}

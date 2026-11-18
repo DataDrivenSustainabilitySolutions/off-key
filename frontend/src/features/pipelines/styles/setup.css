@@ -77,84 +77,10 @@
 .pl-toolbox-present > div { display: flex; flex-wrap: wrap; gap: 6px; }
 .pl-library .pl-toolbox-present button { border-radius: 999px; padding: 4px 10px; }
 .pl-issue-startup { color: hsl(var(--muted-foreground)); font-weight: 400; }
-/* Who proposed the design on the canvas and why. It is neither a warning nor a result, so it has no color. */
-.pl-proposal { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 16px; padding: 6px 8px 6px 12px;
-  border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--card)); font-size: var(--text-caption); line-height: 1.6; }
-.pl-proposal p { margin: 0; overflow-wrap: anywhere; }
-.pl-proposal :is(time, .pl-proposal-state) { color: hsl(var(--muted-foreground)); }
-/* Closed, the proposal is two short lines above the canvas: who, and what it watches. The rest is one click away. */
-.pl-proposal-details { flex: 1 1 280px; min-width: 0; }
-.pl-proposal-details > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: center; cursor: pointer; list-style: none; border-radius: 4px; }
-.pl-proposal-details > summary::-webkit-details-marker { display: none; }
-.pl-proposal-details > summary:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
-.pl-proposal-by { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
-.pl-proposal-line { grid-row: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--foreground)); }
-.pl-proposal-details[open] .pl-proposal-line { white-space: normal; overflow-wrap: anywhere; }
-.pl-proposal-toggle { grid-row: 1 / span 2; grid-column: 2; display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
-.pl-proposal-toggle::before { content: "Show why"; }
-.pl-proposal-details[open] .pl-proposal-toggle::before { content: "Hide"; }
-.pl-proposal-toggle::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform 120ms ease; }
-.pl-proposal-details[open] .pl-proposal-toggle::after { transform: translateY(1px) rotate(-135deg); }
-.pl-proposal-details > summary:hover .pl-proposal-toggle { color: hsl(var(--foreground)); }
-/* Open, the full rationale scrolls in a bounded box, so the canvas below always keeps most of the height. */
-.pl-proposal-more { display: grid; gap: 8px; max-height: min(32vh, 320px); overflow-y: auto; margin-top: 8px; padding: 8px 4px 2px 0; border-top: 1px solid hsl(var(--border)); }
-.pl-proposal .rationale-fields { grid-template-columns: minmax(80px, 112px) minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: var(--text-caption); }
-.pl-proposal .rationale-fields dd { line-height: 1.6; max-width: 72ch; }
-.pl-proposal-extra { max-width: 72ch; }
-.pl-proposal-details + .pl-proposal-missing { flex: 1 1 100%; }
-.pl-proposal-test { display: inline-flex; align-items: center; align-self: center; gap: 4px; white-space: nowrap; }
-.pl-proposal-decline { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
-.pl-proposal-decline input { flex: 1 1 180px; width: auto; }
-/* The Proposals page reads like the Monitoring overview: a title with the room to start, filters, and rows between lines. */
-.pl-proposals-heading { margin-top: 4px; }
-.pl-proposals-intro { margin: 8px 0 0; max-width: 72ch; color: var(--ex-muted); font-size: var(--text-body); line-height: var(--leading-body); }
-.pl-proposals-tools { margin: 28px 0 0; }
-.ex-shell .pl-proposals .mn-filters button { border: 0; background: none; padding: 5px 9px; font-size: var(--text-control); }
-.ex-shell .pl-proposals .mn-filters button:hover { background: var(--ex-hover); }
-.ex-shell .pl-proposals .mn-filters button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-side); }
-.pl-capacity { display: inline-flex; align-items: center; gap: 10px; font-size: var(--text-control); color: var(--ex-muted); }
-.pl-capacity-meter { display: inline-flex; gap: 3px; }
-.pl-capacity-meter i { width: 6px; height: 14px; border-radius: 2px; background: var(--ex-line); }
-.pl-capacity-meter i.is-taken { background: var(--ex-accent); }
-.pl-capacity.is-full { color: hsl(var(--destructive)); }
-.pl-capacity.is-full .pl-capacity-meter i.is-taken { background: hsl(var(--destructive)); }
-.pl-proposal-rows { list-style: none; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--ex-line); }
-.pl-proposal-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: start; padding: 18px 0; border-bottom: 1px solid var(--ex-line); }
-.pl-proposals .pl-proposal-row > .pl-proposal-body { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 6px; min-width: 0;
-  padding: 0; border: 0; background: none; text-align: left; font-size: var(--text-body); border-radius: var(--radius-control); }
-.pl-proposal-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.pl-proposal-title strong { font-size: var(--text-body); font-weight: 600; overflow-wrap: anywhere; }
-.pl-proposal-body:hover .pl-proposal-title strong { color: var(--ex-accent); text-decoration: underline; text-underline-offset: 3px; }
-.pl-proposal-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: var(--ex-side);
-  color: var(--ex-muted); font-size: var(--text-caption); line-height: 1.6; }
-.pl-proposal-reason { color: var(--ex-ink); font-size: var(--text-body); line-height: var(--leading-body); max-width: 80ch; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.pl-proposal-evidence { color: var(--ex-muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; max-width: 80ch; overflow-wrap: anywhere; }
-.pl-proposal-body small { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-caption); color: var(--ex-muted); overflow-wrap: anywhere; }
-.pl-proposal-body small.mn-state { color: var(--ex-ink); }
-.pl-proposal-body small.pl-proposal-missing { color: hsl(var(--destructive)); }
-.pl-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 360px; }
-.pl-proposal-actions .pl-proposal-decline { flex: 1 1 100%; }
-.pl-proposal-actions .pl-apply-status { flex: 1 1 100%; margin: 0; }
-.pl-proposal-start { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.pl-proposal-why { order: 1; flex: 1 1 100%; text-align: right; font-size: var(--text-caption); color: var(--ex-muted); }
-.pl-proposals .pl-proposal-actions button.mn-primary { background: var(--ex-accent); border-color: var(--ex-accent); color: hsl(var(--primary-foreground)); font-weight: 500; }
-@media (max-width: 680px) {
-  .pl-proposal-row { grid-template-columns: minmax(0, 1fr); }
-  .pl-proposal-actions { justify-content: flex-start; max-width: none; }
-  .pl-proposal-why { text-align: left; }
-  .pl-proposal-actions button { min-height: 44px; }
-}
-.pl-library-list .pl-proposal-missing, .pl-proposal-missing { color: hsl(var(--destructive)); }
 /* How an update differs from what runs, on a line of its own in the notice that says what updating does. */
 .pl-compared { display: block; }
 @media (max-width: 900px) { .pl-issue-startup { display: none; } }
 @media (max-width: 680px) {
-  .pl-proposal button, .pl-proposal-decline input { min-height: 44px; }
-  .pl-proposal-decline input { flex-basis: 100%; }
-  .pl-proposal-details > summary { min-height: 44px; }
-  .pl-proposal .rationale-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .pl-proposal .rationale-fields dd { margin-bottom: 6px; }
   .pl-setup-header { margin-top: 16px; gap: 12px; }
   .pl-setup .pl-setup-input { min-height: 36px; padding: 6px 12px; }
   .pl-toolbox-grid { grid-template-columns: minmax(0, 1fr); }

@@ -1,4 +1,4 @@
-import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
@@ -6,7 +6,7 @@ import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { normalizeCatalog, normalizeDefinition, normalizeLayout, type PipelineProposal } from "@/features/pipelines/contracts";
 import { DesignTestContext, type DesignTest } from "@/features/pipelines/designTest";
-import { PipelineProposalList, PipelineProposalNotice } from "@/features/pipelines/PipelineProposals";
+import { DeclineProposal, PipelineProposalBrief, PipelineProposalList } from "@/features/pipelines/PipelineProposals";
 import PipelineWorkspace from "@/features/pipelines/PipelineWorkspace";
 import { proposalOutcome, useOpenProposals } from "@/features/pipelines/proposals";
 import { ApiRequestError } from "@/lib/api-client";
@@ -90,11 +90,15 @@ const workspace = (address: string, services: ActiveService[] = [], canEdit = tr
   <PipelineWorkspace services={services} index={index} canEdit={canEdit} onBack={() => {}} onStarted={() => {}} /><Where />
 </MemoryRouter>);
 const address = () => screen.getByRole("status", { name: "Address" }).textContent;
+const card = (name: string) => screen.findByRole("article", { name });
+const rationale = { watches: "Pump vibration above its daily band.", why: "A moving distance on two readings.",
+  evidence: "1 alarm in 9 scored hours.", limits: "First mornings alarm." };
 
 describe("proposals", () => {
   it("says what became of a proposal", () => {
     expect(proposalOutcome(summary())).toBe("");
-    expect(proposalOutcome(declined)).toBe("Declined by admin@example.com: Alarms too often at night");
+    // The word that came with a decision reads on its own, under who decided.
+    expect(proposalOutcome(declined)).toBe("Declined by admin@example.com");
     expect(proposalOutcome(summary({ status: "accepted", decided_by: "admin@example.com" }))).toBe("Accepted by admin@example.com");
     expect(proposalOutcome(summary({ status: "withdrawn" }))).toBe("Withdrawn by its author");
   });
@@ -113,17 +117,41 @@ describe("proposals", () => {
   it("lists the proposals that wait and, when asked, the decided ones", async () => {
     const onReview = vi.fn();
     render(<PipelineProposalList onReview={onReview} onBack={() => {}} />);
-    const open = await screen.findByRole("button", { name: "Review Pump vibration" });
-    expect(open.textContent).toContain("The bearing ran hot twice in October and nothing watched it.");
-    expect(open.textContent).toContain("Proposed by Night shift agent");
-    expect(screen.queryByRole("button", { name: "Review Fan current" })).toBeNull();
+    const open = await card("Pump vibration");
+    // Without a rationale the reason is the case made; who handed it in, as what and how tested reads under the name.
+    expect(within(open).getByText("Reason").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
+    expect(within(open).getByRole("list").textContent).toContain("Agent · Night shift agent");
+    expect(within(open).getAllByRole("listitem").slice(1).map((item) => item.textContent)).toEqual(["New service", "Not tested"]);
+    // A list of waiting proposals need not say of each that it waits.
+    expect(within(open).queryByText("Waiting for a decision")).toBeNull();
+    expect(screen.queryByRole("article", { name: "Fan current" })).toBeNull();
     expect(screen.getByRole("button", { name: "Waiting 1" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "All" }));
-    const decided = await screen.findByRole("button", { name: "Review Fan current" });
-    expect(decided.textContent).toContain("Declined by admin@example.com: Alarms too often at night");
+    const decided = await card("Fan current");
+    expect(within(decided).getByText("Declined by admin@example.com")).toBeTruthy();
+    expect(within(decided).getByText("Alarms too often at night")).toBeTruthy();
+    // A decided proposal is looked at, not reviewed; among decided ones a waiting one says that it waits.
+    expect(within(decided).getByRole("button", { name: "View design of Fan current" })).toBeTruthy();
+    expect(within(await card("Pump vibration")).getByText("Waiting for a decision")).toBeTruthy();
     expect(vi.mocked(pipelinesApi.proposals).mock.calls.map((call) => call[0])).toEqual(["open", undefined]);
     fireEvent.click(screen.getByRole("button", { name: "Review Pump vibration" }));
     expect(onReview).toHaveBeenCalledExactlyOnceWith(summary());
+    // The name opens it too.
+    fireEvent.click(screen.getByRole("button", { name: "Pump vibration" }));
+    expect(onReview).toHaveBeenCalledTimes(2);
+  });
+
+  it("lays a proposal with a rationale out under what it watches, the evidence and the limits", async () => {
+    vi.mocked(pipelinesApi.proposals).mockResolvedValue([
+      summary({ rationale, reason: "A longer word from the author.", test_run_id: "run-7", replace_monitor_id: "running" })]);
+    render(<PipelineProposalList onReview={() => {}} onBack={() => {}} services={[{ id: "running", display_name: "Valve watch" } as ActiveService]} />);
+    const open = await card("Pump vibration");
+    for (const [label, text] of [["Watches", rationale.watches], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
+      expect(within(open).getByText(label).nextElementSibling?.textContent).toBe(text);
+    // Why it is built this way and what else the author wrote wait in the review.
+    expect(within(open).queryByText("Why this design")).toBeNull();
+    expect(within(open).queryByText("A longer word from the author.")).toBeNull();
+    expect(within(open).getAllByRole("listitem").slice(1).map((item) => item.textContent)).toEqual(["Replaces Valve watch", "Tested on history"]);
   });
 
   it("says when none waits, and offers to read the list again when it cannot be read", async () => {
@@ -141,10 +169,10 @@ describe("proposals", () => {
   it("declines from the list, and marks one whose readings are gone", async () => {
     vi.mocked(pipelinesApi.proposals).mockResolvedValue([summary({ missing_readings: ["demo-hamburg:30:occupancy"] })]);
     const view = render(<PipelineProposalList onReview={() => {}} onBack={() => {}} canDecide />);
-    const card = await screen.findByRole("button", { name: "Review Pump vibration" });
-    expect(card.textContent).toContain("Its reading no longer exists: demo-hamburg:30:occupancy. It cannot start as proposed.");
+    expect((await card("Pump vibration")).textContent).toContain("Its reading no longer exists: demo-hamburg:30:occupancy. It cannot start as proposed.");
     fireEvent.click(screen.getByRole("button", { name: "Decline Pump vibration" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Why you decline Pump vibration" }), { target: { value: "Source removed" } });
+    fireEvent.change(within(screen.getByRole("dialog", { name: "Decline Pump vibration" }))
+      .getByRole("textbox", { name: "Note for the author (optional)" }), { target: { value: "Source removed" } });
     vi.mocked(pipelinesApi.proposals).mockResolvedValue([]);
     fireEvent.click(screen.getByRole("button", { name: "Decline proposal" }));
     expect(await screen.findByText("No proposal waits for a decision.")).toBeTruthy();
@@ -155,12 +183,17 @@ describe("proposals", () => {
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} />);
     await screen.findByRole("button", { name: "Review Pump vibration" });
     expect(screen.queryByRole("button", { name: "Decline Pump vibration" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start Pump vibration" })).toBeNull();
+    expect(screen.getByText("It waits for a member who manages monitors.")).toBeTruthy();
   });
 
   it("starts a proposal from the list, live or in shadow, and accepts it", async () => {
     const onStarted = vi.fn();
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} onStarted={onStarted} canDecide />);
     fireEvent.click(await screen.findByRole("button", { name: "Start Pump vibration" }));
+    // Each way to start says what it does.
+    expect(screen.getByRole("button", { name: "Start monitoring" }).getAttribute("aria-describedby")).toBeTruthy();
+    expect(within(screen.getByRole("dialog", { name: "Start Pump vibration" })).getByText("Records the alarms it would raise and raises none.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start in shadow" }));
     await waitFor(() => expect(pipelinesApi.decideProposal).toHaveBeenCalledWith("p1", { status: "accepted" }));
     expect(pipelinesApi.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
@@ -180,8 +213,9 @@ describe("proposals", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     expect(await screen.findByText("No monitor place is free.")).toBeTruthy();
     expect(pipelinesApi.decideProposal).not.toHaveBeenCalled();
-    // The row keeps its controls, so the start can be tried again once there is room.
+    // The card keeps its actions, with the reason, so the start can be tried again once there is room.
     vi.mocked(pipelinesApi.apply).mockResolvedValue(activation);
+    fireEvent.click(screen.getByRole("button", { name: "Start Pump vibration" }));
     fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     await waitFor(() => expect(pipelinesApi.decideProposal).toHaveBeenCalledExactlyOnceWith("p1", { status: "accepted" }));
   });
@@ -209,7 +243,7 @@ describe("proposals", () => {
     expect(start.getAttribute("aria-describedby") && document.getElementById(start.getAttribute("aria-describedby")!)?.textContent)
       .toBe("No monitor place is free.");
     expect((screen.getByRole("button", { name: "Start Fan current" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Its readings are gone. Review it to choose others.")).toBeTruthy();
+    expect(screen.getByText("Review it to choose other readings.")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Update with Pump" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("The service it replaces no longer runs. Review it to start it as a new one.")).toBeTruthy();
     // An update needs no free place, and keeps the service it replaces in shadow.
@@ -230,11 +264,9 @@ describe("proposals", () => {
 
   it("declines with a word for the author", async () => {
     const onDeclined = vi.fn();
-    render(<PipelineProposalNotice proposal={summary()} canDecide onDeclined={onDeclined} />);
-    const notice = screen.getByRole("group", { name: "Proposal by Night shift agent" });
-    expect(notice.textContent).toContain("Starting the service accepts the proposal.");
+    render(<DeclineProposal proposal={summary()} onDeclined={onDeclined} />);
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Why you decline" }), { target: { value: "  Alarms too often at night " } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Note for the author (optional)" }), { target: { value: "  Alarms too often at night " } });
     vi.mocked(pipelinesApi.decideProposal).mockRejectedValueOnce(new ApiRequestError("This proposal is already accepted", 409));
     fireEvent.click(screen.getByRole("button", { name: "Decline proposal" }));
     expect((await screen.findByRole("alert")).textContent).toBe("This proposal is already accepted");
@@ -242,40 +274,60 @@ describe("proposals", () => {
     fireEvent.click(screen.getByRole("button", { name: "Decline proposal" }));
     await waitFor(() => expect(onDeclined).toHaveBeenCalledOnce());
     expect(pipelinesApi.decideProposal).toHaveBeenLastCalledWith("p1", { status: "declined", note: "Alarms too often at night" });
+    // Cancelling declines nothing.
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(pipelinesApi.decideProposal).toHaveBeenCalledTimes(2);
   });
 
-  it("reads a proposal's rationale as one closed line that opens into the other three rows", () => {
-    const rationale = { watches: "Pump vibration above its daily band.", why: "A moving distance on two readings.",
-      evidence: "1 alarm in 9 scored hours.", limits: "First mornings alarm." };
-    render(<PipelineProposalNotice proposal={summary({ rationale, reason: rationale.watches })} canDecide={false} onDeclined={() => {}} />);
-    const notice = screen.getByRole("group", { name: "Proposal by Night shift agent" });
-    expect(notice.textContent).toContain("Agent · Night shift agent");
-    // Closed by default, so the canvas below keeps the room; the summary names what it watches.
-    const details = notice.querySelector("details")!;
-    expect(details.open).toBe(false);
-    expect(details.querySelector("summary")?.textContent).toContain(rationale.watches);
+  it("reads a proposal's rationale beside its design, each part under its name", () => {
+    const view = render(<MemoryRouter><PipelineProposalBrief proposal={summary({ rationale, reason: rationale.watches })} canDecide={false} /></MemoryRouter>);
+    const brief = screen.getByRole("group", { name: "Proposal by Night shift agent" });
+    expect(brief.textContent).toContain("Agent · Night shift agent");
     for (const [label, text] of [["Watches", rationale.watches], ["Why this design", rationale.why], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
       expect(screen.getByText(label).nextElementSibling?.textContent).toBe(text);
-    expect(screen.getAllByText("Watches")).toHaveLength(1);
     // The reason it fell back to is not said twice.
     expect(screen.getAllByText(rationale.watches)).toHaveLength(1);
+    expect(screen.queryByText("Author's note")).toBeNull();
+    // What the author wrote beside the rationale reads under it, and is the whole case of a proposal without one.
+    view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary({ rationale })} canDecide={false} /></MemoryRouter>);
+    expect(screen.getByText("Author's note").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
+    view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide={false} /></MemoryRouter>);
+    expect(screen.getByText("Reason").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
   });
 
-  it("links a tested proposal to its test run in the Dojo", () => {
-    const view = render(<MemoryRouter><PipelineProposalNotice proposal={summary({ test_run_id: "run 7" })} canDecide={false}
-      onDeclined={() => {}} /></MemoryRouter>);
-    expect(screen.getByRole("link", { name: "See the test run" }).getAttribute("href")).toBe("/dojo?run=run%207");
-    view.rerender(<MemoryRouter><PipelineProposalNotice proposal={summary()} canDecide={false} onDeclined={() => {}} /></MemoryRouter>);
-    expect(screen.queryByRole("link", { name: "See the test run" })).toBeNull();
+  it("leads from a proposal to the test it came with, beside the design and in the Dojo", () => {
+    const onOpenTest = vi.fn();
+    const view = render(<MemoryRouter><PipelineProposalBrief proposal={summary({ test_run_id: "run 7" })} canDecide={false}
+      onOpenTest={onOpenTest} /></MemoryRouter>);
+    expect(screen.getByRole("link", { name: "See the run in the Dojo" }).getAttribute("href")).toBe("/dojo?run=run%207");
+    expect(screen.getByText("Tested on history")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open the test" }));
+    expect(onOpenTest).toHaveBeenCalledOnce();
+    // A proposal that came without a test says so, and offers to run one where the setup can.
+    view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide={false} onOpenTest={onOpenTest} /></MemoryRouter>);
+    expect(screen.queryByRole("link", { name: "See the run in the Dojo" })).toBeNull();
+    expect(screen.getByText("Not tested")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Test on history" }));
+    expect(onOpenTest).toHaveBeenCalledTimes(2);
+    // A member who may not use the Dojo is told of the test and is not led to a page that is closed to them.
+    view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary({ test_run_id: "run 7" })} canDecide={false} /></MemoryRouter>);
+    expect(screen.getByText("Tested on history")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "See the run in the Dojo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open the test" })).toBeNull();
   });
 
-  it("leaves the decision to a member who manages monitors, and shows one that was made", () => {
-    const view = render(<PipelineProposalNotice proposal={summary()} canDecide={false} onDeclined={() => {}} />);
-    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+  it("says where a proposal stands, and leaves the decision to a member who manages monitors", () => {
+    const view = render(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide={false} /></MemoryRouter>);
+    expect(screen.getByText("Waiting for a decision")).toBeTruthy();
     expect(screen.getByText("It waits for a member who manages monitors.")).toBeTruthy();
-    view.rerender(<PipelineProposalNotice proposal={declined} canDecide onDeclined={() => {}} />);
-    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
-    expect(screen.getByText("Declined by admin@example.com: Alarms too often at night.")).toBeTruthy();
+    view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide /></MemoryRouter>);
+    expect(screen.getByText("Starting the service accepts the proposal. Change the design first if you wish.")).toBeTruthy();
+    view.rerender(<MemoryRouter><PipelineProposalBrief proposal={declined} canDecide /></MemoryRouter>);
+    expect(screen.getByText("Declined by admin@example.com")).toBeTruthy();
+    expect(screen.getByText("Alarms too often at night")).toBeTruthy();
+    expect(screen.queryByText(/Starting the service accepts/)).toBeNull();
   });
 
   it("opens a proposal from the list in the setup", async () => {
@@ -283,6 +335,12 @@ describe("proposals", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Review Pump vibration" }));
     expect(address()).toBe("?create=monitoring&proposal=p1");
     expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Pump vibration");
+    // The proposal opens beside its design, under a button of its own, and leaves the canvas whole when closed.
+    expect(screen.getByRole("group", { name: "Proposal by Night shift agent" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Proposal" }).getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Close proposal" }));
+    expect(screen.queryByRole("group", { name: "Proposal by Night shift agent" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Proposal" }));
     expect(screen.getByRole("group", { name: "Proposal by Night shift agent" })).toBeTruthy();
     // The design on the canvas is the proposed one, and it names the reading it was made for.
     expect(screen.getByRole("button", { name: "Input: Room, 1 of 1 readings" })).toBeTruthy();
@@ -297,7 +355,7 @@ describe("proposals", () => {
     const request = vi.mocked(pipelinesApi.apply).mock.calls[0]![0];
     expect(request).toMatchObject({ display_name: "Pump vibration", bindings: { value: "current" }, replace_monitor_id: null });
     expect(request.definition.nodes!.find((node) => node.id === "detector")!.label).toBe("Bearing watch");
-    expect(await screen.findByText("Accepted by admin@example.com.")).toBeTruthy();
+    expect(await screen.findByText("Accepted by admin@example.com")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
   });
 
@@ -323,9 +381,8 @@ describe("proposals", () => {
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ replace_monitor_id: "old" }));
     vi.mocked(pipelinesApi.service).mockRejectedValue(new Error("gone"));
     workspace("/?view=proposals");
-    const row = await screen.findByRole("button", { name: "Review Pump vibration" });
-    expect(row.textContent).toContain("Replaces a running service");
-    fireEvent.click(row);
+    expect((await card("Pump vibration")).textContent).toContain("Replaces a running service");
+    fireEvent.click(screen.getByRole("button", { name: "Review Pump vibration" }));
     expect(address()).toBe("?create=monitoring&proposal=p1&replace=old");
   });
 
@@ -340,6 +397,7 @@ describe("proposals", () => {
     workspace("/?create=monitoring&proposal=p1&replace=old", [old]);
     expect(await screen.findByText("Compared with what runs now: 1 changed step.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Update monitoring" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Proposal by Night shift agent" }).textContent).toContain("Replaces Pump watch");
     // A proposal for a service of its own has nothing to be compared with.
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal());
     workspace("/?create=monitoring&proposal=p1");
@@ -347,7 +405,7 @@ describe("proposals", () => {
     expect(screen.getAllByText(/Compared with what runs now/)).toHaveLength(1);
   });
 
-  it("opens a proposal with the test it came with beside the design", async () => {
+  it("opens a proposal at its brief, with the test it came with one press away", async () => {
     // The screen that mounts the setup provides the test; here it only says what it is given.
     const test: DesignTest = {
       Panel: () => <p>The panel of the test</p>, Values: () => null,
@@ -358,16 +416,32 @@ describe("proposals", () => {
     const view = render(<DesignTestContext.Provider value={test}><MemoryRouter initialEntries={["/?create=monitoring&proposal=p1"]}>
       <PipelineWorkspace services={[]} index={index} canEdit onBack={vi.fn()} onStarted={vi.fn()} />
     </MemoryRouter></DesignTestContext.Provider>);
-    expect(await screen.findByRole("button", { name: "Test run-7 by Night shift agent, 5 steps, open" })).toBeTruthy();
+    // The test is the design's own from the start; the proposal is read first.
+    expect(await screen.findByRole("button", { name: "Test run-7 by Night shift agent, 5 steps, closed" })).toBeTruthy();
+    expect(screen.queryByText("The panel of the test")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open the test" }));
     expect(screen.getByText("The panel of the test")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Test run-7 by Night shift agent, 5 steps, open" })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Proposal by Night shift agent" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Proposal" }));
+    expect(screen.getByRole("group", { name: "Proposal by Night shift agent" })).toBeTruthy();
     view.unmount();
-    // A proposal without a test opens at its graph, with nothing beside it.
+    // A proposal without a test offers to run one.
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal());
     render(<DesignTestContext.Provider value={test}><MemoryRouter initialEntries={["/?create=monitoring&proposal=p1"]}>
       <PipelineWorkspace services={[]} index={index} canEdit onBack={vi.fn()} onStarted={vi.fn()} />
     </MemoryRouter></DesignTestContext.Provider>);
     expect(await screen.findByRole("button", { name: "Test" })).toBeTruthy();
     expect(screen.queryByText("The panel of the test")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Test on history" }));
+    expect(screen.getByText("The panel of the test")).toBeTruthy();
+  });
+
+  it("warns above the canvas when a proposal's readings are gone", async () => {
+    vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ missing_readings: ["demo-hamburg:30:occupancy"] }));
+    workspace("/?create=monitoring&proposal=p1");
+    expect(await screen.findByText(
+      "Its reading no longer exists: demo-hamburg:30:occupancy. It cannot start as proposed. Choose other readings at the Input step.")).toBeTruthy();
   });
 
   it("says when a proposal cannot be opened", async () => {

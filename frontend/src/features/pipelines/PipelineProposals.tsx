@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, FlaskConical, Play, TriangleAlert, User } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import * as Popover from "@radix-ui/react-popover";
+import { FlaskConical, Play, TriangleAlert } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -10,7 +11,7 @@ import type { MonitorCapacity, PipelineProposalSummary } from "@/types/pipelines
 import { pipelinesApi } from "./api";
 import { usePipelineApply } from "./applySession";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
-import { proposalOutcome, testRunHref } from "./proposals";
+import { proposalOutcome, proposalTone, testRunHref } from "./proposals";
 import { AuthorChip, RationaleFields } from "../workspace/RationaleCard";
 
 /** A note that an open proposal binds readings the catalogue no longer has. */
@@ -20,80 +21,169 @@ function missingReadings(proposal: PipelineProposalSummary): string {
   return `${missing.length === 1 ? "Its reading no longer exists" : "Its readings no longer exist"}: ${missing.join(", ")}. It cannot start as proposed.`;
 }
 
-/** Decline in place, with an optional note for the author. */
-function DeclineProposal({ proposal, onDeclined, named = false }: {
+/** Whether the design becomes a service of its own or takes the place of one that runs. */
+const proposedAs = (proposal: PipelineProposalSummary, replaced?: ActiveService) => proposal.replace_monitor_id
+  ? `Replaces ${replaced?.display_name || "a running service"}` : "New service";
+
+/** Who handed the design in and when, what starting it does, and whether it came with a test. */
+function ProposalByline({ proposal, replaced }: { proposal: PipelineProposalSummary; replaced?: ActiveService }) {
+  return <ul className="pl-proposal-meta">
+    <li><AuthorChip author={proposal.author} kind={proposal.author_kind} /><RelativeTime value={proposal.created_at} /></li>
+    <li>{proposedAs(proposal, replaced)}</li>
+    {proposal.test_run_id
+      ? <li className="pl-proposal-tested"><FlaskConical size={13} aria-hidden="true" />Tested on history</li>
+      : <li>Not tested</li>}
+  </ul>;
+}
+
+/**
+ * Where a proposal stands: waiting, or who decided it, when, and the word they left for the author.
+ * What follows from that for the reader, such as what a decision takes, reads under it.
+ */
+function ProposalDecision({ proposal, children }: { proposal: PipelineProposalSummary; children?: ReactNode }) {
+  return <div className="pl-proposal-decision">
+    <p><span className={`mn-state mn-state--${proposalTone(proposal)}`}>{proposalOutcome(proposal) || "Waiting for a decision"}</span>
+      {proposal.decided_at && <> <RelativeTime value={proposal.decided_at} /></>}</p>
+    {proposal.decision_note && <blockquote>{proposal.decision_note}</blockquote>}
+    {children}
+  </div>;
+}
+
+/**
+ * Decline from a small dialog at the button, with an optional note for the author. In a list the
+ * button names the proposal it acts on.
+ */
+export function DeclineProposal({ proposal, onDeclined, named = false }: {
   proposal: PipelineProposalSummary;
   onDeclined: () => void;
-  /** In a list, the controls name the proposal they act on. */
   named?: boolean;
 }) {
-  const of = named ? ` ${proposal.name}` : "";
-  const [declining, setDeclining] = useState(false);
+  const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const field = useId();
 
   const decline = async () => {
     setBusy(true); setError("");
     try {
       await pipelinesApi.decideProposal(proposal.id, { status: "declined", note: note.trim() || null });
       toast.success(`Declined ${proposal.name}.`, { id: "pipeline-proposal" });
+      setOpen(false);
       onDeclined();
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setBusy(false); }
   };
 
-  return <>
-    {error && <p role="alert" className="pl-field-error">{error}</p>}
-    {declining
-      ? <form className="pl-proposal-decline" onSubmit={(event) => { event.preventDefault(); void decline(); }}>
-        <input autoFocus aria-label={`Why you decline${of}`} placeholder="Why, for the author (optional)" maxLength={2000}
-          value={note} disabled={busy} onChange={(event) => setNote(event.target.value)} />
-        <button type="submit" disabled={busy}>Decline proposal</button>
-        <button type="button" disabled={busy} onClick={() => { setDeclining(false); setError(""); }}>Cancel</button>
+  return <Popover.Root open={open} onOpenChange={(next) => { if (busy) return; setOpen(next); setError(""); }}>
+    <Popover.Trigger className="pl-decline" aria-label={named ? `Decline ${proposal.name}` : undefined}>Decline</Popover.Trigger>
+    <Popover.Portal><Popover.Content className="pl-library pl-decision" align="end" sideOffset={8} collisionPadding={12}
+      aria-label={`Decline ${proposal.name}`}>
+      <form onSubmit={(event) => { event.preventDefault(); void decline(); }}>
+        <h3>Decline this proposal</h3>
+        <label className="pl-field" htmlFor={field}><span>Note for the author (optional)</span>
+          <textarea id={field} rows={3} maxLength={2000} placeholder="What would make it acceptable?"
+            value={note} disabled={busy} onChange={(event) => setNote(event.target.value)} />
+        </label>
+        <p className="pl-help">The proposal leaves the waiting list. Its author can read the note.</p>
+        {error && <p role="alert" className="pl-field-error">{error}</p>}
+        <div className="pl-decision-actions">
+          <button type="button" disabled={busy} onClick={() => { setOpen(false); setError(""); }}>Cancel</button>
+          <button type="submit" className="pl-decision-decline" disabled={busy}>Decline proposal</button>
+        </div>
       </form>
-      : <button type="button" aria-label={`Decline${of}`} onClick={() => setDeclining(true)}>Decline</button>}
-  </>;
+    </Popover.Content></Popover.Portal>
+  </Popover.Root>;
 }
 
 /** Why a proposal cannot start from the list, or nothing when it can. */
 function startBlocked(proposal: PipelineProposalSummary, full: boolean, replaced?: ActiveService): string {
-  if (proposal.missing_readings?.length) return "Its readings are gone. Review it to choose others.";
+  if (proposal.missing_readings?.length) return "Review it to choose other readings.";
   if (proposal.replace_monitor_id && !replaced) return "The service it replaces no longer runs. Review it to start it as a new one.";
   if (full && !proposal.replace_monitor_id) return "No monitor place is free.";
   return "";
 }
 
+/** One way to start, as a row to press: its name, and under it what it does. */
+function StartChoice({ name, disabled, onChoose, children }: { name: string; disabled: boolean; onChoose: () => void; children: ReactNode }) {
+  const label = useId();
+  const detail = useId();
+  return <li><button type="button" disabled={disabled} aria-labelledby={label} aria-describedby={detail} onClick={onChoose}>
+    <strong id={label}><Play size={14} aria-hidden="true" />{name}</strong>
+    <small id={detail}>{children}</small>
+  </button></li>;
+}
+
 /**
- * Start the proposed design as it was handed in, live or in shadow. An update keeps the service it
- * replaces in shadow or live. Once the start is requested the proposal counts as accepted.
+ * Start the proposed design as it was handed in, live or in shadow, from a small dialog at the
+ * button that says what each choice does. An update keeps the service it replaces in shadow or live.
  */
-function StartProposal({ proposal, blocked, replaced, onStarted, onChoosing }: {
+function StartProposal({ proposal, blocked, describedBy, replaced, apply }: {
   proposal: PipelineProposalSummary;
   blocked: string;
+  /** Names the line that says why it cannot start. */
+  describedBy: string;
   replaced?: ActiveService;
-  onStarted?: (id: string) => void;
-  onChoosing: (choosing: boolean) => void;
+  apply: ReturnType<typeof usePipelineApply>;
 }) {
-  const [choosing, setChoosingState] = useState(false);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const completed = useCallback((id: string) => onStarted?.(id), [onStarted]);
-  const apply = usePipelineApply(`proposal:${proposal.id}:apply`, completed);
-  const setChoosing = (next: boolean) => { setChoosingState(next); onChoosing(next); };
-  const reason = `pl-proposal-blocked-${proposal.id}`;
   const update = !!proposal.replace_monitor_id;
+  const label = `${update ? "Update with" : "Start"} ${proposal.name}`;
 
-  const start = async (shadow: boolean) => {
+  const start = async (inShadow: boolean) => {
     setLoading(true); setError("");
     try {
       const full = await pipelinesApi.proposal(proposal.id);
       await apply.session.submit({ definition: full.definition, layout: full.layout, bindings: full.bindings,
-        display_name: full.name, idempotency_key: crypto.randomUUID(), replace_monitor_id: full.replace_monitor_id, shadow,
+        display_name: full.name, idempotency_key: crypto.randomUUID(), replace_monitor_id: full.replace_monitor_id, shadow: inShadow,
         proposal_id: proposal.id });
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setLoading(false); }
   };
+
+  return <Popover.Root open={open} onOpenChange={(next) => { if (loading) return; setOpen(next); setError(""); }}>
+    <Popover.Trigger aria-label={label} disabled={!!blocked} aria-describedby={blocked ? describedBy : undefined}>
+      <Play size={14} aria-hidden="true" />{update ? "Update" : "Start"}
+    </Popover.Trigger>
+    <Popover.Portal><Popover.Content className="pl-library pl-decision" align="start" sideOffset={8} collisionPadding={12} aria-label={label}>
+      <h3>{update ? "Update as proposed" : "Start as proposed"}</h3>
+      <ul className="pl-decision-choices">
+        {update
+          ? <StartChoice name={`Update ${replaced?.display_name || "the service"}`} disabled={loading} onChoose={() => void start(!!replaced?.shadow)}>
+            Replaces the design that runs{replaced?.shadow ? " and stays in shadow" : ""}. Monitoring pauses briefly and learning
+            restarts. History is kept.</StartChoice>
+          : <>
+            <StartChoice name="Start monitoring" disabled={loading} onChoose={() => void start(false)}>Raises its alarms.</StartChoice>
+            <StartChoice name="Start in shadow" disabled={loading} onChoose={() => void start(true)}>
+              Records the alarms it would raise and raises none.</StartChoice>
+          </>}
+      </ul>
+      {error && <p role="alert" className="pl-field-error">{error}</p>}
+      <div className="pl-decision-actions">
+        <small>{update ? "Updating" : "Starting"} it accepts the proposal.</small>
+        <button type="button" disabled={loading} onClick={() => { setOpen(false); setError(""); }}>Cancel</button>
+      </div>
+    </Popover.Content></Popover.Portal>
+  </Popover.Root>;
+}
+
+/**
+ * What a member who manages monitors does with a waiting proposal from the list: start it as it was
+ * handed in, or decline it. While a start is under way its progress stands in their place. Once the
+ * start is requested the proposal counts as accepted.
+ */
+function ProposalActions({ proposal, full, replaced, onDeclined, onStarted }: {
+  proposal: PipelineProposalSummary;
+  full: boolean;
+  replaced?: ActiveService;
+  onDeclined: () => void;
+  onStarted?: (id: string) => void;
+}) {
+  const completed = useCallback((id: string) => onStarted?.(id), [onStarted]);
+  const apply = usePipelineApply(`proposal:${proposal.id}:apply`, completed);
+  const reason = useId();
 
   // Starting the design accepts it, also when an interrupted request is recovered. Someone who
   // decided it meanwhile keeps the last word.
@@ -104,73 +194,60 @@ function StartProposal({ proposal, blocked, replaced, onStarted, onChoosing }: {
     void pipelinesApi.decideProposal(proposal.id, { status: "accepted" }).catch(() => undefined);
   }, [apply.operationId, proposal.id]);
 
-  // A refused start leaves no request behind; the controls stay, with the reason, to try again.
-  if (apply.request || apply.operationId)
-    return <PipelineApplyStatus apply={apply} onReset={() => { apply.session.reset(); setChoosing(false); }} />;
-  const shown = error || apply.error;
+  if (apply.request || apply.operationId) return <PipelineApplyStatus apply={apply} />;
+  const blocked = startBlocked(proposal, full, replaced);
   return <>
-    {shown && <p role="alert" className="pl-field-error">{shown}</p>}
-    {choosing
-      ? <div className="pl-proposal-start" role="group" aria-label={`Start ${proposal.name}`}>
-        {update
-          ? <button type="button" className="mn-primary" disabled={loading} onClick={() => void start(!!replaced?.shadow)}>
-            <Play size={14} aria-hidden="true" />{`Update ${replaced?.display_name || "the service"}`}</button>
-          : <>
-            <button type="button" className="mn-primary" disabled={loading} onClick={() => void start(false)}>
-              <Play size={14} aria-hidden="true" />Start monitoring</button>
-            <button type="button" disabled={loading} onClick={() => void start(true)}>Start in shadow</button>
-          </>}
-        <button type="button" disabled={loading} onClick={() => { setChoosing(false); setError(""); }}>Cancel</button>
-      </div>
-      : <button type="button" className="mn-primary" aria-label={`${update ? "Update with" : "Start"} ${proposal.name}`}
-        disabled={!!blocked} aria-describedby={blocked ? reason : undefined} onClick={() => setChoosing(true)}>
-        <Play size={14} aria-hidden="true" />{update ? "Update" : "Start"}</button>}
-    {blocked && !choosing && <small id={reason} className="pl-proposal-why">{blocked}</small>}
+    <StartProposal proposal={proposal} blocked={blocked} describedBy={reason} replaced={replaced} apply={apply} />
+    <DeclineProposal proposal={proposal} named onDeclined={onDeclined} />
+    {blocked && <small id={reason} className="pl-proposal-hint">{blocked}</small>}
+    {/* A refused start leaves no request behind; the actions stay, with the reason, to try again. */}
+    {apply.error && <p role="alert" className="pl-field-error">{apply.error}</p>}
   </>;
 }
 
-/** One proposal: what it is and why, who handed it in, and what a member may do with it. */
-function ProposalRow({ proposal, canDecide, full, replaced, onReview, onDeclined, onStarted }: {
+/**
+ * One proposal, laid out the same for all of them: its name, who handed it in and as what, then what
+ * it watches, the evidence and the limits under their names, and at the bottom what a member may do.
+ */
+function ProposalCard({ proposal, canDecide, stated, full, replaced, onReview, onDeclined, onStarted }: {
   proposal: PipelineProposalSummary;
   canDecide: boolean;
+  /** Among decided proposals every card says where it stands; a list of waiting ones need not. */
+  stated: boolean;
   full: boolean;
   replaced?: ActiveService;
   onReview: () => void;
   onDeclined: () => void;
   onStarted?: (id: string) => void;
 }) {
-  const [starting, setStarting] = useState(false);
+  const title = useId();
   const missing = missingReadings(proposal);
   const open = proposal.status === "open";
-  const outcome = proposalOutcome(proposal);
-  const tone = proposal.status === "accepted" ? "positive" : proposal.status === "declined" ? "danger" : "neutral";
-  return <li className="pl-proposal-row">
-    <button type="button" className="pl-proposal-body" onClick={onReview} aria-label={`Review ${proposal.name}`}>
-      <span className="pl-proposal-title">
-        <strong>{proposal.name}</strong>
-        <span className="pl-proposal-tag">{proposal.author_kind === "agent" ? <Bot size={13} aria-hidden="true" /> : <User size={13} aria-hidden="true" />}
-          {proposal.author_kind === "agent" ? "Agent" : "Member"}</span>
-        {proposal.test_run_id && <span className="pl-proposal-tag"><FlaskConical size={13} aria-hidden="true" />Tested</span>}
-        {proposal.replace_monitor_id && <span className="pl-proposal-tag">Update</span>}
-      </span>
-      <span className="pl-proposal-reason">{proposal.rationale?.watches ?? proposal.reason}</span>
-      {proposal.rationale && <span className="pl-proposal-evidence">{proposal.rationale.evidence}</span>}
-      <small>Proposed by {proposal.author} <RelativeTime value={proposal.created_at} />
-        {proposal.replace_monitor_id && ` · Replaces ${replaced?.display_name || "a running service"}`}</small>
-      {!open && <small className={`mn-state mn-state--${tone}`}>{outcome}</small>}
-      {missing && <small className="pl-proposal-missing"><TriangleAlert size={13} aria-hidden="true" />{missing}</small>}
-    </button>
-    {open && canDecide && <div className="pl-proposal-actions">
-      <StartProposal proposal={proposal} blocked={startBlocked(proposal, full, replaced)} replaced={replaced}
-        onStarted={onStarted} onChoosing={setStarting} />
-      {!starting && <DeclineProposal proposal={proposal} named onDeclined={onDeclined} />}
-    </div>}
+  return <li className="pl-proposal-card">
+    <article aria-labelledby={title}>
+      {/* The name opens the proposal for the pointer; the keyboard has the button below for it. */}
+      <h2 id={title}><button type="button" tabIndex={-1} onClick={onReview}>{proposal.name}</button></h2>
+      <ProposalByline proposal={proposal} replaced={replaced} />
+      {(stated || !open) && <ProposalDecision proposal={proposal} />}
+      {proposal.rationale
+        ? <RationaleFields rationale={proposal.rationale} only={["watches", "evidence", "limits"]} />
+        : <dl className="rationale-fields"><div><dt>Reason</dt><dd className="pl-proposal-reason">{proposal.reason}</dd></div></dl>}
+      {missing && <p className="pl-proposal-missing"><TriangleAlert size={14} aria-hidden="true" />{missing}</p>}
+      <footer className="pl-proposal-actions">
+        {open
+          ? <button type="button" className="mn-primary" aria-label={`Review ${proposal.name}`} onClick={onReview}>Review</button>
+          : <button type="button" aria-label={`View design of ${proposal.name}`} onClick={onReview}>View design</button>}
+        {open && (canDecide
+          ? <ProposalActions proposal={proposal} full={full} replaced={replaced} onDeclined={onDeclined} onStarted={onStarted} />
+          : <small className="pl-proposal-hint">It waits for a member who manages monitors.</small>)}
+      </footer>
+    </article>
   </li>;
 }
 
 /**
- * The designs handed in for a decision. A member who manages monitors starts or declines one here,
- * or reviews it in the setup first.
+ * The designs handed in for a decision. A member who manages monitors reviews one in the setup, or
+ * starts or declines it here.
  */
 export function PipelineProposalList({ onReview, onBack, onStarted, canDecide = false, services = [] }: {
   onReview: (proposal: PipelineProposalSummary) => void;
@@ -229,7 +306,8 @@ export function PipelineProposalList({ onReview, onBack, onStarted, canDecide = 
           : `${free} of ${capacity.limit} monitor places are free.`}</span>
       </div>}
     </div>
-    <p className="pl-proposals-intro">Designs an agent or a member handed in for a decision. Start one as proposed, review it in the setup first, or decline it.
+    <p className="pl-proposals-intro">Designs an agent or a member handed in for a decision.
+      {canDecide ? " Review one in the setup, start it as proposed, or decline it." : " Review one in the setup."}
       {full && " Starting a proposal needs a free place: stop a monitor first, or start one that replaces a running service."}</p>
     <div className="mn-list-tools pl-proposals-tools">
       <div className="mn-filters" aria-label="Filter proposals">
@@ -245,49 +323,54 @@ export function PipelineProposalList({ onReview, onBack, onStarted, canDecide = 
       ? <div className="mn-empty"><h2>{decided ? "No proposals yet" : "Nothing to decide"}</h2>
         <p>{decided ? "Proposals appear here when an agent or a member hands in a design."
           : "No proposal waits for a decision."}</p></div>
-      : <ul className="pl-proposal-rows">
-        {items.map((proposal) => <ProposalRow key={proposal.id} proposal={proposal} canDecide={canDecide} full={full}
+      : <ul className="pl-proposal-cards">
+        {items.map((proposal) => <ProposalCard key={proposal.id} proposal={proposal} canDecide={canDecide} stated={decided} full={full}
           replaced={services.find((service) => service.id === proposal.replace_monitor_id)}
           onReview={() => onReview(proposal)} onStarted={onStarted} onDeclined={() => setRetry((value) => value + 1)} />)}
       </ul>}
   </section>;
 }
 
+/** Said above the canvas while the proposal's design is open: what keeps it from starting as it was handed in. */
+export function PipelineProposalWarning({ proposal }: { proposal: PipelineProposalSummary }) {
+  const missing = missingReadings(proposal);
+  return missing ? <p className="pl-warning" role="status">{missing} Choose other readings at the Input step.</p> : null;
+}
+
 /**
- * Who proposed the design on the canvas and why, above the setup: one line with the author and what
- * it watches, closed by default so the canvas stays first, and opening into the full rationale. A
- * member who may start services declines it here; starting the service accepts it.
+ * The proposal beside its design, for the member who decides: where it stands, who handed it in and
+ * as what, the way to the test it came with, the rationale under its four names, and what else the
+ * author wrote. The decision itself is made with the setup's own Start and the Decline beside it.
  */
-export function PipelineProposalNotice({ proposal, canDecide, onDeclined }: {
+export function PipelineProposalBrief({ proposal, canDecide, replaced, onOpenTest }: {
   proposal: PipelineProposalSummary;
   canDecide: boolean;
-  onDeclined: () => void;
+  replaced?: ActiveService;
+  /** Opens the test beside the design, where the setup has one: for members who may use the Dojo. */
+  onOpenTest?: () => void;
 }) {
   const open = proposal.status === "open";
-  const missing = missingReadings(proposal);
   const rationale = proposal.rationale;
-  // Without a rationale, the reason is the line; with one, a reason that adds to it reads below the fields.
-  const extra = rationale && proposal.reason && proposal.reason !== rationale.watches ? proposal.reason : "";
+  // The reason is the whole case of a proposal without a rationale; with one, it is what the author added.
+  const note = rationale && proposal.reason === rationale.watches ? "" : proposal.reason;
 
-  return <div className="pl-proposal" role="group" aria-label={`Proposal by ${proposal.author}`}>
-    <details className="pl-proposal-details">
-      <summary>
-        <span className="pl-proposal-by"><strong>Proposed by</strong> <AuthorChip author={proposal.author} kind={proposal.author_kind} />{" "}
-          <RelativeTime value={proposal.created_at} />{!open && <> · <span className="pl-proposal-state">{proposalOutcome(proposal)}.</span></>}</span>
-        <span className="pl-proposal-line">
-          {rationale ? <><span className="rationale-label">Watches</span> <span>{rationale.watches}</span></> : <span>{proposal.reason}</span>}
-        </span>
-        <span className="pl-proposal-toggle" aria-hidden="true" />
-      </summary>
-      <div className="pl-proposal-more">
-        {rationale && <RationaleFields rationale={rationale} skip="watches" />}
-        {extra && <p className="pl-proposal-extra">{extra}</p>}
-        {open && <p className="pl-proposal-state">{canDecide ? "Starting the service accepts the proposal." : "It waits for a member who manages monitors."}</p>}
-      </div>
-    </details>
-    {missing && <p className="pl-proposal-missing">{missing}</p>}
-    {proposal.test_run_id && <Link className="pl-proposal-test" to={testRunHref(proposal.test_run_id)}>
-      <FlaskConical size={13} aria-hidden="true" />See the test run</Link>}
-    {open && canDecide && <DeclineProposal proposal={proposal} onDeclined={onDeclined} />}
+  return <div className="pl-brief" role="group" aria-label={`Proposal by ${proposal.author}`}>
+    <ProposalDecision proposal={proposal}>
+      {open && <p className="pl-help">{canDecide
+        ? `${proposal.replace_monitor_id ? "Updating" : "Starting"} the service accepts the proposal. Change the design first if you wish.`
+        : "It waits for a member who manages monitors."}</p>}
+    </ProposalDecision>
+    <ProposalByline proposal={proposal} replaced={replaced} />
+    {/* The setup has a test only for members who may use the Dojo, so the way to its runs is theirs too. */}
+    {onOpenTest && <div className="pl-brief-test">
+      <button type="button" onClick={onOpenTest}>
+        <FlaskConical size={14} aria-hidden="true" />{proposal.test_run_id ? "Open the test" : "Test on history"}</button>
+      {proposal.test_run_id && <Link to={testRunHref(proposal.test_run_id)}>See the run in the Dojo</Link>}
+    </div>}
+    {rationale && <RationaleFields rationale={rationale} stacked />}
+    {note && <section>
+      <h4>{rationale ? "Author's note" : "Reason"}</h4>
+      <p className="pl-brief-note">{note}</p>
+    </section>}
   </div>;
 }

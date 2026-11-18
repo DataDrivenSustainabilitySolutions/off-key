@@ -433,6 +433,8 @@ describe("the test panel", () => {
   }
   const mount = (props: Parameters<typeof Panel>[0] = {}) => render(<MemoryRouter><Panel {...props} /></MemoryRouter>);
   const values = () => screen.getByRole("combobox", { name: "Values" }) as HTMLSelectElement;
+  /** Whether the second element follows the first in the panel. */
+  const after = (first: Element, second: Element) => !!(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
   const figure = (result: ReturnType<typeof within>, name: string) =>
     result.getByText(name, { selector: "dt" }).nextElementSibling?.textContent;
   const finishes = (found: RunMetrics) => {
@@ -503,6 +505,9 @@ describe("the test panel", () => {
     expect(dojoApi.outline).toHaveBeenCalledWith("run-1", { buckets: 200 }, expect.anything());
     expect(screen.getByRole("button", { name: "Test again" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Test on history" }).querySelector(".dj-test-meter")).toBeNull();
+    // A test the member ran reads under the controls that ran it.
+    expect(after(screen.getByRole("button", { name: "Test again" }), screen.getByRole("region", { name: "Test result" }))).toBe(true);
+    expect(screen.queryByRole("heading", { name: "Test again" })).toBeNull();
   });
 
   it("scores against labels, compares with the test before and says when the design has changed since", async () => {
@@ -675,6 +680,10 @@ describe("the test panel", () => {
     expect(values().value).toBe("bench");
     expect((screen.getByRole("combobox", { name: "Series for Current" }) as HTMLSelectElement).value).toBe("b3");
     expect(screen.getByRole("button", { name: "Test again" })).toBeTruthy();
+    // The test the design came with is what the panel is opened for: it reads first, and testing again comes after it.
+    const again = screen.getByRole("heading", { name: "Test again" });
+    expect(after(screen.getByRole("region", { name: "Test result" }), again)).toBe(true);
+    expect(after(again, values())).toBe(true);
     expect(toast.success).not.toHaveBeenCalled();
     view.rerender(<MemoryRouter><Panel evidence={came} open={false} changed={{ ...definition, nodes: [] }} /></MemoryRouter>);
     expect(result.getByText("The design has changed since this test.")).toBeTruthy();

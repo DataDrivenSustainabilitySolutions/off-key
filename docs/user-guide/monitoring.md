@@ -200,27 +200,38 @@ version control or writing them with other tools.
 A design can also arrive as a **proposal**. An agent with a key, or a member
 through the API, hands in a design with a reason instead of starting it. While
 proposals wait, the Monitoring page shows **Proposals** with their number
-beside **Create**. The list names each design, the reason given for it and who
-proposed it; **Show decided proposals** adds those already accepted, declined
-or withdrawn, each with who decided and what they answered. Select a proposal
-to open it in the setup page with its name and readings filled in and a note
-above the graph that says who proposed it and why. It is a design like any
-other, so change it before you start it if you wish. **Start monitoring**, or
-**Start in shadow** with **Shadow run** ticked, starts the service and accepts
-the proposal. **Decline** turns it down, with an
-optional word for its author. A proposal that replaces a running service says
+beside **Create**. Every proposal in the list is a card laid out the same way:
+its name; who proposed it and when, whether it starts a new service or replaces
+a running one, and whether it was tested on history; then what it **Watches**,
+the **Evidence** and the **Limits** its author gave, or the reason for a
+proposal that came without them. **All** adds the proposals already accepted,
+declined or withdrawn, each with who decided, when, and what they answered.
+
+At the bottom of a card, **Start** offers **Start monitoring** and **Start in
+shadow** for the design as it was proposed, and **Decline** turns the proposal
+down with an optional note for its author. Both open at their button and
+change nothing until you choose. **Review**, or the proposal's name, opens it
+in the setup page with its name and readings filled in. The **Proposal** panel
+beside the graph says where the proposal stands, who proposed it, what it
+watches, why it is built this way, the evidence, the limits, and what else its
+author wrote. Close the panel to see more of the graph, and open it again with
+**Proposal** in the toolbar. It is a design like any other, so change it before
+you start it if you wish. **Start monitoring**, or **Start in shadow** with
+**Shadow run** ticked, starts the service and accepts the proposal;
+**Decline** stands beside it. A proposal that replaces a running service says
 so in the list and opens as a change to that service, with the steps that
 differ from the running design marked on their cards. Members whose role cannot
 manage monitors can read a proposal and cannot decide on it.
 
 A proposal can name the test on history its author ran. The test is of the
 design as it was proposed: a test that ran an earlier version is refused when
-the proposal is made. For members who may use the Dojo the proposal then opens
-with **Test on history** beside the graph, showing that test and who ran it:
-when the design alarmed over the tested values, what it scored and its
-figures. The values it ran on are chosen, so **Test again**
-runs the design as you have changed it on the same values and puts the author's
-figures under yours.
+the proposal is made. For members who may use the Dojo, **Open the test** in
+the **Proposal** panel shows **Test on history** beside the graph, with that
+test and who ran it first: when the design alarmed over the tested values, what
+it scored and its figures. The values it ran on are chosen, so **Test again**
+under the result runs the design as you have changed it on the same values and
+puts the author's figures under yours. **See the run in the Dojo** opens the
+same run among the Dojo's runs.
 
 Read a graph from left to right. Each card names its step family (Input,
 Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,

@@ -201,8 +201,9 @@ A design can also arrive as a **proposal**. An agent with a key, or a member
 through the API, hands in a design with a reason instead of starting it. While
 proposals wait, the Monitoring page shows **Proposals** with their number
 beside **Create**. Every proposal in the list is a card laid out the same way:
-its name; who proposed it and when, whether it starts a new service or replaces
-a running one, and whether it was tested on history; then what it **Watches**,
+its name; who proposed it (**Agent**, or the member by name) and when, whether
+it starts a new service or replaces a running one, and whether it was tested on
+history; then what it **Watches**,
 the **Evidence** and the **Limits** its author gave, or the reason for a
 proposal that came without them. **All** adds the proposals already accepted,
 declined or withdrawn, each with who decided, when, and what they answered.

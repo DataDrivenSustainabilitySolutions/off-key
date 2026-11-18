@@ -25,10 +25,13 @@ function missingReadings(proposal: PipelineProposalSummary): string {
 const proposedAs = (proposal: PipelineProposalSummary, replaced?: ActiveService) => proposal.replace_monitor_id
   ? `Replaces ${replaced?.display_name || "a running service"}` : "New service";
 
+/** Who a proposal is by, in words: a member by name, an agent as an agent, since its key's name says little to a reviewer. */
+const proposedBy = (proposal: PipelineProposalSummary) => proposal.author_kind === "agent" ? "an agent" : proposal.author;
+
 /** Who handed the design in and when, what starting it does, and whether it came with a test. */
 function ProposalByline({ proposal, replaced }: { proposal: PipelineProposalSummary; replaced?: ActiveService }) {
   return <ul className="pl-proposal-meta">
-    <li><AuthorChip author={proposal.author} kind={proposal.author_kind} /><RelativeTime value={proposal.created_at} /></li>
+    <li><AuthorChip author={proposal.author} kind={proposal.author_kind} named={false} /><RelativeTime value={proposal.created_at} /></li>
     <li>{proposedAs(proposal, replaced)}</li>
     {proposal.test_run_id
       ? <li className="pl-proposal-tested"><FlaskConical size={13} aria-hidden="true" />Tested on history</li>
@@ -354,7 +357,7 @@ export function PipelineProposalBrief({ proposal, canDecide, replaced, onOpenTes
   // The reason is the whole case of a proposal without a rationale; with one, it is what the author added.
   const note = rationale && proposal.reason === rationale.watches ? "" : proposal.reason;
 
-  return <div className="pl-brief" role="group" aria-label={`Proposal by ${proposal.author}`}>
+  return <div className="pl-brief" role="group" aria-label={`Proposal by ${proposedBy(proposal)}`}>
     <ProposalDecision proposal={proposal}>
       {open && <p className="pl-help">{canDecide
         ? `${proposal.replace_monitor_id ? "Updating" : "Starting"} the service accepts the proposal. Change the design first if you wish.`

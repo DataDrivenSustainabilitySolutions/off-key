@@ -1,5 +1,9 @@
 import { apiClient, apiUtils } from "@/lib/api-client";
 import type {
+  BenchmarkImport,
+  BenchmarkImportResult,
+  BenchmarkListPage,
+  BenchmarkListQuery,
   Comparison,
   CsvImportQuery,
   DatasetChange,
@@ -53,6 +57,11 @@ export const dojoApi = {
     });
     return response.data;
   },
+  benchmarks: (query: BenchmarkListQuery = {}, signal?: AbortSignal) =>
+    apiUtils.get<BenchmarkListPage>(`${base}/benchmarks`, { signal, params: query }),
+  // The server downloads every series from the collection's mirror before it answers.
+  importBenchmarks: (request: BenchmarkImport) =>
+    apiUtils.post<BenchmarkImportResult>(`${base}/benchmarks/import`, request, { timeout: UPLOAD_TIMEOUT_MS }),
   importHistory: (request: DatasetFromHistory) =>
     apiUtils.post<DatasetView>(`${base}/datasets/history`, request, { timeout: UPLOAD_TIMEOUT_MS }),
   changeDataset: (id: string, change: DatasetChange) => apiUtils.patch<DatasetView>(dataset(id), change),

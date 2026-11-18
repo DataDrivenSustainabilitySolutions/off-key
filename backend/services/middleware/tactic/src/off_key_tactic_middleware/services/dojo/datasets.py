@@ -5,9 +5,10 @@ rejected upload leaves nothing behind. Writes respect release maintenance but
 do not take the collection lock: a long import must not block catalogue edits.
 """
 
+import builtins
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import cast
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ from off_key_core.db.models import (
     User,
 )
 from off_key_core.schemas.dojo import (
+    MAX_DATASET_LABELS,
     MAX_DATASET_POINTS,
     MAX_DATASET_SERIES,
     CsvImportQuery,
@@ -46,13 +48,15 @@ from off_key_core.schemas.dojo import (
 from sqlalchemy import Text, delete, func, insert, literal, select, update
 
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
-from .csv_import import read_points
+from .csv_import import LabelRuns, read_points
 from .faults import kept, plan_faults, written_value
 from .labels import dataset_labels
 from .owners import made_by, require_no_evidence
 
 COPY_BATCH = 20_000
 POINT_COLUMNS = ("series_id", "timestamp", "value")
+# A label needs an end after its start; one marked value gets this much.
+SINGLE_VALUE = timedelta(milliseconds=1)
 
 
 @dataclass
@@ -258,7 +262,8 @@ class DojoDatasets:
         created_by_agent: Agent | None = None,
     ) -> DatasetView:
         await require_application_writes(self.session)
-        declared, points = read_points(body, query)
+        labels = LabelRuns() if query.label_column else None
+        declared, points = read_points(body, query, labels)
         if len(declared) > MAX_DATASET_SERIES:
             raise _too_many_series()
         dataset = self._dataset(
@@ -269,6 +274,7 @@ class DojoDatasets:
                 "filename": query.filename,
                 "layout": query.layout,
                 "timestamp_column": query.timestamp_column,
+                **({"label_column": query.label_column} if labels else {}),
             },
             created_by,
             created_by_agent,
@@ -300,7 +306,84 @@ class DojoDatasets:
             raise ValidationError("The CSV contains no values")
         await self._store_series(dataset.id, series.values())
         await self._copy(batch, series)
+        if labels is not None:
+            self.add_labels(
+                dataset.id,
+                labels.intervals,
+                f"Marked in {query.label_column!r} of the file",
+                created_by,
+            )
         return await self._finish(dataset, series.values())
+
+    async def import_values(
+        self,
+        name: str,
+        description: str,
+        origin: str,
+        source: dict,
+        series: dict[str, builtins.list[tuple[datetime, float]]],
+        *,
+        created_by: int | None,
+        created_by_agent: Agent | None = None,
+        labels: Iterable[tuple[datetime, datetime]] = (),
+        label_note: str = "",
+    ) -> DatasetView:
+        """Store series held in memory as a new dataset, with labels, at once."""
+        await require_application_writes(self.session)
+        if len(series) > MAX_DATASET_SERIES:
+            raise _too_many_series()
+        if sum(len(values) for values in series.values()) > MAX_DATASET_POINTS:
+            raise _too_many_points()
+        dataset = self._dataset(
+            name, description, origin, source, created_by, created_by_agent
+        )
+        items = {
+            label: _Series(id=str(uuid4()), position=position, name=label)
+            for position, label in enumerate(series)
+        }
+        await self._store_series(dataset.id, items.values())
+        for label, values in series.items():
+            item = items[label]
+            for start in range(0, len(values), COPY_BATCH):
+                chunk = values[start : start + COPY_BATCH]
+                for timestamp, _ in chunk:
+                    item.add(timestamp)
+                await self._copy(
+                    [(item.id, timestamp, value) for timestamp, value in chunk], items
+                )
+        self.add_labels(dataset.id, labels, label_note, created_by)
+        return await self._finish(dataset, items.values())
+
+    def add_labels(
+        self,
+        dataset_id: str,
+        intervals: Iterable[tuple[datetime, datetime]],
+        note: str,
+        created_by: int | None,
+    ) -> None:
+        """Labels that come with new values, in the transaction that stores them.
+
+        They come from one ordered source, so they cannot overlap. A label of
+        a single value lasts a millisecond, since a label must end after it
+        starts.
+        """
+        intervals = list(intervals)
+        if len(intervals) > MAX_DATASET_LABELS:
+            raise ValidationError(
+                f"The file marks {len(intervals)} anomalies; a dataset holds at "
+                f"most {MAX_DATASET_LABELS} labels"
+            )
+        for start_at, end_at in intervals:
+            self.session.add(
+                DojoLabel(
+                    id=str(uuid4()),
+                    dataset_id=dataset_id,
+                    start_at=start_at,
+                    end_at=max(end_at, start_at + SINGLE_VALUE),
+                    note=note,
+                    created_by=created_by,
+                )
+            )
 
     async def import_history(
         self,

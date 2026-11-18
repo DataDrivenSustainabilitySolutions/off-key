@@ -39,7 +39,8 @@ class DojoDataset(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    # 'csv' for an upload, 'history' for a copy of recorded readings.
+    # 'csv' for an upload, 'history' for a copy of recorded readings,
+    # 'benchmark' for a series of a public benchmark collection.
     origin: Mapped[str] = mapped_column(Text, nullable=False)
     # Where the points came from: file name and layout, or readings and window.
     source: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)
@@ -62,7 +63,9 @@ class DojoDataset(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     __table_args__ = (
-        CheckConstraint("origin IN ('csv', 'history')", name="ck_dojo_dataset_origin"),
+        CheckConstraint(
+            "origin IN ('csv', 'history', 'benchmark')", name="ck_dojo_dataset_origin"
+        ),
     )
 
 

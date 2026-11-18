@@ -1,8 +1,8 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
-import type { CsvImportQuery, DatasetView } from "@/types/dojo.generated";
+import type { BenchmarkImportResult, BenchmarkListPage, BenchmarkListQuery, CsvImportQuery, DatasetView } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import type { SystemStream } from "@/types/system";
 import { dojoApi } from "./api";
@@ -11,9 +11,9 @@ import { fromLocalInput, toLocalInput } from "./model";
 type Layout = CsvImportQuery["layout"];
 type Delimiter = NonNullable<CsvImportQuery["delimiter"]>;
 
-function ImportDialog({ open, title, description, busy, error, submitLabel, canSubmit, onOpenChange, onSubmit, children }: {
+function ImportDialog({ open, title, description, busy, error, submitLabel, canSubmit, onOpenChange, onSubmit, children, busyLabel = "Copying values…" }: {
   open: boolean; title: string; description: string; busy: boolean; error: string; submitLabel: string;
-  canSubmit: boolean; onOpenChange: (open: boolean) => void; onSubmit: () => void; children: ReactNode;
+  canSubmit: boolean; onOpenChange: (open: boolean) => void; onSubmit: () => void; children: ReactNode; busyLabel?: string;
 }) {
   return <Dialog.Root open={open} onOpenChange={next => { if (!busy) onOpenChange(next); }}>
     <Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" />
@@ -26,7 +26,7 @@ function ImportDialog({ open, title, description, busy, error, submitLabel, canS
           {error && <p className="dj-error" role="alert">{error}</p>}
           <div className="ex-dialog-actions">
             <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={busy || !canSubmit}>{busy ? "Copying values…" : submitLabel}</Button>
+            <Button type="submit" disabled={busy || !canSubmit}>{busy ? busyLabel : submitLabel}</Button>
           </div>
         </form>
       </Dialog.Content>
@@ -48,6 +48,7 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
   const [seriesColumn, setSeriesColumn] = useState("series");
   const [valueColumn, setValueColumn] = useState("value");
   const [delimiter, setDelimiter] = useState<"" | Delimiter>("");
+  const [labelColumn, setLabelColumn] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const tooLarge = !!file && file.size > DOJO_LIMITS.uploadBytes;
@@ -64,6 +65,7 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
         ...(timestampColumn.trim() ? { timestamp_column: timestampColumn.trim() } : {}),
         ...(layout === "long" ? { series_column: seriesColumn.trim(), value_column: valueColumn.trim() } : {}),
         ...(delimiter ? { delimiter } : {}),
+        ...(layout === "wide" && labelColumn.trim() ? { label_column: labelColumn.trim() } : {}),
       });
       reset(false);
       onCreated(dataset);
@@ -102,6 +104,11 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
         <option value={"\t"}>Tab</option><option value="|">Pipe</option>
       </select></label>
     </div>
+    {layout === "wide" && <label className="dj-field"><span>Label column <small>(optional)</small></span>
+      <input value={labelColumn} disabled={busy} placeholder="For example: anomaly"
+        onChange={event => setLabelColumn(event.target.value)} />
+      <span className="dj-help">A column of 0 and 1. Each run of rows marked 1 becomes a label; the column is not stored as a series.</span>
+    </label>}
     {layout === "long" && <div className="dj-field-row">
       <label className="dj-field">Series column<input required value={seriesColumn} disabled={busy}
         onChange={event => setSeriesColumn(event.target.value)} /></label>
@@ -109,6 +116,96 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
         onChange={event => setValueColumn(event.target.value)} /></label>
     </div>}
     <p className="dj-help">Timestamps are ISO 8601 or Unix seconds or milliseconds; a time without a zone is read as UTC.</p>
+  </ImportDialog>;
+}
+
+type Variant = NonNullable<BenchmarkListQuery["variant"]>;
+const VARIANTS: { id: "" | Variant; label: string }[] = [
+  { id: "original", label: "Original" }, { id: "distorted", label: "Distorted copies" },
+  { id: "noise", label: "Noisy copies" }, { id: "", label: "All" },
+];
+
+/** Search a public benchmark collection and import series, each with its anomaly as a label. */
+export function BenchmarkImportDialog({ open, onOpenChange, onImported }: {
+  open: boolean; onOpenChange: (open: boolean) => void; onImported: (result: BenchmarkImportResult) => void;
+}) {
+  const [text, setText] = useState("");
+  const [domain, setDomain] = useState("");
+  const [variant, setVariant] = useState<"" | Variant>("original");
+  const [page, setPage] = useState<BenchmarkListPage | null>(null);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    // Typing waits a moment, so a search runs once per pause.
+    const timer = window.setTimeout(() => {
+      void dojoApi.benchmarks({ text: text.trim(), limit: 250, ...(domain ? { domain } : {}), ...(variant ? { variant } : {}) },
+        controller.signal).then(
+        next => { if (!controller.signal.aborted) { setPage(next); setError(""); } },
+        reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); },
+      );
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [open, text, domain, variant]);
+  const close = (next: boolean) => {
+    if (!next) { setChosen([]); setError(""); }
+    onOpenChange(next);
+  };
+  const toggle = (id: string, on: boolean) =>
+    setChosen(previous => on ? [...previous, id].slice(0, DOJO_LIMITS.benchmarkImport) : previous.filter(item => item !== id));
+  const submit = async () => {
+    setBusy(true); setError("");
+    try {
+      const result = await dojoApi.importBenchmarks({ series_ids: chosen });
+      close(false);
+      onImported(result);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const collection = page?.collections[0];
+  const full = chosen.length >= DOJO_LIMITS.benchmarkImport;
+  return <ImportDialog open={open} onOpenChange={close} title="Add benchmark datasets" busy={busy} error={error}
+    busyLabel="Downloading series…"
+    description="Each series becomes a dataset of its own, with its known anomaly as a label. Values are downloaded once and checked against the published file."
+    submitLabel={chosen.length > 1 ? `Import ${chosen.length} series` : "Import series"} canSubmit={chosen.length > 0}
+    onSubmit={() => void submit()}>
+    {collection && <div className="dj-benchmark-source">
+      <a href={collection.url} target="_blank" rel="noreferrer">{collection.name}</a>
+      <p>{collection.description}</p>
+      <p><small>By {collection.authors}. {collection.license} Cite: {collection.citation}.</small></p>
+    </div>}
+    <div className="dj-field-row">
+      <label className="dj-field">Search<input type="search" value={text} disabled={busy} placeholder="Name or number, for example ECG or 112"
+        onChange={event => setText(event.target.value)} /></label>
+      <label className="dj-field">Domain<select value={domain} disabled={busy} onChange={event => setDomain(event.target.value)}>
+        <option value="">All domains</option>
+        {collection?.domains.map(item => <option key={item} value={item}>{item}</option>)}
+      </select></label>
+      <label className="dj-field">Variant<select value={variant} disabled={busy} onChange={event => setVariant(event.target.value as "" | Variant)}>
+        {VARIANTS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select></label>
+    </div>
+    <fieldset className="dj-field"><legend>{page ? `${page.total} series` : "Series"}{chosen.length ? ` · ${chosen.length} chosen` : ""}</legend>
+      {page === null ? <p className="dj-help" role="status">Loading the collection…</p>
+        : page.items.length === 0 ? <p className="dj-help" role="status">No series matches.</p>
+        : <ul className="dj-reading-list dj-benchmark-list">{page.items.map(item => {
+          const on = chosen.includes(item.id);
+          return <li key={item.id}><label>
+            <input type="checkbox" checked={on} disabled={busy || (!on && full)}
+              onChange={event => toggle(item.id, event.target.checked)} />
+            <span><b>{String(item.number).padStart(3, "0")} · {item.name}</b>
+              <small>{item.domain}{item.variant === "original" ? "" : `, ${item.variant}`} · {item.points.toLocaleString()} values ·
+                anomaly at {item.anomaly_first.toLocaleString()}{item.anomaly_last > item.anomaly_first ? `–${item.anomaly_last.toLocaleString()}` : ""}</small></span>
+            {item.dataset_id && <small>Imported</small>}
+          </label></li>;
+        })}</ul>}
+      {full && <p className="dj-help">An import takes at most {DOJO_LIMITS.benchmarkImport} series.</p>}
+    </fieldset>
   </ImportDialog>;
 }
 

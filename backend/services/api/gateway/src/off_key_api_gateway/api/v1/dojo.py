@@ -11,6 +11,10 @@ from off_key_core.auth.permissions import Permission
 from off_key_core.db.models import Agent, User
 from off_key_core.schemas.dojo import (
     MAX_UPLOAD_BYTES,
+    BenchmarkImport,
+    BenchmarkImportResult,
+    BenchmarkListPage,
+    BenchmarkListQuery,
     Comparison,
     ComparisonQuery,
     CsvImportQuery,
@@ -49,6 +53,7 @@ from off_key_core.schemas.dojo import (
     RunSteps,
     RunView,
 )
+from off_key_tactic_middleware.services.dojo.benchmarks import DojoBenchmarks
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
@@ -56,6 +61,7 @@ from off_key_tactic_middleware.services.dojo.pending_labels import DojoPendingLa
 from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 
 from ...providers import (
+    get_dojo_benchmarks,
     get_dojo_datasets,
     get_dojo_labels,
     get_dojo_metrics,
@@ -165,6 +171,53 @@ async def import_dojo_history(
     catalogue edits do not change it.
     """
     return await datasets.import_history(
+        change, created_by=member_id(caller), created_by_agent=agent_of(caller)
+    )
+
+
+@router.get(
+    "/benchmarks", response_model=BenchmarkListPage, openapi_extra=OPEN_TO_AGENTS
+)
+@read_limit
+async def list_dojo_benchmarks(
+    request: Request,
+    query: Annotated[BenchmarkListQuery, Query()],
+    caller: User | Agent = Depends(use_dojo),
+    benchmarks: DojoBenchmarks = Depends(get_dojo_benchmarks),
+):
+    """Series of public benchmark collections the Dojo can import.
+
+    Today this is the UCR Time Series Anomaly Archive: 250 univariate series,
+    each with one labelled anomaly after an anomaly-free training part.
+    `text` matches every word against the number, name, domain and variant;
+    `dataset_id` names the dataset a series was imported as. Cite the
+    collection's `citation` when you report results.
+    """
+    return await benchmarks.list(query)
+
+
+@router.post(
+    "/benchmarks/import",
+    response_model=BenchmarkImportResult,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@upload_limit
+async def import_dojo_benchmarks(
+    request: Request,
+    change: BenchmarkImport,
+    caller: User | Agent = Depends(use_dojo),
+    benchmarks: DojoBenchmarks = Depends(get_dojo_benchmarks),
+):
+    """Import benchmark series, each as a dataset with its anomaly as a label.
+
+    The file is downloaded from the collection's pinned mirror and checked
+    against its recorded SHA-256. Value i is stored at 2021-01-01T00:00:00Z
+    plus i seconds. The dataset's `source` keeps the series, the training
+    part (`train_points`, `train_end_at`) and the citation. A series imported
+    before returns its existing dataset.
+    """
+    return await benchmarks.import_series(
         change, created_by=member_id(caller), created_by_agent=agent_of(caller)
     )
 

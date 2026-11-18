@@ -314,8 +314,15 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    days, 7 days or 24 hours, or a window you type. **Copy to Dojo** on a
    device's Reporting page, and on a reading or device preview in Monitoring,
    does the same for that device or reading without a catalogue selection and
-   opens the new dataset. A dataset is frozen: retention and catalogue edits
-   never change it.
+   opens the new dataset. **Add benchmark** searches a public anomaly
+   benchmark, today the UCR Time Series Anomaly Archive of Wu and Keogh
+   (250 series, each with one labelled anomaly after an anomaly-free training
+   part), and imports up to 20 series. Each becomes a dataset with its anomaly
+   as a label; its description names the training part and the citation. A
+   series imported before is not imported again. A CSV upload can mark known
+   anomalies too: name a **Label column** of 0 and 1, and each run of rows
+   marked 1 becomes a label. A dataset is frozen: retention and catalogue
+   edits never change it.
 2. Open a dataset. **Values and labels** shows its series; zoom the chart to a
    known problem and choose **Use the zoomed range**, or type the window, then
    **Add label**. Labels may touch but not overlap. For a dataset copied from

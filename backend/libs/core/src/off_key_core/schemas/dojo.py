@@ -30,7 +30,11 @@ MAX_PENDING_LABELS = 1_000
 MAX_COMPARED_RUNS = 6
 # Faults one copy of a dataset may carry, each labelled as a known problem.
 MAX_FAULTS = 20
-DatasetOrigin = Literal["csv", "history"]
+# Benchmark series one import may add; each becomes a dataset of its own.
+MAX_BENCHMARK_IMPORT = 20
+MAX_BENCHMARK_PAGE = 250
+DatasetOrigin = Literal["csv", "history", "benchmark"]
+BenchmarkVariant = Literal["original", "distorted", "noise"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 CsvLayout = Literal["wide", "long"]
 LabelOutcomeKind = Literal["detected", "missed", "unscored"]
@@ -114,6 +118,19 @@ class CsvImportQuery(DojoModel):
     delimiter: Literal[",", ";", "\t", "|"] | None = Field(
         default=None, description="Detected from the header line when omitted."
     )
+    label_column: str | None = Field(
+        default=None,
+        max_length=120,
+        description="'wide' only: a column of 0 and 1 (or false and true) "
+        "that marks known anomalies. It is not stored as a series; each run of "
+        "rows marked 1 becomes one label of the dataset.",
+    )
+
+    @model_validator(mode="after")
+    def label_layout(self):
+        if self.label_column is not None and self.layout != "wide":
+            raise ValueError("A label column needs the 'wide' layout")
+        return self
 
 
 def _aware(value: datetime | None, name: str) -> None:
@@ -179,6 +196,84 @@ class DatasetWithFaults(DojoModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
     faults: list[Fault] = Field(min_length=1, max_length=MAX_FAULTS)
+
+
+class BenchmarkCollectionView(DojoModel):
+    id: str
+    name: str
+    description: str
+    authors: str
+    citation: str = Field(description="Cite this when you report results.")
+    url: str
+    license: str
+    series_count: int
+    domains: list[str]
+
+
+class BenchmarkSeriesView(DojoModel):
+    id: str = Field(description="Pass it to the import, for example 'ucr-112'.")
+    collection: str
+    number: int
+    name: str
+    domain: str
+    variant: BenchmarkVariant = Field(
+        description="'original', or a 'distorted' or 'noise' copy the archive "
+        "made harder on purpose."
+    )
+    points: int
+    train_points: int = Field(
+        description="The first values, meant for training: free of anomalies."
+    )
+    anomaly_first: int = Field(description="Position of the first anomalous value.")
+    anomaly_last: int = Field(description="Position of the last anomalous value.")
+    train_holds_anomaly: bool = Field(
+        default=False,
+        description="The archive's training part reaches into the anomaly, a "
+        "known flaw of a single series: train on the values before it instead.",
+    )
+    dataset_id: str | None = Field(
+        default=None, description="The dataset it was imported as, if it was."
+    )
+
+
+class BenchmarkListQuery(DojoModel):
+    text: str = Field(
+        default="",
+        max_length=200,
+        description="Words that must all appear in the number, name, domain or "
+        "variant, for example 'ecg 120' or 'power'.",
+    )
+    domain: str | None = Field(default=None, max_length=60)
+    variant: BenchmarkVariant | None = None
+    limit: int = Field(default=50, ge=1, le=MAX_BENCHMARK_PAGE)
+    offset: int = Field(default=0, ge=0)
+
+
+class BenchmarkListPage(DojoModel):
+    collections: list[BenchmarkCollectionView]
+    items: list[BenchmarkSeriesView] = Field(max_length=MAX_BENCHMARK_PAGE)
+    total: int = Field(description="Series that match, on every page.")
+    next_offset: int | None = None
+
+
+class BenchmarkImport(DojoModel):
+    """Import benchmark series, each as a dataset with its anomaly as a label."""
+
+    series_ids: list[str] = Field(min_length=1, max_length=MAX_BENCHMARK_IMPORT)
+
+    @model_validator(mode="after")
+    def unique(self):
+        if len(set(self.series_ids)) != len(self.series_ids):
+            raise ValueError("Each series may appear only once")
+        return self
+
+
+class BenchmarkImportResult(DojoModel):
+    items: list[DatasetSummary] = Field(
+        description="One dataset per series, in the order asked. A series "
+        "imported before keeps its dataset; it is not imported twice."
+    )
+    imported: int = Field(description="How many of them are new.")
 
 
 class DatasetChange(DojoModel):

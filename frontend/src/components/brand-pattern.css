@@ -1,0 +1,9 @@
+/* The brand mark as a quiet, rotated outline weave that rises from the bottom edge and fades
+   out upward, so headings and controls always stay on a clean background. */
+.brand-pattern { position: absolute; inset: 0; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0, #000 min(160px, 35%), transparent min(520px, 100%));
+  mask-image: linear-gradient(to top, #000 0, #000 min(160px, 35%), transparent min(520px, 100%)); }
+.brand-pattern::before { content: ""; position: absolute; inset: -60%; background: hsl(var(--foreground)); opacity: .045;
+  -webkit-mask: url("/brand/workspace-pattern.svg") 0 0 / 112px 112px repeat; mask: url("/brand/workspace-pattern.svg") 0 0 / 112px 112px repeat;
+  transform: rotate(-13deg); }
+.dark .brand-pattern::before { opacity: .055; }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { BrandPattern } from "./BrandPattern";
 import "./auth-layout.css";
 
 interface AuthBackdropProps {
@@ -13,6 +14,7 @@ export function AuthBackdrop({
 }: AuthBackdropProps) {
   return (
     <div className="auth-backdrop">
+      <BrandPattern className="auth-pattern" />
       <div className={cn("w-full", contentClassName)}>
         {children}
       </div>

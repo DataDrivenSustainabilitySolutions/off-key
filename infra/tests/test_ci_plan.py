@@ -508,7 +508,11 @@ class TreeReuseTests(unittest.TestCase):
                     {
                         "merged_at": "2026-11-17T12:00:00Z",
                         "base": {"ref": "main"},
-                        "head": {"sha": pull_head, "repo": {"full_name": REPOSITORY}},
+                        "head": {
+                            "sha": pull_head,
+                            "ref": "feature",
+                            "repo": {"full_name": REPOSITORY},
+                        },
                     }
                 ]
             if path.startswith("git/commits/"):
@@ -539,7 +543,8 @@ class TreeReuseTests(unittest.TestCase):
             "conclusion": "success",
             "head_branch": "feature",
             "head_repository": {"full_name": REPOSITORY},
-            "pull_requests": [{"base": {"ref": "main"}}],
+            # GitHub empties this once the pull request is merged.
+            "pull_requests": [],
         } | changes
 
     @staticmethod
@@ -630,13 +635,10 @@ class TreeReuseTests(unittest.TestCase):
                 {5: good},
             ),
         )
-        cases["other base"] = (
+        cases["another branch's run"] = (
             merged,
             self.api(
-                merged,
-                head,
-                [self.pull_run(5, head, pull_requests=[{"base": {"ref": "next"}}])],
-                {5: good},
+                merged, head, [self.pull_run(5, head, head_branch="other")], {5: good}
             ),
         )
         cases["failed jobs"] = (

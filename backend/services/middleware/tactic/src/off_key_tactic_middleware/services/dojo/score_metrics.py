@@ -5,6 +5,10 @@ where the single highest score lies. Everything is aggregated in PostgreSQL:
 results are grouped by score, so only one row per distinct score is summed,
 and nothing per result leaves the database.
 
+A run stores what its design produces: an anomaly score, higher the more
+unusual, or the conformal p-value of a static baseline, lower the more
+unusual. Both are ranked most unusual first.
+
 ``reference`` computes the same numbers from Python lists. The tests hold
 the SQL to it, and to scikit-learn where they overlap.
 """
@@ -12,9 +16,12 @@ the SQL to it, and to scikit-learn where they overlap.
 import math
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Literal
 
 from off_key_core.schemas.dojo import ScoreMetrics
 from sqlalchemy import text
+
+Unusual = Literal["high", "low"]
 
 # Range-PR buffers in typical intervals: 0 is the labels as they are.
 BUFFERS = tuple(range(0, 101, 10))
@@ -123,9 +130,10 @@ WITH bounds AS (
     SELECT CAST(:starts AS timestamptz[]) AS starts,
            CAST(:ends AS timestamptz[]) AS ends
 ), ranked AS (
-    SELECT r.timestamp, r.score,
-           count(*) OVER (ORDER BY r.score DESC) AS seen,
-           count(*) OVER (ORDER BY r.score DESC
+    SELECT r.timestamp, CAST(:sign AS double precision) * r.score AS score,
+           count(*) OVER (ORDER BY CAST(:sign AS double precision) * r.score DESC)
+             AS seen,
+           count(*) OVER (ORDER BY CAST(:sign AS double precision) * r.score DESC
                           RANGE BETWEEN CURRENT ROW AND CURRENT ROW) AS ties
     FROM dojo_run_results r
     WHERE r.run_id = :run_id AND r.score IS NOT NULL
@@ -175,15 +183,21 @@ TOP = text(
     """
 SELECT timestamp FROM dojo_run_results
 WHERE run_id = :run_id AND score IS NOT NULL
-ORDER BY score DESC, timestamp ASC LIMIT 1
+ORDER BY CAST(:sign AS double precision) * score DESC, timestamp ASC LIMIT 1
 """
 )
 
 
 async def score_metrics(
-    session, run_id: str, labels: Sequence[tuple[datetime, datetime]]
+    session,
+    run_id: str,
+    labels: Sequence[tuple[datetime, datetime]],
+    *,
+    unusual: Unusual = "high",
 ) -> ScoreMetrics | None:
-    """``labels`` in time order, not overlapping."""
+    """``labels`` in time order, not overlapping. ``unusual`` says whether
+    high or low scores are the unusual ones."""
+    sign = 1.0 if unusual == "high" else -1.0
     results, scored_from, scored_to = (
         await session.execute(SPAN, {"run_id": run_id})
     ).one()
@@ -203,6 +217,7 @@ async def score_metrics(
                 "label_count": len(labels),
                 "interval": interval,
                 "scored": results,
+                "sign": sign,
             },
         )
     ).one()
@@ -211,7 +226,7 @@ async def score_metrics(
     outside = scored - inside
     auroc = float(rank_sum) / (inside * outside) if inside and outside else None
     ranges = [None if area is None else float(area) for area in areas]
-    top_at = await session.scalar(TOP, {"run_id": run_id})
+    top_at = await session.scalar(TOP, {"run_id": run_id, "sign": sign})
     top1 = None
     if len(labels) == 1 and top_at is not None:
         start, end = labels[0]

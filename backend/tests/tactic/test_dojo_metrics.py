@@ -740,16 +740,16 @@ def test_soft_labels_fade_within_half_the_buffer():
     assert score_module.soft_weight(6, 10) == 0
 
 
-async def scored_run(factory, view, scores):
+async def scored_run(factory, view, scores, *, run_id="run-scored", nodes=()):
     """A finished run with one result a minute; None scores are warm-up."""
     async with factory() as session:
         session.add(
             DojoRun(
-                id="run-scored",
+                id=run_id,
                 dataset_id=view.id,
                 name="scored",
                 status="succeeded",
-                config={"execution": {"definition": {"nodes": []}}},
+                config={"execution": {"definition": {"nodes": list(nodes)}}},
                 cancel_requested=False,
                 points_total=len(scores),
                 points_read=len(scores),
@@ -760,7 +760,7 @@ async def scored_run(factory, view, scores):
         )
         session.add_all(
             DojoRunResult(
-                run_id="run-scored",
+                run_id=run_id,
                 sequence=minute + 1,
                 timestamp=at(minute),
                 phase="ready",
@@ -771,7 +771,7 @@ async def scored_run(factory, view, scores):
             for minute, score in enumerate(scores)
         )
         await session.commit()
-    return "run-scored"
+    return run_id
 
 
 @pytest.mark.asyncio
@@ -816,6 +816,42 @@ async def test_score_metrics_in_sql_match_the_reference(sessions):
     assert result.scores.top_score_at == at(78)
     # Two labels: the archive's top-1 rule does not apply.
     assert result.scores.top1_hit is None
+
+
+@pytest.mark.asyncio
+async def test_a_static_baseline_ranks_its_lowest_p_values_first(sessions):
+    """A static baseline stores p-values, which are low where it is surprised:
+    the same ranking as scores high there."""
+    _, factory = sessions
+    creator, view = await dataset(factory, minutes=200)
+    scores = [None] * 10 + [0.1 + 0.002 * (minute % 50) for minute in range(190)]
+    for minute in range(118, 125):
+        scores[minute] = 0.8
+    scores[120] = 0.9
+    async with factory() as session:
+        await DojoLabels(session).create_many(
+            view.id, [label(118, 124)], created_by=creator
+        )
+    adaptive = await scored_run(factory, view, scores)
+    static = await scored_run(
+        factory,
+        view,
+        [None if score is None else 1 - score for score in scores],
+        run_id="run-p-values",
+        nodes=[{"component": "policy.martingale"}],
+    )
+    async with factory() as session:
+        by_score = await DojoMetrics(session).run(adaptive)
+        by_p_value = await DojoMetrics(session).run(static)
+    assert by_p_value.strategy == "static_baseline"
+    assert by_score.scores is not None and by_p_value.scores is not None
+    assert by_score.scores.auroc is not None and by_score.scores.auroc == 1.0
+    for field in ("pr_auc", "auroc", "vus_pr"):
+        assert getattr(by_p_value.scores, field) == pytest.approx(
+            getattr(by_score.scores, field)
+        ), field
+    assert by_p_value.scores.top_score_at == at(120)
+    assert by_p_value.scores.top1_hit is True
 
 
 @pytest.mark.asyncio

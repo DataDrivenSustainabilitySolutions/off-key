@@ -79,6 +79,13 @@ learns nothing, so the design has no warm-up. A rolling calibration such as \
 calibrate.split, with policy.exceedance and several in a row, goes quiet on a \
 fault that lasts.
 
+Pairing readings: an observation takes the latest value of every input, and \
+a value is used for 3 of its reading's usual intervals and at least 30 s. A \
+reading sent only when it changes, such as a setpoint or a state, goes quiet \
+for hours while it holds, so get_test counts most observations as \
+`stale_reading`. Name such inputs in the source step's `hold`, with how long \
+their last value stays usable, so the design pairs the others with it.
+
 A warning that observations "are skipped" means nothing is scored for them, \
 such as a division by 0. When that case is the incident (zero messages from a \
 broker), score it: write the case with if, or add a rule branch for it.
@@ -786,7 +793,10 @@ STATS = {
         "held until the other readings' next values arrived; usual with "
         "several readings, as each observation takes one value of each"
     ),
-    "stale_reading": "another reading's latest value was too old to pair with",
+    "stale_reading": (
+        "another reading's latest value was too old to pair with; hold an "
+        "input sent only when it changes in the source step's `hold`"
+    ),
     "pipeline_observation_rejected": (
         "a step skipped it, such as a division by 0 or a gate that held it back"
     ),

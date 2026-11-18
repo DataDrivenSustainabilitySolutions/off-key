@@ -81,6 +81,10 @@ _STEPS: tuple[_Step, ...] = (
         "input",
         "Aligned inputs",
         "The chosen readings as one observation.",
+        "An observation takes the latest value of every input. A value is used "
+        "for 3 of its reading's usual intervals and at least 30 s, then the "
+        "observation is dropped as stale. Hold an input sent only when it "
+        "changes, so its last value is used until the next one.",
     ),
     _Step(
         "features.select",

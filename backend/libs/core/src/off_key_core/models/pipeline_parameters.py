@@ -17,6 +17,7 @@ from ..schemas.pipelines import (
     RobustScalerParameters,
     RollingRobustScalerParameters,
     SelectParameters,
+    SourceParameters,
     StandardScalerParameters,
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
@@ -33,7 +34,7 @@ from .pipeline_scope import SCOPED_COMPONENTS, canonical_scope
 from .static import validate_static_model_params
 
 PARAMETER_MODELS: dict[str, type[PipelineModel]] = {
-    "source.aligned": PipelineModel,
+    "source.aligned": SourceParameters,
     "features.passthrough": PipelineModel,
     "features.merge": PipelineModel,
     "features.select": SelectParameters,
@@ -94,6 +95,8 @@ def _drop_unread(component: str, params: dict[str, Any]) -> None:
     fingerprint.
     """
     match component:
+        case "source.aligned" if not params["hold"]:
+            del params["hold"]
         case "prepare.rolling" if params["statistic"] != "quantile":
             params.pop("quantile", None)
         case "prepare.accumulate" if params["reset_when"] is None:
@@ -126,6 +129,10 @@ def normalized_parameters(
         or PARAMETER_MODELS[node.component]
     )
     params = model.model_validate(node.params).model_dump(mode="json")
+    if node.component == "source.aligned":
+        slots = {slot.id for slot in definition.input_slots}
+        if unknown := sorted({item["input"] for item in params["hold"]} - slots):
+            raise ValueError(f"Hold names no input of the design: {', '.join(unknown)}")
     _drop_unread(node.component, params)
     if node.component in POLICY_MODELS:
         # The calibration step combines detectors now; schema 1 designs move

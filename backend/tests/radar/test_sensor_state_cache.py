@@ -115,6 +115,46 @@ def test_a_reading_that_stops_is_dropped_once_its_value_is_too_old():
     assert _send(cache, clock, "fast", 1110).features == {"fast": 1110, "slow": 1101}
 
 
+def test_a_held_reading_sent_on_change_pairs_until_its_hold_runs_out():
+    """A setpoint sends a burst when it changes, then nothing for hours."""
+    clock = Clock()
+    cache = SensorStateCache(
+        {"power", "setpoint"},
+        MonitorTiming(),
+        held={"setpoint": 3600},
+        clock=clock,
+        monotonic=clock,
+    )
+    for at in (1000.0, 1000.25, 1000.5):
+        _send(cache, clock, "setpoint", at, value=5000)
+    outcomes = [_send(cache, clock, "power", at) for at in range(1001, 4500, 10)]
+    assert {item.status for item in outcomes} == {"aligned"}
+    assert outcomes[-1].features["setpoint"] == 5000
+    assert outcomes[-1].held_sensors == ("setpoint",)
+    # An hour after the last change, the value is too old to pair with.
+    late = _send(cache, clock, "power", 4610)
+    assert late.status == "stale_reading"
+    assert late.stale_sensors == ("setpoint",)
+    assert cache.stale_after_seconds()["setpoint"] == 3600
+
+
+def test_a_held_reading_heard_once_is_held_not_waited_for():
+    clock = Clock()
+    cache = SensorStateCache(
+        {"power", "setpoint"},
+        MonitorTiming(),
+        held={"setpoint": 600},
+        clock=clock,
+        monotonic=clock,
+    )
+    _send(cache, clock, "setpoint", 1000, value=0)
+    assert _send(cache, clock, "power", 1001).status == "aligned"
+    for at in (1011, 1021, 1300):
+        outcome = _send(cache, clock, "power", at)
+        assert outcome.status == "aligned"
+        assert outcome.features == {"power": at, "setpoint": 0}
+
+
 def test_a_reading_whose_interval_is_unknown_is_waited_for_not_held():
     clock = Clock()
     cache = _cache({"fast", "slow"}, clock)

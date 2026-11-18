@@ -282,6 +282,21 @@ export function PipelineInspector({
           <h3>Input</h3>
           {values?.(node.id)}
           {inputContent}
+          {component?.details && <p className="pl-help">{component.details}</p>}
+          {component && (
+            <ParameterFields
+              key={`${node.id}:${node.component}`}
+              fields={stepFields(node, component)}
+              issues={fieldIssues}
+              values={node.params}
+              features={features}
+              featureLabels={featureLabels}
+              featureHint={featureHint}
+              prefix={node.id}
+              readOnly={readOnly}
+              onChange={(params) => changeParams(params, "hold")}
+            />
+          )}
           {titleField}
           {lineage}
           {nodeIssues}

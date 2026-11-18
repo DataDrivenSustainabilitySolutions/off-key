@@ -542,6 +542,18 @@ input and 2,000 result rows). Ordinary reading charts remain independent of a
 monitor; when monitoring is present their alarm markers and results share the
 same service scope.
 
+An observation takes the latest value of every input (`state_cache.py`). A
+value is used for `hold_intervals` of its reading's learned interval and at
+least `minimum_hold_seconds`; an observation that would use an older one is
+dropped as `stale_reading`. A reading sent only when it changes, such as a
+setpoint, learns a short interval from its bursts and then stays quiet for
+hours, so the source step's `hold` names such inputs with how long their last
+value stays usable (at most a week). `PipelineExecutionConfig.held_seconds`
+maps them to input keys for the live processor and the Dojo replay alike; a
+held input is not waited for once it has a value, and its longer limit also
+sets its stale limit in health reports. An empty `hold` is left out, so designs
+without it keep their fingerprints.
+
 A reading that goes quieter than it has been for a day raises one silence alarm
 (`silence.py`). The stale limit that decides whether a value is still fresh
 enough to score is too short for this: a sensor that sends for a few minutes

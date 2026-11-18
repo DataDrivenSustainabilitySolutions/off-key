@@ -115,6 +115,7 @@ class Replay:
             memory_manager=MemoryManager(max_memory_mb=config.memory_limit_mb),
             required_sensors=required,
             timing=config.timing(),
+            held=config.pipeline.held_seconds,
             sensor_key_strategy=SENSOR_KEY_STRATEGY,
             coverage=self.coverage,
             clock=self._clock,

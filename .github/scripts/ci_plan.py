@@ -295,16 +295,17 @@ def proven_on_this_tree(head, repository, api=None):
         return set()
     parent = parents[1]
     tree = git("rev-parse", f"{head}^{{tree}}").strip()
-    heads = [head]
+    # Each head and the branch its pull request runs came from (None: this commit).
+    heads = {head: None}
     for pull in api(f"commits/{head}/pulls"):
         if (
             pull.get("merged_at")
             and pull["base"]["ref"] == "main"
             and (pull["head"].get("repo") or {}).get("full_name") == repository
         ):
-            heads.append(pull["head"]["sha"])
+            heads.setdefault(pull["head"]["sha"], pull["head"]["ref"])
     proven = set()
-    for sha in dict.fromkeys(heads):
+    for sha, branch in heads.items():
         if sha != head and (
             api(f"git/commits/{sha}")["tree"]["sha"] != tree
             or api(f"compare/{parent}...{sha}").get("behind_by") != 0
@@ -325,10 +326,9 @@ def proven_on_this_tree(head, repository, api=None):
                     "gh-readonly-queue/main/"
                 )
             elif run.get("event") == "pull_request":
-                trusted = sha != head and any(
-                    pull["base"]["ref"] == "main"
-                    for pull in run.get("pull_requests") or ()
-                )
+                # GitHub empties a run's pull_requests once the pull request
+                # closes, so the merged pull request above names the base.
+                trusted = sha != head and run.get("head_branch") == branch
             else:
                 trusted = False
             if trusted:

@@ -1,18 +1,23 @@
-import { Check, LoaderCircle, Minus, X } from "lucide-react";
+import { Check, CircleAlert, LoaderCircle, Minus } from "lucide-react";
 import { formatTimeOfDay } from "@/lib/format-time";
 import { checkTone, outcomes, type BrokerCheck } from "./useBrokerChecks";
 
-/** A small mark beside a broker name; the hover text carries the outcome and reason. */
-export function BrokerCheckMark({ check, visibleReason }: { check: BrokerCheck; visibleReason?: string }) {
-  if (check.pending) return <LoaderCircle size={14} className="source-check-mark animate-spin" role="img" aria-label="Checking connection" />;
+/** The outcome and time of a finished check, with its reason when the problem does not already say it. */
+function checkSummary(check: BrokerCheck, problem?: string) {
   const status = check.result?.status;
-  const outcome = status ? outcomes[status] : "Check failed";
   const reason = check.result?.message ?? check.error;
-  const label = [outcome, reason !== visibleReason ? reason : undefined,
+  return [status ? outcomes[status] : "Check failed", reason !== problem ? reason : undefined,
     check.result && `Checked at ${formatTimeOfDay(check.result.checked_at)}`].filter(Boolean).join(" · ");
-  const Icon = status === "reachable" ? Check : status === "blocked" || !status ? Minus : X;
-  const tone = checkTone(check);
-  return <Icon size={14} strokeWidth={2.5} className={`source-check-mark source-check-mark--${tone}`} role="img" aria-label={label}>
-    <title>{label}</title>
-  </Icon>;
+}
+
+/** A small mark beside a broker name: "!" for a problem, otherwise the outcome of its last check. */
+export function BrokerCheckMark({ check, problem, tone = "danger" }: { check?: BrokerCheck; problem?: string;
+  tone?: "warning" | "danger" }) {
+  if (check?.pending) return <LoaderCircle size={14} className="source-check-mark animate-spin" role="img" aria-label="Checking connection" />;
+  if (!problem && !check) return null;
+  const status = check?.result?.status;
+  const label = [problem, check && checkSummary(check, problem)].filter(Boolean).join(" · ");
+  const Icon = problem ? CircleAlert : status === "reachable" ? Check : Minus;
+  return <Icon size={14} strokeWidth={2.5} role="img" aria-label={label}
+    className={`source-check-mark source-check-mark--${problem ? tone : checkTone(check)}`}><title>{label}</title></Icon>;
 }

@@ -47,6 +47,10 @@ WITHOUT_THE_GRANT = [
     "get_dataset",
     "get_dataset_values",
     "propose_labels",
+    "get_suite",
+    "create_suite",
+    "run_study",
+    "get_study",
     "list_monitors",
     "get_monitor",
     "get_values",
@@ -70,6 +74,7 @@ class Stores:
         self.metrics = AsyncMock()
         self.labels = AsyncMock()
         self.pending = AsyncMock()
+        self.suites = AsyncMock()
 
     def overrides(self) -> dict:
         return {
@@ -84,6 +89,7 @@ class Stores:
             providers.get_dojo_metrics: returning(self.metrics),
             providers.get_dojo_labels: returning(self.labels),
             providers.get_dojo_pending_labels: returning(self.pending),
+            providers.get_dojo_suites: returning(self.suites),
         }
 
     def asked(self) -> list:
@@ -203,6 +209,8 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
         "withdraw_proposal",
         "delete_mine",
         "propose_labels",
+        "create_suite",
+        "run_study",
         "start_monitor",
         "stop_monitor",
     }
@@ -210,9 +218,11 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
     assert {tool.name for tool in granted if tool.annotations.destructive_hint} == {
         "delete_mine"
     }
-    # An agent reads the whole list with every session, so it stays short.
+    # An agent reads the whole list with every session, so it stays short. The
+    # suite and study tools raised it from 31,500 for the loop of comparing
+    # candidates over many datasets.
     listing = [tool.model_dump(mode="json", exclude_none=True) for tool in granted]
-    assert len(json.dumps(listing)) < 31_500
+    assert len(json.dumps(listing)) < 35_000
 
 
 def test_a_schema_says_nothing_twice():
@@ -801,7 +811,9 @@ async def test_an_agent_cleans_up_what_it_made(gateway, key, stores, no_pause):
 
         for named in ({}, {"run_id": "run-1", "dataset_id": "d1"}):
             refused = await client.call_tool("delete_mine", named)
-            assert said(refused) == "Name one of run_id, dataset_id or proposal_id"
+            assert said(refused) == (
+                "Name one of run_id, dataset_id, study_id, suite_id or proposal_id"
+            )
         # What the key may not delete is refused in the API's words.
         stores.runs.get.side_effect = None
         stores.runs.get.return_value = dojo_run()
@@ -1429,3 +1441,260 @@ async def test_an_agent_reads_a_dataset_and_proposes_labels_for_review(
         True,
         1,
     )
+
+
+def totals(vus_pr: float | None = None) -> dict:
+    return {
+        "runs_scored": 2 if vus_pr is not None else 0,
+        "labels_scored": 2,
+        "labels_detected": 1,
+        "detection_rate": 0.5,
+        "median_false_alarms_per_day": 1.0,
+        "pr_auc": vus_pr,
+        "pr_auc_runs": 2,
+        "vus_pr": vus_pr,
+        "vus_pr_runs": 2,
+        "auroc": vus_pr,
+        "auroc_runs": 2,
+        "top1_hits": 1,
+        "top1_runs": 2,
+    }
+
+
+def study(study_id: str = "st1", **fields) -> dict:
+    return {
+        "id": study_id,
+        "suite_id": "su1",
+        "name": "Mahalanobis",
+        "strategy": "adaptive_stream",
+        "runs": {"succeeded": 2},
+        "complete": True,
+        "totals": totals(0.5),
+        "metrics_pending": 0,
+        "created_by": None,
+        "created_by_agent": "Designer",
+        "created_at": THEN,
+    } | fields
+
+
+def study_view(**fields) -> dict:
+    metrics = {
+        "run_id": "run-1",
+        "run_name": "Mahalanobis",
+        "strategy": "adaptive_stream",
+        "scored_from": THEN,
+        "scored_to": LATER,
+        "labels_total": 1,
+        "labels_scored": 1,
+        "labels_detected": 1,
+        "detection_rate": 1.0,
+        "median_delay_seconds": 0.0,
+        "max_delay_seconds": 0.0,
+        "alarm_count": 2,
+        "false_alarms": 0,
+        "evaluated_seconds": 3000.0,
+        "false_alarms_per_day": 0.0,
+        "scores": None,
+        "labels": [],
+    }
+    items = [
+        {
+            "dataset_id": "d1",
+            "dataset_name": "Pump A",
+            "run_id": "run-1",
+            "status": "succeeded",
+            "error": None,
+            "metrics": metrics,
+        }
+    ]
+    return study(**fields) | {
+        "definition": {},
+        "bindings": {},
+        "alignment": {"hold_intervals": 3, "minimum_hold_seconds": 30},
+        "items": items,
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_agent_runs_and_compares_studies_over_a_suite(
+    gateway, key, stores, no_pause
+):
+    suite = {
+        "id": "su1",
+        "name": "Pump faults",
+        "description": "",
+        "derived_from": None,
+        "datasets": 1,
+        "studies": 2,
+        "created_by": None,
+        "created_by_agent": "Designer",
+        "reviewed": False,
+        "created_at": THEN,
+        "items": [
+            {
+                "dataset_id": "d1",
+                "name": "Pump A",
+                "origin": "history",
+                "series_names": ["power"],
+                "point_count": 100,
+                "labels": 1,
+            }
+        ],
+        "leaderboard": [study()],
+        "unfinished": [study("st2", complete=False, runs={"running": 1})],
+    }
+    stores.suites.list_suites.return_value = {
+        "items": [
+            {
+                k: v
+                for k, v in suite.items()
+                if k not in {"items", "leaderboard", "unfinished"}
+            }
+        ],
+        "next_offset": None,
+    }
+    stores.suites.get_suite.return_value = suite
+    stores.suites.create_suite.return_value = suite
+    stores.suites.create_study.return_value = study_view()
+    # The study is read until its runs end and their metrics are in.
+    states = iter([study_view(runs={"running": 1}, complete=False), study_view()])
+    stores.suites.get_study.side_effect = lambda *args, **kwargs: next(states)
+    stores.suites.compare_studies.return_value = {
+        "suite_id": "su1",
+        "metric": "vus_pr",
+        "baseline": "st2",
+        "challenger": "st1",
+        "datasets": [],
+        "compared": 6,
+        "wins": 6,
+        "losses": 0,
+        "ties": 0,
+        "mean_delta": 0.2,
+        "median_delta": 0.2,
+        "p_value": 0.03125,
+    }
+    async with connected(gateway) as client:
+        listed = said(await client.call_tool("get_suite", {}))
+        read = said(await client.call_tool("get_suite", {"suite_id": "su1"}))
+        made = said(
+            await client.call_tool(
+                "create_suite", {"name": "Pump faults", "dataset_ids": ["d1"]}
+            )
+        )
+        queued = said(
+            await client.call_tool(
+                "run_study",
+                {
+                    "suite_id": "su1",
+                    "definition": starter()["definition"],
+                    "bindings": {"value": "power"},
+                },
+            )
+        )
+        studied = said(await client.call_tool("get_study", {"study_id": "st1"}))
+        assert stores.suites.get_study.await_count == 2
+        stores.suites.get_study.side_effect = None
+        stores.suites.get_study.return_value = study_view()
+        compared = said(
+            await client.call_tool(
+                "get_study", {"study_id": "st1", "compare_with": "st2"}
+            )
+        )
+    assert listed["suites"][0] == {
+        "id": "su1",
+        "name": "Pump faults",
+        "description": "",
+        "datasets": 1,
+        "studies": 2,
+        "reviewed": False,
+    }
+    assert read["datasets"][0]["series_names"] == ["power"]
+    assert [item["study_id"] for item in read["leaderboard"]] == ["st1"]
+    assert read["unfinished"][0]["complete"] is False
+    assert made == {"suite_id": "su1", "datasets": 1}
+    request = stores.suites.create_suite.await_args.args[0]
+    assert request.dataset_ids == ["d1"]
+    assert queued == {"study_id": "st1", "runs": 1}
+    request = stores.suites.create_study.await_args.args[0]
+    assert (request.suite_id, request.bindings) == ("su1", {"value": "power"})
+    assert studied["complete"] is True and studied["vus_pr"] == 0.5
+    assert studied["datasets"][0]["detected"] == "1 of 1"
+    comparison = compared["comparison"]
+    assert (comparison["wins"], comparison["p_value"]) == (6, 0.03125)
+    suite_id, query = stores.suites.compare_studies.await_args.args
+    assert (suite_id, query.baseline, query.challenger, query.metric) == (
+        "su1",
+        "st2",
+        "st1",
+        "vus_pr",
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_agent_deletes_its_study_and_suite(gateway, key, stores, no_pause):
+    states = iter([study_view(runs={"running": 1}), study_view(runs={"cancelled": 1})])
+    stores.suites.get_study.side_effect = lambda *args, **kwargs: next(states)
+    stores.suites.cancel_study.return_value = study_view(runs={"running": 1})
+    stores.suites.list_studies.return_value = {"items": [], "next_offset": None}
+    async with connected(gateway) as client:
+        study_gone = said(await client.call_tool("delete_mine", {"study_id": "st1"}))
+        suite_gone = said(await client.call_tool("delete_mine", {"suite_id": "su1"}))
+    assert study_gone == {"deleted": {"study_id": "st1"}}
+    assert stores.suites.cancel_study.await_args.args == ("st1", key)
+    assert stores.suites.remove_study.await_args.args == ("st1", key)
+    assert suite_gone == {"deleted": {"suite_id": "su1"}}
+    assert stores.suites.remove_suite.await_args.args == ("su1", key)
+
+
+@pytest.mark.asyncio
+async def test_a_design_is_tested_on_an_uploaded_series_by_name(gateway, key, stores):
+    """A benchmark or CSV series was copied from no reading, so it binds by name."""
+    stores.datasets.get.return_value = {
+        "id": "d1",
+        "name": "UCR 001",
+        "description": "",
+        "origin": "benchmark",
+        "point_count": 100,
+        "series_count": 1,
+        "start_at": THEN,
+        "end_at": LATER,
+        "created_by": 1,
+        "created_at": THEN,
+        "source": {},
+        "series": [
+            {
+                "id": "s1",
+                "position": 0,
+                "name": "value",
+                "unit": "",
+                "reading_id": None,
+                "point_count": 100,
+                "start_at": THEN,
+                "end_at": LATER,
+            }
+        ],
+    }
+    stores.runs.create.return_value = dojo_run(status="queued", points_read=0)
+    stores.monitors.get_all_services.return_value = []
+    async with connected(gateway) as client:
+        tested = said(
+            await client.call_tool(
+                "test_design",
+                {
+                    "definition": starter()["definition"],
+                    "bindings": {"value": "value"},
+                    "dataset_id": "d1",
+                },
+            )
+        )
+        unknown = await client.call_tool(
+            "test_design",
+            {
+                "definition": starter()["definition"],
+                "bindings": {"value": "speed"},
+                "dataset_id": "d1",
+            },
+        )
+    assert tested["run_id"] == "run-1"
+    assert stores.runs.create.await_args.args[0].bindings == {"value": "s1"}
+    assert unknown.is_error and "speed" in said(unknown)

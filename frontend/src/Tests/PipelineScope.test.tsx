@@ -172,9 +172,9 @@ describe("scope settings", () => {
     expect(hasScope(robust)).toBe(true);
     expect(hasScope(transform("features.select", "none", []))).toBe(false);
     expect(stepScope(node({ apply_to: null, result: "replace", suffix: "robust" }), robust))
-      .toEqual({ applyTo: undefined, add: false, suffix: "robust", elementwise: true });
+      .toEqual({ applyTo: undefined, add: false, suffix: "robust", endings: ["robust"], elementwise: true });
     expect(stepScope(node({ result: "add", suffix: "" }), robust)?.suffix).toBe("robust");
-    expect(stepScope(node({}), pca)).toEqual({ applyTo: undefined, add: false, suffix: undefined, elementwise: false });
+    expect(stepScope(node({}), pca)).toEqual({ applyTo: undefined, add: false, suffix: undefined, endings: ["new"], elementwise: false });
     expect(isWarning({ severity: "warning" })).toBe(true);
     // Issues from before severities existed are errors.
     expect(isWarning({})).toBe(false);

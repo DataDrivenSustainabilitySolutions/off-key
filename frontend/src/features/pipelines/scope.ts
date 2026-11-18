@@ -11,6 +11,9 @@ export type StepScope = {
   add: boolean;
   /** Steps that map each feature to one value name their added features with it. */
   suffix?: string;
+  /** What each feature's added features end in, in output order: the suffix, or for Lags
+   * the suffix and each lag (lag1, lag24). */
+  endings: string[];
   elementwise: boolean;
 };
 
@@ -77,6 +80,7 @@ export function defaultSuffix(node: PipelineNode, component?: PipelineComponent)
       ? `smooth${numberLabel(Number(value("time_constant") ?? 60))}s`
       : `smooth${value("window_size")}`;
     case "prepare.despike": return "despiked";
+    case "prepare.lags": return "lag";
     case "prepare.change": return `${CHANGE_SUFFIXES[String(value("mode"))] ?? "diff"}${value("lag")}`;
     case "prepare.rolling": return value("statistic") === "quantile"
       // Two quantiles of one window keep apart: q10_60 and q90_60.
@@ -125,10 +129,71 @@ export function stepScope(node: PipelineNode, component?: PipelineComponent): St
     ? node.params.suffix
     : defaultSuffix(node, component);
   const add = (node.params.result ?? (addsByDefault(component) ? "add" : "replace")) === "add";
-  return { applyTo: strings(node.params.apply_to), add, suffix, elementwise: !!suffixField };
+  const endings = node.component === "prepare.lags"
+    ? lagsOf(node, component).map((lag) => `${suffix ?? "lag"}${lag}${lagUnit(node, component).short}`)
+    : [suffix ?? "new"];
+  return { applyTo: strings(node.params.apply_to), add, suffix, endings, elementwise: !!suffixField };
 }
 
 export const addedName = (feature: string, suffix: string) => `${feature}_${suffix}`;
+
+/** The features a step that adds per feature adds for one feature, as core names them. */
+export const addedNames = (feature: string, scope: StepScope) =>
+  scope.endings.map((ending) => addedName(feature, ending));
+
+/** A Lags step's lags, sorted and distinct as core keeps them. */
+export function lagsOf(node: PipelineNode, component?: PipelineComponent): number[] {
+  const value = setting(node, component, "lags");
+  const lags = Array.isArray(value) ? value.filter((item): item is number => Number.isInteger(item) && (item as number) > 0) : [];
+  return [...new Set(lags)].sort((a, b) => a - b);
+}
+
+/** What a lag counts, as core names it: a name appends short to the lag, power_lag15min. */
+export const LAG_UNITS: Record<string, { label: string; short: string; seconds?: number }> = {
+  observations: { label: "Observations", short: "" },
+  seconds: { label: "Seconds", short: "s", seconds: 1 },
+  minutes: { label: "Minutes", short: "min", seconds: 60 },
+  hours: { label: "Hours", short: "h", seconds: 3600 },
+  days: { label: "Days", short: "d", seconds: 86400 },
+};
+
+/** The unit a Lags step counts its lags in. */
+export const lagUnit = (node: PipelineNode, component?: PipelineComponent) =>
+  LAG_UNITS[String(setting(node, component, "unit") ?? "minutes")] ?? LAG_UNITS.minutes!;
+
+/** Lags as people write them: 1-3, 24. */
+export function lagText(lags: number[]): string {
+  const parts: string[] = [];
+  for (let index = 0; index < lags.length;) {
+    let end = index;
+    while (end + 1 < lags.length && lags[end + 1] === lags[end]! + 1) end += 1;
+    // Two neighbours read better apart: 1, 2 rather than 1-2.
+    if (end - index >= 2) parts.push(`${lags[index]}-${lags[end]}`);
+    else for (let at = index; at <= end; at += 1) parts.push(String(lags[at]));
+    index = end + 1;
+  }
+  return parts.join(", ");
+}
+
+/** Lags read from text such as "1-3, 24" or "1 2 3": the lags, or what is wrong. */
+export function parseLags(text: string, limit = 3600, most = 24): { lags: number[] } | { error: string } {
+  const lags = new Set<number>();
+  // "1 - 3" is one range, whatever the spaces around its dash.
+  const joined = text.replace(/\s*(?:-|–|\.\.)\s*/g, "-");
+  for (const part of joined.split(/[\s,;]+/).filter(Boolean)) {
+    const range = /^(\d+)-(\d+)$/.exec(part);
+    const [low, high] = range ? [Number(range[1]), Number(range[2])] : [Number(part), Number(part)];
+    if (!/^\d+$/.test(part) && !range) return { error: `"${part}" is not a lag. Write whole numbers or ranges, such as 1-3, 24.` };
+    if (low < 1 || high > limit) return { error: `Lags run from 1 to ${limit} observations.` };
+    if (low > high) return { error: `Write the range ${part} from small to large.` };
+    for (let lag = low; lag <= high; lag += 1) {
+      lags.add(lag);
+      if (lags.size > most) return { error: `At most ${most} lags fit in one step.` };
+    }
+  }
+  if (!lags.size) return { error: "Write at least one lag." };
+  return { lags: [...lags].sort((a, b) => a - b) };
+}
 
 /** "a", "a and b", "a, b and c", or the first few and a count of the rest. */
 export const listed = (names: string[], limit = 3) =>

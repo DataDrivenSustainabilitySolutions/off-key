@@ -2,7 +2,7 @@ import { useId, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
 import { CombinedName } from "./PipelineFormula";
-import { addedName, addsByDefault, combinedName, defaultSuffix, isExpectation, listed, setting, stepScope } from "./scope";
+import { addedNames, addsByDefault, combinedName, defaultSuffix, isExpectation, listed, setting, stepScope } from "./scope";
 
 type Issue = { path: (string | number)[]; message: string };
 
@@ -116,7 +116,8 @@ export function PipelineScope({ node, component, features, featureLabels, featur
       : `Replaces ${chosen ? listed(used) : "the features"} with ${computed}.`
     : scope.elementwise
     ? scope.add
-      ? used.length ? `Keeps the values and adds ${listed(used.map((name) => addedName(name, scope.suffix ?? "new")))}.` : "Keeps the values and adds a copy of each."
+      ? used.length ? `Keeps the values and adds ${listed(used.flatMap((name) => addedNames(name, scope)), 4)}.`
+        : scope.endings.length > 1 ? `Keeps the values and adds ${scope.endings.length} features for each.` : "Keeps the values and adds a copy of each."
       : keepsValues
         ? "Skips observations outside the range; the values that pass stay the same."
         : "Changes the values in place; the names stay the same."
@@ -128,6 +129,8 @@ export function PipelineScope({ node, component, features, featureLabels, featur
   const applyErrors = messages("apply_to");
   const suffixErrors = messages("suffix");
   const defaultResult = addsByDefault(component) ? "add" : "replace";
+  // A step that can only add, such as Lags, has no choice to show.
+  const resultChoices = component.fields.find((field) => field.name === "result")?.options?.length ?? 2;
   return <div className="pl-scope">
     <fieldset className="pl-field" aria-describedby={`${id}-applies ${id}-applies-errors`}>
       <legend>{expects ? "Expected from" : "Applies to"}</legend>
@@ -155,7 +158,7 @@ export function PipelineScope({ node, component, features, featureLabels, featur
         {applyErrors.map((issue, index) => <p key={index} className="pl-field-error" role="alert">{issue.message}</p>)}
       </div>
     </fieldset>
-    <div className="pl-field">
+    {resultChoices > 1 && <div className="pl-field">
       <span id={`${id}-result`}>Result</span>
       <div className="pl-segmented" role="group" aria-labelledby={`${id}-result`}>
         {(["replace", "add"] as const).map((result) => <button key={result} type="button"
@@ -169,7 +172,8 @@ export function PipelineScope({ node, component, features, featureLabels, featur
       {node.component === "prepare.despike" && !scope.add && <small className="pl-help">
         The detector sees the median in place of a spike. The raw value stays in the evidence.
       </small>}
-    </div>
+    </div>}
+    {resultChoices <= 1 && <small className="pl-help">{outcome}</small>}
     {computed !== undefined
       && <CombinedName node={node} component={component} issues={issues} readOnly={readOnly} onChange={onChange} />}
     {scope.elementwise && scope.add && <div className="pl-field">
@@ -178,7 +182,9 @@ export function PipelineScope({ node, component, features, featureLabels, featur
         placeholder={defaultSuffix(node, component)}
         maxLength={24} aria-invalid={suffixErrors.length > 0} aria-describedby={`${id}-suffix-help ${id}-suffix-errors`}
         onChange={(event) => set("suffix", event.target.value || undefined)} />
-      <small className="pl-help" id={`${id}-suffix-help`}>Added features are named feature_{scope.suffix ?? "suffix"}.</small>
+      <small className="pl-help" id={`${id}-suffix-help`}>{scope.endings.length > 1
+        ? `Added features are named feature_${scope.suffix ?? "suffix"} and the lag, such as feature_${scope.endings[0]}.`
+        : `Added features are named feature_${scope.suffix ?? "suffix"}.`}</small>
       <div id={`${id}-suffix-errors`}>
         {suffixErrors.map((issue, index) => <p key={index} className="pl-field-error" role="alert">{issue.message}</p>)}
       </div>

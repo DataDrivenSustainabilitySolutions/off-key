@@ -145,7 +145,11 @@
   gap: 4px;
   margin-left: auto;
 }
-.pl-stage .pl-setup-actions > button {
+/* The decision is laid out with the other actions here; a phone sets it in a bar of its own. */
+.pl-setup-decide {
+  display: contents;
+}
+.pl-stage :is(.pl-setup-actions, .pl-setup-decide) > button {
   min-height: 36px;
   padding: 8px 12px;
 }
@@ -156,14 +160,14 @@
 }
 
 /* Everything but the primary action is quiet until the pointer reaches it. */
-.pl-stage .pl-setup-actions > button:not(.mn-primary),
+.pl-stage :is(.pl-setup-actions, .pl-setup-decide) > button:not(.mn-primary),
 .pl-stage .pl-canvas-toolbar > .pl-actions button {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
-.pl-stage .pl-setup-actions > button:not(.mn-primary):not(:disabled):hover,
-.pl-stage .pl-setup-actions > button[data-state="open"],
+.pl-stage :is(.pl-setup-actions, .pl-setup-decide) > button:not(.mn-primary):not(:disabled):hover,
+.pl-stage :is(.pl-setup-actions, .pl-setup-decide) > button[data-state="open"],
 .pl-stage .pl-canvas-toolbar > .pl-actions button:not(:disabled):hover,
 .pl-stage .pl-canvas-toolbar > .pl-actions button[aria-expanded="true"],
 .pl-stage .pl-canvas-toolbar > .pl-actions button[data-state="open"] {
@@ -192,6 +196,11 @@
 .pl-stage .pl-canvas-toolbar .pl-segmented button[aria-pressed="true"] {
   background: hsl(var(--card));
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+}
+
+/* The brief and the design side by side need no tabs; a phone shows one at a time. */
+.pl-stage-tabs {
+  display: none;
 }
 
 /* Beside the side panel the bar is narrower than the window: the estimate stays in the status's own list. */
@@ -273,34 +282,161 @@
   .app-sidebar-reopen + .app-main .pl-stage .pl-setup-header { padding-inline-start: 52px; }
 }
 
-/* On a phone the page scrolls, the actions stack under the name and settings open as a bottom sheet. */
+/* A phone shows one thing at a time. The header keeps to the name and what is monitored, the
+   decision waits in a bar under the thumb, and a brief is read as a page of its own, in turn with
+   the design, instead of over it. Settings still open as a bottom sheet. */
 @media (max-width: 680px) {
   .app-main:has(> .ex-main-content > .pl-setup) {
     overflow: auto;
   }
   .pl-stage {
+    position: relative;
     grid-template-rows: auto minmax(420px, 1fr);
+  }
+  /* Room for the bar that holds the decision. */
+  .pl-stage:has(.pl-setup-decide) {
+    padding-bottom: calc(65px + env(safe-area-inset-bottom, 0px));
   }
   .pl-stage--features .pl-stage-canvas {
     padding: var(--pl-stage-gap);
   }
-  .pl-stage .pl-setup-header {
-    flex-direction: column;
-    align-items: stretch;
+  /* A container for queries would also hold the bar, which belongs to the screen. The header's
+     parts are laid out by the bar itself, so the tabs can stand between them: first where the
+     service sits and the templates, then the tabs, then the name and what it monitors. */
+  .pl-stage-top {
+    container-type: normal;
+    z-index: 11;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 8px;
   }
+  .pl-stage .pl-setup-header,
   .pl-stage .pl-setup-identity {
-    flex: none;
+    display: contents;
+  }
+  .pl-stage-top > *,
+  .pl-stage .pl-setup-identity > * {
+    grid-column: 1 / -1;
+    order: 2;
+  }
+  .pl-stage .pl-setup-identity .ex-breadcrumb {
+    grid-area: 1 / 1;
+    order: 0;
+    display: flex;
+    align-items: center;
+    min-height: 36px;
+  }
+  .app-sidebar-reopen + .app-main .pl-stage .pl-setup-identity .ex-breadcrumb {
+    margin-inline-start: 40px;
+  }
+  .pl-stage .pl-setup-identity .ex-breadcrumb ol::after {
+    content: none;
   }
   .pl-stage .pl-setup-actions {
-    display: grid;
-    margin-left: 0;
+    grid-area: 1 / 2;
+    order: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0;
+    margin: 0 -8px 0 0;
   }
-  .pl-stage .pl-setup-actions > button:not(.mn-primary) {
-    border-color: hsl(var(--border));
+  .pl-stage .pl-stage-tabs {
+    order: 1;
   }
   .pl-stage .pl-canvas-toolbar {
-    margin: 0;
+    order: 3;
   }
+  .pl-stage .pl-setup-notices {
+    order: 4;
+  }
+  .pl-stage .pl-name-input {
+    width: 100%;
+    max-width: none;
+    margin-left: -6px;
+  }
+  .pl-stage .pl-setup-identity > .pl-setup-input {
+    justify-self: start;
+    max-width: 100%;
+  }
+  /* The templates are named by one word here. */
+  .pl-stage .pl-setup-actions .pl-label-rest {
+    display: none;
+  }
+  .pl-stage .pl-setup-actions > button {
+    min-height: 36px;
+    padding: 6px 8px;
+    gap: 5px;
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-control);
+  }
+
+  /* The decision: one bar at the foot of the screen, the way to start widest. */
+  .pl-stage .pl-setup-decide {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    box-shadow: 0 -6px 20px hsl(var(--foreground) / 0.06);
+  }
+  .pl-stage .pl-setup-decide > button {
+    min-height: 44px;
+    padding: 8px 18px;
+    font-size: var(--text-body);
+  }
+  .pl-stage .pl-setup-decide > button.mn-primary {
+    flex: 1 1 auto;
+  }
+  .pl-stage .pl-setup-decide > button:not(.mn-primary) {
+    flex: 0 0 auto;
+    border-color: hsl(var(--border));
+  }
+  /* Toasts rise above the bar instead of covering it. */
+  body:has(.pl-setup-decide) [data-rht-toaster] {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Which of the two shows: the brief or the design. */
+  .pl-stage-tabs {
+    display: grid;
+  }
+  .pl-stage-tabs button {
+    min-height: 36px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-control);
+  }
+  .pl-stage-tabs button[aria-pressed="true"] {
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    font-weight: 500;
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+  }
+  .pl-stage .pl-brief-button {
+    display: none;
+  }
+
+  /* The tools keep to one row: those named by their sign alone drop their word. */
+  .pl-stage .pl-canvas-toolbar {
+    margin: 0 0 0 -10px;
+    gap: 2px 8px;
+  }
+  .pl-stage .pl-canvas-toolbar .pl-label-wide {
+    display: none;
+  }
+  .pl-stage .pl-canvas-toolbar .pl-segmented {
+    margin-left: auto;
+  }
+  .pl-stage .pl-canvas-toolbar > .pl-actions:first-child {
+    flex: 1 1 100%;
+  }
+
   .pl-stage-body {
     align-items: flex-end;
   }
@@ -314,6 +450,50 @@
     border-width: 1px 0 0;
     border-style: solid;
     box-shadow: 0 -8px 24px #0002;
+  }
+
+  /* Reading: the brief is the page and scrolls with it. The canvas keeps a size of its own
+     out of sight, so the design stands where it was fitted when its turn comes. */
+  .pl-stage--reading {
+    height: auto;
+    min-height: 100%;
+    grid-template-rows: auto auto;
+  }
+  /* The name and the readings are set with the design; the brief opens with the name it was handed in under.
+     A name that is missing still shows, with what is wrong with it. */
+  .pl-stage--reading .pl-canvas-toolbar,
+  .pl-stage--reading .pl-setup-input,
+  .pl-stage--reading .pl-name-input:not([aria-invalid="true"]) {
+    display: none;
+  }
+  .pl-stage--reading .pl-stage-top {
+    border-bottom: 0;
+    padding-bottom: 10px;
+  }
+  .pl-stage--reading .pl-stage-canvas {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 420px;
+    visibility: hidden;
+  }
+  .pl-stage--reading .pl-stage-body {
+    display: block;
+    background: hsl(var(--card));
+  }
+  .pl-stage--reading .pl-settings-panel--brief {
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .pl-stage--reading .pl-settings-panel--brief .pl-inspector {
+    max-height: none;
+    padding: 2px var(--pl-stage-gap) 24px;
+    overflow: visible;
+  }
+  .pl-stage--reading .pl-inspector-heading {
+    display: none;
   }
 }
 

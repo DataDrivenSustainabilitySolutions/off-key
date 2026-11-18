@@ -145,6 +145,24 @@ workspace answers that with the accepting decision. The proposal is therefore ac
 when its start is requested, not when the service runs, so leaving the page
 during the start loses nothing; a start the server refuses decides nothing.
 
+A phone (680px and narrower) lays the same markup out differently, in
+`styles/stage.css` and `styles/proposals.css`; nothing asks the screen's width
+in script. The setup's header parts become cells of the bar's own grid
+(`display: contents` on the header and its identity), so the breadcrumb and the
+templates share the first row and the tabs can stand above the name. The
+decision (`.pl-setup-decide`, the `menu` and Start) is a fixed bar at the foot
+of the screen; on a wide screen the wrapper is `display: contents` and changes
+nothing. A stage with a `brief` renders two tabs (`.pl-stage-tabs`), shown only
+there: with the brief open the stage is `pl-stage--reading`, the brief flows
+as the page and the canvas keeps a size out of sight (`visibility: hidden`),
+so the design stays where it was fitted. `useCoveredEdges` reports no cover
+for a canvas that is not shown, and a request for the list of issues switches
+to the design, since the status that list opens at is hidden with the toolbar.
+Buttons that drop their word on a phone (`.pl-label-rest`, `.pl-label-wide`)
+keep the whole name in `aria-label`. A card in the list folds its evidence and
+limits behind a button (`data-more` on the card); the button exists only for a
+phone and is `display: none` elsewhere.
+
 A design that replaces a service is compared with the design the service runs
 (`compareDesigns` in `comparison.ts`). The setup has that design already, as
 the `predecessor` it loads for `?replace=<service>`, so the comparison costs no

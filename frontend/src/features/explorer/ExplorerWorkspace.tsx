@@ -27,7 +27,9 @@ const Pipelines = lazy(() => import("../pipelines/PipelineWorkspace"));
 const RetainedPipeline = lazy(() => import("../pipelines/PipelineRunView"));
 
 export function ExplorerWorkspace() {
-  const { userId, isAuthenticated, can } = useAuth();
+  const { userId, isAuthenticated, isGuest, can } = useAuth();
+  // A demo visitor reads the same services a member does, without changing them.
+  const canRead = isAuthenticated || isGuest;
   const manageMonitors = can("manage_monitors");
   const designTest = useDesignTest();
   const [params, setParams] = useSearchParams();
@@ -38,7 +40,7 @@ export function ExplorerWorkspace() {
   const requestedStream = requestedReading ? document.readings.find(stream => stream.id === requestedReading) : undefined;
   const initialTarget = params.get("target") ?? (requestedStream && readingTargetId(requestedStream));
   const creating = params.get("create") === "monitoring";
-  const monitoring = useMonitoringServices(isAuthenticated, requestedService ? 5_000 : 20_000, requestedService ?? params.get("replace") ?? undefined);
+  const monitoring = useMonitoringServices(canRead, requestedService ? 5_000 : 20_000, requestedService ?? params.get("replace") ?? undefined);
   const pipelineView = !!params.get("pipeline") || ["pipelines", "proposals"].includes(params.get("view") ?? "") || params.has("proposal")
     || creating && monitoring.authoringEnabled;
   // Counted where the button shows, so the number is fresh on the way back from a decision.
@@ -124,7 +126,7 @@ export function ExplorerWorkspace() {
     if (requestedService) return <div className="mn-empty"><p>{monitoring.error || (!monitoring.ready ? "Loading service…" : "Service not found.")}</p>
       <button onClick={closeView}><ArrowLeft size={14} aria-hidden="true" />All services</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
     </div>;
-    const services = isAuthenticated && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices}
+    const services = canRead && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices}
       index={monitoringIndex} ready={monitoring.ready} error={monitoring.error} favourites={favourites}
       serviceHref={id => withCatalogueSource(`/?service=${encodeURIComponent(id)}`, selected)}
       onFavourite={id => toggleFavourite("monitor", id)} onOpen={openService} onRetry={() => void monitoring.reload()} />;

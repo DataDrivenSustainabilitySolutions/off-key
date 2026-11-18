@@ -19,7 +19,7 @@ import { mqttConnection } from "./support/fixtures/system";
 
 const everything = ["manage_sources", "manage_monitors", "manage_alarms", "manage_members"];
 const auth = vi.hoisted(() => {
-  const auth = { userId: 1 as number | null, isAuthenticated: true, permissions: [] as string[],
+  const auth = { userId: 1 as number | null, isAuthenticated: true, isGuest: false, permissions: [] as string[],
     can: (permission: string) => auth.permissions.includes(permission) };
   return auth;
 });
@@ -96,7 +96,7 @@ beforeAll(async () => {
 const emptyReport: AlarmPage = { items: [], next: null, summary: { count: 0, devices: 0, latest: null }, readings: [], unknown_reading_ids: [] };
 
 beforeEach(() => {
-  auth.userId = 1; auth.isAuthenticated = true; auth.permissions = everything;
+  auth.userId = 1; auth.isAuthenticated = true; auth.isGuest = false; auth.permissions = everything;
   clearNavigationDrafts();
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot() : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
   vi.mocked(apiUtils.put).mockImplementation(async (_endpoint, payload) => snapshot((payload as { document: SystemDocument }).document, 8));
@@ -667,6 +667,14 @@ describe("hierarchical explorer workspace", () => {
     expect((within(dialog).getByRole("button", { name: "Add broker" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(dialog).getByRole("button", { name: "Import JSON" }) as HTMLButtonElement).disabled).toBe(true);
     expect(apiUtils.put).not.toHaveBeenCalled();
+  });
+
+  it("lists the running services to a demo visitor, read only", async () => {
+    auth.userId = null; auth.isAuthenticated = false; auth.isGuest = true; auth.permissions = [];
+    withServices([service()]);
+    mount();
+    expect(await screen.findByRole("link", { name: "Room climate" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
   });
 
   it("lets read-only users inspect signals without structural controls", async () => {

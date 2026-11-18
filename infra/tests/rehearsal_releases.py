@@ -24,7 +24,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "04d6cf218dde4b289c725cd085827887876e0dde"
+COMPATIBLE_REVISION = "b09b79d44a3d14af1464eb944d80137d73832bc7"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

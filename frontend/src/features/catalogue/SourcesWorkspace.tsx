@@ -8,7 +8,7 @@ import { useRecording } from "./useRecording";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
 import { POLL_SECONDS, startRecording, stopRecording } from "./recordingEdits";
 import { BrokerCheckMark } from "./BrokerCheck";
-import { checkProblem, useBrokerChecks } from "./useBrokerChecks";
+import { checkProblem, checkTone, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { WorkspaceBack } from "../workspace/WorkspaceBack";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -165,10 +165,13 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
         const node = index.nodes.get(index.objectKeys.get(item.id)![0]!)!;
         return <div key={item.id} className={`source-broker source-broker--${status.tone}`}>
           <button type="button" className="source-broker-open" onClick={() => { selectSource(node); setExpanded(node.key, true); }}>
-            <strong className="source-identity"><SourceIcon kind="connection" appearance={item.appearance} />{item.label}{check && <BrokerCheckMark check={check} visibleReason={reason} />}</strong></button>
-          <span>{readings} {readings === 1 ? "reading" : "readings"}{enabled > 0 && readings > 1 ? ` · ${enabled} enabled` : ""}</span>
-          {reason && <span className="source-broker-reason">{reason}</span>}
-          <div className="source-broker-status"><span className={`mn-state mn-state--${status.tone}`}>{status.label}</span>
+            <strong className="source-identity"><SourceIcon kind="connection" appearance={item.appearance} />{item.label}<BrokerCheckMark check={check} problem={reason}
+              tone={status.reason || !check ? "danger" : checkTone(check) === "warning" ? "warning" : "danger"} /></strong></button>
+          {/* The reason shares the count's line, so a problem never makes its row taller. */}
+          <span className="source-broker-meta">{readings} {readings === 1 ? "reading" : "readings"}{enabled > 0 && readings > 1 ? ` · ${enabled} enabled` : ""}
+            {reason && <> · <span className="source-broker-reason" title={reason}>{reason}</span></>}</span>
+          <div className="source-broker-status">{/* A Record button already says that recording is off. */}
+            {!(status.tone === "neutral" && system.canEdit) && <span className={`mn-state mn-state--${status.tone}`}>{status.label}</span>}
             {rowActions(item.id, item.label)}</div>
         </div>;
       })}

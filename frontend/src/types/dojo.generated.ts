@@ -171,6 +171,18 @@ export type Fault = {
   size?: number | null;
 };
 
+export type FaultSuiteCreate = {
+  dataset_id: string;
+  name: string;
+  description?: string;
+  copies?: number;
+  faults_per_copy?: number;
+  kinds?: Array<"step" | "drift" | "freeze" | "gap">;
+  series?: Array<string>;
+  clean_share?: number;
+  seed?: number;
+};
+
 export type LabelBatch = {
   labels: Array<LabelCreate>;
 };

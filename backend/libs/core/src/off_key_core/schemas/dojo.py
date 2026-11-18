@@ -30,6 +30,7 @@ MAX_PENDING_LABELS = 1_000
 MAX_COMPARED_RUNS = 6
 # Faults one copy of a dataset may carry, each labelled as a known problem.
 MAX_FAULTS = 20
+MAX_FAULT_COPIES = 20
 # Benchmark series one import may add; each becomes a dataset of its own.
 MAX_BENCHMARK_IMPORT = 20
 MAX_BENCHMARK_PAGE = 250
@@ -43,6 +44,7 @@ RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 CsvLayout = Literal["wide", "long"]
 LabelOutcomeKind = Literal["detected", "missed", "unscored"]
 FaultKind = Literal["step", "drift", "freeze", "gap"]
+FAULT_KINDS: tuple[FaultKind, ...] = ("step", "drift", "freeze", "gap")
 
 
 class DojoModel(BaseModel):
@@ -925,6 +927,49 @@ class SuiteCreate(DojoModel):
     def distinct(self):
         if len(set(self.dataset_ids)) != len(self.dataset_ids):
             raise ValueError("Each dataset may appear only once")
+        return self
+
+
+class FaultSuiteCreate(DojoModel):
+    """Make a suite of labelled copies of one dataset, each with faults written
+    in at reproducible random places.
+
+    Recorded history rarely has labels. Copies with known faults let designs
+    be tested on the real background of a setup: the same ``seed`` and
+    settings always write the same faults.
+    """
+
+    dataset_id: str = Field(
+        description="The dataset to copy, such as a setup's history."
+    )
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    copies: int = Field(default=8, ge=1, le=MAX_FAULT_COPIES)
+    faults_per_copy: int = Field(default=2, ge=1, le=5)
+    kinds: list[FaultKind] = Field(
+        default_factory=lambda: list(FAULT_KINDS),
+        min_length=1,
+        description="The kinds to draw from.",
+    )
+    series: list[str] = Field(
+        default_factory=list,
+        description="Names of the series to write faults into; empty means all.",
+    )
+    clean_share: float = Field(
+        default=0.3,
+        ge=0,
+        le=0.8,
+        description="The share of the time span at the start left without "
+        "faults, for a design's warm-up.",
+    )
+    seed: int = Field(
+        default=0, ge=0, description="The same seed writes the same faults."
+    )
+
+    @model_validator(mode="after")
+    def distinct(self):
+        if len(set(self.kinds)) != len(self.kinds):
+            raise ValueError("Each kind may appear only once")
         return self
 
 

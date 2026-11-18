@@ -380,6 +380,12 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    gives a Wilcoxon signed-rank p-value: a small one means the difference is
    unlikely to be chance across these datasets, not that it holds elsewhere.
    Choosing a study's name lists its run and metrics for each dataset.
+7. **Fault suite**, on a dataset, tests designs on data that has no labels,
+   such as a setup's recorded history. It makes labelled copies with faults
+   written in at drawn places (steps, drifts, frozen values and gaps, as you
+   choose) after a clean start kept for warm-up, apart from the dataset's own
+   labels, and gathers the copies into a suite to run studies on. The same
+   seed writes the same faults again.
 
 A design that is still being built is tested without leaving it: **Test** in
 the monitoring setup copies the recorded values of its readings into a dataset

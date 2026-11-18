@@ -12,7 +12,7 @@ from .pipeline_combine import (
     for_each,
     lane_condition,
 )
-from .pipeline_prepare import LANE_COMPONENTS, ROW_COMPONENTS, prepared_bounds
+from .pipeline_prepare import LANE_COMPONENTS, ROW_COMPONENTS, kernel, prepared_bounds
 from .pipeline_scope import EXPECTATIONS, PROJECTIONS, step_scope
 
 Columns = list[FeatureDescription]
@@ -87,8 +87,18 @@ def _elementwise(node: PipelineNode, columns: Columns) -> Columns:
     )
     # Without added features the used columns are the incoming ones, so they
     # change in place.
+    # A step that gives several values per feature, such as Lags, adds a copy
+    # of the feature for each.
+    width = (
+        kernel(node.component, node.params).width
+        if node.component in LANE_COMPONENTS
+        else 1
+    )
     changed = change(
-        node, [item.model_copy(deep=True) for item in used] if scope.add else used
+        node,
+        [item.model_copy(deep=True) for item in used for _ in range(width)]
+        if scope.add
+        else used,
     )
     for item in changed:
         item.steps.append(node.id)

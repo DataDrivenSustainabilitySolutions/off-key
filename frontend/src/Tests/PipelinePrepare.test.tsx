@@ -88,7 +88,7 @@ describe("Prepare steps in the composer", () => {
   });
 
   it("read Change and Rolling statistic as adding by default", () => {
-    expect(stepScope(node(change), change)).toEqual({ applyTo: undefined, add: true, suffix: "diff1", elementwise: true });
+    expect(stepScope(node(change), change)).toEqual({ applyTo: undefined, add: true, suffix: "diff1", endings: ["diff1"], elementwise: true });
     expect(stepScope(node(change, { result: "replace" }), change)?.add).toBe(false);
     expect(stepScope(node(smooth), smooth)?.add).toBe(false);
     expect(stepScope(node(rolling, { suffix: "avg" }), rolling)?.suffix).toBe("avg");

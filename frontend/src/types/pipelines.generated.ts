@@ -205,6 +205,14 @@ export type IssueFix = {
   text: string;
 };
 
+export type LagsParameters = {
+  apply_to?: Array<string> | null;
+  result?: "add";
+  suffix?: string | null;
+  unit?: "observations" | "seconds" | "minutes" | "hours" | "days";
+  lags?: Array<number>;
+};
+
 export type MathParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";

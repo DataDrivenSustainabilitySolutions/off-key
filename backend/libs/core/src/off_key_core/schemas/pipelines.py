@@ -1786,6 +1786,80 @@ class ChangeParameters(PrepareScopeParameters):
     )
 
 
+# Lags one Lags step adds per feature.
+MAX_LAGS = 24
+# Seconds in each unit a lag can be counted in, and what a name appends for it.
+LAG_UNITS: dict[str, tuple[float, str]] = {
+    "seconds": (1.0, "s"),
+    "minutes": (60.0, "min"),
+    "hours": (3600.0, "h"),
+    "days": (86400.0, "d"),
+}
+
+
+class LagsParameters(PrepareScopeParameters):
+    """Each feature's values from several observations or times back, one
+    feature per lag."""
+
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description="Keep the features this step uses and add one feature per lag.",
+        # Lags only add; the schema offers no other choice.
+        json_schema_extra={"enum": ["add"]},
+    )
+    suffix: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=24,
+        pattern=r"^[A-Za-z0-9_]+$",
+        title="Suffix",
+        description=(
+            "Added features are named <feature>_<suffix><lag>, with the unit of "
+            "a time, as in power_lag15min. Leave unset for lag."
+        ),
+    )
+    unit: Literal["observations", "seconds", "minutes", "hours", "days"] = Field(
+        default="minutes",
+        description=(
+            "Count lags in time, which stays right across gaps and readings sent "
+            "on change: a lag is the last value at or before that long ago. Count "
+            "them in observations for a series measured at a steady interval."
+        ),
+    )
+    lags: list[Annotated[int, Field(ge=1, le=PREPARE_WINDOW_LIMIT)]] = Field(
+        default=[1, 5, 15],
+        min_length=1,
+        max_length=MAX_LAGS,
+        title="Lags",
+        description=(
+            "How far back, in the unit, such as 1, 2, 3 and 24. Each lag adds "
+            "one feature per feature used."
+        ),
+    )
+
+    @field_validator("result")
+    @classmethod
+    def only_adds(cls, value: str) -> str:
+        if value != "add":
+            raise ValueError("Lags keep the features and add their lags")
+        return value
+
+    @field_validator("lags")
+    @classmethod
+    def distinct_lags(cls, value: list[int]) -> list[int]:
+        if len(value) != len(set(value)):
+            raise ValueError("List each lag once")
+        return sorted(value)
+
+    @model_validator(mode="after")
+    def within_thirty_days(self) -> "LagsParameters":
+        unit = LAG_UNITS.get(self.unit)
+        if unit is not None and max(self.lags) * unit[0] > MAX_TIME_CONSTANT:
+            raise ValueError("Lags reach at most 30 days back")
+        return self
+
+
 class RollingParameters(PrepareScopeParameters):
     result: Literal["replace", "add"] = Field(
         default="add",

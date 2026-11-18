@@ -761,6 +761,33 @@ to add `<feature>_total`, `<feature>_running_min`, `<feature>_running_max` or
 `<feature>_count`. State is `(seen, value, carry)`; `_carried()` reads the
 `(seen, value)` of checkpoints from before the carry as a carry of 0.
 
+`prepare.lags` is the one per-feature step that gives several values per
+feature. Its kernel says so with `several` and `width`: `advance` then returns
+a tuple in the order of `output_suffixes()`, ascending lags, and `step_scope`
+names the added features `<feature>_<suffix><lag><unit>` grouped by feature
+(`a_lag1min, a_lag15min, b_lag1min, b_lag15min`; no unit for observations).
+`PrepareStage._advance` and `pipeline_features._elementwise` read these, so
+other steps keep one value each. The step only adds (`result` is fixed to
+`add`); settings hold at most 24 lags, sorted and distinct, and at most 30
+days back.
+
+`unit` decides what a lag counts. In `observations` (`Lags`) a feature keeps a
+window of its largest lag, which counts toward `MAX_WINDOW_VALUES`, and has
+output once that lag has arrived. In seconds, minutes, hours or days
+(`TimeLags`) the step reads time (`reads_time()`): `lane_context` hands it the
+observation's time, and a lag is the last value at or before that long ago.
+Its state holds `(times, values)` thinned with age: a point between two
+others leaves once they lie within 1% of the newer one's age, and only the
+newest point past the longest lag stays. A lag therefore finds an observation
+at most 1% of itself earlier than asked, never later, and the points kept grow
+with the log of the longest lag; `window` bounds them for observations at
+least 0.1 s apart. Its warm-up is in time, so it has no lead: `Kernel.waiting()`
+keeps `PrepareStage.remaining()` above 0 until the longest lag is covered.
+Lags in observations are no fixed time back behind a Gate or on an input the
+source holds, which the compiler reports as `lags_after_gate` and
+`lags_of_held_input`; `wide_lags` warns when one step adds more than 24
+features.
+
 Three per-feature steps also read the row they run on. A kernel cannot parse a
 condition, because `pipeline_formula.py` imports `pipeline_prepare.py`, so
 `lane_context(component, params, names)` in `pipeline_combine.py` returns a

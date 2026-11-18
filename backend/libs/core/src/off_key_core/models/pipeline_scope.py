@@ -21,6 +21,7 @@ from .pipeline_prepare import (
     PREPARE_COMPONENTS,
     PREPARE_MODELS,
     default_suffix,
+    output_suffixes,
 )
 
 # Steps that map each feature to one value, by the parameters that name their
@@ -127,8 +128,9 @@ class StepScope:
     add: bool
     elementwise: bool
     added: tuple[str, ...] = ()
-    """Names of the features an elementwise step adds, one per selected feature,
-    or the residual an Expected value step gives."""
+    """Names of the features an elementwise step adds, one per selected feature
+    (a Lags step adds one per lag, grouped by feature), or the residual an
+    Expected value step gives."""
 
     @property
     def indices(self) -> list[int]:
@@ -216,7 +218,8 @@ def step_scope(
             if component in ELEMENTWISE_SUFFIXES
             else default_suffix(component, params)
         )
-        added = tuple(f"{name}_{suffix}" for name in selected)
+        endings = output_suffixes(component, params, suffix)
+        added = tuple(f"{name}_{ending}" for name in selected for ending in endings)
         taken = next((name for name in added if name in available), None)
         if taken is not None:
             raise ScopeError(

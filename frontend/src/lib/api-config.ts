@@ -27,6 +27,8 @@ export const API_CONFIG = {
 
     // Recorded values of catalogue readings
     READINGS: {
+      PROFILE: (readingId: string, days = 14) =>
+        `/v1/readings/${encodeURIComponent(readingId)}/profile?days=${days}`,
       MEASUREMENTS: (
         readingId: string,
         limit?: number,

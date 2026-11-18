@@ -96,6 +96,73 @@ class RecentValues(BaseModel):
     )
 
 
+class SuggestedLag(BaseModel):
+    """A lag the partial autocorrelation says carries information of its own."""
+
+    observations: int = Field(description="Steps back on the profile's grid.")
+    seconds: float = Field(description="The same lag in time.")
+    partial: float = Field(
+        description="Partial autocorrelation at this lag, from -1 to 1."
+    )
+
+
+class Season(BaseModel):
+    """A repeating cycle: a peak of the autocorrelation."""
+
+    observations: int = Field(description="Steps in one cycle on the profile's grid.")
+    seconds: float = Field(description="The same cycle in time.")
+    strength: float = Field(description="Autocorrelation at the cycle, from 0 to 1.")
+
+
+class Autocorrelation(BaseModel):
+    """How a series relates to its own past, on an even grid of time.
+
+    Uneven values are put on the grid by taking the last value at or before
+    each step, so a lag here is a fixed time back. Correlation is context for
+    choosing steps, not a test: it says nothing about which values are wrong.
+    """
+
+    step_seconds: float = Field(description="The grid's step, one lag.")
+    count: int = Field(description="Values on the grid.")
+    regular: bool = Field(
+        description=(
+            "Whether the values arrived evenly, so the grid holds them as they are."
+        )
+    )
+    acf: list[float] = Field(
+        description="Autocorrelation at lags 1, 2 and on, from -1 to 1."
+    )
+    pacf: list[float] = Field(
+        description=(
+            "Partial autocorrelation at lags 1, 2 and on: what a lag adds once "
+            "the shorter lags are known."
+        )
+    )
+    bound: float = Field(
+        description="Values beyond plus or minus this differ from noise (95%)."
+    )
+    persistent: bool = Field(
+        description=(
+            "Whether the autocorrelation stays high for many lags: a trend or a "
+            "level that wanders, which differencing, decomposing or forecasting "
+            "takes out before a detector scores what is left."
+        )
+    )
+    suggested_lags: list[SuggestedLag] = Field(
+        default_factory=list,
+        description=(
+            "Lags worth giving a detector, strongest partial autocorrelation first."
+        ),
+    )
+    seasons: list[Season] = Field(
+        default_factory=list,
+        description=(
+            "Cycles, strongest first. One cycle suits a seasonal forecaster's "
+            "season length, a matrix profile's subsequence length and a lag."
+        ),
+    )
+
+
 class ReadingProfile(BaseModel):
     """What a reading looks like over a window, so a design can be fitted to it.
 
@@ -152,6 +219,14 @@ class ReadingProfile(BaseModel):
     )
     recent: RecentValues | None = Field(
         default=None, description="Null where the window holds no value."
+    )
+    autocorrelation: list[Autocorrelation] = Field(
+        default_factory=list,
+        description=(
+            "How the reading relates to its own past: over its newest values, "
+            "then over the whole window in buckets, which shows daily and "
+            "weekly cycles. Empty where too few values arrived."
+        ),
     )
     notes: list[str] = Field(
         default_factory=list,

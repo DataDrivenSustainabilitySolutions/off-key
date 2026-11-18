@@ -1,6 +1,8 @@
 import { useId, useState } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
+import { duration } from "./lagContext";
+import { PipelineLagContext } from "./PipelineLagContext";
 import { LAG_UNITS, lagText, lagUnit, lagsOf, parseLags, setting } from "./scope";
 
 type Issue = { path: (string | number)[]; message: string };
@@ -22,13 +24,6 @@ const PRESETS: Record<"counted" | "timed", { label: string; lags: number[] }[]> 
 };
 
 const same = (one: number[], other: number[]) => one.length === other.length && one.every((item, index) => item === other[index]);
-
-/** A duration in its largest whole unit: 9 s, 14 min, 3.6 h. */
-function duration(seconds: number) {
-  if (seconds < 60) return `${Number(seconds.toPrecision(2))} s`;
-  if (seconds < 3600) return `${Number((seconds / 60).toPrecision(2))} min`;
-  return `${Number((seconds / 3600).toPrecision(2))} h`;
-}
 
 /** A Lags step's unit and lags, typed as people write them: 1-3, 24. */
 export function PipelineLags({ node, component, issues, readOnly, onChange }: {
@@ -92,6 +87,7 @@ export function PipelineLags({ node, component, issues, readOnly, onChange }: {
       {"error" in parsed && <p className="pl-field-error" role="alert">{parsed.error}</p>}
       {errors.map((issue, index) => <p key={index} className="pl-field-error" role="alert">{issue.message}</p>)}
     </div>
+    <PipelineLagContext lags={lags} unit={unit} readOnly={readOnly} onLags={(next) => { setDraft(null); set("lags", next); }} />
   </div>;
 }
 

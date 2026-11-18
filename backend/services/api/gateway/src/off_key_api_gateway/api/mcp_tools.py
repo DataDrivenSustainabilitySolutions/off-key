@@ -405,8 +405,9 @@ class Profile(Args):
 async def profile_reading(api: Api, args: Profile):
     """What a reading looked like over the last days: how often it reports and
     where it has gaps, how far its values reach, how much of its variation
-    follows the hour of the day or the day of the week, and how far its level
-    moved. Read it before you choose steps, and before you set how many
+    follows the hour of the day or the day of the week, how far its level
+    moved, and how it relates to its own past: autocorrelation, suggested lags
+    and cycles. Read it before you choose steps, and before you set how many
     observations a design learns from."""
     return await api.get(
         f"/v1/readings/{_segment(args.reading_id)}/profile", {"days": args.days}
@@ -1243,6 +1244,25 @@ async def get_dataset_values(api: Api, args: DatasetValues):
         "rows": [[item["timestamp"], item["value"]] for item in page["items"]],
         "next_after": page.get("next_after"),
     }
+
+
+class SeriesQuery(Args):
+    dataset_id: str
+    series: str
+
+
+@tool(SeriesQuery)
+async def profile_series(api: Api, args: SeriesQuery):
+    """profile_reading for a dataset series: autocorrelation, lags, cycles."""
+    path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}"
+    dataset = await api.get(path)
+    found = next(
+        (item for item in dataset["series"] if item["name"] == args.series), None
+    )
+    if found is None:
+        names = ", ".join(item["name"] for item in dataset["series"])
+        raise ApiRefusal(404, f"No series {args.series!r}; the dataset has {names}")
+    return await api.get(f"{path}/series/{_segment(found['id'])}/profile")
 
 
 class ProposedLabel(Args):

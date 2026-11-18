@@ -788,6 +788,14 @@ source holds, which the compiler reports as `lags_after_gate` and
 `lags_of_held_input`; `wide_lags` warns when one step adds more than 24
 features.
 
+`models/autocorrelation.py` gives the context for choosing lags: ACF, PACF by
+Durbin-Levinson, a 1.96/√n bound, suggested lags and cycles, on an even grid
+(`on_grid`) that rounds a coarser step to a round time. The reading profile
+and the Dojo series profile both use it; in the editor the Lags panel shows it
+for the readings the design is bound to (`LagReadingsContext`), with the
+suggested lags and a lag of one cycle a press away and a note where two chosen
+lags correlate above 0.95.
+
 Three per-feature steps also read the row they run on. A kernel cannot parse a
 condition, because `pipeline_formula.py` imports `pipeline_prepare.py`, so
 `lane_context(component, params, names)` in `pipeline_combine.py` returns a

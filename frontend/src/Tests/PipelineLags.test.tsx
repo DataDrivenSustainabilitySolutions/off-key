@@ -1,5 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { apiUtils } from "@/lib/api-client";
+import { cycleLag, LagReadingsContext, redundantPairs, suggestedLags } from "@/features/pipelines/lagContext";
+import type { Autocorrelation } from "@/types/dojo.generated";
 import { normalizeDefinition, type PipelineComponent, type PipelineNode } from "@/features/pipelines/contracts";
 import { PipelineLags } from "@/features/pipelines/PipelineLags";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
@@ -8,7 +11,16 @@ import { stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
 
+vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
+
 type Field = PipelineComponent["fields"][number];
+const minutely: Autocorrelation = {
+  step_seconds: 60, count: 4000, regular: true, bound: 0.03, persistent: false,
+  acf: [0.97, 0.9, 0.8, 0.7, 0.6], pacf: [0.97, -0.4, 0.2, 0.01, 0],
+  suggested_lags: [{ observations: 1, seconds: 60, partial: 0.97 }, { observations: 2, seconds: 120, partial: -0.4 },
+    { observations: 3, seconds: 180, partial: 0.2 }],
+  seasons: [{ observations: 1440, seconds: 86400, strength: 0.8 }],
+};
 const lags = {
   id: "prepare.lags", kind: "transform", group: "prepare", label: "Lags", description: "",
   input_type: "features", output_type: "features",
@@ -90,5 +102,34 @@ describe("Lags", () => {
     expect(screen.queryByRole("group", { name: "Result" })).toBeNull();
     expect(screen.getByText("Keeps the values and adds power_lag1 and power_lag24.")).toBeTruthy();
     expect(screen.getByText(/such as feature_lag1/)).toBeTruthy();
+  });
+
+  it("turns a profile into lags in the step's unit and names lags that move together", () => {
+    expect(suggestedLags(minutely, { short: "", seconds: undefined })).toEqual([1, 2, 3]);
+    expect(suggestedLags(minutely, { short: "min", seconds: 60 })).toEqual([1, 2, 3]);
+    // Under one hour rounds to nothing in hours.
+    expect(suggestedLags(minutely, { short: "h", seconds: 3600 })).toEqual([]);
+    expect(cycleLag(86400, 1440, { short: "h", seconds: 3600 })).toBe(24);
+    expect(redundantPairs([1, 2, 5], minutely, { short: "min", seconds: 60 })).toEqual([{ one: 1, other: 2, correlation: 0.97 }]);
+  });
+
+  it("shows how the bound reading relates to its past and uses what it suggests", async () => {
+    vi.mocked(apiUtils.get).mockResolvedValue({ autocorrelation: [minutely], notes: [] });
+    const changes: Record<string, JsonValue>[] = [];
+    render(<LagReadingsContext.Provider value={[{ id: "power-1", label: "Power" }]}>
+      <PipelineLags node={node()} component={lags} issues={[]} onChange={(params) => { changes.push(params); }} />
+    </LagReadingsContext.Provider>);
+    expect(await screen.findByRole("img", { name: "Autocorrelation over 5 lags" })).toBeTruthy();
+    expect(vi.mocked(apiUtils.get).mock.calls[0]![0]).toBe("/v1/readings/power-1/profile?days=14");
+    expect(screen.getByText(/points to 1 min, 2 min, 3 min/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use these" }));
+    expect(changes[changes.length - 1]).toEqual({ lags: [1, 2, 3] });
+    fireEvent.click(screen.getByRole("button", { name: "Add 1440 min" }));
+    expect(changes[changes.length - 1]).toEqual({ lags: [1, 5, 15, 1440] });
+  });
+
+  it("asks for readings before it can say anything about lags", () => {
+    render(<PipelineLags node={node()} component={lags} issues={[]} onChange={() => undefined} />);
+    expect(screen.getByText(/Choose readings for this design/)).toBeTruthy();
   });
 });

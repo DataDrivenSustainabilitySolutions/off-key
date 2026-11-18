@@ -2,6 +2,18 @@
 
 import type { PipelineDefinition, PipelineNodePreview } from "./pipelines.generated";
 
+export type Autocorrelation = {
+  step_seconds: number;
+  count: number;
+  regular: boolean;
+  acf: Array<number>;
+  pacf: Array<number>;
+  bound: number;
+  persistent: boolean;
+  suggested_lags?: Array<SuggestedLag>;
+  seasons?: Array<Season>;
+};
+
 export type BenchmarkCollectionView = {
   id: string;
   name: string;
@@ -504,6 +516,23 @@ export type ScoreMetrics = {
   top1_hit: boolean | null;
 };
 
+export type Season = {
+  observations: number;
+  seconds: number;
+  strength: number;
+};
+
+export type SeriesProfile = {
+  series_id: string;
+  name: string;
+  count: number;
+  first?: string | null;
+  last?: string | null;
+  interval_seconds?: number | null;
+  autocorrelation?: Array<Autocorrelation>;
+  notes?: Array<string>;
+};
+
 export type StepSample = {
   sequence: number;
   timestamp: string;
@@ -607,6 +636,12 @@ export type StudyView = {
   bindings: Record<string, string>;
   alignment: RunAlignment;
   items: Array<StudyItem>;
+};
+
+export type SuggestedLag = {
+  observations: number;
+  seconds: number;
+  partial: number;
 };
 
 export type SuiteChange = {

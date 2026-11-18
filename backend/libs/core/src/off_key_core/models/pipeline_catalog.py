@@ -162,6 +162,17 @@ _STEPS: tuple[_Step, ...] = (
         "once a whole cycle has passed.",
     ),
     _Step(
+        "prepare.cusum",
+        "transform",
+        "prepare",
+        "CUSUM",
+        "Sum up how far values drift from their usual level, to find a lasting shift.",
+        "A small shift that lasts adds up over observations until it stands "
+        "out, where a detector of single values misses it. The sum starts "
+        "over once it passes Reset at, so a rule or detector after it sees "
+        "one rise per shift.",
+    ),
+    _Step(
         "prepare.rolling",
         "transform",
         "prepare",

@@ -1949,6 +1949,45 @@ class DeseasonParameters(PrepareScopeParameters):
         return self
 
 
+class CusumParameters(PrepareScopeParameters):
+    """How far each feature has drifted from its usual level, summed up."""
+
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Keep the features this step uses and add their cumulative sum, or "
+            "replace them with it."
+        ),
+    )
+    window_size: int = _window(
+        200,
+        "Observations the usual level and spread are learned from before the "
+        "sum starts, and the pace at which they follow later.",
+        minimum=10,
+        maximum=PREPARE_WINDOW_LIMIT,
+    )
+    slack: float = Field(
+        default=0.5,
+        ge=0,
+        le=10,
+        description=(
+            "Spreads a value may lie from the usual level without adding to the "
+            "sum: half the shift you want to find fast."
+        ),
+    )
+    reset_at: float = Field(
+        default=5.0,
+        gt=0,
+        le=100,
+        title="Reset at",
+        description=(
+            "Where the sum, in spreads, starts over and the usual level moves to "
+            "where the series now is, so a lasting shift is found once."
+        ),
+    )
+
+
 class RollingParameters(PrepareScopeParameters):
     result: Literal["replace", "add"] = Field(
         default="add",

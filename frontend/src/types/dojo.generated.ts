@@ -376,6 +376,7 @@ export type RunMetrics = {
   false_alarms: number;
   evaluated_seconds: number;
   false_alarms_per_day: number | null;
+  scores?: ScoreMetrics | null;
   labels: Array<LabelOutcome>;
 };
 
@@ -469,6 +470,16 @@ export type RunView = {
   alignment: RunAlignment;
   cancel_requested: boolean;
   stats: Record<string, number>;
+};
+
+export type ScoreMetrics = {
+  scored_results: number;
+  labelled_results: number;
+  pr_auc: number | null;
+  auroc: number | null;
+  vus_pr: number | null;
+  top_score_at: string | null;
+  top1_hit: boolean | null;
 };
 
 export type StepSample = {

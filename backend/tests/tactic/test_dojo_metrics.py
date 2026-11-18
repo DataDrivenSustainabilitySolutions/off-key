@@ -32,6 +32,8 @@ from off_key_tactic_middleware.domain import (
     ValidationError,
 )
 from off_key_tactic_middleware.services.dojo import labels as labels_module
+from off_key_tactic_middleware.services.dojo import metrics as metrics_module
+from off_key_tactic_middleware.services.dojo import score_metrics as score_module
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from off_key_tactic_middleware.services.dojo.metrics import (
@@ -711,3 +713,180 @@ async def test_calibration_and_run_caches_survive_alternating_reads_and_label_ch
         }
         await session.commit()
         assert (await service.calibration(run_id)).methods[1].alarm_share is None
+
+
+# ---------------------------------------------------------------------------
+# Threshold-free metrics of the scores
+# ---------------------------------------------------------------------------
+
+
+def test_reference_score_metrics_match_scikit_learn():
+    metrics = pytest.importorskip("sklearn.metrics")
+    scores = [0.1, 0.4, 0.35, 0.8, 0.8, 0.2, 0.9, 0.05, 0.4, 0.6]
+    distances = [3, 0, 2, 0, 1, 5, 0, 4, 6, 1]
+    labelled = [distance <= 0 for distance in distances]
+    pr_auc, auroc, vus_pr = score_module.reference(scores, distances)
+    assert pr_auc == pytest.approx(metrics.average_precision_score(labelled, scores))
+    assert auroc == pytest.approx(metrics.roc_auc_score(labelled, scores))
+    # Widened labels can only help scores that peak next to a label.
+    assert vus_pr is not None and vus_pr >= pr_auc
+
+
+def test_soft_labels_fade_within_half_the_buffer():
+    assert score_module.soft_weight(0, 0) == 1
+    assert score_module.soft_weight(1, 0) == 0
+    assert score_module.soft_weight(1, 10) == pytest.approx((1 - 1 / 6) ** 0.5)
+    assert score_module.soft_weight(5, 10) > 0
+    assert score_module.soft_weight(6, 10) == 0
+
+
+async def scored_run(factory, view, scores):
+    """A finished run with one result a minute; None scores are warm-up."""
+    async with factory() as session:
+        session.add(
+            DojoRun(
+                id="run-scored",
+                dataset_id=view.id,
+                name="scored",
+                status="succeeded",
+                config={"execution": {"definition": {"nodes": []}}},
+                cancel_requested=False,
+                points_total=len(scores),
+                points_read=len(scores),
+                result_count=len(scores),
+                alarm_count=0,
+                stats={},
+            )
+        )
+        session.add_all(
+            DojoRunResult(
+                run_id="run-scored",
+                sequence=minute + 1,
+                timestamp=at(minute),
+                phase="ready",
+                score=score,
+                threshold=None,
+                alarm=False,
+            )
+            for minute, score in enumerate(scores)
+        )
+        await session.commit()
+    return "run-scored"
+
+
+@pytest.mark.asyncio
+async def test_score_metrics_in_sql_match_the_reference(sessions):
+    _, factory = sessions
+    creator, view = await dataset(factory)
+    # Warm-up first, ties, a peak beside one label and a hit inside another.
+    scores = [None] * 10 + [
+        round(0.1 + 0.37 * ((minute * 7919) % 13) / 13, 3) for minute in range(110)
+    ]
+    scores[40] = scores[41] = 0.95
+    scores[78] = 0.99
+    labels = [(42, 45), (80, 84)]
+    async with factory() as session:
+        await DojoLabels(session).create_many(
+            view.id, [label(start, end) for start, end in labels], created_by=creator
+        )
+    run_id = await scored_run(factory, view, scores)
+    async with factory() as session:
+        result = await DojoMetrics(session).run(run_id)
+    scored = [
+        (minute, score) for minute, score in enumerate(scores) if score is not None
+    ]
+
+    def distance(minute):
+        gaps = [
+            0 if start <= minute <= end else min(abs(minute - start), abs(minute - end))
+            for start, end in labels
+        ]
+        return min(gaps)
+
+    pr_auc, auroc, vus_pr = score_module.reference(
+        [score for _, score in scored], [distance(minute) for minute, _ in scored]
+    )
+    assert result.scores is not None
+    assert result.scores.scored_results == 110
+    assert result.scores.labelled_results == 9
+    assert result.scores.pr_auc == pytest.approx(pr_auc)
+    assert result.scores.auroc == pytest.approx(auroc)
+    assert result.scores.vus_pr == pytest.approx(vus_pr)
+    assert result.scores.vus_pr > result.scores.pr_auc
+    assert result.scores.top_score_at == at(78)
+    # Two labels: the archive's top-1 rule does not apply.
+    assert result.scores.top1_hit is None
+
+
+@pytest.mark.asyncio
+async def test_top1_hit_allows_one_hundred_intervals_around_a_single_label(sessions):
+    _, factory = sessions
+    creator, view = await dataset(factory, minutes=400)
+    scores = [0.1] * 400
+    scores[150] = 1.0
+    async with factory() as session:
+        await DojoLabels(session).create_many(
+            view.id, [label(260, 270)], created_by=creator
+        )
+    run_id = await scored_run(factory, view, scores)
+    async with factory() as session:
+        far = await DojoMetrics(session).run(run_id)
+    async with factory() as session:
+        await session.execute(
+            text("UPDATE dojo_run_results SET score = 0.1 WHERE run_id = :id"),
+            {"id": run_id},
+        )
+        await session.execute(
+            text(
+                "UPDATE dojo_run_results SET score = 1.0 "
+                "WHERE run_id = :id AND sequence = 161"
+            ),
+            {"id": run_id},
+        )
+        run = await session.get(DojoRun, run_id)
+        # A changed result count invalidates the cached metrics.
+        run.result_count += 0
+        run.metrics_cache = None
+        await session.commit()
+    async with factory() as session:
+        near = await DojoMetrics(session).run(run_id)
+    assert far.scores is not None and far.scores.top1_hit is False
+    assert near.scores is not None and near.scores.top1_hit is True
+    assert near.scores.top_score_at == at(160)
+
+
+@pytest.mark.asyncio
+async def test_a_run_without_labels_or_scores_has_no_ranking_metrics(sessions):
+    _, factory = sessions
+    _, view = await dataset(factory)
+    run_id = await scored_run(factory, view, [None] * 5 + [0.2] * 115)
+    async with factory() as session:
+        result = await DojoMetrics(session).run(run_id)
+    assert result.scores is not None
+    assert result.scores.labelled_results == 0
+    assert (result.scores.pr_auc, result.scores.auroc, result.scores.vus_pr) == (
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_event_metrics_come_back_when_the_score_metrics_run_out_of_time(
+    sessions, monkeypatch
+):
+    _, factory = sessions
+    _, view = await dataset(factory)
+    run_id = await scored_run(factory, view, [0.2] * 120)
+    monkeypatch.setattr(metrics_module, "SCORES_TIMEOUT", "1ms")
+    monkeypatch.setattr(
+        score_module,
+        "SPAN",
+        text("SELECT count(*), min(now()), max(now()) FROM pg_sleep(0.05)"),
+    )
+    async with factory() as session:
+        result = await DojoMetrics(session).run(run_id)
+        limit = await session.scalar(text("SHOW statement_timeout"))
+    assert result.scores is None
+    assert result.labels_total == 0
+    assert limit == "0"

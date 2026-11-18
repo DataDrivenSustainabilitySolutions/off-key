@@ -343,7 +343,13 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    ticked when it opens): their alarms under
    the values, how many labels each detected and how soon, and how many false
    alarms each raised per day outside the labels. The best value of a metric is
-   bold. Editing a label re-scores every run at once. Below, **Calibration
+   bold. **PR-AUC**, **VUS-PR** and **AUROC** judge the scores before any
+   threshold: how well they rank labelled values above the rest. VUS-PR also
+   credits a score that peaks just before or after a label. With exactly one
+   label, **Top score at the label** says whether the highest score came
+   within 100 values of it, as the UCR anomaly archive scores a series. The
+   warm-up, which has no scores, is left out. Editing a label re-scores every
+   run at once. Below, **Calibration
    methods** ranks what a run that compared them found: for each method, how
    many labels it would have detected and how soon, its false alarms per day
    and the share of results it would have alarmed on. Every method saw the

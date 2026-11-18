@@ -7,6 +7,7 @@ import { useCatalogue } from "../workspace/catalogue-context";
 import { SelectedSourceBar } from "../workspace/SelectedSourceBar";
 import { DatasetDetail } from "./DatasetDetail";
 import { DatasetList } from "./DatasetList";
+import { SuitePage } from "./SuitePage";
 import { dojoApi } from "./api";
 import { useDojoAccess } from "./access";
 import { datasetTab, type DatasetTab } from "./model";
@@ -20,6 +21,7 @@ export function DojoWorkspace() {
   const { selected, document } = useCatalogue();
   const datasetId = params.get("dataset");
   const runId = params.get("run");
+  const suiteId = params.get("suite");
   const [runError, setRunError] = useState<{ run: string; message: string }>();
   // A link to one run, such as a proposal's test, names only the run: its dataset is read first.
   useEffect(() => {
@@ -31,7 +33,7 @@ export function DojoWorkspace() {
     );
     return () => controller.abort();
   }, [allowed, runId, datasetId, setParams]);
-  useDocumentTitle(!allowed ? "Access denied" : datasetId ? "Dataset" : "Datasets", "Dojo");
+  useDocumentTitle(!allowed ? "Access denied" : datasetId ? "Dataset" : suiteId ? "Benchmark suite" : "Datasets", "Dojo");
   const href = (next: Record<string, string | null>) => {
     const url = new URLSearchParams(params);
     for (const [key, value] of Object.entries(next)) {
@@ -48,6 +50,9 @@ export function DojoWorkspace() {
   // readings” starts from. Its readings page stays one link away.
   const scoped = selected && selected.kind !== "root" ? selected : undefined;
   const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null, run: null }));
+  // A dataset opened from a suite leaves the suite: its link leads back to the list.
+  const datasetHref = (id: string) => href({ dataset: id, suite: null, study: null, tab: null, run: null });
+  const listHref = href({ dataset: null, suite: null, study: null, tab: null, run: null });
 
   return <main className="ex-main-content" aria-label="Dojo workspace">
     {!allowed ? <div className="dj-empty"><h2>The Dojo is not open to you</h2>
@@ -60,7 +65,12 @@ export function DojoWorkspace() {
         onTab={(tab: DatasetTab) => setParams(previous => { const next = new URLSearchParams(previous); next.set("tab", tab); return next; },
           { replace: true })}
         onDeleted={() => navigate(href({ dataset: null, tab: null, run: null }), { replace: true })} />
-      : <DatasetList datasetHref={id => href({ dataset: id, tab: null, run: null })} onCreated={open}
+      : suiteId ? <SuitePage key={suiteId} id={suiteId} study={params.get("study") ?? undefined} listHref={listHref}
+        datasetHref={datasetHref}
+        onStudy={study => setParams(previous => { const next = new URLSearchParams(previous);
+          if (study) next.set("study", study); else next.delete("study"); return next; }, { replace: true })}
+        onDeleted={() => navigate(listHref, { replace: true })} />
+      : <DatasetList datasetHref={datasetHref} suiteHref={id => href({ suite: id, study: null })} onCreated={open}
         scope={scoped?.label} readings={readings} selection={<SelectedSourceBar />} />}
   </main>;
 }

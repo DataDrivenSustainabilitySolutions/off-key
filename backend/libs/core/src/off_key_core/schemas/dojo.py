@@ -33,6 +33,10 @@ MAX_FAULTS = 20
 # Benchmark series one import may add; each becomes a dataset of its own.
 MAX_BENCHMARK_IMPORT = 20
 MAX_BENCHMARK_PAGE = 250
+# A benchmark suite holds at most this many datasets; a study runs on each.
+MAX_SUITE_DATASETS = 50
+# A suite's view lists at most this many studies, the newest.
+MAX_SUITE_STUDIES = 100
 DatasetOrigin = Literal["csv", "history", "benchmark"]
 BenchmarkVariant = Literal["original", "distorted", "noise"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
@@ -364,6 +368,9 @@ class RunSummary(DojoModel):
         default=False,
         description="The run also tries the other calibration methods on its "
         "scores; `GET /v1/dojo/runs/{run_id}/calibration` compares them.",
+    )
+    study_id: str | None = Field(
+        default=None, description="The study that queued the run, if any."
     )
 
 
@@ -897,3 +904,230 @@ class Comparison(DojoModel):
     dataset_id: str
     labels: list[LabelView] = Field(max_length=MAX_DATASET_LABELS)
     runs: list[RunMetrics] = Field(max_length=MAX_COMPARED_RUNS)
+
+
+class SuiteCreate(DojoModel):
+    """Fix labelled datasets as a benchmark suite to test designs on.
+
+    The datasets never change, so every study of the suite is comparable. A
+    suite a key makes waits for a member's review before its leaderboard
+    counts as reviewed.
+    """
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    dataset_ids: list[str] = Field(min_length=1, max_length=MAX_SUITE_DATASETS)
+    derived_from: str | None = Field(
+        default=None, description="The suite this one changes, if any."
+    )
+
+    @model_validator(mode="after")
+    def distinct(self):
+        if len(set(self.dataset_ids)) != len(self.dataset_ids):
+            raise ValueError("Each dataset may appear only once")
+        return self
+
+
+class SuiteChange(DojoModel):
+    """Rename or describe a suite; its datasets never change."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class SuiteListQuery(DojoModel):
+    limit: int = Field(default=25, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+    mine: bool = Field(
+        default=False,
+        description="Only what the caller made: a key's own, or the member's own.",
+    )
+
+
+class SuiteSummary(DojoModel):
+    id: str
+    name: str
+    description: str
+    derived_from: str | None
+    datasets: int
+    studies: int
+    created_by: int | None
+    created_by_agent: str | None = None
+    reviewed: bool = Field(
+        description="A member made or reviewed the suite. Only a reviewed "
+        "suite's results should back a claim or a proposal."
+    )
+    created_at: datetime
+
+
+class SuiteListPage(DojoModel):
+    items: list[SuiteSummary] = Field(max_length=100)
+    next_offset: int | None = None
+
+
+class SuiteDataset(DojoModel):
+    dataset_id: str
+    name: str
+    origin: DatasetOrigin
+    series_names: list[str] = Field(max_length=MAX_DATASET_SERIES)
+    point_count: int
+    labels: int = Field(description="Labels of the dataset now.")
+
+
+class StudyTotals(DojoModel):
+    """A study's finished runs taken together.
+
+    Means are over the runs that have the number, which the matching count
+    gives: a dataset without labels has no PR-AUC, for example.
+    """
+
+    runs_scored: int = Field(description="Finished runs with metrics.")
+    labels_scored: int
+    labels_detected: int
+    detection_rate: float | None
+    median_false_alarms_per_day: float | None
+    pr_auc: float | None
+    pr_auc_runs: int
+    vus_pr: float | None
+    vus_pr_runs: int
+    auroc: float | None
+    auroc_runs: int
+    top1_hits: int = Field(
+        description="Runs on one-label datasets whose most unusual score lay "
+        "at the label."
+    )
+    top1_runs: int = Field(description="Runs on one-label datasets.")
+
+
+class StudySummary(DojoModel):
+    id: str
+    suite_id: str
+    name: str
+    strategy: str
+    runs: dict[str, int] = Field(description="The study's runs by status.")
+    complete: bool = Field(
+        description="Every dataset of the suite has a finished run with "
+        "metrics. Only complete studies are ranked."
+    )
+    totals: StudyTotals
+    metrics_pending: int = Field(
+        description="Finished runs whose metrics are not calculated yet. Reading "
+        "the study calculates them; the totals leave them out until then."
+    )
+    created_by: int | None
+    created_by_agent: str | None = None
+    created_at: datetime
+
+
+class SuiteView(SuiteSummary):
+    items: list[SuiteDataset] = Field(max_length=MAX_SUITE_DATASETS)
+    leaderboard: list[StudySummary] = Field(
+        max_length=MAX_SUITE_STUDIES,
+        description="Complete studies, best first: by mean VUS-PR, then "
+        "PR-AUC, then detection rate.",
+    )
+    unfinished: list[StudySummary] = Field(
+        max_length=MAX_SUITE_STUDIES,
+        description="Studies still running, or with a failed run or metrics "
+        "still to calculate, newest first.",
+    )
+
+
+class StudyCreate(DojoModel):
+    """Replay one design over every dataset of a suite, one run each."""
+
+    suite_id: str
+    name: str = Field(default="", max_length=120)
+    definition: PipelineDefinition = Field(
+        description="The design, as the pipeline library stores a draft."
+    )
+    bindings: dict[str, str] = Field(
+        default_factory=dict,
+        max_length=MAX_DATASET_SERIES,
+        description="Input slot ids of the design mapped to a series name, "
+        "looked up in each dataset. A slot left out takes the series named "
+        "like its id or label, or a dataset's only series when the design "
+        "has one input.",
+    )
+    alignment: RunAlignment = Field(default_factory=RunAlignment)
+
+
+class StudyListQuery(DojoModel):
+    suite_id: str | None = None
+    limit: int = Field(default=25, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+    mine: bool = Field(
+        default=False,
+        description="Only what the caller made: a key's own, or the member's own.",
+    )
+
+
+class StudyListPage(DojoModel):
+    items: list[StudySummary] = Field(max_length=100)
+    next_offset: int | None = None
+
+
+class StudyItem(DojoModel):
+    """One dataset of the study: its run and, once calculated, its metrics."""
+
+    dataset_id: str
+    dataset_name: str
+    run_id: str
+    status: RunStatus
+    error: str | None
+    metrics: RunMetrics | None = Field(
+        default=None,
+        description="Null until the run has finished and its metrics are calculated.",
+    )
+
+
+class StudyView(StudySummary):
+    definition: dict[str, Any] = Field(description="The compiled design.")
+    bindings: dict[str, str] = Field(
+        description="Input slot ids mapped to the series name each run used."
+    )
+    alignment: RunAlignment
+    items: list[StudyItem] = Field(max_length=MAX_SUITE_DATASETS)
+
+
+StudyMetric = Literal["vus_pr", "pr_auc", "auroc", "detection_rate"]
+
+
+class StudyComparisonQuery(DojoModel):
+    baseline: str = Field(description="The study to compare against.")
+    challenger: str
+    metric: StudyMetric = "vus_pr"
+
+
+class PairedDataset(DojoModel):
+    dataset_id: str
+    dataset_name: str
+    baseline: float | None
+    challenger: float | None
+    delta: float | None = Field(description="challenger - baseline.")
+
+
+class StudyComparison(DojoModel):
+    """Two studies of one suite, dataset by dataset.
+
+    The Wilcoxon signed-rank test asks whether the challenger's gains across
+    datasets could be chance (Demšar 2006). Datasets where either study has
+    no value are left out; ties count for neither.
+    """
+
+    suite_id: str
+    metric: StudyMetric
+    baseline: str
+    challenger: str
+    datasets: list[PairedDataset] = Field(max_length=MAX_SUITE_DATASETS)
+    compared: int = Field(description="Datasets where both have a value.")
+    wins: int
+    losses: int
+    ties: int
+    mean_delta: float | None
+    median_delta: float | None
+    p_value: float | None = Field(
+        description="Two-sided Wilcoxon signed-rank p-value; exact without "
+        "tied differences, else the normal approximation. Null with fewer "
+        "than two differences that are not zero."
+    )

@@ -88,6 +88,11 @@ GUEST_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/v1/dojo/runs/{run_id}/outline"),
         ("GET", "/v1/dojo/runs/{run_id}/steps"),
         ("GET", "/v1/dojo/runs/{run_id}/results"),
+        ("GET", "/v1/dojo/suites"),
+        ("GET", "/v1/dojo/suites/{suite_id}"),
+        ("GET", "/v1/dojo/suites/{suite_id}/comparison"),
+        ("GET", "/v1/dojo/studies"),
+        ("GET", "/v1/dojo/studies/{study_id}"),
         ("POST", "/v1/recording/status"),
         ("POST", "/v1/alarms/query"),
     }

@@ -276,6 +276,14 @@ export type OutlineBucket = {
   alarms: number;
 };
 
+export type PairedDataset = {
+  dataset_id: string;
+  dataset_name: string;
+  baseline: number | null;
+  challenger: number | null;
+  delta: number | null;
+};
+
 export type PendingLabelAccept = {
   items: Array<PendingLabelChoice>;
 };
@@ -446,6 +454,7 @@ export type RunSummary = {
   started_at: string | null;
   finished_at: string | null;
   compares_calibration?: boolean;
+  study_id?: string | null;
 };
 
 export type RunView = {
@@ -465,6 +474,7 @@ export type RunView = {
   started_at: string | null;
   finished_at: string | null;
   compares_calibration?: boolean;
+  study_id?: string | null;
   definition: Record<string, unknown>;
   bindings: Array<RunBinding>;
   alignment: RunAlignment;
@@ -489,4 +499,163 @@ export type StepSample = {
   steps: Record<string, PipelineNodePreview>;
 };
 
-export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, outlineBuckets: 2000, labels: 500, benchmarkImport: 20, comparedRuns: 6 } as const;
+export type StudyComparison = {
+  suite_id: string;
+  metric: "vus_pr" | "pr_auc" | "auroc" | "detection_rate";
+  baseline: string;
+  challenger: string;
+  datasets: Array<PairedDataset>;
+  compared: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  mean_delta: number | null;
+  median_delta: number | null;
+  p_value: number | null;
+};
+
+export type StudyComparisonQuery = {
+  baseline: string;
+  challenger: string;
+  metric?: "vus_pr" | "pr_auc" | "auroc" | "detection_rate";
+};
+
+export type StudyCreate = {
+  suite_id: string;
+  name?: string;
+  definition: PipelineDefinition;
+  bindings?: Record<string, string>;
+  alignment?: RunAlignment;
+};
+
+export type StudyItem = {
+  dataset_id: string;
+  dataset_name: string;
+  run_id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  error: string | null;
+  metrics?: RunMetrics | null;
+};
+
+export type StudyListPage = {
+  items: Array<StudySummary>;
+  next_offset?: number | null;
+};
+
+export type StudyListQuery = {
+  suite_id?: string | null;
+  limit?: number;
+  offset?: number;
+  mine?: boolean;
+};
+
+export type StudySummary = {
+  id: string;
+  suite_id: string;
+  name: string;
+  strategy: string;
+  runs: Record<string, number>;
+  complete: boolean;
+  totals: StudyTotals;
+  metrics_pending: number;
+  created_by: number | null;
+  created_by_agent?: string | null;
+  created_at: string;
+};
+
+export type StudyTotals = {
+  runs_scored: number;
+  labels_scored: number;
+  labels_detected: number;
+  detection_rate: number | null;
+  median_false_alarms_per_day: number | null;
+  pr_auc: number | null;
+  pr_auc_runs: number;
+  vus_pr: number | null;
+  vus_pr_runs: number;
+  auroc: number | null;
+  auroc_runs: number;
+  top1_hits: number;
+  top1_runs: number;
+};
+
+export type StudyView = {
+  id: string;
+  suite_id: string;
+  name: string;
+  strategy: string;
+  runs: Record<string, number>;
+  complete: boolean;
+  totals: StudyTotals;
+  metrics_pending: number;
+  created_by: number | null;
+  created_by_agent?: string | null;
+  created_at: string;
+  definition: Record<string, unknown>;
+  bindings: Record<string, string>;
+  alignment: RunAlignment;
+  items: Array<StudyItem>;
+};
+
+export type SuiteChange = {
+  name?: string | null;
+  description?: string | null;
+};
+
+export type SuiteCreate = {
+  name: string;
+  description?: string;
+  dataset_ids: Array<string>;
+  derived_from?: string | null;
+};
+
+export type SuiteDataset = {
+  dataset_id: string;
+  name: string;
+  origin: "csv" | "history" | "benchmark";
+  series_names: Array<string>;
+  point_count: number;
+  labels: number;
+};
+
+export type SuiteListPage = {
+  items: Array<SuiteSummary>;
+  next_offset?: number | null;
+};
+
+export type SuiteListQuery = {
+  limit?: number;
+  offset?: number;
+  mine?: boolean;
+};
+
+export type SuiteSummary = {
+  id: string;
+  name: string;
+  description: string;
+  derived_from: string | null;
+  datasets: number;
+  studies: number;
+  created_by: number | null;
+  created_by_agent?: string | null;
+  reviewed: boolean;
+  created_at: string;
+};
+
+export type SuiteView = {
+  id: string;
+  name: string;
+  description: string;
+  derived_from: string | null;
+  datasets: number;
+  studies: number;
+  created_by: number | null;
+  created_by_agent?: string | null;
+  reviewed: boolean;
+  created_at: string;
+  items: Array<SuiteDataset>;
+  leaderboard: Array<StudySummary>;
+  unfinished: Array<StudySummary>;
+};
+
+export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, outlineBuckets: 2000, labels: 500, benchmarkImport: 20, comparedRuns: 6, suiteDatasets: 50 } as const;

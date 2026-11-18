@@ -12,6 +12,9 @@ from off_key_core.db.models import (
     DojoRun,
     DojoRunResult,
     DojoSeries,
+    DojoStudy,
+    DojoSuite,
+    DojoSuiteDataset,
 )
 from off_key_core.schemas.dojo import (
     CsvImportQuery,
@@ -47,6 +50,9 @@ async def sessions(member_database, monkeypatch):
             DojoSeries,
             DojoPoint,
             DojoLabel,
+            DojoSuite,
+            DojoSuiteDataset,
+            DojoStudy,
             DojoRun,
             DojoRunResult,
         ):

@@ -161,6 +161,18 @@ GATEWAY_ACCESS = {
         "GET /v1/dojo/runs/{run_id}/results",
         "GET /v1/dojo/runs/{run_id}/outline",
         "GET /v1/dojo/runs/{run_id}/steps",
+        "GET /v1/dojo/suites",
+        "POST /v1/dojo/suites",
+        "GET /v1/dojo/suites/{suite_id}",
+        "PATCH /v1/dojo/suites/{suite_id}",
+        "POST /v1/dojo/suites/{suite_id}/review",
+        "DELETE /v1/dojo/suites/{suite_id}",
+        "GET /v1/dojo/suites/{suite_id}/comparison",
+        "GET /v1/dojo/studies",
+        "POST /v1/dojo/studies",
+        "GET /v1/dojo/studies/{study_id}",
+        "POST /v1/dojo/studies/{study_id}/cancel",
+        "DELETE /v1/dojo/studies/{study_id}",
     },
     "manage_members": {
         "GET /v1/agents",
@@ -188,6 +200,16 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/detectors",
         "GET /v1/devices",
         "GET /v1/devices/{device_id}/readings",
+        "GET /v1/dojo/suites",
+        "POST /v1/dojo/suites",
+        "GET /v1/dojo/suites/{suite_id}",
+        "DELETE /v1/dojo/suites/{suite_id}",
+        "GET /v1/dojo/suites/{suite_id}/comparison",
+        "GET /v1/dojo/studies",
+        "POST /v1/dojo/studies",
+        "GET /v1/dojo/studies/{study_id}",
+        "POST /v1/dojo/studies/{study_id}/cancel",
+        "DELETE /v1/dojo/studies/{study_id}",
         "GET /v1/dojo/benchmarks",
         "POST /v1/dojo/benchmarks/import",
         "GET /v1/dojo/datasets",
@@ -329,11 +351,12 @@ def test_a_key_reaches_only_the_listed_gateway_routes():
 
 def test_a_key_changes_nothing_it_did_not_make():
     """Beyond reads, a key validates, edits what it holds, tests, proposes
-    designs and labels, withdraws its own proposal and, where it may, starts.
-    Its labels wait for a member's review, and it replaces only its own; a
-    benchmark import labels only what the collection itself labelled. It cancels and
-    deletes only its own tests and its own withdrawn or declined proposals,
-    which the services check (test_dojo_agent_cleanup)."""
+        designs and labels, withdraws its own proposal and, where it may, starts.
+        Its labels wait for a member's review, and it replaces only its own; a
+        benchmark import labels only what the collection itself labelled. It cancels and
+        deletes only its own tests and its own withdrawn or declined proposals,
+        which the services check (test_dojo_agent_cleanup). Its benchmark suites
+    wait for a member's review, and it deletes only its own suites and studies."""
     writes = {
         route
         for routes in GATEWAY_AGENT_ACCESS.values()
@@ -351,6 +374,11 @@ def test_a_key_changes_nothing_it_did_not_make():
         "POST /v1/dojo/runs/{run_id}/cancel",
         "DELETE /v1/dojo/runs/{run_id}",
         "DELETE /v1/dojo/datasets/{dataset_id}",
+        "POST /v1/dojo/suites",
+        "DELETE /v1/dojo/suites/{suite_id}",
+        "POST /v1/dojo/studies",
+        "POST /v1/dojo/studies/{study_id}/cancel",
+        "DELETE /v1/dojo/studies/{study_id}",
         "DELETE /v1/pipeline-proposals/{proposal_id}",
         "POST /v1/pipelines/edit",
         "POST /v1/pipelines/validate",

@@ -426,6 +426,17 @@ def _remove_input(design: _Design, edit: RemoveInput) -> None:
     if len(kept) == len(slots):
         raise EditError(f"The design has no input {edit.id!r}")
     design.definition.input_slots = kept
+    # The source step holds no input the design no longer has.
+    for node in design.definition.nodes:
+        if node.component == "source.aligned" and node.params.get("hold"):
+            node.params = {
+                **node.params,
+                "hold": [
+                    item
+                    for item in node.params["hold"]
+                    if not isinstance(item, dict) or item.get("input") != edit.id
+                ],
+            }
 
 
 def _set_settings(design: _Design, edit: SetSettings) -> None:

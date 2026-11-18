@@ -230,6 +230,28 @@ def test_a_reading_that_stops_drops_observations_once_its_value_is_too_old():
     assert run.stats()["stale_reading"] == 20 - 13
 
 
+def test_a_held_reading_keeps_pairing_after_it_stops_changing():
+    definition = quick("adaptive_stream")
+    third = definition.input_slots[2].id
+    source = next(n for n in definition.nodes if n.component == "source.aligned")
+    source.params = {"hold": [{"input": third, "seconds": 3600}]}
+    run = replay(alignment=RunAlignment(hold_intervals=3), definition=definition)
+    rows = []
+    for index in range(20):
+        stamp = (START + timedelta(minutes=index)).timestamp()
+        for slot in range(3):
+            # The third reading is sent only while it changes, for ten minutes.
+            if slot == 2 and index >= 10:
+                continue
+            row = run.step(series_topic(slot), stamp + slot, wave(index, slot))
+            if row is not None:
+                rows.append(row)
+    run.close()
+    # Its last value pairs with the others for the hour it is held.
+    assert len(rows) == 20
+    assert "stale_reading" not in run.stats()
+
+
 async def create_tables(engine):
     async with engine.begin() as connection:
         for table in (DojoDataset, DojoSeries, DojoPoint, DojoRun, DojoRunResult):

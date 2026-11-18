@@ -181,6 +181,11 @@ export type GateParameters = {
   condition: string;
 };
 
+export type HeldInput = {
+  input: string;
+  seconds: number;
+};
+
 export type HoldParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
@@ -918,6 +923,10 @@ export type SmoothParameters = {
   method?: "exponential" | "rolling" | "time_constant";
   window_size?: number;
   time_constant?: number;
+};
+
+export type SourceParameters = {
+  hold?: Array<HeldInput>;
 };
 
 export type StandardScalerParameters = {

@@ -397,6 +397,18 @@ class PipelineExecutionConfig(PipelineModel):
             )
         return self
 
+    @property
+    def held_seconds(self) -> dict[str, float]:
+        """How long each held input's last value stays usable, by input key."""
+        keys = {item.slot_id: item.input_key for item in self.bindings}
+        return {
+            keys[item["input"]]: float(item["seconds"])
+            for node in self.definition.nodes
+            if node.component == "source.aligned"
+            for item in node.params.get("hold") or []
+            if item.get("input") in keys
+        }
+
 
 class IssueFix(PipelineModel):
     """A replacement that resolves an issue in the setting the issue names."""
@@ -1525,6 +1537,46 @@ class MinMaxScalerParameters(ElementwiseScopeParameters):
         if self.feature_range[0] >= self.feature_range[1]:
             raise ValueError("feature_range minimum must be less than maximum")
         return self
+
+
+# A held value may stand in for a reading for up to a week.
+MAX_HOLD_SECONDS = 7 * 86400
+
+
+class HeldInput(PipelineModel):
+    """An input whose last value stays usable for a set time."""
+
+    input: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Id of the input, as in the design's input_slots.",
+    )
+    seconds: float = Field(
+        gt=0,
+        le=MAX_HOLD_SECONDS,
+        description="How long its last value stays usable, in seconds.",
+    )
+
+
+class SourceParameters(PipelineModel):
+    hold: list[HeldInput] = Field(
+        default_factory=list,
+        max_length=100,
+        description=(
+            "Inputs whose last value stays usable for a set time. Without it, "
+            "a value is used for 3 of its reading's usual intervals and at "
+            "least 30 s. Set it for a reading sent only when it changes, such "
+            "as a setpoint, so it is held until its next value."
+        ),
+    )
+
+    @field_validator("hold")
+    @classmethod
+    def unique_inputs(cls, value: list[HeldInput]) -> list[HeldInput]:
+        inputs = [item.input for item in value]
+        if len(inputs) != len(set(inputs)):
+            raise ValueError("Hold each input at most once")
+        return value
 
 
 class SelectParameters(PipelineModel):

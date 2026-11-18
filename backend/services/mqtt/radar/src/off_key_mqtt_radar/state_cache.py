@@ -15,8 +15,12 @@ moments. An observation is formed from the latest value of every reading:
 - An observation that would use a value older than its reading's limit, measured
   in observation time, is dropped, and the caller counts it.
 
-A reading whose interval is not known yet, because it has arrived once, is
-waited for and never held, so a monitor starts with fresh values only. Nothing
+A held reading, one the design names with a hold time because it is sent
+only when it changes, keeps its last value for that long instead, and is not
+waited for once it has a value.
+
+Any other reading whose interval is not known yet, because it has arrived once,
+is waited for and never held, so a monitor starts with fresh values only. Nothing
 says yet when its next value is due, so none of its values is a gap: one of any
 age is accepted, and one older than ``minimum_hold_seconds`` within an
 observation is replaced by its next value instead of dropping the observation.
@@ -26,7 +30,7 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Literal
@@ -80,6 +84,7 @@ class SensorStateCache:
         timing: MonitorTiming | None = None,
         *,
         max_chargers: int = DEFAULT_MAX_CHARGERS,
+        held: Mapping[str, float] | None = None,
         clock: Callable[[], float] | None = None,
         monotonic: Callable[[], float] | None = None,
     ):
@@ -88,6 +93,8 @@ class SensorStateCache:
             required_sensors: Feature keys of the readings an observation needs.
                 Without any, every accepted value passes through on its own.
             timing: How long each reading's last value stays usable.
+            held: Seconds a held reading's last value stays usable, by feature
+                key; never less than ``timing`` gives it.
             clock, monotonic: Wall and receipt clocks. A Dojo replay passes the
                 event time for both, so historical data ages as it did live.
         """
@@ -96,6 +103,7 @@ class SensorStateCache:
         self._lock = Lock()
         self.timing = timing or MonitorTiming()
         self.required_sensors = set(required_sensors)
+        self.held = dict(held or {})
         self.required_sensor_order = tuple(sorted(self.required_sensors))
         self.max_chargers = max_chargers
         self._max_sensor_keys = max(DEFAULT_MAX_SENSOR_KEYS, len(self.required_sensors))
@@ -131,7 +139,7 @@ class SensorStateCache:
             cadence = entity.cadences.setdefault(sensor_type, ArrivalCadence())
             cadence.add(event_timestamp)
             interval = cadence.typical_seconds
-            limit = self._limit(interval)
+            limit = self._limit(sensor_type, interval)
             if interval is not None and now - event_timestamp > limit:
                 return AlignmentUpdate(
                     status="observation_rejected",
@@ -232,7 +240,8 @@ class SensorStateCache:
         stale = tuple(
             sensor
             for sensor, timestamp in input_timestamps.items()
-            if observed_at - timestamp > self._limit(self._interval(entity, sensor))
+            if observed_at - timestamp
+            > self._limit(sensor, self._interval(entity, sensor))
         )
         if stale and all(self._interval(entity, sensor) is None for sensor in stale):
             entity.fresh.difference_update(stale)
@@ -269,11 +278,11 @@ class SensorStateCache:
         before the arriving reading's next one, and is not overdue by more than
         half its interval. Both are on the receipt clock: waiting is about when
         values reach this worker. A reading whose interval is not known yet is
-        always waited for.
+        always waited for, unless it is held.
         """
         interval = self._interval(entity, sensor)
         if interval is None:
-            return True
+            return sensor not in self.held
         expected = entity.readings[sensor].received + interval
         if expected <= at - interval / 2:
             return False
@@ -285,9 +294,9 @@ class SensorStateCache:
         cadence = None if entity is None else entity.cadences.get(sensor)
         return None if cadence is None else cadence.typical_seconds
 
-    def _limit(self, interval: float | None) -> float:
+    def _limit(self, sensor: str, interval: float | None) -> float:
         """How old a reading's value may be when an observation uses it."""
-        minimum = self.timing.minimum_hold_seconds
+        minimum = max(self.timing.minimum_hold_seconds, self.held.get(sensor, 0.0))
         if interval is None:
             return minimum
         return max(minimum, self.timing.hold_intervals * interval)
@@ -311,10 +320,10 @@ class SensorStateCache:
             return {
                 sensor: max(
                     (
-                        self._limit(self._interval(entity, sensor))
+                        self._limit(sensor, self._interval(entity, sensor))
                         for entity in entities
                     ),
-                    default=self._limit(None),
+                    default=self._limit(sensor, None),
                 )
                 for sensor in sensors
             }

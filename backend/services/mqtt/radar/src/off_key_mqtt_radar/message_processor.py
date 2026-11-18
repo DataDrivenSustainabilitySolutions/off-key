@@ -60,6 +60,7 @@ class MessageProcessor:
         memory_manager: MemoryManager,
         required_sensors: set | None = None,
         timing: MonitorTiming | None = None,
+        held: dict[str, float] | None = None,
         sensor_key_strategy: str = "full_hierarchy",
         coverage: CoverageTracker | None = None,
         clock: Callable[[], float] | None = None,
@@ -74,6 +75,7 @@ class MessageProcessor:
             memory_manager: Memory management component
             required_sensors: Feature keys every observation needs
             timing: How long each reading's last value stays usable
+            held: How long the design holds a reading's last value, by key
             sensor_key_strategy: Feature key extraction strategy for MQTT hierarchy.
                 Allowed values: "full_hierarchy", "top_level", "leaf".
             clock, monotonic: Clocks for alignment; see SensorStateCache.
@@ -86,7 +88,11 @@ class MessageProcessor:
         # Activity ages inputs on the same clock that judges observations.
         self.activity = ActivityTracker(self.required_sensors, clock=monotonic)
         self.alignment = SensorStateCache(
-            self.required_sensors, timing, clock=clock, monotonic=monotonic
+            self.required_sensors,
+            timing,
+            held=held,
+            clock=clock,
+            monotonic=monotonic,
         )
         self.sensor_key_strategy = normalize_sensor_key_strategy(sensor_key_strategy)
 

@@ -162,6 +162,7 @@ class RadarService:
                 memory_manager=self.memory_manager,
                 required_sensors=self.required_sensors,
                 timing=self.config.timing(),
+                held=self.config.pipeline.held_seconds,
                 sensor_key_strategy=self.config.sensor_key_strategy,
                 coverage=self.coverage,
                 clock=self.log_clock,

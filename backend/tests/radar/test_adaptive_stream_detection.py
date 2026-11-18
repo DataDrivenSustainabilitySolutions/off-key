@@ -69,6 +69,10 @@ FAST_PARAMS: dict[str, dict[str, Any]] = {
     "aberrant_seasonal_residual_detector": {"season_length": 4},
     "aberrant_holt_winters_forecaster": {"season_length": 4, "lead": 2},
     "aberrant_seasonal_naive_forecaster": {"season_length": 4},
+    "aberrant_x_lag_damp": {"subsequence_length": 4},
+    "aberrant_online_ecod": {"min_samples": 2},
+    "aberrant_online_copod": {"min_samples": 2},
+    "aberrant_streaming_loda": {"n_projections": 4, "warm_up_samples": 2, "seed": 1},
 }
 
 
@@ -173,7 +177,7 @@ LEARNING_MODELS = [
 
 
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
-    assert len(ADAPTIVE_MODELS_BY_TYPE) == 31
+    assert len(ADAPTIVE_MODELS_BY_TYPE) == 35
     for model_type, definition in ADAPTIVE_MODELS_BY_TYPE.items():
         # A rule detector is RADAR's own, so Aberrant has no specification of it.
         if model_type not in RULE_DETECTORS:

@@ -1379,6 +1379,232 @@
         "type": "object"
       }
     },
+    "aberrant_online_copod": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "online_copod",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 64,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "aggregation": "paper",
+        "compression": null,
+        "half_life": null,
+        "memory": "sketch",
+        "min_samples": 64,
+        "tail": "empirical",
+        "tail_quantile": null,
+        "window_size": null
+      },
+      "import_path": "aberrant.model.stat.OnlineCOPOD",
+      "name": "Aberrant OnlineCOPOD",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregation": {
+            "default": "paper",
+            "enum": [
+              "paper",
+              "pyod"
+            ]
+          },
+          "compression": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "half_life": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "memory": {
+            "default": "sketch",
+            "enum": [
+              "sketch",
+              "window",
+              "hybrid"
+            ]
+          },
+          "min_samples": {
+            "default": 64,
+            "type": "integer"
+          },
+          "tail": {
+            "default": "empirical",
+            "enum": [
+              "empirical",
+              "pareto"
+            ]
+          },
+          "tail_quantile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "window_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 1
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_online_ecod": {
+      "algorithm_family": "statistical",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "online_ecod",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 64,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "aggregation": "paper",
+        "compression": null,
+        "half_life": null,
+        "memory": "sketch",
+        "min_samples": 64,
+        "tail": "empirical",
+        "tail_quantile": null,
+        "window_size": null
+      },
+      "import_path": "aberrant.model.stat.OnlineECOD",
+      "name": "Aberrant OnlineECOD",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregation": {
+            "default": "paper",
+            "enum": [
+              "paper",
+              "pyod"
+            ]
+          },
+          "compression": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "half_life": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "memory": {
+            "default": "sketch",
+            "enum": [
+              "sketch",
+              "window",
+              "hybrid"
+            ]
+          },
+          "min_samples": {
+            "default": 64,
+            "type": "integer"
+          },
+          "tail": {
+            "default": "empirical",
+            "enum": [
+              "empirical",
+              "pareto"
+            ]
+          },
+          "tail_quantile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "window_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 1000000,
+            "minimum": 1
+          }
+        },
+        "type": "object"
+      }
+    },
     "aberrant_online_isolation_forest": {
       "algorithm_family": "isolation_forest",
       "available": true,
@@ -1864,6 +2090,165 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      }
+    },
+    "aberrant_streaming_loda": {
+      "algorithm_family": "sketch",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "streaming_loda",
+      "default_capabilities": {
+        "event_kind": "tabular",
+        "feature_count": {
+          "maximum": null,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 256,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "decay": 1.0,
+        "eps": 1e-12,
+        "n_bins": 32,
+        "n_projections": 100,
+        "pseudocount": 1.0,
+        "seed": null,
+        "sparsity": null,
+        "warm_up_samples": 256
+      },
+      "import_path": "aberrant.model.sketch.StreamingLODA",
+      "name": "Aberrant StreamingLODA",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "decay": {
+            "default": 1.0,
+            "type": "number"
+          },
+          "eps": {
+            "default": 1e-12,
+            "type": "number"
+          },
+          "n_bins": {
+            "default": 32,
+            "type": "integer"
+          },
+          "n_projections": {
+            "default": 100,
+            "type": "integer"
+          },
+          "pseudocount": {
+            "default": 1.0,
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sparsity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "warm_up_samples": {
+            "default": 256,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_x_lag_damp": {
+      "algorithm_family": "time_series",
+      "available": true,
+      "bound_parameters": [],
+      "catalog_id": "x_lag_damp",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 158,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "eps": 1e-12,
+        "start_index": null,
+        "subsequence_length": 32,
+        "x_lag": null
+      },
+      "import_path": "aberrant.model.timeseries.XLagDAMP",
+      "name": "Aberrant XLagDAMP",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "eps": {
+            "default": 1e-12,
+            "type": "number"
+          },
+          "start_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "subsequence_length": {
+            "default": 32,
+            "maximum": 10000,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "x_lag": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "subsequence_length"
+        ],
         "type": "object"
       }
     },

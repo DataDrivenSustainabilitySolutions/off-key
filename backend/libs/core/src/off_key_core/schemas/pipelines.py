@@ -1860,6 +1860,95 @@ class LagsParameters(PrepareScopeParameters):
         return self
 
 
+def known_timezone(value: str) -> str:
+    """A time zone a clock can follow, or a ValueError that says how to write one."""
+    if value == "UTC":
+        return value
+    try:
+        ZoneInfo(value)
+    except (KeyError, ValueError, OSError):
+        raise ValueError(
+            "Unknown time zone. Write a name such as Europe/Berlin, or UTC."
+        ) from None
+    return value
+
+
+# Cycles a Deseason step learns a profile over, in seconds.
+DESEASON_CYCLES: dict[str, int] = {"day": 86_400, "week": 604_800}
+# Slots of a cycle a Deseason step may keep.
+MAX_DESEASON_SLOTS = 2016
+
+
+class DeseasonParameters(PrepareScopeParameters):
+    """Each feature less its usual level at this time of day or week."""
+
+    result: Literal["replace", "add"] = Field(
+        default="replace",
+        title="Result",
+        description=(
+            "Replace the features this step uses with what is left once their "
+            "usual level at this time is taken out, or keep them and add it."
+        ),
+    )
+    cycle: Literal["day", "week"] = Field(
+        default="day",
+        description=(
+            "The pattern to take out: the same time each day, or each week, "
+            "where weekdays and weekends differ."
+        ),
+    )
+    slot_minutes: int = Field(
+        default=60,
+        ge=5,
+        le=360,
+        title="Slot in minutes",
+        description=(
+            "Minutes of the cycle that share one usual level. Shorter slots "
+            "follow a sharper pattern and need more observations each."
+        ),
+    )
+    memory: int = Field(
+        default=7,
+        ge=1,
+        le=365,
+        title="Memory in cycles",
+        description=(
+            "How many cycles the usual levels remember. Fewer follow a pattern "
+            "that changes; more hold steady through an unusual day."
+        ),
+    )
+    timezone: str = Field(
+        default="UTC",
+        min_length=1,
+        max_length=64,
+        title="Time zone",
+        description=(
+            "The clock the cycle follows, such as Europe/Berlin, with its "
+            "daylight saving time."
+        ),
+    )
+
+    @field_validator("timezone")
+    @classmethod
+    def known_timezone(cls, value: str) -> str:
+        return known_timezone(value)
+
+    @field_validator("slot_minutes")
+    @classmethod
+    def divides_a_day(cls, value: int) -> int:
+        if 1440 % value:
+            raise ValueError("A slot divides a day evenly, such as 15, 30 or 60")
+        return value
+
+    @model_validator(mode="after")
+    def few_enough_slots(self) -> "DeseasonParameters":
+        if DESEASON_CYCLES[self.cycle] // (60 * self.slot_minutes) > MAX_DESEASON_SLOTS:
+            raise ValueError(
+                f"A cycle holds at most {MAX_DESEASON_SLOTS} slots; choose longer ones"
+            )
+        return self
+
+
 class RollingParameters(PrepareScopeParameters):
     result: Literal["replace", "add"] = Field(
         default="add",
@@ -2071,15 +2160,7 @@ class TimeParameters(PipelineModel):
     @field_validator("timezone")
     @classmethod
     def known_timezone(cls, value: str) -> str:
-        if value == "UTC":
-            return value
-        try:
-            ZoneInfo(value)
-        except (KeyError, ValueError, OSError):
-            raise ValueError(
-                "Unknown time zone. Write a name such as Europe/Berlin, or UTC."
-            ) from None
-        return value
+        return known_timezone(value)
 
     @model_validator(mode="after")
     def some_feature(self):

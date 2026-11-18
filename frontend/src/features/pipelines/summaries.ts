@@ -126,6 +126,12 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const back = unit.seconds ? `${unit.short} back` : "observations back";
       return lags.length ? `${lags.length === 1 ? "Lag" : "Lags"} ${lagText(lags)} ${back}` : "No lag yet";
     }
+    case "prepare.deseason": {
+      const slot = amount("slot_minutes", 60);
+      const memory = amount("memory", 7);
+      const cycle = value("cycle") === "week" ? "week" : "day";
+      return `Less the usual level per ${slot >= 60 ? `${number(slot / 60)} h` : `${number(slot)} min`} of the ${cycle} · ${count(memory, cycle)} remembered · ${value("timezone") || "UTC"}`;
+    }
     case "prepare.rolling": {
       const statistic = String(value("statistic"));
       // A score or a rank places the latest value within the window; the rest describe the window.

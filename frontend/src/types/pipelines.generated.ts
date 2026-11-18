@@ -106,6 +106,16 @@ export type ConstantParameters = {
   value?: number;
 };
 
+export type DeseasonParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  cycle?: "day" | "week";
+  slot_minutes?: number;
+  memory?: number;
+  timezone?: string;
+};
+
 export type DespikeParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";

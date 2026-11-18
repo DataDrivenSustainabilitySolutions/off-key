@@ -151,6 +151,17 @@ _STEPS: tuple[_Step, ...] = (
         "largest lag has arrived.",
     ),
     _Step(
+        "prepare.deseason",
+        "transform",
+        "prepare",
+        "Deseason",
+        "Take out the usual level at this time of day or week.",
+        "Learns each slot of the day or week, such as 14:00 to 15:00, and "
+        "passes on how far a value lies from it, so a detector sees what is "
+        "unusual for the time rather than the daily rhythm. It has output "
+        "once a whole cycle has passed.",
+    ),
+    _Step(
         "prepare.rolling",
         "transform",
         "prepare",

@@ -78,11 +78,30 @@
 .pl-library .pl-toolbox-present button { border-radius: 999px; padding: 4px 10px; }
 .pl-issue-startup { color: hsl(var(--muted-foreground)); font-weight: 400; }
 /* Who proposed the design on the canvas and why. It is neither a warning nor a result, so it has no color. */
-.pl-proposal { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; padding: 8px 12px;
+.pl-proposal { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 16px; padding: 6px 8px 6px 12px;
   border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--card)); font-size: var(--text-caption); line-height: 1.6; }
-.pl-proposal-text { flex: 1 1 280px; min-width: 0; }
 .pl-proposal p { margin: 0; overflow-wrap: anywhere; }
 .pl-proposal :is(time, .pl-proposal-state) { color: hsl(var(--muted-foreground)); }
+/* Closed, the proposal is two short lines above the canvas: who, and what it watches. The rest is one click away. */
+.pl-proposal-details { flex: 1 1 280px; min-width: 0; }
+.pl-proposal-details > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: center; cursor: pointer; list-style: none; border-radius: 4px; }
+.pl-proposal-details > summary::-webkit-details-marker { display: none; }
+.pl-proposal-details > summary:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
+.pl-proposal-by { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
+.pl-proposal-line { grid-row: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--foreground)); }
+.pl-proposal-details[open] .pl-proposal-line { white-space: normal; overflow-wrap: anywhere; }
+.pl-proposal-toggle { grid-row: 1 / span 2; grid-column: 2; display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+.pl-proposal-toggle::before { content: "Show why"; }
+.pl-proposal-details[open] .pl-proposal-toggle::before { content: "Hide"; }
+.pl-proposal-toggle::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform 120ms ease; }
+.pl-proposal-details[open] .pl-proposal-toggle::after { transform: translateY(1px) rotate(-135deg); }
+.pl-proposal-details > summary:hover .pl-proposal-toggle { color: hsl(var(--foreground)); }
+/* Open, the full rationale scrolls in a bounded box, so the canvas below always keeps most of the height. */
+.pl-proposal-more { display: grid; gap: 8px; max-height: min(32vh, 320px); overflow-y: auto; margin-top: 8px; padding: 8px 4px 2px 0; border-top: 1px solid hsl(var(--border)); }
+.pl-proposal .rationale-fields { grid-template-columns: minmax(80px, 112px) minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: var(--text-caption); }
+.pl-proposal .rationale-fields dd { line-height: 1.6; max-width: 72ch; }
+.pl-proposal-extra { max-width: 72ch; }
+.pl-proposal-details + .pl-proposal-missing { flex: 1 1 100%; }
 .pl-proposal-decline { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .pl-proposal-decline input { flex: 1 1 180px; width: auto; }
 /* The Proposals page reads like the Monitoring overview: a title with the room to start, filters, and rows between lines. */
@@ -132,6 +151,9 @@
 @media (max-width: 680px) {
   .pl-proposal button, .pl-proposal-decline input { min-height: 44px; }
   .pl-proposal-decline input { flex-basis: 100%; }
+  .pl-proposal-details > summary { min-height: 44px; }
+  .pl-proposal .rationale-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .pl-proposal .rationale-fields dd { margin-bottom: 6px; }
   .pl-setup-header { margin-top: 16px; gap: 12px; }
   .pl-setup .pl-setup-input { min-height: 36px; padding: 6px 12px; }
   .pl-toolbox-grid { grid-template-columns: minmax(0, 1fr); }

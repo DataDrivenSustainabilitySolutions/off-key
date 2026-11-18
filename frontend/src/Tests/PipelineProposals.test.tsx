@@ -244,14 +244,19 @@ describe("proposals", () => {
     expect(pipelinesApi.decideProposal).toHaveBeenLastCalledWith("p1", { status: "declined", note: "Alarms too often at night" });
   });
 
-  it("reads a proposal's rationale as four labelled rows, under the author's chip", () => {
+  it("reads a proposal's rationale as one closed line that opens into the other three rows", () => {
     const rationale = { watches: "Pump vibration above its daily band.", why: "A moving distance on two readings.",
       evidence: "1 alarm in 9 scored hours.", limits: "First mornings alarm." };
     render(<PipelineProposalNotice proposal={summary({ rationale, reason: rationale.watches })} canDecide={false} onDeclined={() => {}} />);
     const notice = screen.getByRole("group", { name: "Proposal by Night shift agent" });
     expect(notice.textContent).toContain("Agent · Night shift agent");
+    // Closed by default, so the canvas below keeps the room; the summary names what it watches.
+    const details = notice.querySelector("details")!;
+    expect(details.open).toBe(false);
+    expect(details.querySelector("summary")?.textContent).toContain(rationale.watches);
     for (const [label, text] of [["Watches", rationale.watches], ["Why this design", rationale.why], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
       expect(screen.getByText(label).nextElementSibling?.textContent).toBe(text);
+    expect(screen.getAllByText("Watches")).toHaveLength(1);
     // The reason it fell back to is not said twice.
     expect(screen.getAllByText(rationale.watches)).toHaveLength(1);
   });

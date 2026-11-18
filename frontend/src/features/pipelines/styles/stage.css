@@ -64,6 +64,8 @@
   grid-column: 1;
   z-index: 10;
   display: grid;
+  /* One column no wider than the stage, so a long name or notice wraps instead of widening the bar. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   min-width: 0;
   padding: 10px var(--pl-stage-gap) 6px;

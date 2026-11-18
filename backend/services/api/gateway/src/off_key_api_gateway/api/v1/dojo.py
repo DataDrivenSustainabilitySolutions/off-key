@@ -26,6 +26,7 @@ from off_key_core.schemas.dojo import (
     DatasetPointsQuery,
     DatasetView,
     DatasetWithFaults,
+    FaultSuiteCreate,
     LabelBatch,
     LabelChange,
     LabelCreate,
@@ -813,6 +814,32 @@ async def create_dojo_suite(
     counts as `reviewed` only once a member reviews it.
     """
     return await suites.create_suite(
+        suite, created_by=member_id(caller), created_by_agent=agent_of(caller)
+    )
+
+
+@router.post(
+    "/suites/faults",
+    response_model=SuiteView,
+    status_code=201,
+    openapi_extra=OPEN_TO_AGENTS,
+)
+@write_limit
+async def create_dojo_fault_suite(
+    request: Request,
+    suite: FaultSuiteCreate,
+    caller: User | Agent = Depends(use_dojo),
+    suites: DojoSuites = Depends(get_dojo_suites),
+):
+    """Make a suite of labelled copies of one dataset with faults written in.
+
+    Each copy gets `faults_per_copy` faults of the given `kinds` at places
+    drawn from `seed`, after the `clean_share` of the span kept for warm-up,
+    apart from each other and from the dataset's labels. A step or drift
+    moves its series two to five standard deviations. The same request makes
+    the same faults again.
+    """
+    return await suites.create_fault_suite(
         suite, created_by=member_id(caller), created_by_agent=agent_of(caller)
     )
 

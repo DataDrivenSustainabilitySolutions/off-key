@@ -49,8 +49,8 @@ the first ones. Compare variants on the same `dataset_id`, so they replay the \
 same values. To show that a design catches a problem the history lacks, pass \
 `faults`: a step, drift, freeze or gap written into a copy, which get_test \
 scores as caught or missed, with the delay.
-To choose between candidates, put labelled datasets (such as several \
-fault-injected copies of a setup's history) in a suite with create_suite, \
+To choose between candidates, put labelled datasets in a suite with \
+create_suite, or with `faults_of` labelled copies of a setup's history, \
 run_study each candidate over it, and get_study with `compare_with` pairs two \
 complete ones. Their paired result is stronger evidence than one test.
 5. propose_design hands the design to a member with your reason and the test. \
@@ -1340,15 +1340,33 @@ async def get_suite(api: Api, args: SuiteRef):
 
 class SuiteMade(Args):
     name: str = Field(min_length=1, max_length=120)
-    dataset_ids: list[str] = Field(min_length=1, max_length=50)
-    description: str = Field(default="", max_length=2000)
+    dataset_ids: list[str] = Field(default_factory=list, max_length=50)
+    faults_of: str | None = Field(
+        default=None,
+        description="Instead: a dataset to copy `copies` times with drawn faults.",
+    )
+    copies: int = Field(default=8, ge=1, le=20)
+    seed: int = Field(default=0, ge=0)
 
 
 @tool(SuiteMade, changes=True)
 async def create_suite(api: Api, args: SuiteMade):
-    """Put labelled datasets in a suite to run studies on. A member reviews
-    a suite your key made."""
-    suite = await api.post("/v1/dojo/suites", _sent(args))
+    """Put labelled datasets in a suite to run studies on, or, with
+    `faults_of`, labelled copies of one with faults written in, the way to
+    test on unlabelled history. A member reviews a suite your key made."""
+    if (args.faults_of is None) == (not args.dataset_ids):
+        raise ApiRefusal(422, "Give dataset_ids or faults_of, not both")
+    if args.faults_of is None:
+        body = {"name": args.name, "dataset_ids": args.dataset_ids}
+        suite = await api.post("/v1/dojo/suites", body)
+    else:
+        body = {
+            "name": args.name,
+            "dataset_id": args.faults_of,
+            "copies": args.copies,
+            "seed": args.seed,
+        }
+        suite = await api.post("/v1/dojo/suites/faults", body)
     return {"suite_id": suite["id"], "datasets": len(suite["items"])}
 
 

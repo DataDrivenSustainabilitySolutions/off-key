@@ -24,6 +24,7 @@ from off_key_core.db.models import (
 )
 from off_key_core.schemas.dojo import (
     CsvImportQuery,
+    FaultSuiteCreate,
     LabelCreate,
     StudyComparisonQuery,
     StudyCreate,
@@ -411,3 +412,101 @@ def test_wilcoxon_matches_the_exact_and_the_tied_distribution():
     tied = wilcoxon([0.1, 0.1, -0.05, 0.2, 0.2, 0.3, -0.1, 0.05])
     assert tied == pytest.approx(0.07784, abs=1e-5)
     assert 0 < tied < 1 and not math.isnan(tied)
+
+
+async def fault_suite(factory, view, creator, **fields):
+    async with factory() as session:
+        return await DojoSuites(session).create_fault_suite(
+            FaultSuiteCreate(dataset_id=view.id, name="Faults", **fields),
+            created_by=creator,
+        )
+
+
+async def written(factory, suite):
+    """Each copy's faults, as the copy records them."""
+    found = []
+    async with factory() as session:
+        for item in suite.items:
+            row = await session.get(DojoDataset, item.dataset_id)
+            found.append(
+                [(f["kind"], f["start_at"], f["end_at"]) for f in row.source["faults"]]
+            )
+    return found
+
+
+@pytest.mark.asyncio
+async def test_a_fault_suite_writes_labelled_faults_reproducibly(sessions):
+    _, factory = sessions
+    creator = await bootstrap(factory)
+    view = await labelled(factory, creator, "Pump", 100, columns="u,i")
+    suite = await fault_suite(
+        factory, view, creator, copies=3, faults_per_copy=2, seed=7
+    )
+    assert [item.name for item in suite.items] == [
+        f"Faults · copy {number}" for number in (1, 2, 3)
+    ]
+    assert suite.reviewed and "seed 7" in suite.description
+    faults = await written(factory, suite)
+    clean_until = at(0.3 * (MINUTES - 1))
+    for copy, item in zip(faults, suite.items, strict=True):
+        assert len(copy) == 2
+        # The source's label stays, and every fault is labelled beside it.
+        assert item.labels == 3
+        for _, start, end in copy:
+            start, end = datetime.fromisoformat(start), datetime.fromisoformat(end)
+            assert start >= clean_until
+            # Apart from the source's label, which runs from minute 100.
+            assert end <= at(100) or start >= at(105)
+    # The same request writes the same faults; another seed others.
+    again = await fault_suite(
+        factory, view, creator, copies=3, faults_per_copy=2, seed=7
+    )
+    other = await fault_suite(
+        factory, view, creator, copies=3, faults_per_copy=2, seed=8
+    )
+    assert await written(factory, again) == faults
+    assert await written(factory, other) != faults
+
+
+@pytest.mark.asyncio
+async def test_a_fault_suite_keeps_to_the_kinds_and_series_asked(sessions):
+    _, factory = sessions
+    creator = await bootstrap(factory)
+    view = await labelled(factory, creator, "Pump", 100, columns="u,i")
+    suite = await fault_suite(
+        factory, view, creator, copies=2, kinds=["freeze"], series=["i"], seed=1
+    )
+    async with factory() as session:
+        names = {
+            series.id: series.name
+            for item in suite.items
+            for series in (await DojoDatasets(session).get(item.dataset_id)).series
+        }
+        for item in suite.items:
+            row = await session.get(DojoDataset, item.dataset_id)
+            assert {f["kind"] for f in row.source["faults"]} == {"freeze"}
+            assert {names[f["series_id"]] for f in row.source["faults"]} == {"i"}
+    with pytest.raises(ValidationError, match="no series named speed"):
+        await fault_suite(factory, view, creator, series=["speed"])
+    # At most 80% of the span is kept clean, so faults always have room.
+    with pytest.raises(SchemaError):
+        FaultSuiteCreate(dataset_id=view.id, name="x", clean_share=0.95)
+    # A refused request leaves no copies behind.
+    async with factory() as session:
+        assert await session.scalar(select(func.count()).select_from(DojoSuite)) == 1
+        assert await session.scalar(select(func.count()).select_from(DojoDataset)) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_keys_fault_suite_waits_for_review(sessions):
+    _, factory = sessions
+    creator = await bootstrap(factory)
+    view = await labelled(factory, creator, "Pump", 100)
+    key = await agent_named(factory, "Night")
+    async with factory() as session:
+        suite = await DojoSuites(session).create_fault_suite(
+            FaultSuiteCreate(dataset_id=view.id, name="Night faults", copies=1),
+            created_by=None,
+            created_by_agent=key,
+        )
+    assert not suite.reviewed and suite.created_by_agent == "Night"

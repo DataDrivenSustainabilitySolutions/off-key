@@ -12,6 +12,7 @@ only judge of the test it is scored on.
 """
 
 import math
+import random
 import time
 from collections import Counter, defaultdict
 from collections.abc import Sequence
@@ -26,6 +27,7 @@ from off_key_core.db.models import (
     Agent,
     DojoDataset,
     DojoLabel,
+    DojoPoint,
     DojoRun,
     DojoRunResult,
     DojoSeries,
@@ -38,6 +40,9 @@ from off_key_core.models.dojo_runs import result_kind
 from off_key_core.schemas.dojo import (
     MAX_SUITE_STUDIES,
     DatasetOrigin,
+    DatasetWithFaults,
+    Fault,
+    FaultSuiteCreate,
     PairedDataset,
     RunAlignment,
     RunMetrics,
@@ -63,6 +68,8 @@ from off_key_core.schemas.dojo import (
 from sqlalchemy import delete, func, select
 
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from .datasets import DojoDatasets
+from .labels import dataset_labels
 from .metrics import DojoMetrics
 from .owners import made_by, require_no_evidence
 from .runs import ACTIVE, DojoRuns, compile_design, dataset_series
@@ -70,6 +77,15 @@ from .runs import ACTIVE, DojoRuns, compile_design, dataset_series
 # Reading a study calculates the metrics of its finished runs for at most
 # this long; the rest wait for the next read.
 CALCULATE_SECONDS = 8.0
+# A drawn fault lasts this share of the dataset's span, and at least this many
+# typical intervals between values, so a detector has values to see it in.
+FAULT_SHARE = (0.005, 0.03)
+FAULT_VALUES = 5
+# A drawn step or drift moves the values by this many standard deviations of
+# the series, up or down: from barely visible to plain.
+FAULT_SIGMAS = (2.0, 5.0)
+# Draws of one copy that land on no values are drawn again, this many times.
+FAULT_ATTEMPTS = 20
 
 
 class DojoSuites:
@@ -109,6 +125,97 @@ class DojoSuites:
         )
         await self.session.commit()
         return await self.get_suite(row.id)
+
+    async def create_fault_suite(
+        self,
+        request: FaultSuiteCreate,
+        *,
+        created_by: int | None,
+        created_by_agent: Agent | None = None,
+    ) -> SuiteView:
+        """Copies of one dataset with faults written in at random places drawn
+        from ``seed``, gathered into a suite. The source's own labels stay in
+        every copy, and no fault overlaps them or another fault."""
+        await require_application_writes(self.session)
+        datasets = DojoDatasets(self.session)
+        source = await datasets.get(request.dataset_id)
+        unknown = sorted(set(request.series) - {item.name for item in source.series})
+        if unknown:
+            raise ValidationError(
+                f"The dataset has no series named {', '.join(unknown)}"
+            )
+        targets = [
+            item
+            for item in source.series
+            if item.point_count and (not request.series or item.name in request.series)
+        ]
+        if not targets or source.start_at is None or source.end_at is None:
+            raise ValidationError("The dataset holds no values to write faults into")
+        spreads = {
+            series_id: spread
+            for series_id, spread in (
+                await self.session.execute(
+                    select(DojoPoint.series_id, func.stddev_samp(DojoPoint.value))
+                    .where(DojoPoint.series_id.in_([item.id for item in targets]))
+                    .group_by(DojoPoint.series_id)
+                )
+            ).all()
+        }
+        taken = [
+            (label.start_at, label.end_at)
+            for label in await dataset_labels(self.session, source.id)
+        ]
+        draw = random.Random(request.seed)
+        made: list[str] = []
+        try:
+            for number in range(1, request.copies + 1):
+                for attempt in range(1, FAULT_ATTEMPTS + 1):
+                    faults = _draw_faults(
+                        draw,
+                        request,
+                        source.start_at,
+                        source.end_at,
+                        targets,
+                        spreads,
+                        taken,
+                    )
+                    try:
+                        copy = await datasets.inject_faults(
+                            source.id,
+                            DatasetWithFaults(
+                                name=f"{request.name} · copy {number}",
+                                description=f"Seed {request.seed}, copy {number}",
+                                faults=faults,
+                            ),
+                            created_by=created_by,
+                            created_by_agent=created_by_agent,
+                        )
+                    except ValidationError:
+                        await self.session.rollback()
+                        if attempt == FAULT_ATTEMPTS:
+                            raise
+                        continue
+                    made.append(copy.id)
+                    break
+            return await self.create_suite(
+                SuiteCreate(
+                    name=request.name,
+                    description=request.description
+                    or (
+                        f"{request.copies} copies of {source.name} with "
+                        f"{request.faults_per_copy} drawn faults each, seed "
+                        f"{request.seed}"
+                    ),
+                    dataset_ids=made,
+                ),
+                created_by=created_by,
+                created_by_agent=created_by_agent,
+            )
+        except BaseException:
+            await self.session.rollback()
+            for dataset_id in made:
+                await datasets.remove(dataset_id)
+            raise
 
     async def list_suites(
         self, query: SuiteListQuery, caller: User | Agent | None = None
@@ -764,3 +871,58 @@ def _rank(summary: StudySummary):
 def _require_made_by(caller: User | Agent | None, agent_id: int | None, what: str):
     if isinstance(caller, Agent) and agent_id != caller.id:
         raise ForbiddenError(f"A key changes and deletes only the {what} it made")
+
+
+def _draw_faults(
+    draw: random.Random,
+    request: FaultSuiteCreate,
+    start: datetime,
+    end: datetime,
+    targets: Sequence,
+    spreads: dict[str, float | None],
+    taken: Sequence[tuple[datetime, datetime]],
+) -> list[Fault]:
+    """Faults for one copy: after the clean start, apart from each other and
+    from the labels, of the given kinds on the given series."""
+    span = end - start
+    values = max(item.point_count for item in targets)
+    shortest = max(span * FAULT_SHARE[0], span * FAULT_VALUES / max(values - 1, 1))
+    longest = max(span * FAULT_SHARE[1], shortest)
+    earliest = start + span * request.clean_share
+    busy = list(taken)
+    faults: list[Fault] = []
+    for _ in range(request.faults_per_copy * FAULT_ATTEMPTS):
+        if len(faults) == request.faults_per_copy:
+            break
+        length = shortest + (longest - shortest) * draw.random()
+        room = end - length - earliest
+        if room.total_seconds() <= 0:
+            break
+        begin = earliest + room * draw.random()
+        finish = begin + length
+        # A fault keeps its own length of distance to the others and the labels.
+        if any(begin < b + length and finish + length > a for a, b in busy):
+            continue
+        kind = draw.choice(request.kinds)
+        series = draw.choice(list(targets))
+        size = None
+        if kind in ("step", "drift"):
+            spread = spreads.get(series.id) or 1.0
+            sigmas = draw.uniform(*FAULT_SIGMAS)
+            size = draw.choice((-1.0, 1.0)) * sigmas * spread
+        faults.append(
+            Fault(
+                kind=kind,
+                series_id=series.id,
+                start_at=begin,
+                end_at=finish,
+                size=size,
+            )
+        )
+        busy.append((begin, finish))
+    if not faults:
+        raise ValidationError(
+            "The dataset has no room for faults after its clean start and "
+            "outside its labels; lower clean_share or remove labels"
+        )
+    return sorted(faults, key=lambda item: item.start_at)

@@ -3,9 +3,10 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DojoWorkspace } from "@/features/dojo/DojoWorkspace";
 import { dojoApi } from "@/features/dojo/api";
+import { FaultSuiteDialog } from "@/features/dojo/SuiteDialogs";
 import { describePValue, sharedSeriesNames, studyProgress } from "@/features/dojo/suites";
 import { pipelinesApi } from "@/features/pipelines/api";
-import type { DatasetSummary, StudySummary, StudyTotals, SuiteView } from "@/types/dojo.generated";
+import type { DatasetSummary, DatasetView, StudySummary, StudyTotals, SuiteView } from "@/types/dojo.generated";
 
 const access = vi.hoisted(() => ({ guest: false }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: !access.guest, isGuest: access.guest,
@@ -17,7 +18,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({
 vi.mock("@/features/workspace/SelectedSourceBar", () => ({ SelectedSourceBar: () => null }));
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), run: vi.fn(), suites: vi.fn(), suite: vi.fn(), createSuite: vi.fn(), deleteSuite: vi.fn(),
-  reviewSuite: vi.fn(), compareStudies: vi.fn(), study: vi.fn(), createStudy: vi.fn(), cancelStudy: vi.fn(), deleteStudy: vi.fn(),
+  reviewSuite: vi.fn(), createFaultSuite: vi.fn(), compareStudies: vi.fn(), study: vi.fn(), createStudy: vi.fn(), cancelStudy: vi.fn(), deleteStudy: vi.fn(),
 } }));
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { catalog: vi.fn(), list: vi.fn(), get: vi.fn() } }));
 
@@ -145,5 +146,30 @@ describe("suite helpers", () => {
       .toBe("metrics for 2 still to calculate");
     expect(describePValue(0.01)).toMatch("unlikely to be chance");
     expect(describePValue(null)).toBe("Too few datasets differ to test");
+  });
+});
+
+describe("fault suites", () => {
+  it("asks for a reproducible suite of fault-injected copies", async () => {
+    vi.mocked(dojoApi.createFaultSuite).mockResolvedValue(suite);
+    const onCreated = vi.fn();
+    const view: DatasetView = { ...datasets[0]!, origin: "history", source: {}, series: [] };
+    render(<FaultSuiteDialog open dataset={view} onOpenChange={vi.fn()} onCreated={onCreated} />);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Copies"), { target: { value: "4" } });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Gap" }));
+    fireEvent.change(within(dialog).getByLabelText("Seed"), { target: { value: "7" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create suite" }));
+    await waitFor(() => expect(dojoApi.createFaultSuite).toHaveBeenCalledWith({ dataset_id: "d0", name: "Pump A · faults",
+      copies: 4, faults_per_copy: 2, kinds: ["step", "drift", "freeze"], clean_share: 0.3, seed: 7 }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(suite));
+  });
+
+  it("needs at least one kind", async () => {
+    const view: DatasetView = { ...datasets[0]!, origin: "history", source: {}, series: [] };
+    render(<FaultSuiteDialog open dataset={view} onOpenChange={vi.fn()} onCreated={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    for (const name of ["Step", "Drift", "Frozen value", "Gap"]) fireEvent.click(within(dialog).getByRole("checkbox", { name }));
+    expect(within(dialog).getByRole("button", { name: "Create suite" })).toHaveProperty("disabled", true);
   });
 });

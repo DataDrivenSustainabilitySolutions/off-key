@@ -8,6 +8,7 @@ import type {
   CsvImportQuery,
   DatasetChange,
   DatasetFromHistory,
+  FaultSuiteCreate,
   DatasetListPage,
   DatasetListQuery,
   DatasetPointsPage,
@@ -132,6 +133,9 @@ export const dojoApi = {
     apiUtils.get<SuiteListPage>(`${base}/suites`, { signal, params: query }),
   suite: (id: string, signal?: AbortSignal) => apiUtils.get<SuiteView>(suite(id), { signal }),
   createSuite: (request: SuiteCreate) => apiUtils.post<SuiteView>(`${base}/suites`, request),
+  // Copies every value once per copy, so it may take a while on a long history.
+  createFaultSuite: (request: FaultSuiteCreate) =>
+    apiUtils.post<SuiteView>(`${base}/suites/faults`, request, { timeout: UPLOAD_TIMEOUT_MS }),
   deleteSuite: (id: string) => apiUtils.delete<void>(suite(id)),
   reviewSuite: (id: string) => apiUtils.post<SuiteView>(`${suite(id)}/review`),
   compareStudies: (suiteId: string, query: StudyComparisonQuery, signal?: AbortSignal) =>

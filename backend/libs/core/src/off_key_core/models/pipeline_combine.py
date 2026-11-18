@@ -201,7 +201,9 @@ def lane_context(
     if component == "prepare.relation":
         against = params["against"]
         return lambda row, _clock: (row[against],)
-    if component == "prepare.lags" and reads_time(component, dict(params)):
+    if component == "prepare.deseason" or (
+        component == "prepare.lags" and reads_time(component, dict(params))
+    ):
         # A lag in time asks for the value at a moment, so it reads the time.
         return lambda _row, clock: (clock.now if clock else None,)
     if reads_time(component, dict(params)):

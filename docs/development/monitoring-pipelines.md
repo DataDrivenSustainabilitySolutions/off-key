@@ -791,9 +791,22 @@ features.
 `point_detector_without_time` warns at a detector that scores each
 observation on its own (`POINT_DETECTORS` in `adaptive.py`, and every static
 model) when no step before it carries time (`TEMPORAL_STEPS`: Lags, Change,
-Rolling, Accumulate, Time). On a series that follows its past such a detector
+Rolling, Accumulate, Deseason, Time). On a series that follows its past such a detector
 scores the level; the warning points to Lags or Change and to the detectors
 that read the past themselves.
+
+`prepare.deseason` (`Deseason`) takes the usual level of the time of day or
+week out of each feature. It reads time like Lags in time: `lane_context`
+hands it the observation's time, and it finds the slot (`slot_minutes`, which
+divides a day) of its `cycle` on the clock of `timezone`. Each slot keeps a
+level, a spread and a count. They average the slot's values until they hold
+`memory` cycles' worth, measured in the slot's own observations per cycle,
+and then forget at that pace; from five values on, a deviation beyond four
+spreads moves them as if it lay at four, so one unusual day barely shifts the
+profile. The output is the value less the level read before the update, from
+the first observation a whole cycle after the first. `waiting()` holds the
+stage until then. Its state holds `3 * slots + 2` values: 74 for a day of
+hours, 6,050 for a week of 5-minute slots.
 
 `models/autocorrelation.py` gives the context for choosing lags: ACF, PACF by
 Durbin-Levinson, a 1.96/√n bound, suggested lags and cycles, on an even grid

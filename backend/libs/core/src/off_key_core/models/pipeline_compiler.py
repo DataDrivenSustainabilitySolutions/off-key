@@ -510,6 +510,7 @@ TEMPORAL_STEPS = frozenset(
     {
         "prepare.lags",
         "prepare.change",
+        "prepare.deseason",
         "prepare.rolling",
         "prepare.accumulate",
         "prepare.time",

@@ -81,6 +81,7 @@ export function defaultSuffix(node: PipelineNode, component?: PipelineComponent)
       : `smooth${value("window_size")}`;
     case "prepare.despike": return "despiked";
     case "prepare.lags": return "lag";
+    case "prepare.deseason": return "deseasoned";
     case "prepare.change": return `${CHANGE_SUFFIXES[String(value("mode"))] ?? "diff"}${value("lag")}`;
     case "prepare.rolling": return value("statistic") === "quantile"
       // Two quantiles of one window keep apart: q10_60 and q90_60.

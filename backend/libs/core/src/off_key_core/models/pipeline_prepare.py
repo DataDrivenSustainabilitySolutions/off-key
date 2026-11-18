@@ -20,10 +20,13 @@ from bisect import bisect_left, bisect_right, insort
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, tzinfo
 from itertools import pairwise
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from ..schemas.pipelines import (
+    DESEASON_CYCLES,
     LAG_UNITS,
     AccumulateParameters,
     AggregateParameters,
@@ -31,6 +34,7 @@ from ..schemas.pipelines import (
     ChangeParameters,
     ConditionParameters,
     ConstantParameters,
+    DeseasonParameters,
     DespikeParameters,
     FormulaParameters,
     GateParameters,
@@ -53,6 +57,7 @@ PREPARE_MODELS: dict[str, type[PipelineModel]] = {
     "prepare.despike": DespikeParameters,
     "prepare.change": ChangeParameters,
     "prepare.lags": LagsParameters,
+    "prepare.deseason": DeseasonParameters,
     "prepare.rolling": RollingParameters,
     "prepare.math": MathParameters,
     "prepare.range": RangeParameters,
@@ -99,6 +104,7 @@ _FIXED_SUFFIXES = {
     "prepare.hold": "held",
     # Each lag follows: power_lag24.
     "prepare.lags": "lag",
+    "prepare.deseason": "deseasoned",
 }
 _ACCUMULATE_SUFFIXES = {
     "sum": "total",
@@ -217,7 +223,7 @@ def reads_time(component: str, params: dict[str, Any]) -> bool:
         return _setting(component, params, "method") == "time_constant"
     if component == "prepare.lags":
         return _setting(component, params, "unit") != "observations"
-    return component == "prepare.time"
+    return component in ("prepare.time", "prepare.deseason")
 
 
 class Kernel:
@@ -896,6 +902,85 @@ class TimeLags(Kernel):
         return not times or times[-1] - times[0] < self.seconds[-1]
 
 
+class Deseason(Kernel):
+    """A value less the usual level of its slot of the day or week.
+
+    Each slot keeps a level and a spread. They average the slot's values until
+    they hold memory cycles' worth, then forget the oldest at that pace. A
+    value further than four spreads from its level moves them as if it lay at
+    four, so one unusual day leaves the profile where it was. The level is
+    read before the value updates it, and the step has output once a whole
+    cycle has passed and the slot has a level.
+    """
+
+    def __init__(self, cycle: int, slot: int, memory: int, zone: tzinfo):
+        self.cycle = float(cycle)
+        self.slot = slot
+        self.slots = cycle // slot
+        self.memory = memory
+        self.zone = zone
+        self.window = 3 * self.slots + 2
+
+    def initial(self) -> State:
+        empty = array("d", bytes(8 * self.slots))
+        return (array("d"), empty, empty[:], empty[:])
+
+    def _index(self, now: float) -> int:
+        try:
+            moment = datetime.fromtimestamp(now, self.zone)
+        except (OverflowError, OSError, ValueError) as error:
+            raise PrepareFailure(
+                "out_of_range", "The observation's time is outside the calendar"
+            ) from error
+        seconds = moment.hour * 3600 + moment.minute * 60 + moment.second
+        if self.cycle > 86_400:
+            seconds += moment.weekday() * 86_400
+        return min(int(seconds // self.slot), self.slots - 1)
+
+    def advance(
+        self, state: State, value: float, now: float | None = None
+    ) -> tuple[State, float | None]:
+        if now is None:
+            raise ValueError("Taking out a daily pattern needs each observation's time")
+        start, levels, spreads, counts = state
+        first = start[0] if start else now
+        if start and now < start[1]:
+            raise PrepareFailure("out_of_order", "The observation is not newer")
+        index = self._index(now)
+        level, spread, count = levels[index], spreads[index], counts[index]
+        ready = count > 0 and now - first >= self.cycle
+        result = value - level if ready else None
+        # The slot's observations per cycle so far set how many make memory
+        # cycles, so a slot forgets at the same pace however often it reports.
+        cycles = max((now - first) / self.cycle, 1.0)
+        horizon = self.memory * max(count / cycles, 1.0)
+        weight = 1.0 / min(count + 1.0, horizon)
+        deviation = value - level if count else 0.0
+        if count >= 5 and spread > 0:
+            deviation = min(max(deviation, -4 * spread), 4 * spread)
+        levels, spreads, counts = levels[:], spreads[:], counts[:]
+        levels[index] = level + weight * deviation if count else value
+        spreads[index] = spread + weight * (abs(deviation) - spread)
+        counts[index] = count + 1.0
+        return (array("d", [first, now]), levels, spreads, counts), result
+
+    def accepts(self, state: State) -> bool:
+        if len(state) != 4 or not all(
+            isinstance(item, array) and item.typecode == "d" for item in state
+        ):
+            return False
+        start, *slots = state
+        return (
+            len(start) in (0, 2)
+            and all(len(item) == self.slots for item in slots)
+            and all(math.isfinite(item) for part in state for item in part)
+        )
+
+    def waiting(self, state: State) -> bool:
+        start = state[0]
+        return not start or start[1] - start[0] < self.cycle
+
+
 class Function(Kernel):
     """log, log1p, sqrt, abs, square or scale * x + offset, with domain checks."""
 
@@ -973,6 +1058,12 @@ _KERNELS: dict[type[PipelineModel], Callable[[Any], Kernel]] = {
     DespikeParameters: lambda item: Despike(item.window_size, item.threshold),
     ChangeParameters: lambda item: Change(item.lag, item.mode),
     LagsParameters: _lags,
+    DeseasonParameters: lambda item: Deseason(
+        DESEASON_CYCLES[item.cycle],
+        60 * item.slot_minutes,
+        item.memory,
+        UTC if item.timezone == "UTC" else ZoneInfo(item.timezone),
+    ),
     RollingParameters: lambda item: Rolling(
         item.window_size, item.statistic, item.quantile
     ),
@@ -1121,8 +1212,17 @@ def _relation_bounds(params: dict[str, Any], _bounds: Bounds) -> Bounds:
     return None, None
 
 
+def _deseasoned_bounds(_params: dict[str, Any], bounds: Bounds) -> Bounds:
+    """A value less a level that lies within the same range."""
+    low, high = bounds
+    if low is None or high is None:
+        return None, None
+    return low - high, high - low
+
+
 _BOUNDS: dict[str, Callable[[dict[str, Any], Bounds], Bounds]] = {
     "prepare.change": _change_bounds,
+    "prepare.deseason": _deseasoned_bounds,
     "prepare.rolling": _rolling_bounds,
     "prepare.accumulate": _accumulated_bounds,
     "prepare.math": _function_bounds,

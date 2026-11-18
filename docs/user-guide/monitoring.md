@@ -535,6 +535,13 @@ their windows never restart.
   place of the spike; the evidence keeps the raw reading.
 - **Change** adds the difference or percent change since **Lag** observations
   back, or the value from then.
+- **Deseason** takes out the usual level at this time of day, or of the week
+  where weekdays and weekends differ, so a detector sees what is unusual for
+  the time rather than the daily rhythm. It learns one level per **Slot** of
+  the cycle, such as each hour, on the clock of its **Time zone**, remembers
+  about **Memory in cycles** cycles of it, and lets one unusual day barely
+  move it. It has output once a whole cycle has passed. The reading's profile
+  says whether a reading has a daily or weekly cycle.
 - **Rolling statistic** adds the mean, median, minimum, maximum, standard
   deviation, range, sum, quantile, interquartile range (IQR), median absolute
   deviation (MAD), or fitted slope of the last **Window** values. Quantiles use

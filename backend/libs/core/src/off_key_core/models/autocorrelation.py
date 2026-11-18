@@ -14,7 +14,6 @@ from itertools import pairwise
 from statistics import fmean, median
 
 from ..schemas.devices import Autocorrelation, Season, SuggestedLag
-from ..schemas.dojo import SeriesProfile
 
 # Fewer values than this say too little about a series' past.
 MIN_VALUES = 32
@@ -192,39 +191,3 @@ def autocorrelation(points: Sequence[Point]) -> Autocorrelation | None:
         ],
         seasons=_seasons(acf, bound, step),
     )
-
-
-def profile_series(
-    series_id: str, name: str, points: Sequence[Point], *, total: int | None = None
-) -> SeriesProfile:
-    """A Dojo series' profile from its points in time order.
-
-    The first MAX_VALUES values show short lags where a design learns; the
-    whole series on a coarser grid shows long cycles.
-    """
-    gaps = [
-        (later - earlier).total_seconds()
-        for (earlier, _), (later, _) in pairwise(points)
-        if later > earlier
-    ]
-    profile = SeriesProfile(
-        series_id=series_id,
-        name=name,
-        count=len(points) if total is None else total,
-        first=points[0][0] if points else None,
-        last=points[-1][0] if points else None,
-        interval_seconds=_short(median(gaps)) if gaps else None,
-    )
-    scales = [autocorrelation(points[:MAX_VALUES])]
-    if len(points) > MAX_VALUES:
-        scales.append(autocorrelation(points))
-    profile.autocorrelation = [item for item in scales if item is not None]
-    if not profile.autocorrelation:
-        profile.notes.append(
-            f"Too few values that vary: autocorrelation needs {MIN_VALUES}."
-        )
-    if total is not None and total > len(points):
-        profile.notes.append(
-            f"The profile reads the first {len(points)} of {total} values."
-        )
-    return profile

@@ -8,6 +8,7 @@ import pytest_asyncio
 from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
+    DojoLabel,
     DojoPoint,
     DojoRun,
     DojoRunResult,
@@ -170,6 +171,7 @@ async def dojo_database(member_database, monkeypatch):
             DojoDataset,
             DojoSeries,
             DojoPoint,
+            DojoLabel,
             DojoSuite,
             DojoSuiteDataset,
             DojoStudy,
@@ -249,6 +251,37 @@ async def test_a_series_profile_reads_its_first_values(dojo_database, monkeypatc
     )
     assert profile.autocorrelation[0].seasons[0].observations == 24
     assert profile.notes == ["The profile reads the first 200 of 240 values."]
+
+
+@pytest.mark.asyncio
+async def test_a_dataset_profile_shares_its_reads_among_the_series(
+    dojo_database, monkeypatch
+):
+    monkeypatch.setattr(dataset_module, "DATASET_PROFILE_POINTS", 400)
+    rows = "\n".join(
+        f"{(T0 + timedelta(hours=i)).isoformat()},{math.sin(i / 4)},"
+        f"{2 * math.sin(i / 4)},{int(100 <= i < 110)}"
+        for i in range(240)
+    )
+    async with dojo_database() as session:
+        view = await DojoDatasets(session).import_csv(
+            f"time,load,twice,fault\n{rows}\n".encode(),
+            CsvImportQuery(name="Load", label_column="fault"),
+            created_by=None,
+        )
+    async with dojo_database() as session:
+        service = DojoDatasets(session)
+        profile = await service.profile_dataset(view.id)
+        one = await service.profile(view.id, view.series[0].id)
+        with pytest.raises(NotFoundError):
+            await service.profile_dataset("elsewhere")
+    assert [item.name for item in profile.series] == ["load", "twice"]
+    assert [item.count for item in profile.series] == [240, 240]
+    assert profile.series[0].notes == ["The profile reads the first 200 of 240 values."]
+    [pair] = profile.pairs
+    assert (pair.first, pair.second, pair.level) == ("load", "twice", 1)
+    assert profile.labels is not None and profile.labels.count == 1
+    assert one.labelled_shift is not None and one.values is not None
 
 
 @pytest.mark.asyncio

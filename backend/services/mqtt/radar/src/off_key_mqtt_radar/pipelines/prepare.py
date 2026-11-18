@@ -199,11 +199,11 @@ class PrepareStage:
         remaining = {self.source_id: 0}
         for step in self.steps:
             before = max(remaining[key] for key in step.parents)
-            remaining[step.id] = (
-                before + step.lead
-                if before
-                else max(step.lead + 1 - self.updates[step.id], 0)
-            )
+            own = max(step.lead + 1 - self.updates[step.id], 0)
+            if not own and step.kernel is not None:
+                # A step that warms up over time waits until its states say.
+                own = int(any(map(step.kernel.waiting, self.states[step.id])))
+            remaining[step.id] = before + step.lead if before else own
         return max(remaining[key] for key in self.frontier)
 
     @property
@@ -403,6 +403,7 @@ class PrepareStage:
                 context = step.context(values, clock)
             except PrepareFailure as failure:
                 self._reject(step, values, failure, diagnostics)
+        width = step.kernel.width
         for index, name in enumerate(step.selected):
             try:
                 state, value = step.kernel.advance(
@@ -413,8 +414,12 @@ class PrepareStage:
             advanced.append(state)
             if value is None:
                 complete = False
-            else:
+            elif not step.kernel.several:
                 outputs[step.targets[index]] = value
+            else:
+                # A step with several values per feature adds them side by side.
+                targets = step.targets[index * width : (index + 1) * width]
+                outputs.update(zip(targets, value, strict=True))
         staged[step.id] = advanced
         # Every feature of a step warms up on the same observations.
         return {**values, **outputs} if complete else None

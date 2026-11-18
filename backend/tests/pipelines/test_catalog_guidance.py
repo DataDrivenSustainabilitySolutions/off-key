@@ -252,8 +252,9 @@ def test_the_listing_leaves_out_what_is_empty_and_reads_back_whole():
     )
     assert source["input_type"] is None
     assert PipelineCatalog.model_validate(written) == catalog
-    # About half of what the listing weighed with its schemas and empty keys.
-    assert len(json.dumps(written)) < 125_000
+    # About half of what the listing weighed with its schemas and empty keys,
+    # with room for the time-handling steps and detectors added since.
+    assert len(json.dumps(written)) < 140_000
 
 
 def test_a_setting_without_a_default_writes_none():

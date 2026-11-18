@@ -29,6 +29,7 @@ import { usesForecastService, type ForecastModels } from "./forecastModels";
 import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
 import { PipelineApart, PipelineScope } from "./PipelineScope";
+import { PipelineLags } from "./PipelineLags";
 import { PipelineTime } from "./PipelineTime";
 import { apartField, combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind, shownComponent, switchedOff } from "./semantics";
@@ -514,6 +515,9 @@ export function PipelineInspector({
               features={features.filter((feature) => !apart || feature !== node.params[apart])}
               featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && node.component === "prepare.lags" && (
+            <PipelineLags key={node.id} node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && FORMULA_STEPS.has(node.component) && (
             <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}

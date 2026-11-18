@@ -35,6 +35,26 @@ _PROFILE_WINDOW = (
 )
 _SEASON = "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
 
+# The settings online ECOD and COPOD share.
+_TAILS = {
+    "memory": (
+        "How each feature's distribution is kept: a sketch of everything seen, "
+        "a window of recent values, or both."
+    ),
+    "window_size": "Recent values kept per feature, with a window.",
+    "half_life": (
+        "Observations after which a value counts half in the sketch. Empty "
+        "keeps everything alike."
+    ),
+    "compression": "Detail of the sketch. More is closer and costs memory.",
+    "tail": "Read the tails as they are, or fit a Pareto tail beyond a quantile.",
+    "tail_quantile": "Where the fitted Pareto tail starts.",
+    "min_samples": "Observations before scores start.",
+    "aggregation": (
+        "Combine the features' tail scores as the paper does, or as PyOD does."
+    ),
+}
+
 # Help for a setting by its name, where a detector's own schema has none.
 SETTINGS: dict[str, str] = {
     "window_size": _WINDOW,
@@ -377,6 +397,64 @@ DETECTORS: dict[str, DetectorGuide] = {
             "score_scale": (
                 "Scale of that mapping. Larger values place typical scores lower."
             ),
+        },
+    ),
+    "aberrant_x_lag_damp": DetectorGuide(
+        "DAMP discords",
+        "Score how unlike the latest stretch of values is to its nearest match "
+        "far back, fast. Finds odd shapes made of normal values in one feature.",
+        ("subsequence_length", "x_lag"),
+        {
+            "subsequence_length": (
+                "Values in one stretch: about one cycle, or the length of the "
+                "shape an anomaly takes."
+            ),
+            "x_lag": (
+                "Values searched back for a match. Empty uses 16 times the "
+                "subsequence length."
+            ),
+            "start_index": (
+                "Value at which scoring starts. Empty starts four subsequences in."
+            ),
+            "eps": "Smallest spread a stretch may have; flatter ones are skipped.",
+        },
+    ),
+    "aberrant_online_ecod": DetectorGuide(
+        "Online ECOD",
+        "Score how far into the tails of each feature's own distribution the "
+        "values fall. Has nothing to tune and suits many features; treats them "
+        "as unrelated.",
+        ("memory", "min_samples"),
+        _TAILS,
+    ),
+    "aberrant_online_copod": DetectorGuide(
+        "Online COPOD",
+        "Like online ECOD, with the tails combined as a copula. Has nothing to "
+        "tune and suits many features.",
+        ("memory", "min_samples"),
+        _TAILS,
+    ),
+    "aberrant_streaming_loda": DetectorGuide(
+        "LODA",
+        "Score how rare an observation is in many random one-dimensional views, "
+        "each with its own histogram. Fast on many features.",
+        ("n_projections", "warm_up_samples"),
+        {
+            "n_projections": "Random views. More give steadier scores and cost time.",
+            "n_bins": "Bins of each view's histogram.",
+            "sparsity": (
+                "Share of features each view leaves out. Empty uses the paper's "
+                "choice for the number of features."
+            ),
+            "warm_up_samples": (
+                "Observations that fix the histograms' bins before scores start."
+            ),
+            "decay": (
+                "How much the histograms keep of the past at each observation; "
+                "1 keeps everything."
+            ),
+            "pseudocount": "Count every bin starts with, so no bin is impossible.",
+            "eps": "Smallest density a score is taken of.",
         },
     ),
     "aberrant_rolling_matrix_profile": DetectorGuide(

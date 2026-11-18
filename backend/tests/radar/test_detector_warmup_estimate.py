@@ -19,6 +19,12 @@ CASES = [
     ("aberrant_x_stream", {"window_size": 300}),
     ("aberrant_x_stream", {"window_size": 64, "init_sample_size": 128}),
     ("aberrant_seasonal_residual_detector", {"season_length": 24}),
+    ("aberrant_x_lag_damp", {"subsequence_length": 32}),
+    ("aberrant_x_lag_damp", {"subsequence_length": 10, "start_index": 100}),
+    ("aberrant_online_ecod", {}),
+    ("aberrant_online_copod", {"min_samples": 10}),
+    ("aberrant_streaming_loda", {}),
+    ("aberrant_streaming_loda", {"warm_up_samples": 20}),
 ]
 
 

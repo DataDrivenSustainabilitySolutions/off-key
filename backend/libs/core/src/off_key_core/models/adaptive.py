@@ -48,6 +48,10 @@ MODEL_IDS = {
             "rolling_matrix_profile",
             "multivariate_rolling_matrix_profile",
             "seasonal_residual_detector",
+            "x_lag_damp",
+            "online_ecod",
+            "online_copod",
+            "streaming_loda",
         )
     },
 }
@@ -80,11 +84,16 @@ MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         },
     },
     "rolling_matrix_profile": {"subsequence_length": 32, "window_size": 512},
+    "x_lag_damp": {"subsequence_length": 32},
     "multivariate_rolling_matrix_profile": {
         "subsequence_length": 32,
         "window_size": 512,
     },
 }
+
+# Settings RADAR never passes: it times each observation itself, and it reads
+# scores, not a model's own yes or no.
+UNSUPPORTED_PARAMETERS = ("time_key", "predict_threshold")
 
 # Resource and application limits augment, rather than replace, constructor schemas.
 PARAMETER_LIMITS = {
@@ -264,6 +273,9 @@ _WARMUP_SETTINGS: dict[str, tuple[str, ...]] = {
     "aberrant_asd_isolation_forest": ("window_size", "max_samples"),
     "aberrant_random_cut_forest": ("warmup_samples", "sample_size"),
     "aberrant_x_stream": ("init_sample_size", "window_size"),
+    "aberrant_online_ecod": ("min_samples",),
+    "aberrant_online_copod": ("min_samples",),
+    "aberrant_streaming_loda": ("warm_up_samples",),
 }
 # A seasonal model has seen a cycle twice before it scores.
 _WARMUP_SEASONS = {"aberrant_seasonal_residual_detector": 2}
@@ -291,6 +303,8 @@ def detector_warmup(model_type: str, params: dict[str, Any]) -> int:
     settings = definition.get("default_parameters", {}) | {
         key: value for key, value in params.items() if value is not None
     }
+    if model_type == "aberrant_x_lag_damp":
+        return _damp_warmup(settings)
     seasons = _WARMUP_SEASONS.get(model_type)
     season = settings.get("season_length")
     if seasons and isinstance(season, int) and season > 0:
@@ -298,6 +312,17 @@ def detector_warmup(model_type: str, params: dict[str, Any]) -> int:
     # Elsewhere the warm-up follows the settings in ways not mirrored here;
     # RADAR checks it when the run starts.
     return 0
+
+
+def _damp_warmup(settings: Mapping[str, Any]) -> int:
+    """DAMP scores from its start index on, which by default is four
+    subsequences in, once a whole subsequence ends there."""
+    length = settings.get("subsequence_length")
+    if not isinstance(length, int) or length < 2:
+        return 0
+    start = settings.get("start_index")
+    start = start if isinstance(start, int) and start > 0 else 4 * length
+    return start + length - 2
 
 
 def detector_component(model_type: str) -> str:

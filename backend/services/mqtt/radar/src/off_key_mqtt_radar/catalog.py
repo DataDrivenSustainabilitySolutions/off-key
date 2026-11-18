@@ -24,6 +24,7 @@ from off_key_core.models.adaptive import (
     MODEL_IDS,
     PARAMETER_LIMITS,
     RESIDUAL_DETECTOR,
+    UNSUPPORTED_PARAMETERS,
     forecaster_parameters,
 )
 
@@ -152,6 +153,8 @@ def generate_catalog() -> dict:
         schema = spec.parameter_schema()
         properties = schema["properties"]
         bound_parameters = _bind(properties)
+        for name in UNSUPPORTED_PARAMETERS:
+            properties.pop(name, None)
         defaults = {
             name: field["default"]
             for name, field in properties.items()

@@ -18,11 +18,13 @@ from off_key_core.auth.agents import new_agent_key
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Agent
 from off_key_core.models.pipelines import pipeline_catalog
+from off_key_tactic_middleware.domain import ForbiddenError
 
 from tests.support.gateway import BY_KEY, BY_MEMBER, Callers, agent, member, returning
 
 URL = "http://gateway/v1/mcp"
 THEN = datetime(2026, 3, 1, tzinfo=UTC).isoformat()
+SAID = "2026-03-01T00:00:00Z"  # THEN, as an answer of the API writes it
 WITHOUT_THE_GRANT = [
     "get_access",
     "list_devices",
@@ -39,6 +41,8 @@ WITHOUT_THE_GRANT = [
     "propose_design",
     "list_proposals",
     "withdraw_proposal",
+    "list_my_tests",
+    "delete_mine",
     "list_monitors",
     "get_monitor",
     "get_values",
@@ -189,12 +193,17 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
         "test_design",
         "propose_design",
         "withdraw_proposal",
+        "delete_mine",
         "start_monitor",
         "stop_monitor",
     }
+    # Deleting cannot be undone, and only what the key made can be deleted.
+    assert {tool.name for tool in granted if tool.annotations.destructive_hint} == {
+        "delete_mine"
+    }
     # An agent reads the whole list with every session, so it stays short.
     listing = [tool.model_dump(mode="json", exclude_none=True) for tool in granted]
-    assert len(json.dumps(listing)) < 27_500
+    assert len(json.dumps(listing)) < 28_500
 
 
 def test_a_schema_says_nothing_twice():
@@ -564,13 +573,17 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         assert copied.name == "Test by an agent · last 3 days"
         assert copied.reading_ids == ["r-power"]
         assert copied.end - copied.start == timedelta(days=3)
-        # An agent is no member, so neither record names one as its creator.
-        assert stores.datasets.import_history.await_args.kwargs == {"created_by": None}
+        # An agent is no member, so neither record names one as its creator;
+        # each names the agent, whose key alone may delete it.
+        assert stores.datasets.import_history.await_args.kwargs == {
+            "created_by": None,
+            "created_by_agent": key,
+        }
         queue = stores.runs.create.await_args.args[0]
         assert (queue.dataset_id, queue.bindings) == ("d1", {"value": "s1"})
         assert stores.runs.create.await_args.kwargs == {
             "created_by": None,
-            "created_by_agent": key.name,
+            "created_by_agent": key,
         }
 
         # A changed design runs on the same copy, so the two results compare.
@@ -676,6 +689,108 @@ async def test_a_design_is_tested_on_history(gateway, key, stores, no_pause):
         assert "warm-up of 1560 observations" in result["note"]
         # A test without alarms still answers them as an object.
         assert result["alarms"] == {"count": 0, "listed": [], "complete": True}
+
+
+def dojo_run(**fields) -> dict:
+    return {
+        "id": "run-1",
+        "dataset_id": "d1",
+        "name": "Test by an agent",
+        "status": "succeeded",
+        "strategy": "adaptive_stream",
+        "points_total": 100,
+        "points_read": 100,
+        "result_count": 90,
+        "alarm_count": 0,
+        "error": None,
+        "created_by": None,
+        "created_by_agent": "Designer",
+        "created_at": THEN,
+        "started_at": THEN,
+        "finished_at": THEN,
+        "definition": {},
+        "bindings": [],
+        "alignment": {},
+        "cancel_requested": False,
+        "stats": {},
+    } | fields
+
+
+@pytest.mark.asyncio
+async def test_an_agent_cleans_up_what_it_made(gateway, key, stores, no_pause):
+    stores.datasets.list.return_value = {
+        "items": [
+            {
+                "id": "d1",
+                "name": "Pump · last 3 days",
+                "description": "",
+                "origin": "history",
+                "point_count": 100,
+                "series_count": 1,
+                "start_at": THEN,
+                "end_at": THEN,
+                "created_by": None,
+                "created_by_agent": "Designer",
+                "created_at": THEN,
+            }
+        ],
+        "next_offset": None,
+    }
+    summary = {
+        key: value
+        for key, value in dojo_run().items()
+        if key
+        not in {"definition", "bindings", "alignment", "cancel_requested", "stats"}
+    }
+    stores.runs.list.return_value = {"items": [summary], "next_offset": None}
+    async with connected(gateway) as client:
+        listed = said(await client.call_tool("list_my_tests", {}))
+        assert listed == {
+            "datasets": [
+                {"id": "d1", "name": "Pump · last 3 days", "created_at": SAID}
+            ],
+            "tests": [
+                {
+                    "run_id": "run-1",
+                    "dataset_id": "d1",
+                    "name": "Test by an agent",
+                    "status": "succeeded",
+                    "created_at": SAID,
+                }
+            ],
+            "more": False,
+        }
+        # Each list is the key's own, read as the key.
+        query, caller = stores.datasets.list.await_args.args
+        assert (query.mine, caller) == (True, key)
+        assert stores.runs.list.await_args.args[0].mine
+
+        # A test still running is cancelled, and deleted once it has ended.
+        states = iter([dojo_run(status="running"), dojo_run(status="cancelled")])
+        stores.runs.get.side_effect = lambda run_id: next(states)
+        stores.runs.cancel.return_value = dojo_run(status="running")
+        deleted = said(await client.call_tool("delete_mine", {"run_id": "run-1"}))
+        assert deleted == {"deleted": {"run_id": "run-1"}}
+        assert stores.runs.cancel.await_args.args == ("run-1", key)
+        assert stores.runs.remove.await_args.args == ("run-1", key)
+
+        stores.runs.list.return_value = {"items": [], "next_offset": None}
+        await client.call_tool("delete_mine", {"dataset_id": "d1"})
+        assert stores.datasets.remove.await_args.args == ("d1", key)
+        await client.call_tool("delete_mine", {"proposal_id": "p1"})
+        assert stores.proposals.remove.await_args.args == ("p1", key)
+
+        for named in ({}, {"run_id": "run-1", "dataset_id": "d1"}):
+            refused = await client.call_tool("delete_mine", named)
+            assert said(refused) == "Name one of run_id, dataset_id or proposal_id"
+        # What the key may not delete is refused in the API's words.
+        stores.runs.get.side_effect = None
+        stores.runs.get.return_value = dojo_run()
+        stores.runs.remove.side_effect = ForbiddenError(
+            "A key cancels and deletes only the runs it queued"
+        )
+        refused = await client.call_tool("delete_mine", {"run_id": "run-2"})
+        assert said(refused) == "A key cancels and deletes only the runs it queued"
 
 
 @pytest.mark.asyncio

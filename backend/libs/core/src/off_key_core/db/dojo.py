@@ -47,6 +47,10 @@ class DojoDataset(Base):
     created_by: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # A key is no member: a dataset it made keeps the agent's name and id.
+    # Not a foreign key, a key is revoked; the id lets that key delete it.
+    created_by_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_agent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     point_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     start_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -168,6 +172,9 @@ class DojoRun(Base):
     created_by: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # The agent whose key queued the run, so that key can delete it. Its name
+    # is kept in ``config``. Not a foreign key, a key is revoked.
+    created_by_agent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -12,6 +12,9 @@ APPLIED_CHECKSUMS = {
     "001_proposal_rationale.sql": (
         "6097980cc9eb9f8d0d1b5ec6557f9b89a4d6004c15afe7563f70585e4a6fafcd"
     ),
+    "002_dojo_agent_owner.sql": (
+        "3f632463ce68189351f00ab9618febd51457abe28b732cff658657412787af6b"
+    ),
 }
 
 

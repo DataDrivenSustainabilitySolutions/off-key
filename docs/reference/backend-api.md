@@ -123,6 +123,10 @@ operation with `x-agent-access`:
   design that is not saved, testing a design on history in the Dojo (copying
   history into a dataset, starting a run and reading its results), and
   proposing a design to a member, reading proposals and withdrawing its own.
+  A key also cleans up after itself: it cancels and deletes the Dojo runs it
+  queued and the datasets it made, and deletes its own proposals once
+  withdrawn or declined. The services check that the key made each one, and
+  keep a run that a monitor or an open or accepted proposal names as its test.
 - `start`: only a key whose `starts` is `shadow` or `live`. These are
   `POST /pipelines/apply`, which starts a monitoring service, and cancelling an
   activation. A key with `shadow` starts shadow runs only: a start without
@@ -130,8 +134,8 @@ operation with `x-agent-access`:
   `replace_monitor_id` answers 403.
 
 Every other operation answers a key with 403, among them stopping, renaming
-and deleting monitors, deciding on a proposal, changing the library, labels
-and datasets in the Dojo, sources, members, roles and the keys themselves. A new operation is closed to
+and deleting monitors and alarms, deciding on a proposal, changing the library,
+labels and others' datasets and runs in the Dojo, sources, members, roles and the keys themselves. A new operation is closed to
 keys until it is marked.
 
 An agent that speaks the Model Context Protocol does not have to call these
@@ -295,6 +299,7 @@ here; changes need `manage_monitors`.
 | `GET` | `/pipeline-proposals/{proposal_id}` | One proposal with its `definition`, `layout` and `bindings` | Path: `proposal_id` |
 | `POST` | `/pipeline-proposals/{proposal_id}/decision` | Accept or decline a proposal. Members only: a key cannot decide. Accepting starts nothing: the web app accepts a proposal once the start of its design has been requested. HTTP 409 once it is decided or withdrawn | Body: `status` (`accepted` or `declined`), optional `note` for the author |
 | `POST` | `/pipeline-proposals/{proposal_id}/withdraw` | Take back a proposal that still waits. HTTP 403 for anyone but its author | Path: `proposal_id` |
+| `DELETE` | `/pipeline-proposals/{proposal_id}` | Delete a proposal once it was withdrawn or declined; 204. HTTP 403 for anyone but its author, 409 while it waits (withdraw it first) or once accepted, as an accepted proposal is why a monitor runs | Path: `proposal_id` |
 | `GET` | `/forecast-models` | Models of the forecast service that pretrained forecaster steps use, each with its download `status`, `progress` and `error`; `service` is `not_deployed` or `unreachable` when there is none to list | None |
 | `POST` | `/forecast-models/downloads` | Have the forecast service download a model's weights (HTTP 202); poll the list for progress | Body: `model` |
 | `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` and `shadow` |
@@ -494,13 +499,13 @@ change it. A run replays one design over one dataset. Every route needs
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/dojo/datasets` | List datasets, newest first | `limit`, `offset` |
+| `GET` | `/dojo/datasets` | List datasets, newest first; each names its member `created_by` or its agent `created_by_agent` | `limit`, `offset`, optional `mine` (only what the caller made) |
 | `POST` | `/dojo/datasets/csv` | Create a dataset from a CSV request body (`text/csv`, at most 100 MB) | Query: `name`, `layout` (`wide` or `long`), optional `timestamp_column`, `series_column`, `value_column`, `delimiter`, `filename`, `description` |
 | `POST` | `/dojo/datasets/history` | Copy recorded readings for one window into a dataset | Body: `name`, `reading_ids`, `end`, optional `start` (omitted: from the first stored value) |
 | `POST` | `/dojo/datasets/{dataset_id}/faults` | Copy a dataset with faults written in: a step, a drift, a frozen value or a gap on one series between two times. Each becomes a label of the copy, beside the dataset's own labels, so a run's metrics say which were detected and how late; faults may not overlap any label. 201 with the copy, whose `source` adds `copied_from` and `faults` | Body: `name`, optional `description`, `faults` (1 to 20), each with `kind`, `series_id`, `start_at`, `end_at`, and for a step or drift an optional `size` (default three standard deviations of the series) |
 | `GET` | `/dojo/datasets/{dataset_id}` | One dataset with its series | Path: `dataset_id` |
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
-| `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |
+| `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset with its values and runs; 204. A key deletes only a dataset it made that holds only runs it queued (403 otherwise), none of them a test a monitor or an open or accepted proposal names (409) | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Values of one series in time order | `after`, `limit` (at most 10,000); continue with `next_after` |
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | The dataset's labels, ordered by start | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Alarms live monitors recorded on the readings the dataset was copied from, inside its span, grouped into episodes as candidate labels; nothing is stored, and an upload gets none | Optional `gap_seconds` (default 600): alarms closer together form one suggestion |
@@ -509,12 +514,12 @@ change it. A run replays one design over one dataset. Every route needs
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move a label or change its note | Body: `start_at`, `end_at`, `note` |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label; 204 | Path: `dataset_id`, `label_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to six finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
-| `GET` | `/dojo/runs` | List runs, newest first | Optional `dataset_id`, `status`; `limit`, `offset` |
+| `GET` | `/dojo/runs` | List runs, newest first | Optional `dataset_id`, `status`, `mine` (only what the caller queued); `limit`, `offset` |
 | `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment`, `compare_calibration` |
 | `GET` | `/dojo/runs/{run_id}` | One run with its design, progress and counts | Path: `run_id` |
-| `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a waiting or running run | Path: `run_id` |
+| `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a waiting or running run. A key cancels only a run it queued (403 otherwise) | Path: `run_id` |
 | `POST` | `/dojo/runs/{run_id}/promote` | Save the run's design as a library template; 201. Also needs `manage_monitors` | Body: `name`, optional `description` |
-| `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run and its results; 204 | Path: `run_id` |
+| `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run and its results; 204. A key deletes only a run it queued (403 otherwise) that no monitor and no open or accepted proposal names as its test (409) | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/calibration` | The calibration methods a finished run also tried on its scores, each scored against the labels; 409 for a run started without `compare_calibration` | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
@@ -618,6 +623,7 @@ hold open and any replica answers any request.
 | `edit_design`, `validate_design` | Changes a design in small edits and checks it | `POST /pipelines/edit`, `POST /pipelines/validate` |
 | `test_design`, `get_test` | Replays a design over the last days of its readings and reads how many alarms it would have raised, and when; with `faults`, over a copy with labelled faults written in, and how many it caught and how late | `POST /dojo/datasets/history`, `POST /dojo/datasets/{dataset_id}/faults`, `POST /dojo/runs`, `GET /dojo/runs/{run_id}` and its `/metrics` and `/results` |
 | `propose_design`, `list_proposals`, `withdraw_proposal` | Hands a design to a member and learns what they decided | `/pipeline-proposals` |
+| `list_my_tests`, `delete_mine` | Cleans up after itself: lists the datasets and tests its key made, and deletes one of them, cancelling a test that still runs, or a proposal of its own once withdrawn or declined. Nothing a member or another key made can be deleted, nor a monitor, alarm or reading, nor a test a monitor or an open or accepted proposal names as evidence | `GET /dojo/datasets` and `GET /dojo/runs` with `mine`, `POST /dojo/runs/{run_id}/cancel`, `DELETE /dojo/runs/{run_id}`, `DELETE /dojo/datasets/{dataset_id}`, `DELETE /pipeline-proposals/{proposal_id}` |
 | `start_monitor`, `get_start` | Starts a monitor without a member's decision, in shadow with `shadow` set | `POST /pipelines/apply`, `GET /pipeline-activations/{activation_id}` |
 
 `start_monitor` and `get_start` exist only for a key whose `starts` is `shadow`

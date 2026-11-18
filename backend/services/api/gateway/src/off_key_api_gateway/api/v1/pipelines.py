@@ -388,6 +388,25 @@ async def withdraw_pipeline_proposal(
     return await proposals.withdraw(proposal_id, caller)
 
 
+@proposals_router.delete(
+    "/{proposal_id}", status_code=204, openapi_extra=OPEN_TO_AGENTS
+)
+@write_limit
+async def delete_pipeline_proposal(
+    request: Request,
+    proposal_id: str,
+    caller: User | Agent = Depends(current_caller),
+    proposals: PipelineProposals = Depends(get_pipeline_proposals),
+):
+    """Delete a proposal of yours once it was withdrawn or declined.
+
+    Only its author can; others get 403. A proposal that waits answers 409
+    until it is withdrawn, and an accepted one stays, as why a monitor runs.
+    """
+    await proposals.remove(proposal_id, caller)
+    return Response(status_code=204)
+
+
 @blocks_router.get("", response_model=PipelineBlockList, openapi_extra=OPEN_TO_AGENTS)
 @read_limit
 async def list_pipeline_blocks(

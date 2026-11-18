@@ -296,6 +296,43 @@ async def test_only_its_author_withdraws_a_proposal(library):
 
 
 @pytest.mark.asyncio
+async def test_its_author_deletes_a_proposal_once_withdrawn_or_declined(library):
+    async with library() as session:
+        service = PipelineProposals(session)
+        agent, _ = await agent_named(session, "Night shift agent")
+        other, _ = await agent_named(session, "Auditor")
+        admin = await admin_of(session)
+        waiting = await service.create(proposal(), agent)
+        with pytest.raises(ConflictError, match="Withdraw the proposal"):
+            await service.remove(waiting.id, agent)
+        await again_after_refusal(session, agent, other, admin)
+        accepted = await service.create(proposal(), agent)
+        await service.decide(
+            accepted.id, PipelineProposalDecision(status="accepted"), admin
+        )
+        # An accepted proposal is why a monitor runs, so it stays.
+        with pytest.raises(ConflictError, match="accepted proposal stays"):
+            await service.remove(accepted.id, agent)
+        await again_after_refusal(session, agent, other, admin)
+        declined = await service.create(proposal(), agent)
+        await service.decide(
+            declined.id, PipelineProposalDecision(status="declined"), admin
+        )
+        await service.withdraw(waiting.id, agent)
+        # Neither another key nor a member deletes what an agent proposed.
+        for stranger in (other, admin):
+            with pytest.raises(ForbiddenError, match="Only its author"):
+                await service.remove(declined.id, stranger)
+            await again_after_refusal(session, agent, other, admin)
+        await service.remove(declined.id, agent)
+        await service.remove(waiting.id, agent)
+        left = [item.id for item in (await service.list()).items]
+        assert left == [accepted.id]
+        with pytest.raises(NotFoundError):
+            await service.remove(declined.id, agent)
+
+
+@pytest.mark.asyncio
 async def test_a_proposal_is_refused_with_the_reason(library, monkeypatch):
     async with library() as session:
         service = PipelineProposals(session)

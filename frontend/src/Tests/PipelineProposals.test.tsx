@@ -261,6 +261,14 @@ describe("proposals", () => {
     expect(screen.getAllByText(rationale.watches)).toHaveLength(1);
   });
 
+  it("links a tested proposal to its test run in the Dojo", () => {
+    const view = render(<MemoryRouter><PipelineProposalNotice proposal={summary({ test_run_id: "run 7" })} canDecide={false}
+      onDeclined={() => {}} /></MemoryRouter>);
+    expect(screen.getByRole("link", { name: "See the test run" }).getAttribute("href")).toBe("/dojo?run=run%207");
+    view.rerender(<MemoryRouter><PipelineProposalNotice proposal={summary()} canDecide={false} onDeclined={() => {}} /></MemoryRouter>);
+    expect(screen.queryByRole("link", { name: "See the test run" })).toBeNull();
+  });
+
   it("leaves the decision to a member who manages monitors, and shows one that was made", () => {
     const view = render(<PipelineProposalNotice proposal={summary()} canDecide={false} onDeclined={() => {}} />);
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();

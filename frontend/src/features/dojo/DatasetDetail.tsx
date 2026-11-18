@@ -17,8 +17,10 @@ import { DATASET_TABS as TABS, formatSpan, injectedFaults, isActive, type Datase
 
 const RUN_POLL_MS = 3000;
 
-export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
+export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
   id: string; tab: DatasetTab; listHref: string; onTab: (tab: DatasetTab) => void; onDeleted: () => void;
+  /** A run to pick out among the runs, such as the test a proposal was handed in with. */
+  run?: string;
 }) {
   const { can } = useAuth();
   const editable = can("use_dojo");
@@ -105,7 +107,7 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
     </div>
     <div id="dj-tab-panel" role="tabpanel" aria-labelledby={`dj-tab-${tab}`}>
       {tab === "values" && <LabelsPanel dataset={dataset} labels={labels} onLabelsChange={reloadLabels} />}
-      {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} onRunsChange={runLoop.reload} />}
+      {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} current={run} onRunsChange={runLoop.reload} />}
       {tab === "compare" && <ComparePanel dataset={dataset} runs={runs} labels={labels} />}
       {tab !== "values" && moreRuns && <button type="button" className="dj-action" disabled={loadingRuns}
         onClick={() => setRunPages(count => count + 1)}>{loadingRuns ? "Loading runs…" : "Load more runs"}</button>}

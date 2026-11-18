@@ -15,6 +15,9 @@
 .dj-table a { color: var(--ex-ink); font-weight: 500; text-decoration: none; overflow-wrap: anywhere; }
 .dj-table a:hover { color: var(--ex-accent); }
 .dj-table-scroll { overflow-x: auto; }
+/* The run a link pointed to, such as a proposal's test: a bar on its first cell, so the columns stay put. */
+.dj-table tr.dj-row-current td { background: var(--ex-hover); }
+.dj-table tr.dj-row-current td:first-child { box-shadow: inset 3px 0 0 var(--ex-accent); padding-left: 10px; }
 .dj-row-actions { display: flex; gap: 12px; justify-content: flex-end; white-space: nowrap; }
 .dj-section { margin-top: 28px; }
 .dj-section > h2 { font-size: var(--text-title3); line-height: var(--leading-title3); font-weight: 500; margin: 0 0 12px; }

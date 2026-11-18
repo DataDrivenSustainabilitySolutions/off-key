@@ -98,6 +98,23 @@ describe("Dojo workspace", () => {
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
+  it("opens a run linked on its own, such as a proposal's test, among its dataset's runs", async () => {
+    vi.mocked(dojoApi.run).mockResolvedValue({ ...run("r2", "Baseline"), definition: {} } as never);
+    const router = mount("/dojo?run=r2");
+    const row = (await screen.findByText("Baseline")).closest("tr")!;
+    expect(row.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByText("Forest").closest("tr")!.getAttribute("aria-current")).toBeNull();
+    expect(dojoApi.run).toHaveBeenCalledWith("r2", expect.anything());
+    expect(router.state.location.search).toBe("?dataset=d1&tab=runs&run=r2");
+  });
+
+  it("says when a linked run cannot be opened", async () => {
+    vi.mocked(dojoApi.run).mockRejectedValue(new Error("Run not found"));
+    mount("/dojo?run=gone");
+    expect(await screen.findByRole("heading", { name: "The run could not be opened" })).toBeTruthy();
+    expect(screen.getByText("Run not found")).toBeTruthy();
+  });
+
   it("names a directly opened dataset, its sections, and the list on return", async () => {
     vi.mocked(dojoApi.compare).mockResolvedValue({ dataset_id: "d1", labels: [label],
       runs: [metrics("r1", "Forest", 1, 0), metrics("r2", "Baseline", 0, 0)] });

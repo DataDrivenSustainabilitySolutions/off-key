@@ -36,6 +36,14 @@ const ROWS: Row[] = [
   { label: "False alarms per day", value: item => formatPerDay(item.false_alarms_per_day),
     best: { score: item => item.false_alarms_per_day, prefer: "low" } },
   { label: "Time outside labels", value: item => formatDuration(item.evaluated_seconds) },
+  // Threshold-free: how well the scores rank labelled results above the rest.
+  { label: "PR-AUC", value: item => formatScore(item.scores?.pr_auc),
+    best: { score: item => item.scores?.pr_auc, prefer: "high" } },
+  { label: "VUS-PR", value: item => formatScore(item.scores?.vus_pr),
+    best: { score: item => item.scores?.vus_pr, prefer: "high" } },
+  { label: "AUROC", value: item => formatScore(item.scores?.auroc),
+    best: { score: item => item.scores?.auroc, prefer: "high" } },
+  { label: "Top score at the label", value: item => item.scores?.top1_hit == null ? "–" : item.scores.top1_hit ? "Yes" : "No" },
   { label: "Scored from", value: item => formatInstant(item.scored_from) },
 ];
 
@@ -48,6 +56,8 @@ function bestOf(row: Row, runs: RunMetrics[]) {
   // A tie favours nobody.
   return values.filter(value => value === target).length === 1 ? target : undefined;
 }
+
+const formatScore = (value: number | null | undefined) => value == null ? "–" : value.toFixed(3);
 
 const OUTCOME = { detected: "Detected", missed: "Missed", unscored: "Not scored" } as const;
 
@@ -126,7 +136,10 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
         </tr>)}</tbody>
       </table></div>}
       <p className="dj-help">A label counts as detected when the run alarmed inside it. Each alarm that begins outside every
-        label is one false alarm, so an alarm held for many values counts once. Labels before the first score are not scored.</p>
+        label is one false alarm, so an alarm held for many values counts once. Labels before the first score are not scored.
+        PR-AUC, VUS-PR and AUROC judge the scores before any threshold: how well they rank labelled values above the rest.
+        VUS-PR also credits scores that peak just before or after a label. With a single label, “Top score at the label”
+        says whether the highest score came within 100 values of it, as the UCR anomaly archive scores a series.</p>
     </>}
   </div>
   <MethodsPanel runs={finished} labelsKey={labelsKey} /></>;

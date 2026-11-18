@@ -744,6 +744,40 @@ class LabelOutcome(DojoModel):
     )
 
 
+class ScoreMetrics(DojoModel):
+    """How well a run's scores rank labelled results above the rest.
+
+    Threshold-free: they judge the detector's scores, not the alarms its
+    calibration and alarm rule made of them. Only scored results count, so a
+    run's warm-up is left out.
+    """
+
+    scored_results: int
+    labelled_results: int = Field(description="Scored results inside a label.")
+    pr_auc: float | None = Field(
+        description="Average precision of the scores against the labels; "
+        "chance level is labelled_results / scored_results."
+    )
+    auroc: float | None = Field(
+        description="Area under the ROC curve; 0.5 is chance. Looks good on "
+        "rare anomalies almost by default, so read it beside pr_auc."
+    )
+    vus_pr: float | None = Field(
+        description="Volume under the range-PR surface: PR-AUC against labels "
+        "widened by a buffer that fades out over 0 to 50 typical intervals "
+        "on each side, averaged over 11 buffer sizes. Forgives scores that "
+        "peak just before or after a label."
+    )
+    top_score_at: datetime | None = Field(
+        description="When the highest score came, the earliest of equal ones."
+    )
+    top1_hit: bool | None = Field(
+        description="With exactly one label: whether the highest score lies "
+        "within 100 typical intervals of it, as the UCR archive scores a "
+        "series. Null with more or fewer labels."
+    )
+
+
 class RunMetrics(DojoModel):
     """Event metrics of one finished run against its dataset's labels.
 
@@ -775,6 +809,11 @@ class RunMetrics(DojoModel):
     false_alarms_per_day: float | None = Field(
         description="false_alarms per 24 hours of evaluated time; null when "
         "no time outside the labels was scored."
+    )
+    scores: ScoreMetrics | None = Field(
+        default=None,
+        description="Threshold-free metrics of the scores; null when the run "
+        "scored nothing.",
     )
     labels: list[LabelOutcome] = Field(max_length=MAX_DATASET_LABELS)
 

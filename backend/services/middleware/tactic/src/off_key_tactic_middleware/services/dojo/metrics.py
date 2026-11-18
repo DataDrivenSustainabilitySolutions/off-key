@@ -38,9 +38,13 @@ from sqlalchemy.exc import DBAPIError
 
 from ...domain import ConflictError, NotFoundError, ValidationError
 from .labels import dataset_labels, label_view
+from .score_metrics import score_metrics
 
 DAY_SECONDS = 86_400.0
 METRICS_TIMEOUT_SECONDS = 30.0
+# Of the 25 seconds a metrics transaction may run its statements, the score
+# metrics take at most this long.
+SCORES_TIMEOUT = "12s"
 
 
 @dataclass(frozen=True)
@@ -240,7 +244,7 @@ class DojoMetrics:
         key = hashlib.sha256(
             json.dumps(
                 [
-                    1,
+                    2,
                     run.result_count,
                     run.alarm_count,
                     run.config.get("calibration_comparison")
@@ -316,8 +320,33 @@ class DojoMetrics:
             false_alarms=evaluation.false_alarms,
             evaluated_seconds=evaluation.evaluated_seconds,
             false_alarms_per_day=_per_day(evaluation),
+            scores=await self._scores(run, labels),
             labels=evaluation.labels,
         )
+
+    async def _scores(self, run: DojoRun, labels: list[DojoLabel]):
+        """Score metrics within their own time limit, or none past it.
+
+        They sort every scored result, which on the largest runs takes
+        seconds; the event metrics must still come back when they cannot.
+        """
+        try:
+            async with self.session.begin_nested():
+                await self.session.execute(
+                    text(f"SET LOCAL statement_timeout = '{SCORES_TIMEOUT}'")
+                )
+                scores = await score_metrics(
+                    self.session,
+                    run.id,
+                    [(label.start_at, label.end_at) for label in labels],
+                )
+                await self.session.execute(text("SET LOCAL statement_timeout = '25s'"))
+                return scores
+        except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) != "57014":
+                raise
+            # Rolling back to the savepoint restored the transaction's limit.
+            return None
 
     async def _calibration(
         self, run: DojoRun, labels: list[DojoLabel]

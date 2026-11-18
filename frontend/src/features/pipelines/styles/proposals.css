@@ -35,11 +35,14 @@
 /* A reason may run to a page; the card shows how it begins and the review shows all of it. */
 .pl-proposal-reason { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* Only a phone folds the evidence and the limits away, so only a phone has the button that shows them. */
+.pl-proposal-more { display: none; }
+
 /* Where a proposal stands. The dot carries the state's colour; the word says it too. */
 .pl-proposal-decision { display: grid; gap: 4px; margin: 4px 0 0; padding: 8px 12px; border-left: 2px solid hsl(var(--border)); background: hsl(var(--muted) / 0.55); }
 .pl-proposal-decision p { margin: 0; }
 .pl-proposal-decision .mn-state { font-weight: 500; }
-.pl-proposal-decision time { margin-left: 4px; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); }
+.pl-proposal-decision time { margin-left: 4px; white-space: nowrap; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); }
 .pl-proposal-decision .pl-help { margin: 0; font-size: var(--text-caption); line-height: var(--leading-caption); }
 .pl-proposal-decision blockquote { margin: 0; max-width: 78ch; overflow-wrap: anywhere; white-space: pre-line; }
 
@@ -81,6 +84,8 @@
 
 /* The proposal beside its design: where it stands, the way to its test, then the rationale and the author's note, each under its name. */
 .pl-brief { display: grid; gap: 14px; font-size: var(--text-body); line-height: var(--leading-body); }
+/* Beside the design the header names it; where the brief is read alone, it does. */
+.pl-brief-name { display: none; margin: 0; font-size: var(--text-title3); line-height: var(--leading-title3); font-weight: 600; overflow-wrap: anywhere; }
 .pl-brief .pl-proposal-decision { margin: 0; }
 .pl-brief .pl-help { margin: 0; }
 .pl-brief section { display: grid; gap: 2px; }
@@ -91,11 +96,29 @@
 .pl-brief-test a { color: hsl(var(--primary)); font-size: var(--text-caption); text-decoration: underline; text-underline-offset: 3px; }
 .pl-brief .rationale-fields--stacked { padding-top: 14px; border-top: 1px solid hsl(var(--border)); }
 
+/* A phone reads the list as a feed: rows from edge to edge, what each design watches in three lines,
+   and the rest one press away. The words that introduce the page give way to the proposals. */
 @media (max-width: 680px) {
-  .pl-proposal-card > article { padding: 16px; }
-  .pl-proposal-card .rationale-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .pl-stage--reading .pl-brief-name { display: block; }
+  .pl-proposals-about { display: none; }
+  .pl-proposals-intro:not(:has(> :not(.pl-proposals-about))) { margin: 0; }
+  .pl-proposals-tools { margin-top: 16px; }
+  .pl-proposal-cards { margin: 8px -20px 0; gap: 8px; }
+  .pl-proposal-card > article { gap: 6px; padding: 16px 20px 14px; border-width: 1px 0; border-radius: 0; }
+  .pl-proposal-card .rationale-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 4px; }
   .pl-proposal-card .rationale-fields dt { line-height: var(--leading-caption); }
-  .pl-proposals .pl-proposal-actions > button, .pl-library .pl-decision button { min-height: 44px; }
+  .pl-proposal-card article[data-more="false"] .rationale-fields > div:nth-child(n + 2) { display: none; }
+  .pl-proposal-card article[data-more="false"] .rationale-fields > div:first-child dt { display: none; }
+  .pl-proposal-card article[data-more="false"] .rationale-fields dd { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .pl-proposals .pl-proposal-more { display: inline-flex; align-items: center; gap: 4px; justify-self: start; min-height: 36px; margin-left: -2px; padding: 4px 8px 4px 0;
+    border: 0; background: none; color: var(--ex-muted); font-size: var(--text-control); }
+  .pl-proposal-more svg { transition: transform 120ms ease; }
+  .pl-proposal-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .pl-proposal-actions { margin-top: 2px; }
+  .pl-proposals .pl-proposal-actions > button { min-height: 40px; }
+  .pl-library .pl-decision button { min-height: 44px; }
+  .pl-proposals .pl-proposal-actions > button:not(.pl-decline) { flex: 1 1 0; }
   .pl-proposal-hint { flex: 1 1 100%; margin-left: 0; }
   .pl-decision textarea { font-size: 16px; }
 }
+@media (max-width: 680px) and (prefers-reduced-motion: reduce) { .pl-proposal-more svg { transition: none; } }

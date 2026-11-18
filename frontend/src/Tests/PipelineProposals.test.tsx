@@ -120,6 +120,7 @@ describe("proposals", () => {
     const open = await card("Pump vibration");
     // Without a rationale the reason is the case made; who handed it in, as what and how tested reads under the name.
     expect(within(open).getByText("Reason").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
+    expect(within(open).queryByRole("button", { name: "Evidence and limits" })).toBeNull();
     // An agent reads as an agent: the name of its key says nothing to the member who decides.
     expect(within(open).getAllByRole("listitem")[0]?.textContent).toMatch(/^Agent/);
     expect(open.textContent).not.toContain("Night shift agent");
@@ -154,6 +155,11 @@ describe("proposals", () => {
     expect(within(open).queryByText("Why this design")).toBeNull();
     expect(within(open).queryByText("A longer word from the author.")).toBeNull();
     expect(within(open).getAllByRole("listitem").slice(1).map((item) => item.textContent)).toEqual(["Replaces Valve watch", "Tested on history"]);
+    // A phone shows what the design watches and folds the rest behind a button that names it.
+    const more = within(open).getByRole("button", { name: "Evidence and limits" });
+    expect([more.getAttribute("aria-expanded"), open.getAttribute("data-more")]).toEqual(["false", "false"]);
+    fireEvent.click(more);
+    expect([more.getAttribute("aria-expanded"), open.getAttribute("data-more")]).toEqual(["true", "true"]);
   });
 
   it("says when none waits, and offers to read the list again when it cannot be read", async () => {
@@ -288,6 +294,8 @@ describe("proposals", () => {
     const brief = screen.getByRole("group", { name: "Proposal by an agent" });
     expect(within(brief).getAllByRole("listitem")[0]?.textContent).toMatch(/^Agent/);
     expect(brief.textContent).not.toContain("Night shift agent");
+    // Read alone, as on a phone, it opens with the name the design was handed in under.
+    expect(brief.firstElementChild?.textContent).toBe("Pump vibration");
     for (const [label, text] of [["Watches", rationale.watches], ["Why this design", rationale.why], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
       expect(screen.getByText(label).nextElementSibling?.textContent).toBe(text);
     // The reason it fell back to is not said twice.
@@ -348,15 +356,49 @@ describe("proposals", () => {
     expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Pump vibration");
     // The proposal opens beside its design, under a button of its own, and leaves the canvas whole when closed.
     expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Proposal" }).getAttribute("aria-expanded")).toBe("true");
+    const panels = within(screen.getByLabelText("Settings panels"));
+    expect(panels.getByRole("button", { name: "Proposal" }).getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Close proposal" }));
     expect(screen.queryByRole("group", { name: "Proposal by an agent" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Proposal" }));
+    fireEvent.click(panels.getByRole("button", { name: "Proposal" }));
     expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
+    // On a phone the proposal and the design take turns, and two tabs say which one shows.
+    const tabs = within(screen.getByRole("group", { name: "Show" }));
+    expect(tabs.getByRole("button", { name: "Proposal" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(tabs.getByRole("button", { name: "Design" }));
+    expect(screen.queryByRole("group", { name: "Proposal by an agent" })).toBeNull();
+    expect(tabs.getByRole("button", { name: "Design" }).getAttribute("aria-pressed")).toBe("true");
+    // A panel of the design leaves the design's tab chosen.
+    fireEvent.click(panels.getByRole("button", { name: "Step settings" }));
+    expect(tabs.getByRole("button", { name: "Design" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(tabs.getByRole("button", { name: "Proposal" }));
+    expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
+    // The decision stands together, apart from the templates: Decline beside the way to start.
+    expect(screen.getByRole("button", { name: "Decline" }).parentElement)
+      .toBe(screen.getByRole("button", { name: "Start monitoring" }).parentElement);
+    expect(screen.getByRole("button", { name: "Load template" }).parentElement)
+      .not.toBe(screen.getByRole("button", { name: "Start monitoring" }).parentElement);
     // The design on the canvas is the proposed one, and it names the reading it was made for.
     expect(screen.getByRole("button", { name: "Input: Room, 1 of 1 readings" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Proposals" }));
     expect(address()).toBe("?view=proposals");
+  });
+
+  it("shows the design for what is left to do, where the proposal is read in place of it", async () => {
+    vi.mocked(pipelinesApi.validate).mockImplementation(async (sent) => ({ valid: false, definition: normalizeDefinition(sent),
+      issues: [{ code: "disconnected", message: "Connect the detector" }], features: {}, provenance_complete: true }));
+    workspace("/?create=monitoring&proposal=p1");
+    const start = await screen.findByRole("button", { name: "Start monitoring" });
+    // Beside the design the proposal stays where it is while the list opens.
+    fireEvent.click(start);
+    expect(await screen.findByText("Connect the detector")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
+    // A phone's styles keep the canvas out of sight while the proposal is read.
+    document.querySelector<HTMLElement>(".pl-stage-canvas")!.style.visibility = "hidden";
+    fireEvent.click(start);
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Proposal by an agent" })).toBeNull());
+    expect(screen.getByText("Connect the detector")).toBeTruthy();
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
 
   it("accepts the proposal when the member starts the service", async () => {
@@ -434,7 +476,7 @@ describe("proposals", () => {
     expect(screen.getByText("The panel of the test")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Test run-7 by Night shift agent, 5 steps, open" })).toBeTruthy();
     expect(screen.queryByRole("group", { name: "Proposal by an agent" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Proposal" }));
+    fireEvent.click(within(screen.getByLabelText("Settings panels")).getByRole("button", { name: "Proposal" }));
     expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
     view.unmount();
     // A proposal without a test offers to run one.

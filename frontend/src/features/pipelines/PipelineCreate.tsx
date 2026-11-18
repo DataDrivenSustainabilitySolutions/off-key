@@ -299,9 +299,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
             onDownload={(details) => toast.success(`Downloaded ${downloadDesign(draft.document, details.name, details.description)}.`,
               { id: "pipeline-design-download" })} />
         </>}
-        {props.menu}
-        {canAuthor && <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
-          <Play size={15} />{checking ? "Checking…" : `${replaceId ? "Update" : "Start"} ${draft.shadow ? "in shadow" : "monitoring"}`}</button>}
+        {/* The decision stands together: beside the templates on a wide screen, in a bar under the thumb on a phone. */}
+        <div className="pl-setup-decide">
+          {props.menu}
+          {canAuthor && <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
+            <Play size={15} />{checking ? "Checking…" : `${replaceId ? "Update" : "Start"} ${draft.shadow ? "in shadow" : "monitoring"}`}</button>}
+        </div>
       </div>}
     </header>
     <div className="pl-setup-notices">
@@ -336,13 +339,14 @@ export function PipelineCreate(props: PipelineSetupProps) {
       actions={canAuthor && !locked && <>
         <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title={`Undo (${SHORTCUTS.undo.label})`} onClick={graph.undo}><Undo2 size={15} /></button>
         <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title={`Redo (${SHORTCUTS.redo.label})`} onClick={graph.redo}><Redo2 size={15} /></button>
-        <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
-        {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {
+        <button type="button" disabled={arranging} aria-label="Arrange" onClick={() => void arrange()}>
+          <LayoutGrid size={15} aria-hidden="true" /><span className="pl-label-wide">Arrange</span></button>
+        {dirty && <button type="button" aria-label="Reset" title="Reset to the initial configuration" onClick={async () => {
           if (!await confirm({ title: "Discard this setup?", description: "Your changes to this flow are cleared and the setup starts again.",
             confirmLabel: "Discard and start again", destructive: true })) return;
           const fresh = initial();
           session.discard(fresh); graph.resetHistory(); select(opensAtInput ? inputNode(fresh.document) : undefined); graph.requestFit(); setAttempted(false);
-        }}><RotateCcw size={15} />Reset</button>}
+        }}><RotateCcw size={15} aria-hidden="true" /><span className="pl-label-wide">Reset</span></button>}
       </>}
       test={designTest && <designTest.Panel session={`${creationKey}:test`} definition={draft.document.definition}
         readings={bindings} name={draft.name} scope={target?.label} blocked={testBlocked} onChooseReadings={openInput} />}

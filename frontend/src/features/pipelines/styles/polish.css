@@ -149,7 +149,7 @@
 .pl-stage .pl-canvas-feedback {
   box-shadow: var(--pl-float-shadow);
 }
-.pl-stage .pl-setup-actions > button,
+.pl-stage :is(.pl-setup-actions, .pl-setup-decide) > button,
 .pl-stage .pl-canvas-toolbar > .pl-actions button {
   transition: background-color 120ms ease, color 120ms ease;
 }
@@ -180,7 +180,7 @@
 @media (prefers-reduced-motion: reduce) {
   .pl-canvas-wrap .pl-node,
   .pl-canvas-wrap .pl-node .react-flow__handle::after,
-  .pl-stage .pl-setup-actions > button,
+  .pl-stage :is(.pl-setup-actions, .pl-setup-decide) > button,
   .pl-stage .pl-canvas-toolbar > .pl-actions button {
     transition: none;
   }

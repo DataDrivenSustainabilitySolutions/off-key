@@ -19,7 +19,8 @@ export function PipelineSaveTemplate({ name, description, existing, disabled, sa
     setOpen(next);
     if (next) { setTitle(name); setNotes(description); }
   }}>
-    <Dialog.Trigger disabled={disabled}><Save size={15} />Save template</Dialog.Trigger>
+    <Dialog.Trigger disabled={disabled} aria-label="Save template">
+      <Save size={15} aria-hidden="true" /><span>Save<span className="pl-label-rest"> template</span></span></Dialog.Trigger>
     <Dialog.Portal><Dialog.Overlay className="pl-dialog-overlay" />
       <Dialog.Content className="pl-library pl-template-dialog">
         <div className="pl-component-menu-heading"><Dialog.Title>Save monitoring template</Dialog.Title>

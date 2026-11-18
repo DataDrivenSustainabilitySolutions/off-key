@@ -67,7 +67,9 @@ function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, 
     const measure = () => {
       const area = canvas.current?.getBoundingClientRect();
       const header = top.current?.getBoundingClientRect();
-      const settings = open ? panel.current?.getBoundingClientRect() : undefined;
+      // On a phone a brief is read in place of the canvas: a canvas that is not shown keeps clear of nothing.
+      const shown = !!canvas.current && getComputedStyle(canvas.current).visibility !== "hidden";
+      const settings = open && shown ? panel.current?.getBoundingClientRect() : undefined;
       if (!area || !header) return;
       // Beside the canvas the settings cover its right edge; as a bottom sheet, its bottom.
       const side = !!settings?.width && settings.left > area.left + 1;
@@ -170,6 +172,14 @@ export function PipelineWorkbench({
     setLocalPanel(next);
     onInspectorPanelChange?.(next);
   };
+  // What is left to do is listed at the status, which stands with the design. Where a brief is read
+  // in place of the design, as on a phone, the design takes its turn when that list is asked for.
+  const showDesign = useRef(() => {});
+  useEffect(() => { showDesign.current = () => { if (panel === "brief") setPanel(null); }; });
+  useEffect(() => {
+    const canvas = stageCanvas.current;
+    if (issuesRequest && canvas && getComputedStyle(canvas).visibility === "hidden") showDesign.current();
+  }, [issuesRequest]);
   // Opening a panel moves focus into it; a panel that is open from the start leaves focus alone.
   const shownPanel = useRef(panel);
   useEffect(() => {
@@ -337,7 +347,7 @@ export function PipelineWorkbench({
           </>}
         </Popover.Content></Popover.Portal>
       </Popover.Root>}
-      {brief && <button type="button" ref={briefButton}
+      {brief && <button type="button" ref={briefButton} className="pl-brief-button"
         aria-expanded={panel === "brief"} aria-controls={panelId}
         onClick={() => panel === "brief" ? close() : setPanel("brief")}>{brief.label}</button>}
       {settings && <button type="button" ref={serviceButton} aria-label="Service settings"
@@ -350,6 +360,14 @@ export function PipelineWorkbench({
         aria-expanded={panel === "test"} aria-controls={panelId}
         onClick={() => panel === "test" ? close() : setPanel("test")}>{testLabel ?? "Test"}</button>}
     </div>
+  </div>;
+  // On a phone the brief and the design take turns on the screen, so two tabs say which one shows.
+  // A wide screen shows both side by side and has no use for them.
+  const tabs = stage && brief && <div className="pl-segmented pl-stage-tabs" role="group" aria-label="Show">
+    <button type="button" aria-pressed={panel === "brief"} aria-controls={panelId}
+      onClick={() => { if (panel !== "brief") setPanel("brief"); }}>{brief.label}</button>
+    <button type="button" aria-pressed={panel !== "brief"}
+      onClick={() => { if (panel === "brief") setPanel(null); }}>Design</button>
   </div>;
   const canvas = view === "features"
     ? <PipelineFeatures document={props.document} components={catalog.components} report={validation ?? lastValidation}
@@ -388,9 +406,9 @@ export function PipelineWorkbench({
       if (restore && choice.from instanceof HTMLElement) choice.from.focus({ preventScroll: true });
     }} />;
   // The header comes first in the page, as it does on screen, so Tab reaches it before the canvas.
-  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}`}
+  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}${panel === "brief" ? " pl-stage--reading" : ""}`}
     style={{ "--pl-covered-right": `${insets?.right ?? 0}px` } as CSSProperties}>
-    <div className="pl-stage-top" ref={top}>{header}{toolbar}</div>
+    <div className="pl-stage-top" ref={top}>{header}{tabs}{toolbar}</div>
     <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-body">{settingsContent}</div>
     {detectorChoice}

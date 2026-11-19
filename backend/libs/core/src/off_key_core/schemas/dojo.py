@@ -969,6 +969,20 @@ class RunDiagnostics(DojoModel):
     commonest_score_share: float | None = Field(
         default=None, description="Share of the scores that equal the most common one."
     )
+    quick_returns: float | None = Field(
+        default=None,
+        description="Share of the alarm episodes after the first that begin "
+        "within 10 results of the previous one's end. High, the alarm flaps "
+        "on and off around its boundary rather than marking separate events. "
+        "Null with fewer than two episodes.",
+    )
+    alarms_alone: int | None = Field(
+        default=None,
+        description="Only in a comparison of two or more runs: alarm episodes "
+        "no other compared run alarmed within 10 usual intervals of. Where "
+        "designs disagree is where to look, and label, first. Null outside a "
+        "comparison or past 20,000 episodes.",
+    )
     findings: list[str] = Field(default_factory=list)
 
 

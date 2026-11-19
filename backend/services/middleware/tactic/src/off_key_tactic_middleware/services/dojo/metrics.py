@@ -38,7 +38,7 @@ from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.exc import DBAPIError
 
 from ...domain import ConflictError, NotFoundError, ValidationError
-from .diagnostics import run_diagnostics
+from .diagnostics import alone, run_diagnostics
 from .labels import dataset_labels, label_view
 from .score_metrics import score_metrics
 
@@ -147,7 +147,7 @@ def _cache_key(run: DojoRun, labels: Sequence[DojoLabel], kind: str) -> str:
     return hashlib.sha256(
         json.dumps(
             [
-                4,
+                5,
                 run.result_count,
                 run.alarm_count,
                 run.config.get("calibration_comparison")
@@ -230,10 +230,11 @@ class DojoMetrics:
                     f"{', '.join(map(repr, elsewhere))} ran on another"
                 )
             labels = await dataset_labels(self.session, dataset.id)
+            measured = [await self._metrics(run, labels) for run in runs]
             return Comparison(
                 dataset_id=dataset.id,
                 labels=[label_view(label) for label in labels],
-                runs=[await self._metrics(run, labels) for run in runs],
+                runs=await alone(self.session, measured),
             )
 
     async def calibration(self, run_id: str) -> MethodComparison:

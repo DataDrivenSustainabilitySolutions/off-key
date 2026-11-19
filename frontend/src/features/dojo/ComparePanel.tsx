@@ -59,6 +59,13 @@ const ROWS: Row[] = [
     const strongest = item.diagnostics?.follows?.[0];
     return strongest ? `${strongest.series} ${strongest.correlation.toFixed(2)}` : "–";
   } },
+  // An alarm back within 10 results of the last one flaps around its boundary.
+  { label: "Alarms back within 10 values", value: item => {
+    const value = item.diagnostics?.quick_returns;
+    return value == null ? "–" : `${formatRate(value)}${value > 0.5 ? " · flaps" : ""}`;
+  } },
+  // Where designs disagree is where to look, and label, first.
+  { label: "Alarms no other run raised", value: item => item.diagnostics?.alarms_alone?.toLocaleString() ?? "–" },
   { label: "Scored from", value: item => formatInstant(item.scored_from) },
 ];
 
@@ -165,7 +172,8 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
         says whether the highest score came within 100 values of it, as the UCR anomaly archive scores a series. The
         last rows need no labels: the score trend is the rank correlation of the scores with time, and “Scores follow an
         input” the strongest rank correlation of the scores with an input’s value. Near 1 or -1, the detector scores where
-        the series is rather than what is unusual.</p>
+        the series is rather than what is unusual. Above half of the alarms coming back within 10 values, the alarm flaps.
+        Alarms no other compared run raised nearby are where the designs disagree, and the first places worth a label.</p>
     </>}
   </div>
   <MethodsPanel runs={finished} labelsKey={labelsKey} /></>;

@@ -159,8 +159,12 @@ holds the copy a release depends on.
 6. Accept the first-administrator invitation at the demo hostname and choose
    your password. Then run **Deploy Production** with *stack* `demo`, `action: initialize`. This
    creates the server-only viewer and seeds an empty catalogue with recording
-   enabled. Subsequent releases also run this idempotent initialization after
-   admin setup.
+   enabled. In the Dojo it imports six small UCR series, one per domain, as the
+   suite **UCR sample** and starts a study of each starter design on it, for
+   show. TACTIC needs to reach the benchmark mirror for that; if it cannot, the
+   rest still completes and the next release tries again. Subsequent releases
+   also run this idempotent initialization after admin setup, keeping a suite
+   and studies that exist.
 7. Sign in and configure the monitors and datasets to showcase. Verify the same
    pages in a signed-out browser, including fresh measurements and unavailable
    feed states. Public visitors cannot create monitors or upload datasets.

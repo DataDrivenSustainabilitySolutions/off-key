@@ -418,6 +418,24 @@ export type RunCreate = {
   compare_calibration?: boolean;
 };
 
+export type RunDiagnostics = {
+  results: number;
+  scored_share: number | null;
+  warm_up_seconds: number | null;
+  alarm_share: number | null;
+  alarm_episodes: number;
+  episodes_per_day?: number | null;
+  longest_episode_seconds?: number | null;
+  episodes_after_gaps: number;
+  after_gap_share: number | null;
+  score_trend?: number | null;
+  follows?: Array<ScoreFollows>;
+  commonest_score_share?: number | null;
+  quick_returns?: number | null;
+  alarms_alone?: number | null;
+  findings?: Array<string>;
+};
+
 export type RunListPage = {
   items: Array<RunSummary>;
   next_offset?: number | null;
@@ -448,9 +466,7 @@ export type RunMetrics = {
   evaluated_seconds: number;
   false_alarms_per_day: number | null;
   scores?: ScoreMetrics | null;
-  alarm_episodes?: number;
-  quick_returns?: number | null;
-  alarms_alone?: number | null;
+  diagnostics?: RunDiagnostics | null;
   labels: Array<LabelOutcome>;
 };
 
@@ -548,6 +564,11 @@ export type RunView = {
   stats: Record<string, number>;
 };
 
+export type ScoreFollows = {
+  series: string;
+  correlation: number;
+};
+
 export type ScoreMetrics = {
   scored_results: number;
   labelled_results: number;
@@ -557,7 +578,6 @@ export type ScoreMetrics = {
   top_score_at: string | null;
   top1_hit: boolean | null;
   score_autocorrelation?: number | null;
-  baseline_creep?: number | null;
 };
 
 export type Season = {

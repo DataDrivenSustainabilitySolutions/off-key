@@ -200,24 +200,6 @@ SELECT CASE WHEN min(score) < max(score) THEN corr(score, earlier) END FROM (
 )
 
 
-# The last quarter's median against the first's, in the first's IQR.
-CREEP = text(
-    """
-SELECT (
-    percentile_cont(0.5) WITHIN GROUP (ORDER BY score) FILTER (WHERE part = 4)
-    - percentile_cont(0.5) WITHIN GROUP (ORDER BY score) FILTER (WHERE part = 1)
-) / NULLIF(
-    percentile_cont(0.75) WITHIN GROUP (ORDER BY score) FILTER (WHERE part = 1)
-    - percentile_cont(0.25) WITHIN GROUP (ORDER BY score) FILTER (WHERE part = 1),
-    0
-) FROM (
-    SELECT score, ntile(4) OVER (ORDER BY sequence) AS part
-    FROM dojo_run_results WHERE run_id = :run_id AND score IS NOT NULL
-) AS quarters
-"""
-)
-
-
 async def score_metrics(
     session,
     run_id: str,
@@ -266,16 +248,13 @@ async def score_metrics(
             <= top_at.timestamp()
             <= end.timestamp() + tolerance
         )
-    enough = scored >= 2 * PERSISTENCE_LAG
     persistence = (
         await session.scalar(PERSISTENCE, {"run_id": run_id, "lag": PERSISTENCE_LAG})
-        if enough
+        if scored >= 2 * PERSISTENCE_LAG
         else None
     )
-    creep = await session.scalar(CREEP, {"run_id": run_id}) if enough else None
     return ScoreMetrics(
         score_autocorrelation=None if persistence is None else round(persistence, 3),
-        baseline_creep=None if creep is None else round(sign * creep, 3),
         scored_results=scored,
         labelled_results=inside,
         pr_auc=ranges[0] if inside else None,

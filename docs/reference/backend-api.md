@@ -565,7 +565,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a waiting or running run. A key cancels only a run it queued (403 otherwise) | Path: `run_id` |
 | `POST` | `/dojo/runs/{run_id}/promote` | Save the run's design as a library template; 201. Also needs `manage_monitors` | Body: `name`, optional `description` |
 | `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run and its results; 204. A key deletes only a run it queued (403 otherwise) that no monitor and no open or accepted proposal names as its test (409) | Path: `run_id` |
-| `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels | Path: `run_id` |
+| `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels, score metrics, and `diagnostics` of the scores and alarms that need no labels, with `findings` in words | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/calibration` | The calibration methods a finished run also tried on its scores, each scored against the labels; 409 for a run started without `compare_calibration` | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
 | `GET` | `/dojo/runs/{run_id}/outline` | The results summed up over equal stretches of time: per stretch the number of results and alarms and the lowest and highest score and threshold | `buckets` (300 by default, at most 2,000) |

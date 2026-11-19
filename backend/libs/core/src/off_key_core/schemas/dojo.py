@@ -914,15 +914,76 @@ class ScoreMetrics(DojoModel):
         "before it, with Lags, Change or a forecaster. Null below 40 scored "
         "results or for scores that never change.",
     )
-    baseline_creep: float | None = Field(
-        default=None,
-        description="How far the median score of the last quarter of scored "
-        "results lies from that of the first quarter, in interquartile ranges "
-        "of the first quarter; signed so that positive means more unusual. "
-        "Far from 0, the detector's sense of usual drifts over the run, and "
-        "its alarm rate will drift with it. Needs no labels. Null below 40 "
-        "scored results or when the first quarter's scores never change.",
+
+
+class ScoreFollows(DojoModel):
+    series: str = Field(description="An input series of the run.")
+    correlation: float = Field(
+        description="Rank correlation of the scores with the series' value "
+        "at each result, from -1 to 1: positive where higher values score "
+        "as more unusual."
     )
+
+
+class RunDiagnostics(DojoModel):
+    """What a run's scores and alarms say without labels.
+
+    Each figure describes the run itself and is safe on data that is not
+    stationary: none assumes the scores follow a distribution. ``findings``
+    puts in words the ones far enough from the usual to act on.
+    """
+
+    results: int = Field(description="Results the run produced.")
+    scored_share: float | None = Field(
+        description="Share of the results with a score; the rest was warm-up."
+    )
+    warm_up_seconds: float | None = Field(
+        description="From the first result to the first score."
+    )
+    alarm_share: float | None = Field(
+        description="Share of scored results that alarmed."
+    )
+    alarm_episodes: int = Field(
+        description="Separate alarms: runs of consecutive alarming results."
+    )
+    episodes_per_day: float | None = None
+    longest_episode_seconds: float | None = None
+    episodes_after_gaps: int = Field(
+        description="Episodes that began within five results after a gap in "
+        "the data longer than five usual intervals."
+    )
+    after_gap_share: float | None = Field(
+        description="Share of the scored results that lie that close after a "
+        "gap: what episodes_after_gaps would be by chance."
+    )
+    score_trend: float | None = Field(
+        default=None,
+        description="Rank correlation of the scores with time, from -1 to 1: "
+        "positive where the scores grow more unusual over the run.",
+    )
+    follows: list[ScoreFollows] = Field(
+        default_factory=list,
+        description="How the scores rank with each input series' value, "
+        "strongest first.",
+    )
+    commonest_score_share: float | None = Field(
+        default=None, description="Share of the scores that equal the most common one."
+    )
+    quick_returns: float | None = Field(
+        default=None,
+        description="Share of the alarm episodes after the first that begin "
+        "within 10 results of the previous one's end. High, the alarm flaps "
+        "on and off around its boundary rather than marking separate events. "
+        "Null with fewer than two episodes.",
+    )
+    alarms_alone: int | None = Field(
+        default=None,
+        description="Only in a comparison of two or more runs: alarm episodes "
+        "no other compared run alarmed within 10 usual intervals of. Where "
+        "designs disagree is where to look, and label, first. Null outside a "
+        "comparison or past 20,000 episodes.",
+    )
+    findings: list[str] = Field(default_factory=list)
 
 
 class RunMetrics(DojoModel):
@@ -962,24 +1023,10 @@ class RunMetrics(DojoModel):
         description="Threshold-free metrics of the scores; null when the run "
         "scored nothing.",
     )
-    alarm_episodes: int = Field(
-        default=0,
-        description="Runs of consecutive alarmed results, inside labels or not. "
-        "Needs no labels.",
-    )
-    quick_returns: float | None = Field(
+    diagnostics: RunDiagnostics | None = Field(
         default=None,
-        description="Share of alarm episodes after the first that begin within "
-        "10 results of the previous one's end. High, the alarm flaps on and off "
-        "around its boundary rather than marking separate events. Needs no "
-        "labels. Null with fewer than two episodes.",
-    )
-    alarms_alone: int | None = Field(
-        default=None,
-        description="Only in a comparison of two or more runs: alarm episodes "
-        "of this run that no other compared run alarmed within 10 typical "
-        "intervals of. Where designs disagree is where to look, and label, "
-        "first. Null outside a comparison or past 20,000 episodes.",
+        description="What the scores and alarms say without labels; null when "
+        "they took too long to read.",
     )
     labels: list[LabelOutcome] = Field(max_length=MAX_DATASET_LABELS)
 

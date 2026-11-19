@@ -16,7 +16,7 @@ from bisect import bisect_right
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from statistics import median
 
 from off_key_core.db.locks import DOJO_METRICS_LOCK
@@ -45,6 +45,38 @@ METRICS_TIMEOUT_SECONDS = 30.0
 # Of the 25 seconds a metrics transaction may run its statements, the score
 # metrics take at most this long.
 SCORES_TIMEOUT = "12s"
+
+
+# Alarm episodes, runs of consecutive alarmed results, numbered in order.
+_EPISODES = """
+WITH numbered AS (
+    SELECT timestamp, alarm, row_number() OVER (ORDER BY sequence) AS n
+    FROM dojo_run_results WHERE run_id = :run_id
+), episodes AS (
+    SELECT min(n) AS first, max(n) AS last,
+        min(timestamp) AS start_at, max(timestamp) AS end_at
+    FROM (
+        SELECT n, timestamp, n - row_number() OVER (ORDER BY n) AS island
+        FROM numbered WHERE alarm
+    ) AS alarmed GROUP BY island
+)
+"""
+EPISODE_COUNTS = text(
+    _EPISODES
+    + """
+SELECT count(*), count(*) FILTER (WHERE first - previous - 1 <= :gap) FROM (
+    SELECT first, lag(last) OVER (ORDER BY first) AS previous FROM episodes
+) AS paired
+"""
+)
+EPISODE_SPANS = text(
+    _EPISODES + "SELECT start_at, end_at FROM episodes ORDER BY first LIMIT :limit"
+)
+# An alarm that begins within this many results of the last one's end
+# returns quickly; another run's alarm within as many typical intervals
+# shares it.
+QUICK_RETURN = 10
+MAX_COMPARED_EPISODES = 20_000
 
 
 @dataclass(frozen=True)
@@ -170,6 +202,21 @@ def _overlap(label: Interval, start: datetime | None, end: datetime | None) -> f
     return max((upper - lower).total_seconds(), 0.0)
 
 
+def _shared(
+    episodes: list[tuple[datetime, datetime]],
+    starts: list[datetime],
+    low: datetime,
+    high: datetime,
+) -> bool:
+    """Whether an episode, in time order and apart, touches low to high.
+
+    Episodes of one run do not overlap, so their ends rise with their starts:
+    the last one to start by ``high`` is the only one that can reach ``low``.
+    """
+    index = bisect_right(starts, high) - 1
+    return index >= 0 and episodes[index][1] >= low
+
+
 def _rate(part: int, whole: int) -> float | None:
     return part / whole if whole else None
 
@@ -222,11 +269,63 @@ class DojoMetrics:
                     f"{', '.join(map(repr, elsewhere))} ran on another"
                 )
             labels = await dataset_labels(self.session, dataset.id)
+            measured = [await self._metrics(run, labels) for run in runs]
+            if len(measured) > 1:
+                measured = await self._alone(measured)
             return Comparison(
                 dataset_id=dataset.id,
                 labels=[label_view(label) for label in labels],
-                runs=[await self._metrics(run, labels) for run in runs],
+                runs=measured,
             )
+
+    async def _alone(self, runs: list[RunMetrics]) -> list[RunMetrics]:
+        """Each run's alarm episodes that no other compared run shares."""
+        intervals = [
+            (item.scored_to - item.scored_from).total_seconds()
+            / (item.scores.scored_results - 1)
+            for item in runs
+            if item.scored_from is not None
+            and item.scored_to is not None
+            and item.scores is not None
+            and item.scores.scored_results > 1
+        ]
+        if not intervals:
+            return runs
+        tolerance = timedelta(seconds=QUICK_RETURN * median(intervals))
+        spans: list[list[tuple[datetime, datetime]] | None] = []
+        for item in runs:
+            rows = (
+                await self.session.execute(
+                    EPISODE_SPANS,
+                    {"run_id": item.run_id, "limit": MAX_COMPARED_EPISODES + 1},
+                )
+            ).all()
+            spans.append(
+                None
+                if len(rows) > MAX_COMPARED_EPISODES
+                else [(start, end) for start, end in rows]
+            )
+        result = []
+        for index, item in enumerate(runs):
+            own = spans[index]
+            others = [
+                episodes
+                for position, episodes in enumerate(spans)
+                if position != index and episodes is not None
+            ]
+            if own is None or len(others) < len(runs) - 1:
+                result.append(item)
+                continue
+            starts = [[start for start, _ in episodes] for episodes in others]
+            alone = sum(
+                not any(
+                    _shared(episodes, begins, start - tolerance, end + tolerance)
+                    for episodes, begins in zip(others, starts, strict=True)
+                )
+                for start, end in own
+            )
+            result.append(item.model_copy(update={"alarms_alone": alone}))
+        return result
 
     async def calibration(self, run_id: str) -> MethodComparison:
         """The run's own calibration step beside every method it also tried."""
@@ -324,6 +423,11 @@ class DojoMetrics:
             [Interval(label.id, label.start_at, label.end_at) for label in labels],
         )
         evaluation, _ = scan.evaluations[0]
+        episodes, returns = (
+            await self.session.execute(
+                EPISODE_COUNTS, {"run_id": run.id, "gap": QUICK_RETURN}
+            )
+        ).one()
         delays = [
             item.delay_seconds
             for item in evaluation.labels
@@ -346,6 +450,8 @@ class DojoMetrics:
             evaluated_seconds=evaluation.evaluated_seconds,
             false_alarms_per_day=_per_day(evaluation),
             scores=await self._scores(run, labels),
+            alarm_episodes=episodes,
+            quick_returns=returns / (episodes - 1) if episodes > 1 else None,
             labels=evaluation.labels,
         )
 

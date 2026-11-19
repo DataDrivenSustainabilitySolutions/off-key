@@ -955,3 +955,62 @@ async def test_event_metrics_come_back_when_the_score_metrics_run_out_of_time(
     assert result.scores is None
     assert result.labels_total == 0
     assert limit == "0"
+
+
+@pytest.mark.asyncio
+async def test_alarms_that_flap_and_alarms_no_other_run_raised_need_no_labels(
+    sessions,
+):
+    _, factory = sessions
+    _, view = await dataset(factory)
+    # Three alarms a minute apart flap; 60 to 61 and 100 stand apart.
+    flapping = await finished_run(
+        factory, view, alarm_minutes={20, 22, 24, 60, 61, 100}, name="flapping"
+    )
+    other = await finished_run(factory, view, alarm_minutes={21, 105}, name="other")
+    quiet = await finished_run(factory, view, alarm_minutes=set(), name="quiet")
+    async with factory() as session:
+        metrics = DojoMetrics(session)
+        alone = await metrics.run(flapping)
+        comparison = await metrics.compare(
+            view.id, ComparisonQuery(run_ids=[flapping, other, quiet])
+        )
+    assert (alone.alarm_episodes, alone.quick_returns) == (5, 0.5)
+    assert alone.alarms_alone is None
+    by_run = {item.run_id: item for item in comparison.runs}
+    # Within ten minutes of an alarm of the other run: 20 to 24 and 100 are
+    # shared, 60 to 61 is not; the quiet run has nothing to share.
+    assert by_run[flapping].alarms_alone == 1
+    assert by_run[other].alarms_alone == 0
+    assert (by_run[quiet].alarm_episodes, by_run[quiet].quick_returns) == (0, None)
+    assert by_run[quiet].alarms_alone == 0
+
+
+@pytest.mark.asyncio
+async def test_scores_that_drift_over_the_run_are_said_to_creep(sessions):
+    _, factory = sessions
+    _, view = await dataset(factory, minutes=200)
+    noise = random.Random(7)
+    rising = [round(minute / 50 + noise.random(), 4) for minute in range(200)]
+    steady = [round(noise.random(), 4) for _ in range(200)]
+    creeping = await scored_run(factory, view, rising)
+    level = await scored_run(factory, view, steady, run_id="run-steady")
+    flat = await scored_run(factory, view, [0.2] * 200, run_id="run-flat")
+    # A static baseline stores p-values: falling ones grow more unusual.
+    falling = await scored_run(
+        factory,
+        view,
+        [round(1 - item / 5, 4) for item in rising],
+        run_id="run-falling",
+        nodes=[{"component": "policy.martingale"}],
+    )
+    async with factory() as session:
+        metrics = DojoMetrics(session)
+        creep = {
+            run: (await metrics.run(run)).scores.baseline_creep
+            for run in (creeping, level, flat, falling)
+        }
+    assert creep[creeping] > 2
+    assert abs(creep[level]) < 0.5
+    assert creep[flat] is None
+    assert creep[falling] > 2

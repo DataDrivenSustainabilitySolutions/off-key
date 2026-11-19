@@ -49,6 +49,20 @@ const ROWS: Row[] = [
     const value = item.scores?.score_autocorrelation;
     return value == null ? "–" : `${value.toFixed(2)}${value > 0.7 ? " · follows the level" : ""}`;
   } },
+  // Label-free: they triage a run without saying which is best.
+  // Far from 0 the detector's sense of usual drifts, and its alarm rate with it.
+  { label: "Score creep (first to last quarter)", value: item => {
+    const value = item.scores?.baseline_creep;
+    return value == null ? "–" : `${value > 0 ? "+" : ""}${value.toFixed(2)} IQR${Math.abs(value) > 1 ? " · drifts" : ""}`;
+  } },
+  { label: "Alarm episodes", value: item => (item.alarm_episodes ?? 0).toLocaleString() },
+  // An alarm back within 10 results of the last one flaps around its boundary.
+  { label: "Back within 10 values", value: item => {
+    const value = item.quick_returns;
+    return value == null ? "–" : `${formatRate(value)}${value > 0.5 ? " · flaps" : ""}`;
+  } },
+  // Where designs disagree is where to look, and label, first.
+  { label: "Alarms no other run raised", value: item => item.alarms_alone == null ? "–" : item.alarms_alone.toLocaleString() },
   { label: "Scored from", value: item => formatInstant(item.scored_from) },
 ];
 
@@ -144,7 +158,10 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
         label is one false alarm, so an alarm held for many values counts once. Labels before the first score are not scored.
         PR-AUC, VUS-PR and AUROC judge the scores before any threshold: how well they rank labelled values above the rest.
         VUS-PR also credits scores that peak just before or after a label. With a single label, “Top score at the label”
-        says whether the highest score came within 100 values of it, as the UCR anomaly archive scores a series.</p>
+        says whether the highest score came within 100 values of it, as the UCR anomaly archive scores a series.
+        The rows from score creep on need no labels and say which run to look at, not which is best: scores that
+        creep, alarms that flap back within 10 values, and alarms no other compared run raised nearby, the places
+        worth labelling first.</p>
     </>}
   </div>
   <MethodsPanel runs={finished} labelsKey={labelsKey} /></>;

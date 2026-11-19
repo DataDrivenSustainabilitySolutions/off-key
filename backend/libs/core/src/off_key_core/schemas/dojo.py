@@ -914,6 +914,15 @@ class ScoreMetrics(DojoModel):
         "before it, with Lags, Change or a forecaster. Null below 40 scored "
         "results or for scores that never change.",
     )
+    baseline_creep: float | None = Field(
+        default=None,
+        description="How far the median score of the last quarter of scored "
+        "results lies from that of the first quarter, in interquartile ranges "
+        "of the first quarter; signed so that positive means more unusual. "
+        "Far from 0, the detector's sense of usual drifts over the run, and "
+        "its alarm rate will drift with it. Needs no labels. Null below 40 "
+        "scored results or when the first quarter's scores never change.",
+    )
 
 
 class RunMetrics(DojoModel):
@@ -952,6 +961,25 @@ class RunMetrics(DojoModel):
         default=None,
         description="Threshold-free metrics of the scores; null when the run "
         "scored nothing.",
+    )
+    alarm_episodes: int = Field(
+        default=0,
+        description="Runs of consecutive alarmed results, inside labels or not. "
+        "Needs no labels.",
+    )
+    quick_returns: float | None = Field(
+        default=None,
+        description="Share of alarm episodes after the first that begin within "
+        "10 results of the previous one's end. High, the alarm flaps on and off "
+        "around its boundary rather than marking separate events. Needs no "
+        "labels. Null with fewer than two episodes.",
+    )
+    alarms_alone: int | None = Field(
+        default=None,
+        description="Only in a comparison of two or more runs: alarm episodes "
+        "of this run that no other compared run alarmed within 10 typical "
+        "intervals of. Where designs disagree is where to look, and label, "
+        "first. Null outside a comparison or past 20,000 episodes.",
     )
     labels: list[LabelOutcome] = Field(max_length=MAX_DATASET_LABELS)
 

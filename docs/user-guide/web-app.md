@@ -352,7 +352,16 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    above 0.7 the scores follow the level of the series, so the detector says
    where the series is rather than what is unusual, and a Lags or Change step,
    or a forecaster, before it should help. The warm-up, which has no scores,
-   is left out. Editing a label re-scores every
+   is left out. Four rows need no labels and say which run to look at rather
+   than which is best. **Score creep** compares the median score of the last
+   quarter of the run with the first quarter's, in the first quarter's
+   interquartile range: beyond 1 the detector's sense of usual drifts, and
+   its alarm rate drifts with it. **Alarm episodes** counts runs of
+   consecutive alarms, and **Back within 10 values** the share of them that
+   begin within 10 values of the previous one's end: above half, the alarm
+   flaps around its boundary. **Alarms no other run raised** counts the
+   episodes no other compared run alarmed within 10 typical intervals of;
+   where designs disagree is where a label helps most. Editing a label re-scores every
    run at once. Below, **Calibration
    methods** ranks what a run that compared them found: for each method, how
    many labels it would have detected and how soon, its false alarms per day

@@ -448,6 +448,9 @@ export type RunMetrics = {
   evaluated_seconds: number;
   false_alarms_per_day: number | null;
   scores?: ScoreMetrics | null;
+  alarm_episodes?: number;
+  quick_returns?: number | null;
+  alarms_alone?: number | null;
   labels: Array<LabelOutcome>;
 };
 
@@ -554,6 +557,7 @@ export type ScoreMetrics = {
   top_score_at: string | null;
   top1_hit: boolean | null;
   score_autocorrelation?: number | null;
+  baseline_creep?: number | null;
 };
 
 export type Season = {

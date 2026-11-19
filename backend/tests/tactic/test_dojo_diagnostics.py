@@ -60,3 +60,6 @@ def test_a_calm_run_has_no_findings_and_each_outlier_has_one():
     [level] = findings(calm(follows=follows))
     assert "value of speed (-0.90)" in level and "how low it is" in level
     assert "one and the same" in findings(calm(commonest_score_share=0.8))[0]
+    assert "flaps" in findings(calm(quick_returns=0.75))[0]
+    # Few alarms that come back quickly are not yet a pattern.
+    assert findings(calm(alarm_episodes=3, quick_returns=1.0)) == []

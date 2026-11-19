@@ -66,6 +66,7 @@ const metrics = (runId: string, name: string, detected: number, falseAlarms: num
   diagnostics: { results: 120, scored_share: 0.92, warm_up_seconds: 600, alarm_share: 0.03, alarm_episodes: 3,
     episodes_per_day: 36, longest_episode_seconds: 120, episodes_after_gaps: 0, after_gap_share: 0,
     score_trend: detected ? 0.05 : 0.81, commonest_score_share: 0.01,
+    quick_returns: detected ? 0 : 1, alarms_alone: detected ? 0 : 2,
     follows: detected ? [] : [{ series: "Speed", correlation: 0.9 }],
     findings: detected ? [] : ["The scores rank with the value of Speed (0.90)."] },
   labels: [{ label_id: "l1", start_at: label.start_at, end_at: label.end_at, outcome: detected ? "detected" : "missed",
@@ -495,6 +496,8 @@ describe("Dojo workspace", () => {
     // And without labels.
     within(table).getByRole("row", { name: /^Score trend over the run 0.05 0.81$/ });
     within(table).getByRole("row", { name: /^Scores follow an input – Speed 0.90$/ });
+    within(table).getByRole("row", { name: /^Alarms back within 10 values 0 % 100 % · flaps$/ });
+    within(table).getByRole("row", { name: /^Alarms no other run raised 0 2$/ });
     const found = screen.getByRole("list", { name: "Findings for Baseline" });
     within(found).getByText("The scores rank with the value of Speed (0.90).");
     expect(screen.queryByRole("list", { name: "Findings for Forest" })).toBeNull();

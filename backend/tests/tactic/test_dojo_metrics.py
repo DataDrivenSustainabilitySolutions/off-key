@@ -1022,3 +1022,32 @@ async def test_metrics_carry_diagnostics_of_the_scores_and_alarms(sessions):
     assert trend.score_trend == 1 and trend.alarm_episodes == 0
     assert trend.commonest_score_share == pytest.approx(1 / 90, abs=1e-3)
     assert any("gather at the end" in item for item in trend.findings)
+
+
+@pytest.mark.asyncio
+async def test_alarms_that_flap_and_alarms_no_other_run_raised_need_no_labels(
+    sessions,
+):
+    _, factory = sessions
+    _, view = await dataset(factory)
+    # Three alarms a minute apart flap; 60 to 61 and 100 stand apart.
+    flapping = await finished_run(
+        factory, view, alarm_minutes={20, 22, 24, 60, 61, 100}, name="flapping"
+    )
+    other = await finished_run(factory, view, alarm_minutes={21, 105}, name="other")
+    quiet = await finished_run(factory, view, alarm_minutes=set(), name="quiet")
+    async with factory() as session:
+        metrics = DojoMetrics(session)
+        single = (await metrics.run(flapping)).diagnostics
+        comparison = await metrics.compare(
+            view.id, ComparisonQuery(run_ids=[flapping, other, quiet])
+        )
+    assert single is not None
+    assert (single.alarm_episodes, single.quick_returns) == (5, 0.5)
+    assert single.alarms_alone is None
+    found = {item.run_id: item.diagnostics for item in comparison.runs}
+    # Within ten minutes of an alarm of the other run: 20 to 24 and 100 are
+    # shared, 60 to 61 is not; the quiet run has nothing to share.
+    assert found[flapping].alarms_alone == 1
+    assert found[other].alarms_alone == 0
+    assert (found[quiet].quick_returns, found[quiet].alarms_alone) == (None, 0)

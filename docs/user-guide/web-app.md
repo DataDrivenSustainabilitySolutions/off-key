@@ -354,12 +354,16 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    or a forecaster, before it should help. The last rows need no labels:
    **Separate alarms per day**, **Score trend over the run** (the rank
    correlation of the scores with time) and **Scores follow an input** (the
-   strongest rank correlation of the scores with an input's value). Under
+   strongest rank correlation of the scores with an input's value), then
+   **Alarms back within 10 values**, the share of alarms that begin within
+   10 values of the previous one's end, and **Alarms no other run raised**,
+   the alarms no other compared run raised within 10 usual intervals: where
+   the designs disagree is where a label helps most. Under
    **Without labels**, a run's findings say in words what stands out: a long
    warm-up, a threshold among ordinary values, alarms that begin right after
-   gaps in the data more often than chance, scores that grow more unusual
-   over the run or follow an input's level, and scores that are mostly one
-   value. None of them assumes the scores keep one distribution, so they hold
+   gaps in the data more often than chance, alarms that flap, scores that
+   grow more unusual over the run or follow an input's level, and scores that
+   are mostly one value. None of them assumes the scores keep one distribution, so they hold
    on series whose level moves. The warm-up, which has no scores, is left out
    of the label metrics. Editing a label re-scores every
    run at once. Below, **Calibration

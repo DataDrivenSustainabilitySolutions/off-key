@@ -431,6 +431,8 @@ export type RunDiagnostics = {
   score_trend?: number | null;
   follows?: Array<ScoreFollows>;
   commonest_score_share?: number | null;
+  quick_returns?: number | null;
+  alarms_alone?: number | null;
   findings?: Array<string>;
 };
 

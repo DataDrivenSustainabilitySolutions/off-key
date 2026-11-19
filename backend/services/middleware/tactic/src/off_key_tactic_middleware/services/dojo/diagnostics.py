@@ -10,10 +10,13 @@ The whole run is counted in PostgreSQL; rank correlations read an even sample
 of the scored results.
 """
 
+from bisect import bisect_right
 from collections.abc import Sequence
+from datetime import datetime, timedelta
+from statistics import median
 from typing import Any
 
-from off_key_core.schemas.dojo import RunDiagnostics, ScoreFollows
+from off_key_core.schemas.dojo import RunDiagnostics, RunMetrics, ScoreFollows
 from sqlalchemy import text
 
 from .score_metrics import Unusual
@@ -33,6 +36,12 @@ GAP_EXCESS = 5
 TREND = 0.5
 FOLLOWS = 0.7
 COMMONEST = 0.5
+# An alarm that begins within this many results of the last one's end comes
+# back quickly; another run's alarm within as many usual intervals shares it.
+QUICK_RETURN = 10
+FLAPPING = 0.5
+FLAPPING_EPISODES = 4
+MAX_COMPARED_EPISODES = 20_000
 
 COUNTS = text(
     """
@@ -77,6 +86,31 @@ SELECT count(*),
        (SELECT max(seconds) FROM episodes)
 FROM placed
 """
+)
+# Alarm episodes, runs of consecutive alarmed results, numbered in order.
+_EPISODES = """
+WITH numbered AS (
+    SELECT timestamp, alarm, row_number() OVER (ORDER BY sequence) AS n
+    FROM dojo_run_results WHERE run_id = :run_id
+), episodes AS (
+    SELECT min(n) AS first, max(n) AS last,
+        min(timestamp) AS start_at, max(timestamp) AS end_at
+    FROM (
+        SELECT n, timestamp, n - row_number() OVER (ORDER BY n) AS island
+        FROM numbered WHERE alarm
+    ) AS alarmed GROUP BY island
+)
+"""
+QUICK_RETURNS = text(
+    _EPISODES
+    + """
+SELECT count(*) FILTER (WHERE first - previous - 1 <= :gap) FROM (
+    SELECT first, lag(last) OVER (ORDER BY first) AS previous FROM episodes
+) AS paired
+"""
+)
+EPISODE_SPANS = text(
+    _EPISODES + "SELECT start_at, end_at FROM episodes ORDER BY first LIMIT :limit"
 )
 COMMONEST_SCORE = text(
     """
@@ -186,6 +220,17 @@ def findings(diagnostics: RunDiagnostics) -> list[str]:
                 "for, take the level out first with Change, Deseason or a "
                 "forecaster."
             )
+    returns = diagnostics.quick_returns
+    if (
+        returns is not None
+        and returns > FLAPPING
+        and diagnostics.alarm_episodes >= FLAPPING_EPISODES
+    ):
+        found.append(
+            f"{returns:.0%} of the alarms come back within {QUICK_RETURN} "
+            "results of the last one: the alarm flaps around its boundary. Ask "
+            "for several alarming results in a row, or smooth the scores."
+        )
     common = diagnostics.commonest_score_share
     if common is not None and common >= COMMONEST:
         found.append(
@@ -239,6 +284,11 @@ async def run_diagnostics(
         episodes_after_gaps=after_gaps,
         after_gap_share=round(near_gaps / scored, 4) if scored else None,
     )
+    if episodes > 1:
+        returns = await session.scalar(
+            QUICK_RETURNS, {"run_id": run_id, "gap": QUICK_RETURN}
+        )
+        diagnostics.quick_returns = round(returns / (episodes - 1), 3)
     if not scored:
         return diagnostics
     commonest = await session.scalar(COMMONEST_SCORE, {"run_id": run_id})
@@ -272,3 +322,70 @@ async def run_diagnostics(
     diagnostics.follows.sort(key=lambda item: -abs(item.correlation))
     diagnostics.findings = findings(diagnostics)
     return diagnostics
+
+
+def _shared(
+    episodes: list[tuple[datetime, datetime]],
+    starts: list[datetime],
+    low: datetime,
+    high: datetime,
+) -> bool:
+    """Whether an episode, in time order and apart, touches low to high.
+
+    Episodes of one run do not overlap, so their ends rise with their starts:
+    the last one to start by ``high`` is the only one that can reach ``low``.
+    """
+    index = bisect_right(starts, high) - 1
+    return index >= 0 and episodes[index][1] >= low
+
+
+async def alone(session, runs: Sequence[RunMetrics]) -> list[RunMetrics]:
+    """Each compared run's alarm episodes that no other run shares nearby."""
+    intervals = [
+        (item.scored_to - item.scored_from).total_seconds()
+        / (item.scores.scored_results - 1)
+        for item in runs
+        if item.scored_from is not None
+        and item.scored_to is not None
+        and item.scores is not None
+        and item.scores.scored_results > 1
+    ]
+    if len(runs) < 2 or not intervals:
+        return list(runs)
+    tolerance = timedelta(seconds=QUICK_RETURN * median(intervals))
+    spans: list[list[tuple[datetime, datetime]]] = []
+    for item in runs:
+        rows = (
+            await session.execute(
+                EPISODE_SPANS,
+                {"run_id": item.run_id, "limit": MAX_COMPARED_EPISODES + 1},
+            )
+        ).all()
+        # Past the cap no run's count would be whole: leave them all out.
+        if len(rows) > MAX_COMPARED_EPISODES:
+            return list(runs)
+        spans.append([(start, end) for start, end in rows])
+    result = []
+    for index, item in enumerate(runs):
+        others = [episodes for at, episodes in enumerate(spans) if at != index]
+        starts = [[start for start, _ in episodes] for episodes in others]
+        count = sum(
+            not any(
+                _shared(episodes, begins, start - tolerance, end + tolerance)
+                for episodes, begins in zip(others, starts, strict=True)
+            )
+            for start, end in spans[index]
+        )
+        diagnostics = item.diagnostics
+        result.append(
+            item
+            if diagnostics is None
+            else item.model_copy(
+                update={
+                    "diagnostics": diagnostics.model_copy(
+                        update={"alarms_alone": count}
+                    )
+                }
+            )
+        )
+    return result

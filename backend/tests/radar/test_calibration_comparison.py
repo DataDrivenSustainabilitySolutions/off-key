@@ -32,7 +32,10 @@ MEMORY_LIMIT_MB = 16384
 SHAPES = [("mad",), ("knn", "mad")]
 
 
-def fixed(detectors, quantile=0.9):
+def fixed(detectors, quantile=None):
+    # The alarm rate an adapting step of these detectors takes by default.
+    if quantile is None:
+        quantile = round(1 - 0.1 * len(detectors), 10)
     return boundary_definition(
         detectors,
         calibration="calibrate.fixed_split",

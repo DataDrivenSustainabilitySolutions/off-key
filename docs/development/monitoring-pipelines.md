@@ -1357,11 +1357,13 @@ The martingale and the score threshold stay with the fixed split: only its
 p-values are exact, and only it freezes a threshold.
 
 A boundary that is a quantile of the window (`split`, `aci`, `dtaci`, `agaci`)
-needs `ceil(1 / alpha) - 1` calibration observations, or it sits at the largest
-score seen. Several detectors need that for any method, and
-`ceil(k / alpha) - 1` for k detectors under `max`, because each reaches the top
-of its window about once in n scores. The compiler warns below that
-(`minimum_window`).
+needs `ceil(2 / alpha) - 1` calibration observations. With fewer, the boundary
+is the largest score of the window: one spike lifts it until the window lets the
+spike go, and the monitor misses anything smaller meanwhile. At 0.002 and 720
+observations every 10 s, that was two hours. Several detectors need that for any
+method, and `ceil(2k / alpha) - 1` for k detectors under `max`, because each
+reaches the top of its window about once in n scores. Below that the design does
+not run: the compiler reports a `calibration_window` error (`minimum_window`).
 
 #### Comparing calibration methods in the Dojo
 

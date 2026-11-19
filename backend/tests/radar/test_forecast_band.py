@@ -185,6 +185,8 @@ def test_a_forecast_of_a_changed_feature_is_stored_in_the_feature_s_units():
     (stored,) = record["forecasts"]
     scaled = inputs_of(record, stored["detector_id"])[stored["target"]]
     assert stored["slot"] is None
+    raw = results[-1].raw_data[KEYS["a"]]
     # The band is around the scaled value the step scored, not the raw reading.
-    assert stored["lower"] <= scaled <= stored["upper"]
-    assert scaled != results[-1].raw_data[KEYS["a"]]
+    assert stored["lower"] <= stored["expected"] <= stored["upper"]
+    assert abs(scaled - stored["expected"]) < abs(raw - stored["expected"])
+    assert scaled != raw

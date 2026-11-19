@@ -55,7 +55,8 @@ def boundary_definition(
             "id": "calibrate",
             "kind": "calibration",
             "component": calibration,
-            "params": {"alpha": 0.1} if params is None else params,
+            # Ranks of k detectors under max need k times the window one does.
+            "params": {"alpha": 0.1 * len(detectors)} if params is None else params,
         },
         {
             "id": "policy",

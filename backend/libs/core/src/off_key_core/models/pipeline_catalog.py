@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
+from itertools import pairwise
 from typing import Any
 
 from pydantic import BaseModel
@@ -615,11 +616,34 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
             "quantile",
         ),
     ]:
+        # A streaming forest judges one row at a time, so the stream's
+        # template gives it the value 1, 5 and 15 minutes back: an example of
+        # the context a point detector needs, to change or remove.
+        lags = (
+            [
+                {
+                    "id": "lags",
+                    "kind": "transform",
+                    "component": "prepare.lags",
+                    "params": {"unit": "minutes", "lags": [1, 5, 15]},
+                }
+            ]
+            if identifier == "adaptive_stream"
+            else []
+        )
+        chain = [
+            "input",
+            *(item["id"] for item in lags),
+            "detector",
+            "policy",
+            "output",
+        ]
         definition = PipelineDefinition.model_validate(
             {
                 "input_slots": [{"id": "value", "label": "Value"}],
                 "nodes": [
                     {"id": "input", "kind": "source", "component": "source.aligned"},
+                    *lags,
                     {
                         "id": "detector",
                         "kind": "detector",
@@ -629,9 +653,8 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
                     {"id": "output", "kind": "output", "component": "output.evidence"},
                 ],
                 "edges": [
-                    {"source": "input", "target": "detector"},
-                    {"source": "detector", "target": "policy"},
-                    {"source": "policy", "target": "output"},
+                    {"source": source, "target": target}
+                    for source, target in pairwise(chain)
                 ],
             }
         )

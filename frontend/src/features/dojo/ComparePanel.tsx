@@ -49,6 +49,16 @@ const ROWS: Row[] = [
     const value = item.scores?.score_autocorrelation;
     return value == null ? "–" : `${value.toFixed(2)}${value > 0.7 ? " · follows the level" : ""}`;
   } },
+  // Without labels: what the scores and alarms say about the run itself.
+  { label: "Separate alarms per day", value: item => formatPerDay(item.diagnostics?.episodes_per_day) },
+  { label: "Score trend over the run", value: item => {
+    const value = item.diagnostics?.score_trend;
+    return value == null ? "–" : value.toFixed(2);
+  } },
+  { label: "Scores follow an input", value: item => {
+    const strongest = item.diagnostics?.follows?.[0];
+    return strongest ? `${strongest.series} ${strongest.correlation.toFixed(2)}` : "–";
+  } },
   { label: "Scored from", value: item => formatInstant(item.scored_from) },
 ];
 
@@ -140,11 +150,22 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
           })}
         </tr>)}</tbody>
       </table></div>}
+      {shown.runs.some(item => item.diagnostics?.findings?.length) && <div className="dj-section">
+        <h3>Without labels</h3>
+        {shown.runs.filter(item => item.diagnostics?.findings?.length).map(item => <div key={item.run_id}>
+          <h4>{names.get(item.run_id) ?? item.run_name}</h4>
+          <ul aria-label={`Findings for ${names.get(item.run_id) ?? item.run_name}`}>
+            {(item.diagnostics?.findings ?? []).map(finding => <li key={finding}>{finding}</li>)}</ul>
+        </div>)}
+      </div>}
       <p className="dj-help">A label counts as detected when the run alarmed inside it. Each alarm that begins outside every
         label is one false alarm, so an alarm held for many values counts once. Labels before the first score are not scored.
         PR-AUC, VUS-PR and AUROC judge the scores before any threshold: how well they rank labelled values above the rest.
         VUS-PR also credits scores that peak just before or after a label. With a single label, “Top score at the label”
-        says whether the highest score came within 100 values of it, as the UCR anomaly archive scores a series.</p>
+        says whether the highest score came within 100 values of it, as the UCR anomaly archive scores a series. The
+        last rows need no labels: the score trend is the rank correlation of the scores with time, and “Scores follow an
+        input” the strongest rank correlation of the scores with an input’s value. Near 1 or -1, the detector scores where
+        the series is rather than what is unusual.</p>
     </>}
   </div>
   <MethodsPanel runs={finished} labelsKey={labelsKey} /></>;

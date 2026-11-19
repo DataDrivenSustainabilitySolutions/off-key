@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime
 from statistics import median
+from typing import Literal
 
 from off_key_core.db.locks import DOJO_METRICS_LOCK
 from off_key_core.db.models import DojoDataset, DojoLabel, DojoRun, DojoRunResult
@@ -37,6 +38,7 @@ from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.exc import DBAPIError
 
 from ...domain import ConflictError, NotFoundError, ValidationError
+from .diagnostics import run_diagnostics
 from .labels import dataset_labels, label_view
 from .score_metrics import score_metrics
 
@@ -145,7 +147,7 @@ def _cache_key(run: DojoRun, labels: Sequence[DojoLabel], kind: str) -> str:
     return hashlib.sha256(
         json.dumps(
             [
-                3,
+                4,
                 run.result_count,
                 run.alarm_count,
                 run.config.get("calibration_comparison")
@@ -178,6 +180,12 @@ def _per_day(evaluation: Evaluation) -> float | None:
     if evaluation.evaluated_seconds <= 0:
         return None
     return evaluation.false_alarms * DAY_SECONDS / evaluation.evaluated_seconds
+
+
+def _unusual(run: DojoRun) -> Literal["high", "low"]:
+    """A static baseline stores p-values: the low ones are unusual."""
+    kind = result_kind(run.config["execution"]["definition"])
+    return "low" if kind == "static_baseline" else "high"
 
 
 @dataclass(frozen=True)
@@ -346,6 +354,14 @@ class DojoMetrics:
             evaluated_seconds=evaluation.evaluated_seconds,
             false_alarms_per_day=_per_day(evaluation),
             scores=await self._scores(run, labels),
+            diagnostics=await self._limited(
+                run_diagnostics(
+                    self.session,
+                    run.id,
+                    run.config.get("series", []),
+                    unusual=_unusual(run),
+                )
+            ),
             labels=evaluation.labels,
         )
 
@@ -355,25 +371,25 @@ class DojoMetrics:
         They sort every scored result, which on the largest runs takes
         seconds; the event metrics must still come back when they cannot.
         """
+        return await self._limited(
+            score_metrics(
+                self.session,
+                run.id,
+                [(label.start_at, label.end_at) for label in labels],
+                unusual=_unusual(run),
+            )
+        )
+
+    async def _limited[T](self, calculation: Awaitable[T]) -> T | None:
+        """A calculation within SCORES_TIMEOUT, or None past it."""
         try:
             async with self.session.begin_nested():
                 await self.session.execute(
                     text(f"SET LOCAL statement_timeout = '{SCORES_TIMEOUT}'")
                 )
-                scores = await score_metrics(
-                    self.session,
-                    run.id,
-                    [(label.start_at, label.end_at) for label in labels],
-                    # A static baseline stores p-values: the low ones are unusual.
-                    unusual=(
-                        "low"
-                        if result_kind(run.config["execution"]["definition"])
-                        == "static_baseline"
-                        else "high"
-                    ),
-                )
+                result = await calculation
                 await self.session.execute(text("SET LOCAL statement_timeout = '25s'"))
-                return scores
+                return result
         except DBAPIError as exc:
             if getattr(exc.orig, "sqlstate", None) != "57014":
                 raise

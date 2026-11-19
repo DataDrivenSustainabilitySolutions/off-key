@@ -1,13 +1,12 @@
 """The largest pipeline definition the limits admit."""
 
-from off_key_core.models.pipelines import (
-    pipeline_catalog,
-)
 from off_key_core.schemas.pipelines import PipelineDefinition
+
+from tests.support.pipelines import template
 
 
 def maximum_definition():
-    definition = pipeline_catalog().templates[1].definition.model_dump(mode="json")
+    definition = template().model_dump(mode="json")
     definition["input_slots"] = [
         {"id": f"slot_{index:03}" + "x" * 92, "label": f"Reading {index}"}
         for index in range(100)

@@ -58,13 +58,34 @@ def minimal_static_execution(topic="telemetry/entity/a"):
     )
 
 
-def template(strategy="adaptive_stream"):
-    """A copy of the bundled template for a strategy."""
+def bundled(strategy="adaptive_stream"):
+    """A copy of the bundled template for a strategy, as an editor opens it."""
     return next(
         item.definition.model_copy(deep=True)
         for item in pipeline_catalog().templates
         if item.id == strategy
     )
+
+
+def template(strategy="adaptive_stream"):
+    """The bundled template without its example steps: source to output.
+
+    The stream's template carries a Lags step as an example. Tests build on
+    the bare chain, source, detector, policy and output, and add what they test.
+    """
+    definition = bundled(strategy)
+    steps = {node.id for node in definition.nodes if node.kind == "transform"}
+    if not steps:
+        return definition
+    data = definition.model_dump(mode="json")
+    data["nodes"] = [node for node in data["nodes"] if node["id"] not in steps]
+    # The source's wire goes straight to the detector, where it was before.
+    data["edges"] = [
+        {"source": "input", "target": "detector"} if edge["source"] == "input" else edge
+        for edge in data["edges"]
+        if edge["source"] not in steps
+    ]
+    return compile_pipeline(PipelineDefinition.model_validate(data)).definition
 
 
 def branched(strategy="adaptive_stream"):

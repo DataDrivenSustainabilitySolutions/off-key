@@ -8,7 +8,6 @@ from off_key_core.models import pipeline_compiler
 from off_key_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
-    pipeline_catalog,
     validate_pipeline,
 )
 from off_key_core.schemas.pipelines import (
@@ -22,7 +21,7 @@ from off_key_mqtt_radar.pipelines.components import ScopedStep
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
 
-from tests.support.pipelines import branched
+from tests.support.pipelines import branched, template
 
 pytestmark = pytest.mark.radar_integration
 
@@ -182,15 +181,8 @@ PINNED = {
 
 @pytest.mark.parametrize(("fixture", "strategy"), sorted(PINNED))
 def test_designs_without_scope_keep_their_fingerprints(fixture, strategy):
-    design = (
-        next(
-            item.definition
-            for item in pipeline_catalog().templates
-            if item.id == strategy
-        )
-        if fixture == "template"
-        else branched(strategy)
-    )
+    # The bare template: the stream's example Lags step came after these pins.
+    design = template(strategy) if fixture == "template" else branched(strategy)
     result = compile_pipeline(design)
     assert result.fingerprint == PINNED[fixture, strategy]
     for node in result.definition.nodes:

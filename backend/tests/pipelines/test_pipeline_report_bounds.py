@@ -83,15 +83,18 @@ def test_normal_reports_preserve_full_metadata():
     report = bounded_validation_report(result, "detector")
     # The editor draws the calibration step between the detector and the policy.
     assert report.features.keys() == result.features.keys()
+    lagged = ["value", "value_lag1min", "value_lag5min", "value_lag15min"]
+    assert [column.name for column in report.features["lags"]] == lagged
     assert [column.previous for column in report.features["calibrate"]] == [
-        "detector.value"
+        f"detector.{name}" for name in lagged
     ]
     assert [column.previous for column in report.features["policy"]] == [
-        "calibrate.value"
+        f"calibrate.{name}" for name in lagged
     ]
     assert report.features_complete and report.provenance_complete
     assert not report.definition_omitted and not report.issues_truncated
-    assert all(item.code == "point_detector_without_time" for item in report.issues)
+    # Its Lags step gives the forest the time it needs, so nothing is warned.
+    assert report.issues == []
 
 
 def test_unknown_selected_node_returns_no_stale_metadata(maximum_compilation):

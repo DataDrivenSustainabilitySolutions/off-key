@@ -181,6 +181,10 @@ requires saving a template.
 
 **Load template** offers the built-in static and adaptive starting flows plus
 **Your templates**; **Manage templates** opens the shared template library.
+The adaptive flow starts with a **Lags** step that adds each reading's value
+1, 5 and 15 minutes back, because its streaming forest judges one row at a
+time and needs that context to see a pattern over time. The lags are an
+example: the Lags panel's correlogram suggests ones that fit the reading.
 Loading never changes the source template, and **Undo** restores the previous
 flow. **Save template** stores the current graph and layout under its own
 template name, independently of the service name. A concurrent edit keeps your

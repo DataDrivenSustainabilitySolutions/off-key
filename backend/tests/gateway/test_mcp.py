@@ -354,7 +354,8 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
                             "op": "add_step",
                             "component": "prepare.smooth",
                             "after": "input",
-                            "before": "detector",
+                            # The starter's example Lags step follows the source.
+                            "before": "lags",
                         },
                         {"op": "set_label", "id": "prepare_smooth_1", "label": "Calm"},
                         {"op": "set_label", "id": "input", "label": "Power"},
@@ -383,6 +384,7 @@ async def test_a_tool_is_a_call_to_the_api_as_the_agent(gateway, key, stores):
         assert edited["report"]["features"].keys() == {
             "input",
             "prepare_smooth_1",
+            "lags",
             "detector",
         }
         assert "note" not in edited

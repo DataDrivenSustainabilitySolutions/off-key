@@ -219,7 +219,16 @@ def test_the_editor_reads_schema_2_templates_with_their_calibration_step():
         definition = item["definition"]
         identifiers = [node["id"] for node in definition["nodes"]]
         assert definition["schema_version"] == 2 and "strategy" not in definition
-        assert identifiers == ["input", "detector", "calibrate", "policy", "output"]
+        # The stream's template shows a Lags step as an example of context.
+        steps = ["lags"] if item["id"] == "adaptive_stream" else []
+        assert identifiers == [
+            "input",
+            *steps,
+            "detector",
+            "calibrate",
+            "policy",
+            "output",
+        ]
         # Every step has a place on the canvas, in the order it runs.
         columns = [
             item["layout"]["nodes"][identifier]["x"] for identifier in identifiers

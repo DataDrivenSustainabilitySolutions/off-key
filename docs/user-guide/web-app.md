@@ -351,8 +351,17 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    **Score persistence** is the correlation of the scores 20 values apart:
    above 0.7 the scores follow the level of the series, so the detector says
    where the series is rather than what is unusual, and a Lags or Change step,
-   or a forecaster, before it should help. The warm-up, which has no scores,
-   is left out. Editing a label re-scores every
+   or a forecaster, before it should help. The last rows need no labels:
+   **Separate alarms per day**, **Score trend over the run** (the rank
+   correlation of the scores with time) and **Scores follow an input** (the
+   strongest rank correlation of the scores with an input's value). Under
+   **Without labels**, a run's findings say in words what stands out: a long
+   warm-up, a threshold among ordinary values, alarms that begin right after
+   gaps in the data more often than chance, scores that grow more unusual
+   over the run or follow an input's level, and scores that are mostly one
+   value. None of them assumes the scores keep one distribution, so they hold
+   on series whose level moves. The warm-up, which has no scores, is left out
+   of the label metrics. Editing a label re-scores every
    run at once. Below, **Calibration
    methods** ranks what a run that compared them found: for each method, how
    many labels it would have detected and how soon, its false alarms per day

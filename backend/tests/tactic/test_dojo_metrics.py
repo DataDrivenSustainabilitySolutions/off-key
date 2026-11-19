@@ -30,6 +30,7 @@ from off_key_core.schemas.dojo import (
     LabelChange,
     LabelCreate,
     RunResultsQuery,
+    ScoreFollows,
 )
 from off_key_tactic_middleware.domain import (
     ConflictError,
@@ -955,3 +956,69 @@ async def test_event_metrics_come_back_when_the_score_metrics_run_out_of_time(
     assert result.scores is None
     assert result.labels_total == 0
     assert limit == "0"
+
+
+async def diagnosed_run(factory, view, minutes, score, alarm_minutes, name):
+    run_id = f"run-{name}"
+    async with factory() as session:
+        session.add(
+            DojoRun(
+                id=run_id,
+                dataset_id=view.id,
+                name=name,
+                status="succeeded",
+                config={
+                    "execution": {"definition": {"nodes": []}},
+                    "series": [{"id": view.series[0].id, "name": "u"}],
+                },
+                cancel_requested=False,
+                points_total=120,
+                points_read=120,
+                result_count=len(minutes),
+                alarm_count=len(alarm_minutes),
+                stats={},
+            )
+        )
+        session.add_all(
+            DojoRunResult(
+                run_id=run_id,
+                sequence=index + 1,
+                timestamp=at(minute),
+                phase="collecting" if minute < 10 else "ready",
+                score=None if minute < 10 else score(minute),
+                threshold=None,
+                alarm=minute in alarm_minutes,
+            )
+            for index, minute in enumerate(minutes)
+        )
+        await session.commit()
+    return run_id
+
+
+@pytest.mark.asyncio
+async def test_metrics_carry_diagnostics_of_the_scores_and_alarms(sessions):
+    _, factory = sessions
+    _, view = await dataset(factory)
+    # The input is minute % 7; a gap of twenty minutes in the results at 60.
+    minutes = [minute for minute in range(120) if not 60 <= minute < 80]
+    following = await diagnosed_run(
+        factory, view, minutes, lambda minute: minute % 7, {30, 80, 81, 100}, "level"
+    )
+    rising = await diagnosed_run(
+        factory, view, minutes, lambda minute: float(minute), set(), "trend"
+    )
+    async with factory() as session:
+        level = (await DojoMetrics(session).run(following)).diagnostics
+        trend = (await DojoMetrics(session).run(rising)).diagnostics
+    assert level is not None and trend is not None
+    assert (level.results, level.scored_share, level.warm_up_seconds) == (100, 0.9, 600)
+    assert level.alarm_share == pytest.approx(4 / 90, abs=1e-4)
+    assert (level.alarm_episodes, level.longest_episode_seconds) == (3, 60)
+    # The alarm at 80 began right after the gap; 5 of 90 scored results lie there.
+    assert (level.episodes_after_gaps, level.after_gap_share) == (1, 0.0556)
+    assert level.follows == [ScoreFollows(series="u", correlation=1.0)]
+    assert abs(level.score_trend) < 0.1
+    assert any("value of u" in item for item in level.findings)
+    assert trend.score_trend == 1 and trend.alarm_episodes == 0
+    assert trend.commonest_score_share == pytest.approx(1 / 90, abs=1e-3)
+    assert any("gather at the end" in item for item in trend.findings)

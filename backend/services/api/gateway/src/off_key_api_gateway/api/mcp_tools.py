@@ -49,7 +49,9 @@ the first ones. Compare variants on the same `dataset_id`, so they replay the \
 same values; profile_series on it shows every series at once. To show that \
 a design catches a problem the history lacks, pass \
 `faults`: a step, drift, freeze or gap written into a copy, which get_test \
-scores as caught or missed, with the delay.
+scores as caught or missed, with the delay. Without labels, \
+`metrics.diagnostics` in get_test still judges the run: alarms right after \
+gaps, scores that trend over time or follow an input's level, in `findings`.
 To choose between candidates, put labelled datasets in a suite with \
 create_suite, or with `faults_of` labelled copies of a setup's history, \
 run_study each candidate over it, and get_study with `compare_with` pairs two \

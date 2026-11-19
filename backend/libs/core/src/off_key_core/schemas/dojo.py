@@ -916,6 +916,62 @@ class ScoreMetrics(DojoModel):
     )
 
 
+class ScoreFollows(DojoModel):
+    series: str = Field(description="An input series of the run.")
+    correlation: float = Field(
+        description="Rank correlation of the scores with the series' value "
+        "at each result, from -1 to 1: positive where higher values score "
+        "as more unusual."
+    )
+
+
+class RunDiagnostics(DojoModel):
+    """What a run's scores and alarms say without labels.
+
+    Each figure describes the run itself and is safe on data that is not
+    stationary: none assumes the scores follow a distribution. ``findings``
+    puts in words the ones far enough from the usual to act on.
+    """
+
+    results: int = Field(description="Results the run produced.")
+    scored_share: float | None = Field(
+        description="Share of the results with a score; the rest was warm-up."
+    )
+    warm_up_seconds: float | None = Field(
+        description="From the first result to the first score."
+    )
+    alarm_share: float | None = Field(
+        description="Share of scored results that alarmed."
+    )
+    alarm_episodes: int = Field(
+        description="Separate alarms: runs of consecutive alarming results."
+    )
+    episodes_per_day: float | None = None
+    longest_episode_seconds: float | None = None
+    episodes_after_gaps: int = Field(
+        description="Episodes that began within five results after a gap in "
+        "the data longer than five usual intervals."
+    )
+    after_gap_share: float | None = Field(
+        description="Share of the scored results that lie that close after a "
+        "gap: what episodes_after_gaps would be by chance."
+    )
+    score_trend: float | None = Field(
+        default=None,
+        description="Rank correlation of the scores with time, from -1 to 1: "
+        "positive where the scores grow more unusual over the run.",
+    )
+    follows: list[ScoreFollows] = Field(
+        default_factory=list,
+        description="How the scores rank with each input series' value, "
+        "strongest first.",
+    )
+    commonest_score_share: float | None = Field(
+        default=None, description="Share of the scores that equal the most common one."
+    )
+    findings: list[str] = Field(default_factory=list)
+
+
 class RunMetrics(DojoModel):
     """Event metrics of one finished run against its dataset's labels.
 
@@ -952,6 +1008,11 @@ class RunMetrics(DojoModel):
         default=None,
         description="Threshold-free metrics of the scores; null when the run "
         "scored nothing.",
+    )
+    diagnostics: RunDiagnostics | None = Field(
+        default=None,
+        description="What the scores and alarms say without labels; null when "
+        "they took too long to read.",
     )
     labels: list[LabelOutcome] = Field(max_length=MAX_DATASET_LABELS)
 

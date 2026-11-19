@@ -418,6 +418,22 @@ export type RunCreate = {
   compare_calibration?: boolean;
 };
 
+export type RunDiagnostics = {
+  results: number;
+  scored_share: number | null;
+  warm_up_seconds: number | null;
+  alarm_share: number | null;
+  alarm_episodes: number;
+  episodes_per_day?: number | null;
+  longest_episode_seconds?: number | null;
+  episodes_after_gaps: number;
+  after_gap_share: number | null;
+  score_trend?: number | null;
+  follows?: Array<ScoreFollows>;
+  commonest_score_share?: number | null;
+  findings?: Array<string>;
+};
+
 export type RunListPage = {
   items: Array<RunSummary>;
   next_offset?: number | null;
@@ -448,6 +464,7 @@ export type RunMetrics = {
   evaluated_seconds: number;
   false_alarms_per_day: number | null;
   scores?: ScoreMetrics | null;
+  diagnostics?: RunDiagnostics | null;
   labels: Array<LabelOutcome>;
 };
 
@@ -543,6 +560,11 @@ export type RunView = {
   alignment: RunAlignment;
   cancel_requested: boolean;
   stats: Record<string, number>;
+};
+
+export type ScoreFollows = {
+  series: string;
+  correlation: number;
 };
 
 export type ScoreMetrics = {

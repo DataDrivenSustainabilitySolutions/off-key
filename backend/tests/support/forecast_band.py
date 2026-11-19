@@ -38,7 +38,9 @@ def design(
             "id": "calibrate",
             "kind": "calibration",
             "component": calibration,
-            "params": {"alpha": 0.1} if adapts else {},
+            # 12 calibration scores hold a boundary below their largest at
+            # 0.2 for one detector, and at 0.35 for two under max.
+            "params": {"alpha": 0.35 if beside else 0.2} if adapts else {},
         },
         {
             "id": "policy",

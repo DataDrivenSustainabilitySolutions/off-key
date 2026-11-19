@@ -87,7 +87,9 @@ policy.threshold: connect the detector straight to it, with no calibration \
 step, and set value 1, so every 1 alarms from the first observation. A rule \
 learns nothing, so the design has no warm-up. A rolling calibration such as \
 calibrate.split, with policy.exceedance and several in a row, goes quiet on a \
-fault that lasts.
+fault that lasts. A rolling calibration needs a window that keeps a few \
+scores above the boundary, about 2 / alpha or more: with fewer, one spike \
+becomes the boundary for the whole window, so the design does not run.
 
 Pairing readings: an observation takes the latest value of every input, and \
 a value is used for 3 of its reading's usual intervals and at least 30 s. A \

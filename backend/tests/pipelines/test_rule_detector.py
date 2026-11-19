@@ -38,7 +38,8 @@ from tests.support.rule_pipeline import CALIBRATION, TRAINING, rule_definition
 
 pytestmark = pytest.mark.radar_integration
 
-ACI = {"calibration": "calibrate.aci", "calibration_params": {"alpha": 0.1}}
+# A rule beside two detectors: three under max need 0.3 of a 20-score window.
+ACI = {"calibration": "calibrate.aci", "calibration_params": {"alpha": 0.3}}
 BOUNDARY = {**ACI, "policy": "policy.exceedance"}
 
 

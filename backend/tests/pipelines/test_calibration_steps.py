@@ -177,17 +177,20 @@ def test_the_rule_counts_at_least_one_exceedance():
 @pytest.mark.parametrize(
     ("detectors", "calibration", "params", "needed"),
     [
-        # 1 / 0.01 - 1 scores put a quantile below the largest one.
-        (("mad",), "calibrate.aci", {"alpha": 0.01}, 99),
-        (("mad",), "calibrate.split", {"alpha": 0.05}, 19),
+        # 2 / 0.01 - 1 scores put the boundary below the window's largest score.
+        (("mad",), "calibrate.aci", {"alpha": 0.01}, 199),
+        (("mad",), "calibrate.split", {"alpha": 0.05}, 39),
+        # The demo's traffic monitor: 720 scores at 0.002 made the boundary
+        # the largest score of the last two hours.
+        (("mad",), "calibrate.split", {"alpha": 0.002}, 999),
         # Two detectors under max each reach the top rank once in n scores.
-        (("forest", "mad"), "calibrate.aci", {"alpha": 0.01}, 199),
-        (("forest", "mad"), "calibrate.aci", {"alpha": 0.01, "fusion": "mean"}, 99),
+        (("forest", "mad"), "calibrate.aci", {"alpha": 0.01}, 399),
+        (("forest", "mad"), "calibrate.aci", {"alpha": 0.01, "fusion": "mean"}, 199),
         # Ranks need the window whatever the method.
-        (("forest", "mad"), "calibrate.pid", {"alpha": 0.01}, 199),
+        (("forest", "mad"), "calibrate.pid", {"alpha": 0.01}, 399),
     ],
 )
-def test_a_small_alarm_rate_warns_of_a_short_window(
+def test_a_window_whose_boundary_is_its_largest_score_does_not_run(
     detectors, calibration, params, needed
 ):
     method = calibration.removeprefix("calibrate.")
@@ -205,14 +208,15 @@ def test_a_small_alarm_rate_warns_of_a_short_window(
         )
 
     short = run(needed - 1)
-    assert short.valid
+    assert not short.valid
     found = [
         item for item in short.issues if item.code != "point_detector_without_time"
     ]
     assert [
         (item.code, item.node_id, item.severity, item.parameter_path) for item in found
-    ] == [("calibration_window", "calibrate", "warning", ["alpha"])]
+    ] == [("calibration_window", "calibrate", "error", ["alpha"])]
     assert f"{needed:,} calibration observations" in found[0].message
+    assert "one spike lifts it" in found[0].message
     # Why two detectors under max need twice the window is said too.
     assert ("detectors combined by max" in found[0].message) == (
         len(detectors) > 1 and fusion == "max"
@@ -220,6 +224,26 @@ def test_a_small_alarm_rate_warns_of_a_short_window(
     assert all(
         item.code == "point_detector_without_time" for item in run(needed).issues
     )
+
+
+@pytest.mark.parametrize(("spikes", "boundary"), [(1, 37.0), (2, 1000.0)])
+def test_one_spike_no_longer_sets_the_boundary(spikes, boundary):
+    """At the smallest window allowed, the boundary is the second largest score."""
+    alpha = 0.05
+    window = minimum_window("split", alpha, 1, "max")
+    calibrator = ScoreCalibrator("split", alpha=alpha, window=window)
+    scores = [*map(float, range(window - spikes)), *[1000.0] * spikes]
+    for key, score in enumerate(scores):
+        calibrator.predict(key)
+        calibrator.update(key, score)
+
+    assert calibrator.predict(len(scores)) == boundary
+    # One score fewer and the spike is the boundary.
+    short = ScoreCalibrator("split", alpha=alpha, window=window - 1)
+    for key, score in enumerate(scores[1:]):
+        short.predict(key)
+        short.update(key, score)
+    assert short.predict(window) == 1000.0
 
 
 def test_more_exceedances_in_a_row_than_the_window_lets_above_go_blind():
@@ -252,7 +276,7 @@ def test_the_warning_writes_a_small_alarm_rate_out():
     )
 
     assert result.issues[0].message.startswith(
-        "An alarm rate of 0.0000082672 needs at least 120,959 calibration observations"
+        "An alarm rate of 0.0000082672 needs at least 241,919 calibration observations"
     )
 
 
@@ -275,7 +299,7 @@ def test_a_design_stored_with_a_strategy_can_take_a_step_that_adapts():
     assert definition.strategy is None
     for node in definition.nodes:
         if node.kind == "calibration":
-            node.component, node.params = "calibrate.aci", {"alpha": 0.1}
+            node.component, node.params = "calibrate.aci", {"alpha": 0.2}
         if node.kind == "policy":
             node.component, node.params = "policy.exceedance", {}
 

@@ -265,9 +265,17 @@ def test_a_score_above_its_whole_window_counts_for_how_far_above():
 
 def test_a_boundary_at_the_top_rank_still_sees_a_larger_spike():
     """ACI can push its boundary to the largest value seen; ranks alone stop at 1."""
-    service = BoundaryDetectionService(bound(boundary_definition(("forest", "mad"))))
+    # The smallest window two detectors under max may have at this alarm rate.
+    window = 39
+    service = BoundaryDetectionService(
+        bound(
+            boundary_definition(
+                ("forest", "mad"), params={"alpha": 0.1}, calibration_window=window
+            )
+        )
+    )
     try:
-        feed(service, 0, LEARNED + 20)
+        feed(service, 0, TRAINING + window + 20)
         boundary = service.boundary
         # Scores above every window, each further out, raise the boundary past 1.
         for step in range(1, 6):

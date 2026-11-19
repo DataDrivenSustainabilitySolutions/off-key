@@ -828,7 +828,13 @@ def _validate_blindness(
 def _validate_calibration_window(
     compilation: _Compilation, calibration: PipelineNode, method: str
 ) -> None:
-    """A boundary at a small alarm rate needs enough calibration scores."""
+    """A boundary at a small alarm rate needs enough calibration scores.
+
+    With too few, the boundary is the largest score of its window, so one
+    spike lifts it until the window lets the spike go and the monitor misses
+    anything smaller meanwhile. A monitor must not go blind like that, so the
+    design does not run.
+    """
     alpha = calibration.params.get("alpha")
     # An alarm rate out of range is reported with the step's other settings.
     if not isinstance(alpha, float) or not 0 < alpha < 1:
@@ -843,7 +849,7 @@ def _validate_calibration_window(
     if window < needed:
         detectors = _detector_count(compilation.definition)
         fused = detectors > 1 and fusion_mode(calibration.params) == "max"
-        compilation.warning(
+        compilation.error(
             "calibration_window",
             # Written out, as the setting shows it: a small rate has no exponent.
             f"An alarm rate of {Decimal(repr(alpha)):f} needs at least {needed:,} "
@@ -855,8 +861,12 @@ def _validate_calibration_window(
                 if fused
                 else ""
             )
-            + "With fewer, the boundary sits at the largest score seen.",
+            + "With fewer, the boundary is the largest score of the window: one "
+            "spike lifts it until the window lets the spike go, and the monitor "
+            "misses anything smaller meanwhile. Raise the alarm rate or the "
+            "calibration window.",
             calibration.id,
+            blocks_features=False,
             parameter_path=["alpha"],
         )
 

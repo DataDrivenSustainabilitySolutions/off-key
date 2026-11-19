@@ -93,7 +93,7 @@ def definition(companions=(), steps=FIXED, lead=1) -> PipelineDefinition:
             "id": "calibrate",
             "kind": "calibration",
             "component": calibration,
-            "params": {"alpha": 0.1} if steps is ADAPTING else {},
+            "params": {"alpha": 0.3} if steps is ADAPTING else {},
         },
         {"id": "policy", "kind": "policy", "component": policy},
         {"id": "output", "kind": "output", "component": "output.evidence"},

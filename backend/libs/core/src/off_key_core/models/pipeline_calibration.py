@@ -26,7 +26,7 @@ CALIBRATORS: dict[str, dict[str, Any]] = {
     for identifier in CALIBRATION_CATALOG["order"]
 }
 # Methods whose boundary is a quantile of the calibration window itself: with
-# too few scores for the alarm rate, it sits at the largest score seen.
+# too few scores for the alarm rate, it is the window's largest score.
 WINDOW_QUANTILE_METHODS = frozenset({"split", "aci", "dtaci", "agaci"})
 EXCEEDANCE_RULE = "policy.exceedance"
 
@@ -139,11 +139,14 @@ CALIBRATION_MODELS: dict[str, type[PipelineModel]] = {
 def minimum_window(method: str, alpha: float, detectors: int, fusion: str) -> int:
     """The calibration observations a boundary at this alarm rate needs.
 
-    A window of n scores has a (1 - alpha) conformal quantile only when
-    n + 1 >= 1 / alpha. Several detectors meet as ranks in the window, whose
-    largest value each of them reaches about once in n scores.
+    A window of n scores puts its (1 - alpha) conformal quantile below its
+    largest score only when (n + 1) * alpha >= 2. With fewer, the boundary is
+    the largest score of the window: one spike lifts it for as long as the
+    window holds the spike, and the monitor misses anything smaller. Several
+    detectors meet as ranks in the window, whose largest value each of them
+    reaches about once in n scores.
     """
     if detectors < 2 and method not in WINDOW_QUANTILE_METHODS:
         return 1
     reach = detectors if detectors > 1 and fusion == "max" else 1
-    return max(math.ceil(reach / alpha - 1e-9) - 1, 1)
+    return max(math.ceil(2 * reach / alpha - 1e-9) - 1, 1)

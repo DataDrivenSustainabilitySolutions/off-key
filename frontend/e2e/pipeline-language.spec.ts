@@ -5,7 +5,7 @@ import type {
   PipelineDefinition,
   PipelineView,
 } from "../src/types/pipelines.generated";
-import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, bareCatalog, openPipelineWorkspace } from "./helpers/pipelines";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
 import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import {
@@ -61,7 +61,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       { headers },
     );
     expect(response.ok()).toBe(true);
-    const catalog = (await response.json()) as PipelineCatalog;
+    const catalog = bareCatalog((await response.json()) as PipelineCatalog);
     const definition: PipelineDefinition = structuredClone(
       catalog.templates.find((item) => item.id === strategy)!
         .definition,
@@ -291,7 +291,7 @@ test("inserts a step on a wire and replaces an occupied input, both undoable", a
   const headers = { Authorization: `Bearer ${token}` };
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
-  const catalog = (await response.json()) as PipelineCatalog;
+  const catalog = bareCatalog((await response.json()) as PipelineCatalog);
   const template = catalog.templates.find((item) => item.id === "adaptive_stream")!;
   const created = await page.request.post("/api/v1/pipelines", {
     headers,
@@ -382,7 +382,7 @@ test("lists the features the detector receives and adds a step for one of them",
   const headers = { Authorization: `Bearer ${token}` };
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
-  const catalog = (await response.json()) as PipelineCatalog;
+  const catalog = bareCatalog((await response.json()) as PipelineCatalog);
   const template = catalog.templates.find((item) => item.id === "adaptive_stream")!;
   const created = await page.request.post("/api/v1/pipelines", {
     headers,
@@ -440,7 +440,7 @@ test("combines a second detector at the calibration step and lists each detector
   const headers = { Authorization: `Bearer ${token}` };
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
-  const catalog = (await response.json()) as PipelineCatalog;
+  const catalog = bareCatalog((await response.json()) as PipelineCatalog);
   const template = catalog.templates.find((item) => item.id === "adaptive_stream")!;
   const created = await page.request.post("/api/v1/pipelines", {
     headers,

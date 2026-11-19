@@ -262,15 +262,13 @@ async def test_complete_studies_are_ranked_and_compared_dataset_by_dataset(sessi
     await finish(factory, pending.items[0].run_id, peak_at=30)
     async with factory() as session:
         suites = DojoSuites(session)
-        before = await suites.get_suite(suite.id)
-        read = await suites.get_study(good.id, calculate=True)
-        await suites.get_study(poor.id, calculate=True)
         ranked = await suites.get_suite(suite.id)
+        read = await suites.get_study(good.id)
         comparison = await suites.compare_studies(
             suite.id, StudyComparisonQuery(baseline=poor.id, challenger=good.id)
         )
-    # Metrics come from reading a study; until then nothing is complete.
-    assert before.leaderboard == [] and before.studies == 3
+    # The overview works out the scores itself; no study had to be read first.
+    assert ranked.studies == 3
     assert read.metrics_pending == 0 and read.complete
     assert [item.dataset_name for item in read.items] == [view.name for view in views]
     assert read.totals.labels_detected == 4 and read.totals.detection_rate == 1.0

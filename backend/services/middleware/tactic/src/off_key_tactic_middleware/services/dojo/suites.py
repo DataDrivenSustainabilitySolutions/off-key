@@ -258,7 +258,9 @@ class DojoSuites:
                 .limit(MAX_SUITE_STUDIES)
             )
         ).all()
-        summaries = await self._summaries(studies, len(datasets))
+        # The overview ranks what has finished, so it works out the scores
+        # a study has not been read for yet, for a few seconds at most.
+        summaries = await self._summaries(studies, len(datasets), calculate=True)
         total = await self.session.scalar(
             select(func.count()).where(DojoStudy.suite_id == suite_id)
         )
@@ -591,11 +593,11 @@ class DojoSuites:
             )
 
     async def _summaries(
-        self, studies: Sequence[DojoStudy], size: int
+        self, studies: Sequence[DojoStudy], size: int, *, calculate: bool = False
     ) -> list[StudySummary]:
         runs = await self._runs([study.id for study in studies])
         labels = await self._labels(list({run.dataset_id for run in runs}))
-        found = await self._metrics(runs, labels, calculate=False)
+        found = await self._metrics(runs, labels, calculate=calculate)
         by_study: dict[str, list[DojoRun]] = defaultdict(list)
         for run in runs:
             by_study[run.study_id or ""].append(run)

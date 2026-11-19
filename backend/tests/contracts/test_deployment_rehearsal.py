@@ -19,7 +19,7 @@ from paho.mqtt import publish
 from paho.mqtt.client import CallbackAPIVersion
 from paho.mqtt.client import Client as MQTTClient
 
-from tests.support.deployment import wait_until_service_accepts_data
+from tests.support.deployment import bare_template, wait_until_service_accepts_data
 from tests.support.integration_catalogue import (
     add_recorded_entity,
     remove_recorded_entity,
@@ -128,11 +128,7 @@ def wait_for_activation(client, identifier):
 
 
 def graph_definition(catalog):
-    definition = deepcopy(
-        next(item for item in catalog["templates"] if item["id"] == "adaptive_stream")[
-            "definition"
-        ]
-    )
+    definition = bare_template(catalog)
     definition["input_slots"] = [
         {"id": "processed", "label": "Processed current"},
         {"id": "raw", "label": "Raw temperature"},

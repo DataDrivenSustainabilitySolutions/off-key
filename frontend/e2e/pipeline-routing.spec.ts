@@ -2,7 +2,7 @@ import { savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
-import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, bareCatalog, openPipelineWorkspace } from "./helpers/pipelines";
 import { fitPipelineOverview } from "./helpers/pipelineNavigation";
 import { expectClearPipelineRouting, pipelineRoutingSnapshot } from "./helpers/pipelineRouting";
 import { accessToken } from "./helpers/auth";
@@ -14,7 +14,7 @@ test("reroutes around moved components during native dragging and after reload",
   const headers = { Authorization: `Bearer ${token}` };
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
-  const catalog = await response.json() as PipelineCatalog;
+  const catalog = bareCatalog(await response.json() as PipelineCatalog);
   const definition = structuredClone(catalog.templates.find((item) => item.id === "adaptive_stream")!.definition);
   definition.nodes!.push(
     { id: "middle", kind: "transform", component: "features.passthrough" },

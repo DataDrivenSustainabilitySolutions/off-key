@@ -12,7 +12,6 @@ import os
 import re
 import subprocess
 import time
-from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 
@@ -22,7 +21,7 @@ from off_key_core.models.adaptive import TIMESTRAL, TIMESTRAL_CHECKPOINTS
 from off_key_core.schemas.forecast import QUANTILE_LEVELS
 from paho.mqtt.client import CallbackAPIVersion, Client
 
-from tests.support.deployment import wait_until_service_accepts_data
+from tests.support.deployment import bare_template, wait_until_service_accepts_data
 from tests.support.integration_catalogue import (
     add_recorded_entity,
     remove_recorded_entity,
@@ -109,11 +108,7 @@ def timestral_design(catalog: dict) -> dict:
     """The adaptive template with a Timestral step in place of its detector."""
     assert catalog["authoring_enabled"]
     assert TIMESTRAL in {component["id"] for component in catalog["components"]}
-    definition = deepcopy(
-        next(item for item in catalog["templates"] if item["id"] == "adaptive_stream")[
-            "definition"
-        ]
-    )
+    definition = bare_template(catalog)
     definition["input_slots"] = [{"id": "value", "label": "Value"}]
     detector = next(node for node in definition["nodes"] if node["kind"] == "detector")
     detector["component"] = TIMESTRAL

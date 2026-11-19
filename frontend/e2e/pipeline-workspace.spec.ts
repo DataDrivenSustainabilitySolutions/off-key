@@ -8,7 +8,7 @@ import {
   removeTestCharger,
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
-import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, bareCatalog, openPipelineWorkspace } from "./helpers/pipelines";
 import {
   choosePipelineDetector,
   expectReadablePipeline,
@@ -138,7 +138,7 @@ test.describe("visual pipeline real infrastructure", () => {
           { headers },
         );
         expect(catalogResponse.ok(), await catalogResponse.text()).toBeTruthy();
-        const catalog = (await catalogResponse.json()) as PipelineCatalog;
+        const catalog = bareCatalog((await catalogResponse.json()) as PipelineCatalog);
         expect(
           catalog.authoring_enabled,
           "This dedicated lane requires pipeline_authoring_enabled=true",
@@ -577,7 +577,7 @@ test.describe("visual pipeline real infrastructure", () => {
         headers,
       });
       expect(result.ok(), await result.text()).toBeTruthy();
-      const catalog = (await result.json()) as PipelineCatalog;
+      const catalog = bareCatalog((await result.json()) as PipelineCatalog);
       expect(catalog.authoring_enabled).toBe(true);
       const template = catalog.templates.find(
         (item) => item.id === "adaptive_stream",

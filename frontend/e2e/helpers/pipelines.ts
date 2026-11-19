@@ -4,10 +4,49 @@ import type { PipelineCatalog, PipelineView } from "../../src/types/pipelines.ge
 import { accessToken } from "./auth";
 
 /**
+ * The catalog with its templates cut to source, detector, calibration, policy
+ * and output. The stream's template carries example steps, such as Lags, for
+ * people to change or remove; these journeys build on the bare chain and add
+ * what they test, with the source wired straight to the detector.
+ */
+export function bareCatalog(catalog: PipelineCatalog): PipelineCatalog {
+  return {
+    ...catalog,
+    templates: catalog.templates.map((template) => {
+      const nodes = template.definition.nodes ?? [];
+      const steps = new Set(nodes.filter((node) => node.kind === "transform").map((node) => node.id));
+      if (!steps.size) return template;
+      const kept = nodes.filter((node) => !steps.has(node.id));
+      const detector = kept.find((node) => node.kind === "detector")!.id;
+      return {
+        ...template,
+        definition: {
+          ...template.definition,
+          nodes: kept,
+          edges: (template.definition.edges ?? [])
+            .filter((edge) => !steps.has(edge.source))
+            .map((edge) => (edge.source === "input" ? { ...edge, target: detector } : edge)),
+        },
+        // As the catalog lays a template out: one column per card.
+        layout: { ...template.layout, nodes: Object.fromEntries(kept.map((node, index) => [node.id, { x: index * 288, y: 100 }])) },
+      };
+    }),
+  };
+}
+
+/**
  * Opens the workspace with the operator's remembered session that auth-setup
  * saved, so a run signs in once however many journeys it holds.
  */
 export async function openPipelineWorkspace(page: Page) {
+  await page.route(
+    (url) => url.pathname.endsWith("/v1/pipeline-components"),
+    async (route) => {
+      const response = await route.fetch();
+      if (!response.ok()) return route.fulfill({ response });
+      await route.fulfill({ response, json: bareCatalog(await response.json() as PipelineCatalog) });
+    },
+  );
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
   const token = await accessToken(page);

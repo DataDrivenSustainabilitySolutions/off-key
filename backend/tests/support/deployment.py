@@ -1,6 +1,7 @@
 """Deployed-stack helpers for the rehearsal tests."""
 
 import time
+from copy import deepcopy
 
 import httpx
 import pytest
@@ -56,3 +57,29 @@ def wait_until_service_accepts_data(
         f"Adaptive service did not become ready within {timeout:g} seconds; "
         f"last status: {last_status}"
     )
+
+
+def bare_template(catalog: dict, strategy: str = "adaptive_stream") -> dict:
+    """A bundled template from the served catalog without its example steps.
+
+    The stream's template carries a Lags step as an example; these tests build
+    on source, detector, policy and output, with the source wired to the detector.
+    """
+    definition = deepcopy(
+        next(item for item in catalog["templates"] if item["id"] == strategy)[
+            "definition"
+        ]
+    )
+    steps = {node["id"] for node in definition["nodes"] if node["kind"] == "transform"}
+    definition["nodes"] = [
+        node for node in definition["nodes"] if node["id"] not in steps
+    ]
+    detector = next(
+        node["id"] for node in definition["nodes"] if node["kind"] == "detector"
+    )
+    definition["edges"] = [
+        {**edge, "target": detector} if edge["source"] == "input" else edge
+        for edge in definition["edges"]
+        if edge["source"] not in steps
+    ]
+    return definition

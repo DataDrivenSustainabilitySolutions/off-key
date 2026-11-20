@@ -873,7 +873,12 @@ class DeploymentTests(unittest.TestCase):
                 data = image.read_bytes()
                 self.assertLess(len(data), 500_000)
                 self.assertEqual(hashlib.sha256(data).hexdigest(), asset["sha256"])
-                self.assertIn(f'src="/assets/{asset["file"]}"', result["landing_html"])
+
+        shown = re.findall(r'<img\b[^>]*src="/assets/([^"]+)"', result["landing_html"])
+        self.assertTrue(shown)
+        self.assertLessEqual(set(shown), {asset["file"] for asset in assets})
+        self.assertNotIn("hero-pipes-v1.webp", shown)
+
         headers = routes["middlewares"]["landing-headers"]["headers"]
         self.assertEqual(
             headers["customRequestHeaders"], {"Cookie": "", "Authorization": ""}

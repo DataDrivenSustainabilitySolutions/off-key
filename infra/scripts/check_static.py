@@ -33,7 +33,9 @@ def main():
                 raise ValueError(f"Empty or oversized Swarm config: {name}")
             if name == "landing.html.j2":
                 images = re.findall(r'<img\b[^>]*src="/assets/([^"]+)"', rendered)
-                if images != [asset["file"] for asset in assets]:
+                # Skipped slides stay in the manifest, so the page shows an ordered subset.
+                manifest = [asset["file"] for asset in assets]
+                if not images or [f for f in manifest if f in images] != images:
                     raise ValueError("Hero photographs do not match the image manifest")
                 for asset in assets:
                     data = (PROJECT / "assets/landing" / asset["file"]).read_bytes()

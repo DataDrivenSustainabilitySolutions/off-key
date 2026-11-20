@@ -1,5 +1,5 @@
 <!doctype html>
-{% set hero_slides = [
+{% set hero_all_slides = [
   ('bridge', 'strain', 'hero-bridge-v1.jpg', 1942, 'a steel bridge'),
   ('cables', 'traffic', 'hero-data-cable-runway-v1.webp', 1942, 'a data-centre cable runway'),
   ('pipes', 'flow', 'hero-pipes-v1.webp', 1944, 'an industrial pipe rack'),
@@ -9,6 +9,9 @@
   ('gantry', 'precision', 'hero-robotic-gantry-v1.webp', 1942, 'an overhead robotic gantry'),
   ('irrigation', 'pressure', 'hero-irrigation-span-v2.webp', 1944, 'a centre-pivot irrigation span')
 ] %}
+{# Skipped slides keep their photograph, manifest entry and deployment; remove a subject here to show it again. #}
+{% set hero_skipped_subjects = ['pipes'] %}
+{% set hero_slides = hero_all_slides | rejectattr(0, 'in', hero_skipped_subjects) | list %}
 {% set hero_slide_seconds = 6.5 %}
 {% set hero_crossfade_seconds = 2 %}
 {% set hero_cycle_seconds = hero_slides | length * hero_slide_seconds %}
@@ -898,7 +901,7 @@
   <div class="hero-title">
     <p class="mono"><span class="nowrap">Anomaly detection for</span><br class="hero-kicker-break"> <span class="nowrap">physical &amp; digital systems</span></p>
     <h1 id="headline">Every system has a pattern.</h1>
-    <p class="hero-promise"><span class="visually-hidden">Detect when strain, traffic, flow, quality, yield, efficiency, precision or pressure changes.</span><span aria-hidden="true"><span class="hero-promise-prefix">Detect when </span><span class="hero-words">{% for subject, word, file, width, description in hero_slides %}<span class="hero-word hero-word--{{ subject }}">{{ word }}</span>{% endfor %}</span><span class="hero-promise-suffix"> changes.</span></span></p>
+    <p class="hero-promise"><span class="visually-hidden">Detect when {% for subject, word, file, width, description in hero_slides %}{% if not loop.first %}{{ ' or ' if loop.last else ', ' }}{% endif %}{{ word }}{% endfor %} changes.</span><span aria-hidden="true"><span class="hero-promise-prefix">Detect when </span><span class="hero-words">{% for subject, word, file, width, description in hero_slides %}<span class="hero-word hero-word--{{ subject }}">{{ word }}</span>{% endfor %}</span><span class="hero-promise-suffix"> changes.</span></span></p>
     <div class="hero-summary">
       <p>Continuous anomaly detection for sensor telemetry<br>and digital data streams.</p>
       <a class="text-link" href="#platform">Explore the platform <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>

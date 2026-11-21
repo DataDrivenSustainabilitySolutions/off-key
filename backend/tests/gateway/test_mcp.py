@@ -221,9 +221,10 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
     }
     # An agent reads the whole list with every session, so it stays short. The
     # suite and study tools raised it from 31,500 for the loop of comparing
-    # candidates over many datasets.
+    # candidates over many datasets, and the rationale's one-line summary,
+    # which members read first, to 35,500.
     listing = [tool.model_dump(mode="json", exclude_none=True) for tool in granted]
-    assert len(json.dumps(listing)) < 35_000
+    assert len(json.dumps(listing)) < 35_500
 
 
 def test_a_schema_says_nothing_twice():

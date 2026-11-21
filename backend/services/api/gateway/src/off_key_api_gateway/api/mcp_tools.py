@@ -71,9 +71,10 @@ once withdrawn or declined. Nothing else can be deleted with a key: not what \
 members or other keys made, and no monitor, alarm or reading.
 
 Each start carries a rationale for the members who read it next to the \
-monitor: what it watches, why this design, the evidence and its limits, each \
-one or two sentences of at most 200 characters, with numbers where you have \
-them.
+monitor: a summary, one plain line without numbers, then what it watches, why \
+this design, the evidence and its limits, one or two sentences each with \
+numbers. Leave the device out of the name. Note each fault you inject on its \
+label: members read those notes as the faults caught or missed.
 
 Warm-up: a design scores nothing until it has seen training_window_size plus \
 calibration_window_size observations. These count observations, not time, so \

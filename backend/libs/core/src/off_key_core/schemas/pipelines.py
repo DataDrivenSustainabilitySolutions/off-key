@@ -290,14 +290,22 @@ SHADOW = (
 
 
 MAX_RATIONALE_TEXT = 200
+MAX_RATIONALE_SUMMARY = 140
 
 
 class MonitorRationale(PipelineModel):
-    """Why a monitor runs, in four short fields a member reads at a glance."""
+    """Why a monitor runs: one line a member reads first, then four short fields."""
 
     # One or two sentences each: the limit keeps them comparable across
     # authors, and the canvas notes hold the detail.
 
+    # Left out while unset, so rationales written before it read and store the same.
+    summary: str | None = Field(
+        default=None,
+        max_length=MAX_RATIONALE_SUMMARY,
+        exclude_if=lambda value: value is None,
+        description="One plain line, read first: what it catches and why.",
+    )
     watches: str = Field(
         min_length=1,
         max_length=MAX_RATIONALE_TEXT,
@@ -325,6 +333,11 @@ class MonitorRationale(PipelineModel):
         if not value.strip():
             raise ValueError("Write one or two sentences")
         return " ".join(value.split())
+
+    @field_validator("summary")
+    @classmethod
+    def one_line(cls, value: str | None) -> str | None:
+        return " ".join(value.split()) or None if value is not None else None
 
 
 MonitorEvent = Literal["started", "stopped"]
@@ -978,6 +991,43 @@ class PipelineProposalCreate(PipelineModel):
         return self
 
 
+class ProposalReading(PipelineModel):
+    """A reading a proposal binds, named as the catalogue names it."""
+
+    id: str
+    label: str
+    device: str | None = Field(
+        default=None, description="The device the reading belongs to, by name."
+    )
+    unit: str | None = None
+
+
+class ProposalFault(PipelineModel):
+    """A labelled interval of the test history, and whether the design alarmed."""
+
+    note: str = Field(description="What the label says, such as the injected fault.")
+    outcome: Literal["detected", "missed", "unscored"]
+    delay_seconds: float | None = Field(
+        description="From the start of the interval to the first alarm in it."
+    )
+
+
+class ProposalTest(PipelineModel):
+    """What the test a proposal came with showed, in figures."""
+
+    scored_hours: float = Field(ge=0, description="History the design scored.")
+    false_alarms: int = Field(ge=0)
+    false_alarms_per_day: float | None
+    median_delay_seconds: float | None
+    faults: list[ProposalFault] = Field(
+        default_factory=list,
+        description=(
+            "The labelled faults of the test's dataset, which an agent usually "
+            "injects into real history, in time order."
+        ),
+    )
+
+
 class PipelineProposalSummary(PipelineModel):
     id: str
     name: str
@@ -1002,6 +1052,14 @@ class PipelineProposalSummary(PipelineModel):
             "Readings an open proposal binds that the catalogue no longer "
             "records, so it cannot start as proposed."
         ),
+    )
+    readings: list[ProposalReading] = Field(
+        default_factory=list,
+        description="The readings it binds, named, in the order of its inputs.",
+    )
+    test: ProposalTest | None = Field(
+        default=None,
+        description="The figures of its test, once they are calculated.",
     )
 
 

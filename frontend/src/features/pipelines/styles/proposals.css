@@ -1,5 +1,5 @@
 /* Proposals: designs handed in for a decision. The page reads like the Monitoring overview: a title
-   with the room to start, filters, and under them one card per proposal. */
+   with the room to start, filters, and under them a review desk: the list, and the one picked. */
 .pl-proposals-heading { margin-top: 4px; }
 .pl-proposals-intro { margin: 8px 0 0; max-width: 72ch; color: var(--ex-muted); font-size: var(--text-body); line-height: var(--leading-body); }
 .pl-proposals-tools { margin: 28px 0 0; }
@@ -13,13 +13,74 @@
 .pl-capacity.is-full { color: hsl(var(--destructive)); }
 .pl-capacity.is-full .pl-capacity-meter i.is-taken { background: hsl(var(--destructive)); }
 
-/* Every card is laid out the same, so two proposals compare line by line: the name, who handed it
-   in and as what, the rationale under its names, and what a member may do with it at the bottom. */
-.pl-proposal-cards { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
-.pl-proposal-card > article { display: grid; gap: 8px; padding: 18px 20px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); }
-.pl-proposal-card h2 { margin: 0; font-size: var(--text-title3); line-height: var(--leading-title3); font-weight: 600; overflow-wrap: anywhere; }
-.pl-proposals .pl-proposal-card h2 > button { display: inline; padding: 0; border: 0; border-radius: var(--radius-control); background: none; font: inherit; color: inherit; text-align: left; }
-.pl-proposals .pl-proposal-card h2 > button:hover { color: var(--ex-accent); text-decoration: underline; text-underline-offset: 3px; }
+/* The desk: a list of proposals beside the one picked, read as a short report. */
+.pl-desk { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); margin-top: 14px; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); background: hsl(var(--card)); max-width: 1280px; }
+.pl-desk-list { list-style: none; margin: 0; padding: 0; border-right: 1px solid hsl(var(--border)); min-width: 0; }
+.pl-desk-list > li + li { border-top: 1px solid hsl(var(--border)); }
+.pl-proposals .pl-desk-item { display: grid; gap: 3px; width: 100%; padding: 14px 18px; border: 0; border-radius: 0; background: none; text-align: left;
+  font: inherit; color: inherit; }
+.pl-proposals .pl-desk-item:hover { background: var(--ex-hover); }
+.pl-proposals .pl-desk-item[aria-current] { background: var(--ex-side); box-shadow: inset 3px 0 0 hsl(var(--primary)); }
+.pl-desk-item strong { font-weight: 500; overflow-wrap: anywhere; }
+.pl-desk-item em { color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: var(--leading-caption);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pl-desk-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 3px; color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption); line-height: var(--leading-caption); font-variant-numeric: tabular-nums; }
+.pl-desk-item-meta > span:not(.pl-fault-dots) + span::before { content: "·"; margin-right: 8px; }
+.pl-desk-item-warn { display: inline-flex; align-items: center; gap: 4px; color: hsl(var(--destructive)); }
+
+/* One dot per fault planted in the test's history: filled where the design alarmed, hollow where it did not. */
+.pl-fault-dots { display: inline-flex; gap: 3px; align-items: center; }
+.pl-fault-dots i, .pl-faults i { width: 9px; height: 9px; flex: none; border-radius: 50%; background: hsl(var(--primary)); }
+.pl-fault-dots i:not(.is-detected), .pl-faults li:not(.is-detected) i { background: transparent; box-shadow: inset 0 0 0 1.5px hsl(var(--muted-foreground) / .7); }
+
+.pl-desk-detail { min-width: 0; padding: 26px 34px 34px; }
+.pl-proposals .pl-desk-back { display: none; }
+.pl-desk-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 14px 24px; }
+.pl-desk-title { flex: 1 1 360px; min-width: 0; }
+.pl-desk-title h2 { margin: 10px 0 4px; font-size: var(--text-title2); line-height: var(--leading-title2); font-weight: var(--heading-weight);
+  letter-spacing: var(--heading-tracking); overflow-wrap: anywhere; }
+.pl-desk-lede { margin: 0; max-width: 66ch; color: hsl(var(--muted-foreground)); font-style: italic; font-size: var(--text-title3); line-height: 26px; }
+.pl-desk-detail > .pl-proposal-decision, .pl-desk-detail > .pl-proposal-missing, .pl-desk-detail > .pl-review-quiet { margin-top: 16px; }
+
+/* The report: each part under a small capital heading, in the order a reviewer asks. */
+.pl-review-sections { display: grid; gap: 26px; margin-top: 26px; }
+.pl-review-section { display: grid; gap: 10px; min-width: 0; }
+.pl-review-section > h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0; color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption); line-height: var(--leading-caption); font-weight: 500; text-transform: uppercase; letter-spacing: .06em; }
+.pl-review-section p { margin: 0; max-width: 78ch; overflow-wrap: anywhere; }
+.pl-review-quiet { margin: 0; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: var(--leading-caption); }
+.pl-review-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 32px; }
+.pl-review-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pl-review-chips li { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  font-size: var(--text-caption); line-height: 22px; white-space: nowrap; }
+.pl-review-chips li small { color: hsl(var(--muted-foreground)); font-size: inherit; }
+.pl-review-chips li.is-device { border-color: transparent; background: var(--ex-side); }
+.pl-review-chips li.is-missing { border-color: hsl(var(--destructive) / .6); color: hsl(var(--destructive)); text-decoration: line-through; }
+.pl-figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+.pl-figures > div { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px; padding: 12px 16px; min-width: 0; }
+.pl-figures > div + div { border-left: 1px solid hsl(var(--border)); }
+.pl-figures dt { color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: var(--leading-caption); }
+.pl-figures dd { margin: 0; font-size: var(--text-metric); line-height: var(--leading-metric); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pl-figures dd small { color: hsl(var(--muted-foreground)); font-size: var(--text-body); }
+.pl-faults { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.pl-faults li { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: var(--text-body); }
+.pl-faults li span { overflow-wrap: anywhere; }
+.pl-faults li small { color: hsl(var(--muted-foreground)); font-size: var(--text-caption); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pl-faults li.is-detected small { color: hsl(var(--primary)); }
+.pl-review-words { color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: var(--leading-caption); }
+.pl-review-words span { display: block; color: hsl(var(--foreground)); font-weight: 500; }
+.pl-limits { margin: 0; padding-left: 18px; display: grid; gap: 4px; list-style: disc; }
+.pl-limits li::marker { color: hsl(var(--muted-foreground)); }
+/* Beside the design the column is narrow: everything stands in one column, the figures two by two. */
+.pl-review-sections.is-compact { gap: 20px; margin-top: 0; padding-top: 14px; border-top: 1px solid hsl(var(--border)); }
+.is-compact .pl-review-pair { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.is-compact .pl-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.is-compact .pl-figures > div:nth-child(3) { border-left: 0; }
+.is-compact .pl-figures > div:nth-child(n + 3) { border-top: 1px solid hsl(var(--border)); }
+.is-compact .pl-figures dd { font-size: var(--text-title2); line-height: var(--leading-title2); }
+.pl-brief .pl-desk-lede { font-size: var(--text-body); line-height: var(--leading-body); }
 
 /* Who, when, as what, and whether it was tested: one quiet line, also at the head of the brief. A rule
    stands between two facts; the one that would open a line falls outside the list and is cut off. */
@@ -28,15 +89,6 @@
 .pl-proposal-meta > li { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-left: -1px; padding: 0 9px 0 10px; overflow-wrap: anywhere; }
 .pl-proposal-meta > li::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 1px; background: hsl(var(--border)); }
 .pl-proposal-meta > .pl-proposal-tested { gap: 4px; color: hsl(var(--foreground)); }
-
-.pl-proposal-card .rationale-fields { grid-template-columns: 72px minmax(0, 1fr); gap: 6px 16px; margin: 6px 0 0; }
-.pl-proposal-card .rationale-fields dt { font-size: var(--text-caption); line-height: var(--leading-body); font-weight: 550; }
-.pl-proposal-card .rationale-fields dd { max-width: 78ch; font-variant-numeric: tabular-nums; }
-/* A reason may run to a page; the card shows how it begins and the review shows all of it. */
-.pl-proposal-reason { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-
-/* Only a phone folds the evidence and the limits away, so only a phone has the button that shows them. */
-.pl-proposal-more { display: none; }
 
 /* Where a proposal stands. The dot carries the state's colour; the word says it too. */
 .pl-proposal-decision { display: grid; gap: 4px; margin: 4px 0 0; padding: 8px 12px; border-left: 2px solid hsl(var(--border)); background: hsl(var(--muted) / 0.55); }
@@ -49,16 +101,17 @@
 .pl-proposal-missing { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0 0; color: hsl(var(--destructive)); font-size: var(--text-caption); line-height: var(--leading-caption); overflow-wrap: anywhere; }
 .pl-proposal-missing svg { flex: none; margin-top: 2px; }
 
-/* The actions stand together under what they act on: the review first, then the two decisions. */
-.pl-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+/* The decisions stand at the head of the report: Decline quiet, the review, then Start. */
+.pl-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .pl-proposals .pl-proposal-actions > button { min-height: 34px; padding: 6px 14px; font-size: var(--text-control); }
-.pl-proposals .pl-proposal-actions > button.mn-primary { background: var(--ex-accent); border-color: var(--ex-accent); color: hsl(var(--primary-foreground)); font-weight: 500; }
+.pl-proposals .pl-proposal-actions > button.mn-primary { display: inline-flex; align-items: center; gap: 6px; background: var(--ex-accent); border-color: var(--ex-accent);
+  color: hsl(var(--primary-foreground)); font-weight: 500; }
 .pl-proposals .pl-proposal-actions > button:not(.mn-primary):not(:disabled):hover,
-.pl-proposals .pl-proposal-actions > button[data-state="open"] { background: var(--ex-hover); }
+.pl-proposals .pl-proposal-actions > button:not(.mn-primary)[data-state="open"] { background: var(--ex-hover); }
 .pl-proposals .pl-proposal-actions > .pl-decline { border-color: transparent; background: none; color: var(--ex-muted); }
 .pl-proposals .pl-proposal-actions > .pl-decline:hover,
 .pl-proposals .pl-proposal-actions > .pl-decline[data-state="open"] { color: var(--ex-ink); }
-.pl-proposal-hint { margin-left: 4px; font-size: var(--text-caption); color: var(--ex-muted); }
+.pl-proposal-hint { flex: 1 1 100%; text-align: right; font-size: var(--text-caption); color: var(--ex-muted); }
 .pl-proposal-actions :is(.pl-apply-status, .pl-field-error) { flex: 1 1 100%; margin: 0; }
 
 /* A decision is made in a small dialog at its button: the page under it does not move. */
@@ -96,29 +149,34 @@
 .pl-brief-test a { color: hsl(var(--primary)); font-size: var(--text-caption); text-decoration: underline; text-underline-offset: 3px; }
 .pl-brief .rationale-fields--stacked { padding-top: 14px; border-top: 1px solid hsl(var(--border)); }
 
-/* A phone reads the list as a feed: rows from edge to edge, what each design watches in three lines,
-   and the rest one press away. The words that introduce the page give way to the proposals. */
+/* A phone reads the desk as two pages: the list from edge to edge, then the one opened, with its
+   decisions in a bar at the bottom. The words that introduce the page give way to the proposals. */
 @media (max-width: 680px) {
   .pl-stage--reading .pl-brief-name { display: block; }
   .pl-proposals-about { display: none; }
   .pl-proposals-intro:not(:has(> :not(.pl-proposals-about))) { margin: 0; }
   .pl-proposals-tools { margin-top: 16px; }
-  .pl-proposal-cards { margin: 8px -20px 0; gap: 8px; }
-  .pl-proposal-card > article { gap: 6px; padding: 16px 20px 14px; border-width: 1px 0; border-radius: 0; }
-  .pl-proposal-card .rationale-fields { grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 4px; }
-  .pl-proposal-card .rationale-fields dt { line-height: var(--leading-caption); }
-  .pl-proposal-card article[data-more="false"] .rationale-fields > div:nth-child(n + 2) { display: none; }
-  .pl-proposal-card article[data-more="false"] .rationale-fields > div:first-child dt { display: none; }
-  .pl-proposal-card article[data-more="false"] .rationale-fields dd { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-  .pl-proposals .pl-proposal-more { display: inline-flex; align-items: center; gap: 4px; justify-self: start; min-height: 36px; margin-left: -2px; padding: 4px 8px 4px 0;
-    border: 0; background: none; color: var(--ex-muted); font-size: var(--text-control); }
-  .pl-proposal-more svg { transition: transform 120ms ease; }
-  .pl-proposal-more[aria-expanded="true"] svg { transform: rotate(180deg); }
-  .pl-proposal-actions { margin-top: 2px; }
-  .pl-proposals .pl-proposal-actions > button { min-height: 40px; }
+  .pl-desk { display: block; margin: 8px -20px 0; border-width: 1px 0; border-radius: 0; }
+  .pl-desk-list { border-right: 0; }
+  .pl-proposals .pl-desk-item { padding: 14px 20px; }
+  .pl-proposals .pl-desk-item[aria-current] { background: none; box-shadow: none; }
+  .pl-desk-item em { font-size: var(--text-body); line-height: var(--leading-body); }
+  .pl-desk-detail { display: none; padding: 16px 20px 96px; }
+  .pl-proposals[data-reading] :is(.pl-desk-list, .pl-proposals-heading, .pl-proposals-intro, .pl-proposals-tools) { display: none; }
+  .pl-proposals[data-reading] .pl-desk { border: 0; background: none; }
+  .pl-proposals[data-reading] .pl-desk-detail { display: block; }
+  .pl-proposals .pl-desk-back { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; margin: -8px 0 4px -2px; padding: 0; border: 0; background: none;
+    color: var(--ex-accent); font-size: var(--text-control); }
+  .pl-desk-lede { font-size: var(--text-body); }
+  .pl-desk-head .pl-proposal-actions { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+    background: hsl(var(--card)); border-top: 1px solid hsl(var(--border)); flex-wrap: nowrap; }
+  .pl-proposals .pl-desk-head .pl-proposal-actions > button { flex: 1 1 0; justify-content: center; min-height: 44px; }
+  .pl-proposals .pl-desk-head .pl-proposal-actions > .pl-decline { flex: none; }
+  .pl-desk-head .pl-proposal-hint { display: none; }
+  .pl-review-pair { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .pl-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pl-figures > div:nth-child(3) { border-left: 0; }
+  .pl-figures > div:nth-child(n + 3) { border-top: 1px solid hsl(var(--border)); }
   .pl-library .pl-decision button { min-height: 44px; }
-  .pl-proposals .pl-proposal-actions > button:not(.pl-decline) { flex: 1 1 0; }
-  .pl-proposal-hint { flex: 1 1 100%; margin-left: 0; }
   .pl-decision textarea { font-size: 16px; }
 }
-@media (max-width: 680px) and (prefers-reduced-motion: reduce) { .pl-proposal-more svg { transition: none; } }

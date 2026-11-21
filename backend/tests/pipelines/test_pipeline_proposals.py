@@ -362,6 +362,10 @@ async def test_a_proposal_carries_the_figures_of_its_test(library, monkeypatch):
                 ],
             }
         )
+        # A design that alarms all the time catches every fault: the share reads beside.
+        figures = figures.model_copy(
+            update={"diagnostics": type("Diagnostics", (), {"alarm_share": 0.04})()}
+        )
         cached = AsyncMock(return_value=None)
         monkeypatch.setattr(DojoMetrics, "cached", lambda run, labels: None)
         monkeypatch.setattr(DojoMetrics, "calculate", cached)
@@ -380,7 +384,7 @@ async def test_a_proposal_carries_the_figures_of_its_test(library, monkeypatch):
             1,
             0.74,
         )
-        assert test.median_delay_seconds == 12.0
+        assert (test.median_delay_seconds, test.alarm_share) == (12.0, 0.04)
         # In time order, each by its note; a label without one still reads.
         assert [
             (fault.note, fault.outcome, fault.delay_seconds) for fault in test.faults

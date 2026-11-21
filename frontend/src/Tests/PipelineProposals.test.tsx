@@ -155,7 +155,7 @@ describe("proposals", () => {
       rationale: { ...rationale, summary: "Alarms when the pump shakes." }, reason: "A longer word from the author.", test_run_id: "run-7",
       replace_monitor_id: "running",
       readings: [{ id: "current", label: "Current", device: "Pump 2", unit: "A" }, { id: "gone", label: "gone" }], missing_readings: ["gone"],
-      test: { scored_hours: 32.5, false_alarms: 0, false_alarms_per_day: 0, median_delay_seconds: 9.7, faults: [
+      test: { scored_hours: 32.5, alarm_share: 0.045, false_alarms: 0, false_alarms_per_day: 0, median_delay_seconds: 9.7, faults: [
         { note: "Injected step on Current", outcome: "detected", delay_seconds: 4 },
         { note: "Injected gap on Current", outcome: "missed", delay_seconds: null }] } })]);
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} services={[{ id: "running", display_name: "Valve watch" } as ActiveService]} />);
@@ -164,7 +164,7 @@ describe("proposals", () => {
     expect(within(open).getByRole("list", { name: "Readings" }).textContent).toBe("Pump 2CurrentAgone (no longer recorded)");
     const figures = Object.fromEntries([...open.querySelectorAll(".pl-figures > div")].map((item) =>
       [item.querySelector("dt")!.textContent, item.querySelector("dd")!.textContent]));
-    expect(figures).toEqual({ "Faults caught": "1 / 2", "False alarms a day": "0", "History scored": "32.5 h", "Time to alarm": "10 s median" });
+    expect(figures).toEqual({ "Faults caught": "1 / 2", "Time in alarm": "5 %", "False alarms a day": "0", "History scored": "32.5 h" });
     expect([...open.querySelectorAll(".pl-faults li")].map((item) => item.textContent))
       .toEqual(["Injected step on CurrentCaught after 4 s", "Injected gap on CurrentMissed"]);
     for (const [title, text] of [["What it watches", rationale.watches], ["How it decides", rationale.why], ["Author's note", "A longer word from the author."]] as const)
@@ -173,7 +173,7 @@ describe("proposals", () => {
     expect(within(open).getByRole("heading", { name: "Known limits" }).nextElementSibling?.textContent).toBe(rationale.limits.replace(/\.$/, ""));
     expect(within(open).getAllByRole("listitem").slice(1, 3).map((item) => item.textContent)).toEqual(["Replaces Valve watch", "Tested on history"]);
     // The list says the test in brief.
-    expect(screen.getByRole("button", { name: "Pump vibration" }).textContent).toContain("1 of 2 caughtno false alarmsReadings gone");
+    expect(screen.getByRole("button", { name: "Pump vibration" }).textContent).toContain("1 of 2 caught5 % in alarmReadings gone");
   });
 
   it("says when none waits, and offers to read the list again when it cannot be read", async () => {

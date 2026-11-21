@@ -212,6 +212,9 @@ function ProposalActions({ proposal, full, replaced, review, onDeclined, onStart
   </>;
 }
 
+/** How much of the history a design alarmed in, which the faults it caught read against. */
+const inAlarm = (share: number) => share === 0 ? "never" : share < 0.01 ? "< 1 %" : `${Math.round(share * 100)} %`;
+
 /** One proposal in the list: its name, the line that says what it is for, and the test in brief. */
 function ProposalItem({ proposal, selected, stated, onSelect }: {
   proposal: PipelineProposalSummary;
@@ -231,7 +234,7 @@ function ProposalItem({ proposal, selected, stated, onSelect }: {
         {proposal.test
           ? <>{proposal.test && <FaultDots test={proposal.test} />}
             <span>{faults ? `${faults.caught} of ${faults.total} caught` : "No faults planted"}</span>
-            <span>{proposal.test.false_alarms === 0 ? "no false alarms" : `${proposal.test.false_alarms} false alarm${proposal.test.false_alarms === 1 ? "" : "s"}`}</span></>
+            {proposal.test.alarm_share != null && <span>{proposal.test.alarm_share === 0 ? "never in alarm" : `${inAlarm(proposal.test.alarm_share)} in alarm`}</span>}</>
           : <span>{proposal.test_run_id ? "Tested" : "Not tested"}</span>}
         {!!proposal.missing_readings?.length && <span className="pl-desk-item-warn"><TriangleAlert size={12} aria-hidden="true" />Readings gone</span>}
       </span>

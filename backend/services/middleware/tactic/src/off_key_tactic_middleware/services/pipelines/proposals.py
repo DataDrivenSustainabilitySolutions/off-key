@@ -92,6 +92,7 @@ def _test_figures(metrics: RunMetrics, labels: list[DojoLabel]) -> ProposalTest:
     notes = {label.id: label.note for label in labels}
     return ProposalTest(
         scored_hours=round(metrics.evaluated_seconds / 3600, 1),
+        alarm_share=metrics.diagnostics.alarm_share if metrics.diagnostics else None,
         false_alarms=metrics.false_alarms,
         false_alarms_per_day=metrics.false_alarms_per_day,
         median_delay_seconds=metrics.median_delay_seconds,

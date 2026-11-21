@@ -905,6 +905,7 @@ export type ProposalReading = {
 
 export type ProposalTest = {
   scored_hours: number;
+  alarm_share?: number | null;
   false_alarms: number;
   false_alarms_per_day: number | null;
   median_delay_seconds: number | null;

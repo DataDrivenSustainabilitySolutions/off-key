@@ -1016,6 +1016,13 @@ class ProposalTest(PipelineModel):
     """What the test a proposal came with showed, in figures."""
 
     scored_hours: float = Field(ge=0, description="History the design scored.")
+    alarm_share: float | None = Field(
+        default=None,
+        description=(
+            "Share of the scored results that alarmed, faults or not: a design "
+            "that alarms all the time catches every fault."
+        ),
+    )
     false_alarms: int = Field(ge=0)
     false_alarms_per_day: float | None
     median_delay_seconds: float | None

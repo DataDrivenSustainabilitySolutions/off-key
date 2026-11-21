@@ -3,6 +3,9 @@ import { Cpu } from "lucide-react";
 import type { PipelineProposalSummary, ProposalTest } from "@/types/pipelines.generated";
 import { duration, faultsCaught } from "./proposals";
 
+const share = (value: number | null | undefined) =>
+  value == null ? "–" : value === 0 ? "0 %" : value < 0.01 ? "< 1 %" : `${Math.round(value * 100)} %`;
+
 const perDay = (value: number | null | undefined) =>
   value == null ? "–" : value === 0 ? "0" : value < 10 ? value.toFixed(1) : String(Math.round(value));
 
@@ -51,14 +54,16 @@ function ProposalEvidence({ proposal }: { proposal: PipelineProposalSummary }) {
   return <>
     <dl className="pl-figures">
       <div><dt>Faults caught</dt><dd>{faults ? <>{faults.caught}<small> / {faults.total}</small></> : "–"}</dd></div>
+      <div><dt>Time in alarm</dt><dd>{share(test.alarm_share)}</dd></div>
       <div><dt>False alarms a day</dt><dd>{perDay(test.false_alarms_per_day)}</dd></div>
       <div><dt>History scored</dt><dd>{test.scored_hours}<small> h</small></dd></div>
-      <div><dt>Time to alarm</dt><dd>{test.median_delay_seconds == null ? "–" : duration(test.median_delay_seconds)}
-        {test.median_delay_seconds != null && <small> median</small>}</dd></div>
     </dl>
+    {/* A design that alarms all the time catches every fault: the two figures read together. */}
+    <p className="pl-review-quiet">Faults caught counts only together with the time in alarm: a design that alarms all
+      the time catches every fault. Missing some kinds of fault is expected of any one design.</p>
     {faults
       ? <>
-        <p className="pl-review-quiet">Faults the author planted in real history, and whether the design alarmed:</p>
+        <p className="pl-review-quiet">Faults the author planted in real history, and whether the design alarmed in them:</p>
         <ul className="pl-faults">
           {test.faults!.map((fault, index) => <li key={index} className={`is-${fault.outcome}`}>
             <i aria-hidden="true" />

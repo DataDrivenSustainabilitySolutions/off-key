@@ -3,18 +3,8 @@
 import pytest
 import pytest_asyncio
 from off_key_core.db.models import (
-    DeploymentMaintenance,
-    DojoDataset,
-    DojoPoint,
-    DojoRun,
-    DojoRunResult,
     DojoSeries,
-    DojoStudy,
-    DojoSuite,
-    DojoSuiteDataset,
     MemberRole,
-    MonitoringPipeline,
-    PipelineRevision,
     User,
 )
 from off_key_core.schemas.dojo import CsvImportQuery, RunCreate, RunPromote
@@ -24,6 +14,7 @@ from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 from sqlalchemy import select
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.env import set_auth_env
 from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
@@ -39,20 +30,7 @@ async def sessions(member_database, monkeypatch):
     set_auth_env(monkeypatch)
     engine, factory = member_database
     async with engine.begin() as connection:
-        for table in (
-            DeploymentMaintenance,
-            DojoDataset,
-            DojoSeries,
-            DojoPoint,
-            DojoSuite,
-            DojoSuiteDataset,
-            DojoStudy,
-            DojoRun,
-            DojoRunResult,
-            MonitoringPipeline,
-            PipelineRevision,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
     return engine, factory
 
 

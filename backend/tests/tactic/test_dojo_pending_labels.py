@@ -8,12 +8,6 @@ import pytest_asyncio
 from off_key_core.auth.agents import agent_key_digest, new_agent_key
 from off_key_core.db.models import (
     Agent,
-    DeploymentMaintenance,
-    DojoDataset,
-    DojoLabel,
-    DojoPendingLabel,
-    DojoPoint,
-    DojoSeries,
     User,
 )
 from off_key_core.models.pipeline_formula import evaluator, parse
@@ -39,6 +33,7 @@ from off_key_tactic_middleware.services.dojo.pending_labels import (
     shaped,
 )
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.env import set_auth_env
 from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
@@ -113,16 +108,7 @@ async def sessions(member_database, monkeypatch):
     set_auth_env(monkeypatch)
     engine, factory = member_database
     async with engine.begin() as connection:
-        for table in (
-            DeploymentMaintenance,
-            Agent,
-            DojoDataset,
-            DojoSeries,
-            DojoPoint,
-            DojoLabel,
-            DojoPendingLabel,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
     member = await bootstrap(factory)
     async with factory() as session:
         agent = Agent(

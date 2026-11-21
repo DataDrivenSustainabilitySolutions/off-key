@@ -4,18 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from off_key_core.db.models import (
-    DeploymentMaintenance,
-    DojoDataset,
-    DojoLabel,
-    DojoPoint,
-    DojoRun,
-    DojoRunResult,
-    DojoSeries,
-    DojoStudy,
-    DojoSuite,
-    DojoSuiteDataset,
-)
 from off_key_core.schemas.dojo import (
     CsvImportQuery,
     DatasetListQuery,
@@ -29,6 +17,7 @@ from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from pydantic import ValidationError as SchemaError
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.env import set_auth_env
 from tests.support.membership import bootstrap
 
@@ -44,19 +33,7 @@ async def sessions(member_database, monkeypatch):
     set_auth_env(monkeypatch)
     engine, factory = member_database
     async with engine.begin() as connection:
-        for table in (
-            DeploymentMaintenance,
-            DojoDataset,
-            DojoSeries,
-            DojoPoint,
-            DojoLabel,
-            DojoSuite,
-            DojoSuiteDataset,
-            DojoStudy,
-            DojoRun,
-            DojoRunResult,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
     return factory
 
 

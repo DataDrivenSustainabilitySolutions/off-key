@@ -16,9 +16,6 @@ from off_key_core.db.models import (
     DojoRun,
     DojoRunResult,
     DojoSeries,
-    DojoStudy,
-    DojoSuite,
-    DojoSuiteDataset,
 )
 from off_key_core.models.dojo_runs import (
     BoundSeries,
@@ -46,6 +43,7 @@ from off_key_mqtt_radar.dojo.worker import (
 )
 from sqlalchemy import func, select, update
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.pipelines import quick
 
 START = datetime(2026, 3, 1, tzinfo=UTC)
@@ -257,17 +255,7 @@ def test_a_held_reading_keeps_pairing_after_it_stops_changing():
 
 async def create_tables(engine):
     async with engine.begin() as connection:
-        for table in (
-            DojoDataset,
-            DojoSeries,
-            DojoPoint,
-            DojoSuite,
-            DojoSuiteDataset,
-            DojoStudy,
-            DojoRun,
-            DojoRunResult,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
 
 
 @pytest_asyncio.fixture

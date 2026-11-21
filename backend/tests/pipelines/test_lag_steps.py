@@ -1,11 +1,9 @@
 """Lags: one step that adds a feature's values from several observations back."""
 
-import math
 import pickle
 import random
 from array import array
 from bisect import bisect_right
-from itertools import pairwise
 
 import pytest
 from off_key_core.models.pipeline_prepare import (
@@ -16,87 +14,37 @@ from off_key_core.models.pipeline_prepare import (
 )
 from off_key_core.models.pipelines import (
     compile_pipeline,
-    execution_fingerprint,
     validate_pipeline,
 )
 from off_key_core.schemas.pipelines import (
     LagsParameters,
     PipelineDefinition,
-    PipelineExecutionConfig,
 )
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.prepare import PrepareStage
 from pydantic import ValidationError
 
-from tests.support.pipelines import template
+from tests.support.pipelines import (
+    assert_resumes_identically,
+    chained,
+    chained_execution,
+)
+from tests.support.pipelines import errors as issues
+from tests.support.pipelines import feature_names as features
 
 pytestmark = pytest.mark.radar_integration
 
 
 def design(strategy="adaptive_stream", steps=(), slots=("a", "b")):
-    """A design that runs steps in a chain between the input and the detector."""
-    data = template(strategy).model_dump(mode="json")
-    data["input_slots"] = [{"id": key, "label": key.upper()} for key in slots]
-    data["settings"].update(training_window_size=20, calibration_window_size=5)
-    detector = next(node for node in data["nodes"] if node["kind"] == "detector")
-    if strategy == "adaptive_stream":
-        detector.update(
-            component="detector:aberrant_moving_mahalanobis_distance",
-            params={"window_size": 5},
-        )
-    else:
-        detector["params"] = {"n_estimators": 10}
-    data["nodes"].extend(
-        {"id": key, "kind": "transform", "component": component, "params": params}
-        for key, component, params in steps
-    )
-    data["edges"] = [edge for edge in data["edges"] if edge["source"] != "input"] + [
-        {"source": source, "target": target}
-        for source, target in pairwise(
-            ["input", *(key for key, _, _ in steps), "detector"]
-        )
-    ]
-    return PipelineDefinition.model_validate(data)
+    return chained(strategy, steps, slots)
+
+
+def execution(strategy="adaptive_stream", steps=()):
+    return chained_execution(strategy, steps)
 
 
 def checked(*steps, slots=("a", "b")):
     return validate_pipeline(design(steps=list(steps), slots=slots))
-
-
-def issues(result):
-    return [
-        (item.code, item.parameter_path, item.message)
-        for item in result.issues
-        if item.severity == "error"
-    ]
-
-
-def features(result, node):
-    return {item.name: item for item in result.features[node]}
-
-
-def execution(strategy="adaptive_stream", steps=()):
-    definition = compile_pipeline(design(strategy, steps)).definition
-    bindings = [
-        dict(
-            slot_id=key,
-            reading_id=key,
-            entity_id="entity",
-            accepted_topic=f"telemetry/entity/{key}",
-            input_key=key,
-        )
-        for key in ("a", "b")
-    ]
-    return PipelineExecutionConfig(
-        definition=definition,
-        bindings=bindings,
-        revision_id="revision",
-        run_id="run",
-        fingerprint=execution_fingerprint(definition, bindings),
-    )
 
 
 def reading(index):
@@ -197,37 +145,13 @@ def test_a_saved_lags_step_keeps_its_lags_sorted():
 
 @pytest.mark.parametrize("strategy", ["static_baseline", "adaptive_stream"])
 def test_lags_reach_real_detectors_and_resume_identically(strategy):
-    config = AnomalyDetectionConfig(
-        pipeline=execution(strategy, steps=LAGS), checkpoint_interval=10000
+    assert_resumes_identically(
+        strategy,
+        chained_execution(strategy, LAGS),
+        [reading(index) for index in range(36)],
+        warm=30,
+        compared=5,
     )
-    constructor = (
-        StaticConformalDetectionService
-        if strategy == "static_baseline"
-        else AdaptiveStreamDetectionService
-    )
-    service = constructor(config)
-    restored = None
-    try:
-        for index in range(30):
-            service.process_data_point(reading(index))
-        if strategy == "static_baseline":
-            service._training_future.result(timeout=30)
-        result = service.process_data_point(reading(30))
-        assert result.should_persist and math.isfinite(result.anomaly_score)
-        checkpoint = pickle.loads(pickle.dumps(service.export_checkpoint()))
-        restored = constructor.from_checkpoint_data(checkpoint, config)
-        for index in range(31, 36):
-            actual = restored.process_data_point(reading(index))
-            expected = service.process_data_point(reading(index))
-            assert (actual.anomaly_score, actual.processed_features) == (
-                expected.anomaly_score,
-                expected.processed_features,
-            )
-    finally:
-        if strategy == "static_baseline":
-            service.shutdown()
-            if restored is not None:
-                restored.shutdown()
 
 
 def _warnings(result):

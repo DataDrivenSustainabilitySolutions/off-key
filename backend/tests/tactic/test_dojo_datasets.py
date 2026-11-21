@@ -6,16 +6,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 from off_key_core.db.models import (
-    DeploymentMaintenance,
     DojoDataset,
-    DojoLabel,
     DojoPoint,
-    DojoRun,
-    DojoRunResult,
-    DojoSeries,
-    DojoStudy,
-    DojoSuite,
-    DojoSuiteDataset,
     SystemCollectionConfiguration,
     Telemetry,
     User,
@@ -44,6 +36,7 @@ from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from pydantic import ValidationError as SchemaError
 from sqlalchemy import MetaData, func, select
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.env import set_auth_env
 from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
@@ -165,20 +158,8 @@ async def dojo_database(member_database, monkeypatch):
         # A copy of the telemetry table skips its hypertable hook, whose
         # function lives outside this test's schema.
         await connection.run_sync(Telemetry.__table__.to_metadata(MetaData()).create)
-        for table in (
-            DeploymentMaintenance,
-            SystemCollectionConfiguration,
-            DojoDataset,
-            DojoSeries,
-            DojoPoint,
-            DojoLabel,
-            DojoSuite,
-            DojoSuiteDataset,
-            DojoStudy,
-            DojoRun,
-            DojoRunResult,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
+        await connection.run_sync(SystemCollectionConfiguration.__table__.create)
     return sessions
 
 

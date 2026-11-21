@@ -41,7 +41,7 @@ def gated_modules():
             yield pytest.param(path, lanes, id=str(path.relative_to(TESTS)))
 
 
-@pytest.mark.parametrize(("path", "lanes"), gated_modules())
+@pytest.mark.parametrize(("path", "lanes"), list(gated_modules()))
 def test_gated_module_is_selected_by_its_lane(path, lanes):
     marks = module_marks(ast.parse(path.read_text()))
     assert lanes <= marks, f"{path.name} needs pytestmark {sorted(lanes - marks)}"

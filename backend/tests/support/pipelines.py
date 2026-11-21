@@ -1,5 +1,7 @@
 """Small executable pipelines for tests that need a real bound execution."""
 
+import math
+import pickle
 from itertools import pairwise
 
 from off_key_core.models.pipelines import (
@@ -9,6 +11,9 @@ from off_key_core.models.pipelines import (
 )
 from off_key_core.schemas.pipelines import PipelineDefinition, PipelineExecutionConfig
 from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
+from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+from off_key_mqtt_radar.detector import StaticConformalDetectionService
 
 
 def minimal_static_execution(topic="telemetry/entity/a"):
@@ -193,3 +198,72 @@ def chained_execution(strategy="adaptive_stream", steps=(), slots=("a", "b")):
         run_id="run",
         fingerprint=execution_fingerprint(definition, bindings),
     )
+
+
+def errors(result):
+    """A validation's errors as (code, parameter path, message)."""
+    return [
+        (item.code, item.parameter_path, item.message)
+        for item in result.issues
+        if item.severity == "error"
+    ]
+
+
+def feature_names(result, node):
+    """The features a compiled or validated design gives one node, by name."""
+    return {item.name: item for item in result.features[node]}
+
+
+def assert_resumes_identically(
+    strategy, pipeline, observations, *, warm, compared=6, process=None, after=None
+):
+    """Run a design in RADAR's detector service up to its first score, then
+    check a service restored from its checkpoint scores the next observations
+    as the original does. Returns the first scored result.
+
+    ``observations`` is indexable; ``process(service, index)`` overrides how
+    one observation is fed, and ``after(restored, process)`` runs before the
+    services shut down.
+    """
+    static = strategy == "static_baseline"
+    constructor = (
+        StaticConformalDetectionService if static else AdaptiveStreamDetectionService
+    )
+    if process is None:
+
+        def process(service, index):
+            return service.process_data_point(observations[index])
+
+    config = AnomalyDetectionConfig(pipeline=pipeline, checkpoint_interval=10000)
+    service = constructor(config)
+    restored = None
+    try:
+        for index in range(warm):
+            process(service, index)
+        # Training may already have finished and been taken in while the last
+        # points were processed, which leaves no future to wait on.
+        if static and service._training_future is not None:
+            service._training_future.result(timeout=30)
+        result = process(service, warm)
+        assert result.should_persist and math.isfinite(result.anomaly_score)
+        checkpoint = pickle.loads(pickle.dumps(service.export_checkpoint()))
+        restored = constructor.from_checkpoint_data(checkpoint, config)
+        for index in range(warm + 1, warm + 1 + compared):
+            actual, expected = process(restored, index), process(service, index)
+            assert (
+                actual.anomaly_score,
+                actual.is_anomaly,
+                actual.processed_features,
+            ) == (
+                expected.anomaly_score,
+                expected.is_anomaly,
+                expected.processed_features,
+            )
+        if after is not None:
+            after(restored, process)
+        return result
+    finally:
+        if static:
+            service.shutdown()
+            if restored is not None:
+                restored.shutdown()

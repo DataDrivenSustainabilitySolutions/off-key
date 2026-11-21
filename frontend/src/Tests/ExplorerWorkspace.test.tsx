@@ -147,7 +147,7 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.click(waiting);
     expect(router.state.location.search).toBe("?view=proposals");
     expect(await screen.findByRole("heading", { name: "Proposals" })).toBeTruthy();
-    expect(await screen.findByRole("button", { name: "Review Pump vibration" })).toBeTruthy();
+    expect(await screen.findByRole("article", { name: "Pump vibration" })).toBeTruthy();
     expect(document.title).toContain("Proposals");
   });
 

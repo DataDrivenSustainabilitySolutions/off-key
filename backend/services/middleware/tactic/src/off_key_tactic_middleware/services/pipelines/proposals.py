@@ -7,6 +7,7 @@ from off_key_core.config.logs import log_security_event
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import (
     Agent,
+    DojoLabel,
     DojoRun,
     DojoRunResult,
     PipelineProposal,
@@ -14,6 +15,7 @@ from off_key_core.db.models import (
 )
 from off_key_core.db.pipeline_claims import monitors_holding_capacity
 from off_key_core.models.pipelines import validate_pipeline
+from off_key_core.schemas.dojo import RunMetrics
 from off_key_core.schemas.pipelines import (
     MAX_OPEN_PROPOSALS,
     MAX_PROPOSALS_LISTED,
@@ -24,42 +26,85 @@ from off_key_core.schemas.pipelines import (
     PipelineProposalList,
     PipelineProposalSummary,
     PipelineProposalView,
+    ProposalFault,
+    ProposalReading,
     ProposalStatus,
+    ProposalTest,
 )
 from sqlalchemy import func, select
 
 from ...config.config import get_tactic_settings
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from ..dojo.labels import dataset_labels
+from ..dojo.metrics import DojoMetrics
 from .library import begin_library_write
+
+# The readings the catalogue records now, by id; None when that is unknown.
+Catalogue = dict[str, ProposalReading] | None
 
 # What its author may delete: a proposal that asks nothing of a member any more
 # and that no monitor runs on.
 DELETABLE_PROPOSALS = ("withdrawn", "declined")
 
 
+# Read from the catalogue and the test, not stored with the row.
+DERIVED = ("missing_readings", "readings", "test")
+
+
 def _fields(row: PipelineProposal, model) -> dict:
-    # missing_readings is read from the catalogue, not stored with the row.
+    return {key: getattr(row, key) for key in model.model_fields if key not in DERIVED}
+
+
+def _derived(row: PipelineProposal, catalogue: Catalogue) -> dict:
     return {
-        key: getattr(row, key)
-        for key in model.model_fields
-        if key != "missing_readings"
+        "missing_readings": _missing(row, catalogue),
+        "readings": _readings(row, catalogue),
     }
 
 
 def proposal_view(
-    row: PipelineProposal, recorded: set[str] | None = None
+    row: PipelineProposal,
+    catalogue: Catalogue = None,
+    test: ProposalTest | None = None,
 ) -> PipelineProposalView:
     return PipelineProposalView.model_validate(
-        _fields(row, PipelineProposalView)
-        | {"missing_readings": _missing(row, recorded)}
+        _fields(row, PipelineProposalView) | _derived(row, catalogue) | {"test": test}
     )
 
 
-def _missing(row: PipelineProposal, recorded: set[str] | None) -> list[str]:
+def _missing(row: PipelineProposal, catalogue: Catalogue) -> list[str]:
     """Bound readings gone from the catalogue; only an open proposal can still start."""
-    if recorded is None or row.status != "open":
+    if catalogue is None or row.status != "open":
         return []
-    return sorted(set((row.bindings or {}).values()) - recorded)
+    return sorted(set((row.bindings or {}).values()) - set(catalogue))
+
+
+def _readings(row: PipelineProposal, catalogue: Catalogue) -> list[ProposalReading]:
+    """The bound readings by name; one the catalogue lost keeps its id as name."""
+    bound = list(dict.fromkeys((row.bindings or {}).values()))
+    return [
+        (catalogue or {}).get(reading) or ProposalReading(id=reading, label=reading)
+        for reading in bound
+    ]
+
+
+def _test_figures(metrics: RunMetrics, labels: list[DojoLabel]) -> ProposalTest:
+    notes = {label.id: label.note for label in labels}
+    return ProposalTest(
+        scored_hours=round(metrics.evaluated_seconds / 3600, 1),
+        alarm_share=metrics.diagnostics.alarm_share if metrics.diagnostics else None,
+        false_alarms=metrics.false_alarms,
+        false_alarms_per_day=metrics.false_alarms_per_day,
+        median_delay_seconds=metrics.median_delay_seconds,
+        faults=[
+            ProposalFault(
+                note=notes.get(item.label_id) or "Labelled interval",
+                outcome=item.outcome,
+                delay_seconds=item.delay_seconds,
+            )
+            for item in sorted(metrics.labels, key=lambda item: item.start_at)
+        ],
+    )
 
 
 def _wrote(row: PipelineProposal, caller: User | Agent) -> bool:
@@ -125,17 +170,45 @@ class PipelineProposals:
     def __init__(self, session):
         self.session = session
 
-    async def _recorded(self) -> set[str] | None:
-        """The readings a monitor can bind now; None when that is unknown."""
+    async def _catalogue(self) -> Catalogue:
+        """The readings a monitor can bind now, named; None when that is unknown."""
         try:
             # A savepoint keeps a failed read from ending the caller's transaction.
             async with self.session.begin_nested():
                 snapshot = await read_collection_runtime(self.session)
+            document = snapshot.catalog.document
+            devices = {device.id: device.label for device in document.devices}
             return {
-                stream.definition.id
+                stream.definition.id: ProposalReading(
+                    id=stream.definition.id,
+                    label=stream.definition.label,
+                    device=devices.get(stream.definition.device_id or ""),
+                    unit=stream.definition.unit,
+                )
                 for stream in snapshot.catalog.streams(selected_only=True)
             }
-        except Exception:  # The marker is a hint, never a failure.
+        except Exception:  # The names are a hint, never a failure.
+            return None
+
+    async def _test(
+        self, run_id: str | None, *, calculate: bool
+    ) -> ProposalTest | None:
+        """The figures of a proposal's test: those already calculated, or with
+        `calculate` worked out now within the metrics' time limit."""
+        if run_id is None:
+            return None
+        try:
+            # A savepoint keeps a failed read from ending the caller's transaction.
+            async with self.session.begin_nested():
+                run = await self.session.get(DojoRun, run_id)
+                if run is None or run.status != "succeeded":
+                    return None
+                labels = await dataset_labels(self.session, run.dataset_id)
+                metrics = DojoMetrics.cached(run, labels)
+                if metrics is None and calculate:
+                    metrics = await DojoMetrics(self.session).calculate(run, labels)
+                return _test_figures(metrics, labels) if metrics else None
+        except Exception:  # The figures are a hint; the proposal reads without.
             return None
 
     async def list(self, status: ProposalStatus | None = None) -> PipelineProposalList:
@@ -145,18 +218,17 @@ class PipelineProposals:
         if status is not None:
             statement = statement.where(PipelineProposal.status == status)
         rows = list(await self.session.scalars(statement.limit(MAX_PROPOSALS_LISTED)))
-        recorded = (
-            await self._recorded()
-            if any(row.status == "open" for row in rows)
-            else None
-        )
+        catalogue = await self._catalogue() if rows else None
+        # The list reads figures already worked out; opening one works them out.
+        tests = [await self._test(row.test_run_id, calculate=False) for row in rows]
         return PipelineProposalList(
             items=[
                 PipelineProposalSummary.model_validate(
                     _fields(row, PipelineProposalSummary)
-                    | {"missing_readings": _missing(row, recorded)}
+                    | _derived(row, catalogue)
+                    | {"test": test}
                 )
-                for row in rows
+                for row, test in zip(rows, tests, strict=True)
             ],
             capacity=MonitorCapacity(
                 running=await monitors_holding_capacity(self.session),
@@ -166,9 +238,10 @@ class PipelineProposals:
 
     async def get(self, identifier: str) -> PipelineProposalView:
         row = await self._row(identifier)
-        return proposal_view(
-            row, await self._recorded() if row.status == "open" else None
-        )
+        # Read before the figures: working them out may roll the session back.
+        view = proposal_view(row, await self._catalogue())
+        test = await self._test(view.test_run_id, calculate=True)
+        return view.model_copy(update={"test": test})
 
     async def create(
         self, change: PipelineProposalCreate, caller: User | Agent

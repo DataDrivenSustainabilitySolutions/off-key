@@ -11,6 +11,7 @@ from off_key_core.db.models import (
     Agent,
     DeploymentMaintenance,
     DojoDataset,
+    DojoLabel,
     DojoRun,
     DojoRunResult,
     DojoStudy,
@@ -25,6 +26,7 @@ from off_key_core.models.pipelines import (
     validate_pipeline,
 )
 from off_key_core.schemas.agents import AgentCreate
+from off_key_core.schemas.dojo import RunMetrics
 from off_key_core.schemas.pipelines import (
     PipelineDefinition,
     PipelineProposalCreate,
@@ -38,6 +40,7 @@ from off_key_tactic_middleware.domain import (
     ValidationError,
 )
 from off_key_tactic_middleware.services.accounts.agents import AgentService
+from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
 from off_key_tactic_middleware.services.pipelines import proposals as proposal_service
 from off_key_tactic_middleware.services.pipelines.proposals import PipelineProposals
 from pydantic import ValidationError as SchemaError
@@ -109,6 +112,7 @@ async def library(member_database, monkeypatch):
             DojoStudy,
             DojoRun,
             DojoRunResult,
+            DojoLabel,
         ):
             await connection.run_sync(table.__table__.create)
     # What holds capacity is RADAR's count, tested with the activations.
@@ -197,7 +201,10 @@ async def test_an_agent_proposes_and_a_member_decides(library):
             validate_pipeline(made.definition).fingerprint
             == validate_pipeline(proposal().definition).fingerprint
         )
-        assert (await service.get(made.id)) == made
+        # Opened, it also carries the figures of its test, worked out then.
+        opened = await service.get(made.id)
+        assert opened.test is not None
+        assert opened.model_copy(update={"test": None}) == made
         second = await service.create(
             proposal(name="Fan current"), await admin_of(session)
         )
@@ -246,11 +253,26 @@ async def test_an_open_proposal_names_readings_the_catalogue_lost(library, monke
 
     class Stream:
         def __init__(self, reading):
-            self.definition = type("Reading", (), {"id": reading})
+            self.definition = type(
+                "Reading",
+                (),
+                {
+                    "id": reading,
+                    "label": "Fan current",
+                    "device_id": "fan",
+                    "unit": "A",
+                },
+            )
 
     recorded = ["reading-2"]
+    fan = type("Device", (), {"id": "fan", "label": "Supply fan"})
     catalog = type(
-        "Catalog", (), {"streams": lambda self, selected_only: map(Stream, recorded)}
+        "Catalog",
+        (),
+        {
+            "streams": lambda self, selected_only: map(Stream, recorded),
+            "document": type("Document", (), {"devices": [fan]}),
+        },
     )
     snapshot = type("Snapshot", (), {"catalog": catalog()})
     monkeypatch.setattr(
@@ -266,6 +288,15 @@ async def test_an_open_proposal_names_readings_the_catalogue_lost(library, monke
         listed = {item.name: item for item in (await service.list("open")).items}
         assert listed["Pump vibration"].missing_readings == ["reading-1"]
         assert listed["Fan current"].missing_readings == []
+        # Bound readings read by their catalogue names; a lost one keeps its id.
+        assert [
+            (reading.id, reading.label, reading.device, reading.unit)
+            for item in ("Pump vibration", "Fan current")
+            for reading in listed[item].readings
+        ] == [
+            ("reading-1", "reading-1", None, None),
+            ("reading-2", "Fan current", "Supply fan", "A"),
+        ]
         assert (await service.get(gone.id)).missing_readings == ["reading-1"]
         # Once decided, a proposal no longer starts, so nothing is missing.
         await service.decide(
@@ -275,6 +306,100 @@ async def test_an_open_proposal_names_readings_the_catalogue_lost(library, monke
         # An unreadable catalogue leaves the marker out instead of failing.
         proposal_service.read_collection_runtime.side_effect = RuntimeError("down")
         assert (await service.get(kept.id)).missing_readings == []
+
+
+@pytest.mark.asyncio
+async def test_a_proposal_carries_the_figures_of_its_test(library, monkeypatch):
+    """The reviewer reads what the test showed: each planted fault by its note."""
+    planted = datetime(2026, 11, 14, 1, tzinfo=UTC)
+    async with library() as session:
+        await ran_on_history(session, "run-7")
+        for label, hour, note in (("late", 3, ""), ("early", 1, "Injected step")):
+            session.add(
+                DojoLabel(
+                    id=label,
+                    dataset_id="old-trips",
+                    start_at=planted.replace(hour=hour),
+                    end_at=planted.replace(hour=hour, minute=30),
+                    note=note,
+                )
+            )
+        await session.commit()
+        figures = RunMetrics.model_validate(
+            {
+                "run_id": "run-7",
+                "run_name": "Pump",
+                "strategy": "adaptive_stream",
+                "scored_from": None,
+                "scored_to": None,
+                "labels_total": 2,
+                "labels_scored": 2,
+                "labels_detected": 1,
+                "detection_rate": 0.5,
+                "median_delay_seconds": 12.0,
+                "max_delay_seconds": 12.0,
+                "alarm_count": 4,
+                "false_alarms": 1,
+                "evaluated_seconds": 117_000,
+                "false_alarms_per_day": 0.74,
+                "labels": [
+                    {
+                        "label_id": "late",
+                        "start_at": planted.replace(hour=3),
+                        "end_at": planted.replace(hour=3, minute=30),
+                        "outcome": "missed",
+                        "first_alarm_at": None,
+                        "delay_seconds": None,
+                    },
+                    {
+                        "label_id": "early",
+                        "start_at": planted.replace(hour=1),
+                        "end_at": planted.replace(hour=1, minute=30),
+                        "outcome": "detected",
+                        "first_alarm_at": planted.replace(hour=1, second=12),
+                        "delay_seconds": 12.0,
+                    },
+                ],
+            }
+        )
+        # A design that alarms all the time catches every fault: the share reads beside.
+        figures = figures.model_copy(
+            update={"diagnostics": type("Diagnostics", (), {"alarm_share": 0.04})()}
+        )
+        cached = AsyncMock(return_value=None)
+        monkeypatch.setattr(DojoMetrics, "cached", lambda run, labels: None)
+        monkeypatch.setattr(DojoMetrics, "calculate", cached)
+        service = PipelineProposals(session)
+        made = await service.create(
+            proposal(test_run_id="run-7"), await admin_of(session)
+        )
+        # The list reads only figures worked out before; opening one works them out.
+        assert (await service.list()).items[0].test is None
+        cached.assert_not_awaited()
+        cached.return_value = figures
+        test = (await service.get(made.id)).test
+        assert test is not None
+        assert (test.scored_hours, test.false_alarms, test.false_alarms_per_day) == (
+            32.5,
+            1,
+            0.74,
+        )
+        assert (test.median_delay_seconds, test.alarm_share) == (12.0, 0.04)
+        # In time order, each by its note; a label without one still reads.
+        assert [
+            (fault.note, fault.outcome, fault.delay_seconds) for fault in test.faults
+        ] == [
+            ("Injected step", "detected", 12.0),
+            ("Labelled interval", "missed", None),
+        ]
+        monkeypatch.setattr(DojoMetrics, "cached", lambda run, labels: figures)
+        assert (await service.list()).items[0].test == test
+        # Figures that cannot be read leave the proposal readable.
+        monkeypatch.setattr(
+            DojoMetrics, "cached", lambda run, labels: (_ for _ in ()).throw(KeyError)
+        )
+        cached.side_effect = RuntimeError("down")
+        assert (await service.get(made.id)).test is None
 
 
 @pytest.mark.asyncio

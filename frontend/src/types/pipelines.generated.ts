@@ -278,6 +278,7 @@ export type MonitorOrigin = {
 };
 
 export type MonitorRationale = {
+  summary?: string | null;
   watches: string;
   why: string;
   evidence: string;
@@ -612,6 +613,8 @@ export type PipelineProposalSummary = {
   decision_note: string | null;
   created_at: string;
   missing_readings?: Array<string>;
+  readings?: Array<ProposalReading>;
+  test?: ProposalTest | null;
 };
 
 export type PipelineProposalView = {
@@ -629,6 +632,8 @@ export type PipelineProposalView = {
   decision_note: string | null;
   created_at: string;
   missing_readings?: Array<string>;
+  readings?: Array<ProposalReading>;
+  test?: ProposalTest | null;
   definition: PipelineDefinition;
   layout: PipelineLayout;
   bindings: Record<string, string>;
@@ -883,6 +888,28 @@ export type ProjectionParameters = {
   result?: "replace" | "add";
   n_components?: number;
   seed?: number | null;
+};
+
+export type ProposalFault = {
+  note: string;
+  outcome: "detected" | "missed" | "unscored";
+  delay_seconds: number | null;
+};
+
+export type ProposalReading = {
+  id: string;
+  label: string;
+  device?: string | null;
+  unit?: string | null;
+};
+
+export type ProposalTest = {
+  scored_hours: number;
+  alarm_share?: number | null;
+  false_alarms: number;
+  false_alarms_per_day: number | null;
+  median_delay_seconds: number | null;
+  faults?: Array<ProposalFault>;
 };
 
 export type RangeParameters = {

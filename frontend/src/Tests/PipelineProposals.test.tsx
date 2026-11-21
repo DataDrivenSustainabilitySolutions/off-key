@@ -116,50 +116,64 @@ describe("proposals", () => {
 
   it("lists the proposals that wait and, when asked, the decided ones", async () => {
     const onReview = vi.fn();
+    vi.mocked(pipelinesApi.proposals).mockImplementation(async (status) => status === "open"
+      ? [summary(), summary({ id: "p3", name: "Fan current", rationale: { ...rationale, summary: "Alarms when the fan draws too much." } })]
+      : [summary(), declined]);
     render(<PipelineProposalList onReview={onReview} onBack={() => {}} />);
+    // The first proposal is open beside the list; each item says in one line what it is for.
     const open = await card("Pump vibration");
-    // Without a rationale the reason is the case made; who handed it in, as what and how tested reads under the name.
-    expect(within(open).getByText("Reason").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
-    expect(within(open).queryByRole("button", { name: "Evidence and limits" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Pump vibration" }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("button", { name: "Fan current" }).textContent)
+      .toContain("Alarms when the fan draws too much.");
+    // Without a rationale the reason is the case made; who handed it in, as what and how tested reads above the name.
+    expect(within(open).getByRole("heading", { name: "Reason" }).nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
     // An agent reads as an agent: the name of its key says nothing to the member who decides.
     expect(within(open).getAllByRole("listitem")[0]?.textContent).toMatch(/^Agent/);
     expect(open.textContent).not.toContain("Night shift agent");
-    expect(within(open).getAllByRole("listitem").slice(1).map((item) => item.textContent)).toEqual(["New service", "Not tested"]);
+    expect(within(open).getAllByRole("listitem").slice(1, 3).map((item) => item.textContent)).toEqual(["New service", "Not tested"]);
+    expect(within(open).getByText("It was handed in without a test on history.")).toBeTruthy();
     // A list of waiting proposals need not say of each that it waits.
     expect(within(open).queryByText("Waiting for a decision")).toBeNull();
-    expect(screen.queryByRole("article", { name: "Fan current" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Waiting 1" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Fan current" }));
+    expect(within(await card("Fan current")).getByText("Alarms when the fan draws too much.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Waiting 2" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "All" }));
+    await screen.findByRole("button", { name: "Pump vibration" });
+    expect(within(screen.getByRole("button", { name: "Pump vibration" })).getByText("Waiting")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Fan current" }));
     const decided = await card("Fan current");
     expect(within(decided).getByText("Declined by admin@example.com")).toBeTruthy();
     expect(within(decided).getByText("Alarms too often at night")).toBeTruthy();
-    // A decided proposal is looked at, not reviewed; among decided ones a waiting one says that it waits.
-    expect(within(decided).getByRole("button", { name: "View design of Fan current" })).toBeTruthy();
-    expect(within(await card("Pump vibration")).getByText("Waiting for a decision")).toBeTruthy();
+    // A decided proposal is looked at, not reviewed.
+    fireEvent.click(within(decided).getByRole("button", { name: "View design" }));
+    expect(onReview).toHaveBeenCalledExactlyOnceWith(declined);
     expect(vi.mocked(pipelinesApi.proposals).mock.calls.map((call) => call[0])).toEqual(["open", undefined]);
-    fireEvent.click(screen.getByRole("button", { name: "Review Pump vibration" }));
-    expect(onReview).toHaveBeenCalledExactlyOnceWith(summary());
-    // The name opens it too.
-    fireEvent.click(screen.getByRole("button", { name: "Pump vibration" }));
-    expect(onReview).toHaveBeenCalledTimes(2);
   });
 
-  it("lays a proposal with a rationale out under what it watches, the evidence and the limits", async () => {
-    vi.mocked(pipelinesApi.proposals).mockResolvedValue([
-      summary({ rationale, reason: "A longer word from the author.", test_run_id: "run-7", replace_monitor_id: "running" })]);
+  it("reads a proposal as a short report: readings, evidence, what it watches, how it decides and its limits", async () => {
+    vi.mocked(pipelinesApi.proposals).mockResolvedValue([summary({
+      rationale: { ...rationale, summary: "Alarms when the pump shakes." }, reason: "A longer word from the author.", test_run_id: "run-7",
+      replace_monitor_id: "running",
+      readings: [{ id: "current", label: "Current", device: "Pump 2", unit: "A" }, { id: "gone", label: "gone" }], missing_readings: ["gone"],
+      test: { scored_hours: 32.5, alarm_share: 0.045, false_alarms: 0, false_alarms_per_day: 0, median_delay_seconds: 9.7, faults: [
+        { note: "Injected step on Current", outcome: "detected", delay_seconds: 4 },
+        { note: "Injected gap on Current", outcome: "missed", delay_seconds: null }] } })]);
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} services={[{ id: "running", display_name: "Valve watch" } as ActiveService]} />);
     const open = await card("Pump vibration");
-    for (const [label, text] of [["Watches", rationale.watches], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
-      expect(within(open).getByText(label).nextElementSibling?.textContent).toBe(text);
-    // Why it is built this way and what else the author wrote wait in the review.
-    expect(within(open).queryByText("Why this design")).toBeNull();
-    expect(within(open).queryByText("A longer word from the author.")).toBeNull();
-    expect(within(open).getAllByRole("listitem").slice(1).map((item) => item.textContent)).toEqual(["Replaces Valve watch", "Tested on history"]);
-    // A phone shows what the design watches and folds the rest behind a button that names it.
-    const more = within(open).getByRole("button", { name: "Evidence and limits" });
-    expect([more.getAttribute("aria-expanded"), open.getAttribute("data-more")]).toEqual(["false", "false"]);
-    fireEvent.click(more);
-    expect([more.getAttribute("aria-expanded"), open.getAttribute("data-more")]).toEqual(["true", "true"]);
+    expect(within(open).getByText("Alarms when the pump shakes.")).toBeTruthy();
+    expect(within(open).getByRole("list", { name: "Readings" }).textContent).toBe("Pump 2CurrentAgone (no longer recorded)");
+    const figures = Object.fromEntries([...open.querySelectorAll(".pl-figures > div")].map((item) =>
+      [item.querySelector("dt")!.textContent, item.querySelector("dd")!.textContent]));
+    expect(figures).toEqual({ "Faults caught": "1 / 2", "Time in alarm": "5 %", "False alarms a day": "0", "History scored": "32.5 h" });
+    expect([...open.querySelectorAll(".pl-faults li")].map((item) => item.textContent))
+      .toEqual(["Injected step on CurrentCaught after 4 s", "Injected gap on CurrentMissed"]);
+    for (const [title, text] of [["What it watches", rationale.watches], ["How it decides", rationale.why], ["Author's note", "A longer word from the author."]] as const)
+      expect(within(open).getByRole("heading", { name: title }).nextElementSibling?.textContent).toBe(text);
+    expect(within(open).getByText(rationale.evidence, { exact: false })).toBeTruthy();
+    expect(within(open).getByRole("heading", { name: "Known limits" }).nextElementSibling?.textContent).toBe(rationale.limits.replace(/\.$/, ""));
+    expect(within(open).getAllByRole("listitem").slice(1, 3).map((item) => item.textContent)).toEqual(["Replaces Valve watch", "Tested on history"]);
+    // The list says the test in brief.
+    expect(screen.getByRole("button", { name: "Pump vibration" }).textContent).toContain("1 of 2 caught5 % in alarmReadings gone");
   });
 
   it("says when none waits, and offers to read the list again when it cannot be read", async () => {
@@ -171,7 +185,7 @@ describe("proposals", () => {
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} />);
     expect((await screen.findByRole("alert")).textContent).toContain("The list could not be read");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("button", { name: "Review Pump vibration" })).toBeTruthy();
+    expect(await card("Pump vibration")).toBeTruthy();
   });
 
   it("declines from the list, and marks one whose readings are gone", async () => {
@@ -189,7 +203,8 @@ describe("proposals", () => {
     view.unmount();
     vi.mocked(pipelinesApi.proposals).mockResolvedValue([summary()]);
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} />);
-    await screen.findByRole("button", { name: "Review Pump vibration" });
+    await card("Pump vibration");
+    expect(screen.getByRole("button", { name: "Review design" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Decline Pump vibration" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Start Pump vibration" })).toBeNull();
     expect(screen.getByText("It waits for a member who manages monitors.")).toBeTruthy();
@@ -250,12 +265,15 @@ describe("proposals", () => {
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(true));
     expect(start.getAttribute("aria-describedby") && document.getElementById(start.getAttribute("aria-describedby")!)?.textContent)
       .toBe("No monitor place is free.");
+    fireEvent.click(screen.getByRole("button", { name: "Fan current" }));
     expect((screen.getByRole("button", { name: "Start Fan current" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("Review it to choose other readings.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Pump" }));
     expect((screen.getByRole("button", { name: "Update with Pump" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("The service it replaces no longer runs. Review it to start it as a new one.")).toBeTruthy();
     // An update needs no free place, and keeps the service it replaces in shadow.
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ id: "p4", name: "Valve", replace_monitor_id: "running" }));
+    fireEvent.click(screen.getByRole("button", { name: "Valve" }));
     fireEvent.click(screen.getByRole("button", { name: "Update with Valve" }));
     fireEvent.click(screen.getByRole("button", { name: "Update Valve watch" }));
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ replace_monitor_id: "running", shadow: true })));
@@ -296,16 +314,16 @@ describe("proposals", () => {
     expect(brief.textContent).not.toContain("Night shift agent");
     // Read alone, as on a phone, it opens with the name the design was handed in under.
     expect(brief.firstElementChild?.textContent).toBe("Pump vibration");
-    for (const [label, text] of [["Watches", rationale.watches], ["Why this design", rationale.why], ["Evidence", rationale.evidence], ["Limits", rationale.limits]] as const)
-      expect(screen.getByText(label).nextElementSibling?.textContent).toBe(text);
-    // The reason it fell back to is not said twice.
-    expect(screen.getAllByText(rationale.watches)).toHaveLength(1);
-    expect(screen.queryByText("Author's note")).toBeNull();
+    for (const [title, text] of [["What it watches", rationale.watches], ["How it decides", rationale.why]] as const)
+      expect(screen.getByRole("heading", { name: title }).nextElementSibling?.textContent).toBe(text);
+    expect(screen.getByRole("heading", { name: "Known limits" }).nextElementSibling?.textContent).toBe("First mornings alarm");
+    // The reason it fell back to is not said again as a note.
+    expect(screen.queryByRole("heading", { name: "Author's note" })).toBeNull();
     // What the author wrote beside the rationale reads under it, and is the whole case of a proposal without one.
     view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary({ rationale })} canDecide={false} /></MemoryRouter>);
-    expect(screen.getByText("Author's note").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
+    expect(screen.getByRole("heading", { name: "Author's note" }).nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
     view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide={false} /></MemoryRouter>);
-    expect(screen.getByText("Reason").nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
+    expect(screen.getByRole("heading", { name: "Reason" }).nextElementSibling?.textContent).toBe("The bearing ran hot twice in October and nothing watched it.");
   });
 
   it("leads from a proposal to the test it came with, beside the design and in the Dojo", () => {
@@ -351,7 +369,8 @@ describe("proposals", () => {
 
   it("opens a proposal from the list in the setup", async () => {
     workspace("/?view=proposals");
-    fireEvent.click(await screen.findByRole("button", { name: "Review Pump vibration" }));
+    await card("Pump vibration");
+    fireEvent.click(screen.getByRole("button", { name: "Review design" }));
     expect(address()).toBe("?create=monitoring&proposal=p1");
     expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Pump vibration");
     // The proposal opens beside its design, under a button of its own, and leaves the canvas whole when closed.
@@ -435,7 +454,7 @@ describe("proposals", () => {
     vi.mocked(pipelinesApi.service).mockRejectedValue(new Error("gone"));
     workspace("/?view=proposals");
     expect((await card("Pump vibration")).textContent).toContain("Replaces a running service");
-    fireEvent.click(screen.getByRole("button", { name: "Review Pump vibration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review design" }));
     expect(address()).toBe("?create=monitoring&proposal=p1&replace=old");
   });
 

@@ -86,14 +86,15 @@ never a key's, and a decision starts nothing: it records who decided and what
 they answered. The table comes from the ORM model (`BOOTSTRAP_TABLES` in
 `backend/tests/database/test_migration_ledger.py`); migration
 `001_proposal_rationale.sql` adds its `rationale` column to databases made before it.
-A proposal carries the same four-field `rationale` as a start below, which a key
-must give; its `reason` then defaults to what the design watches.
+A proposal carries the same `rationale` as a start below, which a key must
+give; its `reason` then defaults to what the design watches.
 
 Every start through `POST /v1/pipelines/apply` and every stop adds a row to
 `monitor_records` (`services/pipelines/history.py`): who did it, an agent's
 name or a member's email, and why. A start carries a `rationale` in four short
 fields (what it watches, why this design, the evidence, its limits; at most
-200 characters each) and may carry a `test_run_id`, checked as for a
+200 characters each), with an optional one-line `summary` of at most 140 that a
+reviewer reads first and may carry a `test_run_id`, checked as for a
 proposal. A key must give a rationale, and a note when it stops. Rows are only
 added, so the monitor's `origin` (in `GET /v1/monitors` and
 `GET /v1/monitors/{id}`) names who started it, the latest rationale and test,
@@ -125,14 +126,22 @@ waits. It counts only where the button shows, so the number is read again on
 the way back from a decision. `?view=proposals` lists them (`PipelineProposals.tsx`), and
 `?create=monitoring&proposal=<id>` opens one, with `&replace=<service>` when it
 replaces a running service (`showProposals`, `reviewProposal` in
-`monitoringView.ts`). The list is one card per proposal with one layout
-(`ProposalCard`): the name, a byline (author, age, new service or replacement,
-tested or not; an agent reads as "Agent" without the name of its key,
-`AuthorChip` with `named` off), the rationale's watches, evidence and limits under their labels
-(`RationaleFields` with `only`), and the actions at the bottom. **Start** and
-**Decline** open Radix popovers at their buttons (`StartProposal`,
-`DeclineProposal`), so the page under them does not move; a start under way
-puts `PipelineApplyStatus` in their place. `PipelineWorkspace` reads the
+`monitoringView.ts`). The list is a review desk: the proposals on the left, each with its name, the
+rationale's one-line `summary` in italics (its `watches` where an older one has
+none) and the test in brief, and the one picked on the right as a short report
+(`ProposalSections.tsx`): the readings it binds behind their device, the
+evidence as four figures (faults caught, false alarms a day, history scored,
+median time to alarm) with each planted fault by its label's note and whether
+it raised an alarm, what it watches and how it decides, its limits as points,
+and the author's note. Decline, **Review design** and Start head the report;
+Start and Decline open Radix popovers at their buttons (`StartProposal`,
+`DeclineProposal`), and a start under way puts `PipelineApplyStatus` in their
+place. A phone shows the list, then the report as a page of its own with the
+decisions in a bar at the bottom. The summary in the list carries `readings`
+(named from the catalogue) and `test` (from the run's metrics: the list reads
+those already worked out, `GET /v1/pipeline-proposals/{id}` works them out);
+both are hints, and a proposal reads without them. The same report, in one
+column, is the brief beside the design. `PipelineWorkspace` reads the
 proposal and gives `PipelineCreate` its design, name and bindings.
 The setup knows nothing of proposals. It takes a `brief`, a label and the
 content of a panel of its own in the settings dock (`InspectorPanel` `"brief"`

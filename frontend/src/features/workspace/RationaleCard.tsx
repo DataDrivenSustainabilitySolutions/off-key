@@ -29,7 +29,7 @@ export function AuthorChip({ author, kind, named = true }: { author: string; kin
  * The fields as labelled rows. `only` names the ones a summary shows, in the order a member reads them;
  * `stacked` puts each label above its text, where the column is too narrow for both side by side.
  */
-export function RationaleFields({ rationale, only, stacked = false }: {
+function RationaleFields({ rationale, only, stacked = false }: {
   rationale: MonitorRationale;
   only?: (keyof MonitorRationale)[];
   stacked?: boolean;

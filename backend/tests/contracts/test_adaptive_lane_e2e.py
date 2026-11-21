@@ -40,6 +40,13 @@ def _publication_snapshots(
     return snapshots
 
 
+# Warm-up (4) and calibration (2) use the first observations. Arrivals that reach
+# the worker in a burst can share one observation, so publish well past that
+# and space the cycles so each usually forms its own.
+CYCLES = 16
+CYCLE_SPACING_SECONDS = 0.25
+
+
 def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     gateway_url = os.getenv("E2E_GATEWAY_URL", "http://localhost:8000").rstrip("/")
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
@@ -82,17 +89,18 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             )
             publisher.loop_start()
             published_values = []
-            for index in range(8):
+            last = CYCLES - 1
+            for index in range(CYCLES):
                 values = {
-                    "L1": 100.0 if index == 7 else 1.0 + index / 100,
-                    "L2": 50.0 if index == 7 else 2.0 + index / 100,
+                    "L1": 100.0 if index == last else 1.0 + index / 100,
+                    "L2": 50.0 if index == last else 2.0 + index / 100,
                 }
                 published_values.append(values)
                 for key, value in values.items():
                     message = publisher.publish(entity.topics[key], str(value), qos=1)
                     message.wait_for_publish(timeout=5)
                     assert message.is_published()
-                time.sleep(0.1)
+                time.sleep(CYCLE_SPACING_SECONDS)
             # Compare evidence with persisted observations from the real upstream
             # path, including each input's individual ingestion timestamp.
             observations = {}
@@ -118,6 +126,7 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             cycles = _publication_snapshots(
                 entity.readings, published_values, observations
             )
+            seen = []
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
                 response = client.get(
@@ -151,8 +160,11 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                     break
                 time.sleep(2)
             else:
+                status = client.get(f"/v1/monitors/{monitor_id}")
                 pytest.fail(
-                    "Final adaptive input cycle did not reach PostgreSQL evidence"
+                    "Final adaptive input cycle did not reach PostgreSQL evidence: "
+                    f"{len(seen)} of {len(cycles)} input cycles scored; "
+                    f"monitor {status.status_code}: {status.text[:2000]}"
                 )
         finally:
             publisher.disconnect()

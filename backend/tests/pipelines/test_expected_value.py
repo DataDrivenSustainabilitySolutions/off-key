@@ -1,6 +1,5 @@
 """Expected value: one feature fitted from the others, given as its residual."""
 
-import math
 import pickle
 
 import numpy as np
@@ -12,16 +11,17 @@ from off_key_core.models.pipelines import (
     pipeline_catalog,
     validate_pipeline,
 )
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
 from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
 from off_key_mqtt_radar.pipelines.expected import OnlineExpectedValue
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
 
-from tests.support.pipelines import chained, chained_execution
+from tests.support.pipelines import (
+    assert_resumes_identically,
+    chained,
+    chained_execution,
+)
 
 pytestmark = pytest.mark.radar_integration
 
@@ -394,46 +394,15 @@ def test_an_observation_a_later_step_rejects_leaves_the_fit_as_it_was(monkeypatc
 
 @pytest.mark.parametrize("strategy", STRATEGIES)
 def test_expected_values_reach_real_detectors_and_resume_identically(strategy):
-    config = AnomalyDetectionConfig(
-        pipeline=chained_execution(strategy, steps(strategy, LOAD), SLOTS),
-        checkpoint_interval=10000,
-    )
-    static = strategy == "static_baseline"
-    constructor = (
-        StaticConformalDetectionService if static else AdaptiveStreamDetectionService
-    )
-    service = constructor(config)
-    restored = None
     # The continuous step learns for a few observations before the detector does.
-    warm = 27 if static else 40
-    try:
-        for row in ROWS[:warm]:
-            service.process_data_point(row)
-        if static:
-            service._training_future.result(timeout=30)
-        result = service.process_data_point(ROWS[warm])
-        assert result.should_persist and math.isfinite(result.anomaly_score)
-        assert list(result.processed_features) == ["temperature", "current_residual"]
-        assert abs(result.processed_features["current_residual"]) < 0.1
-        checkpoint = pickle.loads(pickle.dumps(service.export_checkpoint()))
-        restored = constructor.from_checkpoint_data(checkpoint, config)
-        for row in ROWS[warm + 1 : warm + 7]:
-            actual = restored.process_data_point(row)
-            expected = service.process_data_point(row)
-            assert (
-                actual.anomaly_score,
-                actual.is_anomaly,
-                actual.processed_features,
-            ) == (
-                expected.anomaly_score,
-                expected.is_anomaly,
-                expected.processed_features,
-            )
-    finally:
-        if static:
-            service.shutdown()
-            if restored is not None:
-                restored.shutdown()
+    result = assert_resumes_identically(
+        strategy,
+        chained_execution(strategy, steps(strategy, LOAD), SLOTS),
+        ROWS,
+        warm=27 if strategy == "static_baseline" else 40,
+    )
+    assert list(result.processed_features) == ["temperature", "current_residual"]
+    assert abs(result.processed_features["current_residual"]) < 0.1
 
 
 def test_a_fit_counts_toward_the_known_memory():

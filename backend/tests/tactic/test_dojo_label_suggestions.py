@@ -6,11 +6,6 @@ import pytest
 import pytest_asyncio
 from off_key_core.db.models import (
     Anomaly,
-    DeploymentMaintenance,
-    DojoDataset,
-    DojoLabel,
-    DojoPoint,
-    DojoSeries,
     SystemCollectionConfiguration,
     Telemetry,
     User,
@@ -33,6 +28,7 @@ from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from sqlalchemy import MetaData
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.env import set_auth_env
 from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
@@ -81,15 +77,8 @@ async def sessions(member_database, monkeypatch):
         # test's schema.
         for table in (Telemetry, Anomaly):
             await connection.run_sync(table.__table__.to_metadata(MetaData()).create)
-        for table in (
-            DeploymentMaintenance,
-            SystemCollectionConfiguration,
-            DojoDataset,
-            DojoSeries,
-            DojoPoint,
-            DojoLabel,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
+        await connection.run_sync(SystemCollectionConfiguration.__table__.create)
     document = catalogue()
     bindings = build_bindings(document)
     async with factory() as session:

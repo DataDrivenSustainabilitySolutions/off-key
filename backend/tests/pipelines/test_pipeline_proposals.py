@@ -8,16 +8,10 @@ import pytest_asyncio
 from off_key_api_gateway.api.rate_limiter import limiter
 from off_key_api_gateway.providers import get_pipeline_proposals
 from off_key_core.db.models import (
-    Agent,
-    DeploymentMaintenance,
     DojoDataset,
     DojoLabel,
     DojoRun,
     DojoRunResult,
-    DojoStudy,
-    DojoSuite,
-    DojoSuiteDataset,
-    PipelineProposal,
     User,
 )
 from off_key_core.models.pipelines import (
@@ -46,6 +40,7 @@ from off_key_tactic_middleware.services.pipelines.proposals import PipelinePropo
 from pydantic import ValidationError as SchemaError
 from sqlalchemy import select
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.env import set_auth_env
 from tests.support.gateway import gateway_app, member, returning
 from tests.support.http import asgi_client
@@ -102,19 +97,7 @@ async def library(member_database, monkeypatch):
     get_tactic_settings.cache_clear()
     engine, sessions = member_database
     async with engine.begin() as connection:
-        for table in (
-            Agent,
-            PipelineProposal,
-            DeploymentMaintenance,
-            DojoDataset,
-            DojoSuite,
-            DojoSuiteDataset,
-            DojoStudy,
-            DojoRun,
-            DojoRunResult,
-            DojoLabel,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
     # What holds capacity is RADAR's count, tested with the activations.
     monkeypatch.setattr(
         proposal_service, "monitors_holding_capacity", AsyncMock(return_value=1)

@@ -5,7 +5,6 @@ import pickle
 import random
 import statistics
 from datetime import UTC, datetime
-from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -19,25 +18,22 @@ from off_key_core.models.pipeline_prepare import (
 )
 from off_key_core.models.pipeline_scope import ScopeError
 from off_key_core.models.pipelines import (
-    compile_pipeline,
-    execution_fingerprint,
     validate_pipeline,
 )
 from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import (
     FeatureDescription,
-    PipelineDefinition,
-    PipelineExecutionConfig,
 )
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.dojo.replay import Replay, detection_config
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.prepare import PrepareRejected, PrepareStage
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
 
-from tests.support.pipelines import template
+from tests.support.pipelines import (
+    assert_resumes_identically,
+    chained,
+    chained_execution,
+)
 
 pytestmark = pytest.mark.radar_integration
 
@@ -55,54 +51,16 @@ STEPS = [
 
 
 def design(strategy="adaptive_stream", steps=STEPS):
-    data = template(strategy).model_dump(mode="json")
-    data["input_slots"] = [{"id": key, "label": key.upper()} for key in ("a", "b")]
-    data["settings"].update(training_window_size=20, calibration_window_size=5)
-    detector = next(node for node in data["nodes"] if node["kind"] == "detector")
-    if strategy == "adaptive_stream":
-        detector.update(
-            component="detector:aberrant_moving_mahalanobis_distance",
-            params={"window_size": 5},
-        )
-    else:
-        detector["params"] = {"n_estimators": 10}
-    data["nodes"].extend(
-        {"id": key, "kind": "transform", "component": component, "params": params}
-        for key, component, params in steps
-    )
-    data["edges"] = [edge for edge in data["edges"] if edge["source"] != "input"] + [
-        {"source": source, "target": target}
-        for source, target in pairwise(
-            ["input", *(key for key, _, _ in steps), "detector"]
-        )
-    ]
-    return PipelineDefinition.model_validate(data)
+    return chained(strategy, steps)
+
+
+def execution(strategy="adaptive_stream", steps=STEPS):
+    return chained_execution(strategy, steps)
 
 
 def checked(*steps):
     """What the compiler says about a chain of steps, valid or not."""
     return validate_pipeline(design(steps=list(steps)))
-
-
-def execution(strategy="adaptive_stream", steps=STEPS):
-    definition = compile_pipeline(design(strategy, steps)).definition
-    bindings = [
-        dict(
-            slot_id=key,
-            reading_id=key,
-            entity_id="entity",
-            accepted_topic=f"telemetry/entity/{key}",
-            input_key=key,
-        )
-        for key in ("a", "b")
-    ]
-    return PipelineExecutionConfig(
-        definition=definition,
-        bindings=bindings,
-        revision_id="revision",
-        run_id="run",
-        fingerprint=execution_fingerprint(definition, bindings),
-    )
 
 
 def reading(index):
@@ -545,42 +503,9 @@ def test_rejection_rolls_back_accumulation_and_window_state():
 
 @pytest.mark.parametrize("strategy", ["static_baseline", "adaptive_stream"])
 def test_primitives_reach_real_detectors_and_resume_identically(strategy):
-    config = AnomalyDetectionConfig(
-        pipeline=execution(strategy), checkpoint_interval=10000
+    assert_resumes_identically(
+        strategy, execution(strategy), [reading(index) for index in range(34)], warm=27
     )
-    constructor = (
-        StaticConformalDetectionService
-        if strategy == "static_baseline"
-        else AdaptiveStreamDetectionService
-    )
-    service = constructor(config)
-    restored = None
-    try:
-        for index in range(27):
-            service.process_data_point(reading(index))
-        if strategy == "static_baseline":
-            service._training_future.result(timeout=30)
-        result = service.process_data_point(reading(27))
-        assert result.should_persist and math.isfinite(result.anomaly_score)
-        checkpoint = pickle.loads(pickle.dumps(service.export_checkpoint()))
-        restored = constructor.from_checkpoint_data(checkpoint, config)
-        for index in range(28, 34):
-            actual = restored.process_data_point(reading(index))
-            expected = service.process_data_point(reading(index))
-            assert (
-                actual.anomaly_score,
-                actual.is_anomaly,
-                actual.processed_features,
-            ) == (
-                expected.anomaly_score,
-                expected.is_anomaly,
-                expected.processed_features,
-            )
-    finally:
-        if strategy == "static_baseline":
-            service.shutdown()
-            if restored is not None:
-                restored.shutdown()
 
 
 @pytest.mark.parametrize("strategy", ["static_baseline", "adaptive_stream"])

@@ -10,16 +10,9 @@ import pytest
 import pytest_asyncio
 from off_key_core.db.locks import DOJO_METRICS_LOCK
 from off_key_core.db.models import (
-    DeploymentMaintenance,
-    DojoDataset,
     DojoLabel,
-    DojoPoint,
     DojoRun,
     DojoRunResult,
-    DojoSeries,
-    DojoStudy,
-    DojoSuite,
-    DojoSuiteDataset,
     User,
 )
 from off_key_core.models.pipeline_calibration import CALIBRATORS
@@ -52,6 +45,7 @@ from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 from pydantic import ValidationError as SchemaError
 from sqlalchemy import func, select, text
 
+from tests.support.dojo import create_dojo_tables
 from tests.support.env import set_auth_env
 from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
@@ -142,19 +136,7 @@ async def sessions(member_database, monkeypatch):
     set_auth_env(monkeypatch)
     engine, factory = member_database
     async with engine.begin() as connection:
-        for table in (
-            DeploymentMaintenance,
-            DojoDataset,
-            DojoSeries,
-            DojoPoint,
-            DojoLabel,
-            DojoSuite,
-            DojoSuiteDataset,
-            DojoStudy,
-            DojoRun,
-            DojoRunResult,
-        ):
-            await connection.run_sync(table.__table__.create)
+        await connection.run_sync(create_dojo_tables)
     return engine, factory
 
 

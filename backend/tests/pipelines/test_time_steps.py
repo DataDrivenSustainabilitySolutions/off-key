@@ -28,16 +28,17 @@ from off_key_core.models.pipeline_time import (
 from off_key_core.models.pipelines import compile_pipeline, validate_pipeline
 from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import TIME_SETTINGS, TimeParameters
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.dojo.replay import Replay, detection_config
 from off_key_mqtt_radar.pipelines import prepare as prepare_module
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.prepare import PrepareRejected, PrepareStage, Withheld
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
 
-from tests.support.pipelines import chained, chained_execution
+from tests.support.pipelines import (
+    assert_resumes_identically,
+    chained,
+    chained_execution,
+)
 
 pytestmark = pytest.mark.radar_integration
 
@@ -553,50 +554,22 @@ def test_the_stage_computes_rates_energy_and_a_level_from_the_time():
 
 @pytest.mark.parametrize("strategy", ["static_baseline", "adaptive_stream"])
 def test_time_steps_reach_real_detectors_and_resume_identically(strategy):
-    config = AnomalyDetectionConfig(
-        pipeline=chained_execution(strategy, STEPS), checkpoint_interval=10000
-    )
-    constructor = (
-        StaticConformalDetectionService
-        if strategy == "static_baseline"
-        else AdaptiveStreamDetectionService
-    )
-    service = constructor(config)
-    restored = None
-
     def process(target, index):
         return target.process_data_point(reading(index), timestamp=moment(index))
 
-    try:
-        for index in range(28):
-            process(service, index)
-        # Training may already have finished and been taken in while the
-        # last points were processed, which leaves no future to wait on.
-        if strategy == "static_baseline" and service._training_future is not None:
-            service._training_future.result(timeout=30)
-        result = process(service, 28)
-        assert result.should_persist and math.isfinite(result.anomaly_score)
-        checkpoint = pickle.loads(pickle.dumps(service.export_checkpoint()))
-        restored = constructor.from_checkpoint_data(checkpoint, config)
-        for index in range(29, 35):
-            actual, expected = process(restored, index), process(service, index)
-            assert (
-                actual.anomaly_score,
-                actual.is_anomaly,
-                actual.processed_features,
-            ) == (
-                expected.anomaly_score,
-                expected.is_anomaly,
-                expected.processed_features,
-            )
+    def repeat(restored, process):
         # An observation that arrives a second time is skipped, not scored again.
         with pytest.raises(PrepareRejected, match="not later than the one before"):
             process(restored, 34)
-    finally:
-        if strategy == "static_baseline":
-            service.shutdown()
-            if restored is not None:
-                restored.shutdown()
+
+    assert_resumes_identically(
+        strategy,
+        chained_execution(strategy, STEPS),
+        None,
+        warm=28,
+        process=process,
+        after=repeat,
+    )
 
 
 def test_a_replay_measures_time_by_when_its_readings_were_measured():

@@ -10,26 +10,15 @@ import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix, stepScope } from "@/features/pipelines/scope";
 import { STEP_FAMILIES, stepFamily, stepFields } from "@/features/pipelines/steps";
 import { changeDetector } from "@/features/pipelines/learning";
-import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
+import { type Field, option, scopeFields, step, stepNode, stepSummary } from "./support/pipelineSteps";
 
-type Field = PipelineComponent["fields"][number];
-const option = (name: string, value: string, options: string[]): Field =>
-  ({ name, label: name, type: "enum", default: value, has_default: true, options });
 const amount = (name: string, value: number, type: "integer" | "number" = "number", nullable = false): Field =>
   ({ name, label: name, type, default: value, has_default: true, nullable });
 
 /** The catalog's Prepare steps, as core describes them. */
 function prepare(id: string, fields: Field[], result = "replace"): PipelineComponent {
-  return {
-    id, kind: "transform", group: "prepare", label: id, description: "", input_type: "features", output_type: "features",
-    fields: [
-      { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
-      option("result", result, ["replace", "add"]),
-      { name: "suffix", label: "Suffix", type: "string", default: null, has_default: true, nullable: true },
-      ...fields,
-    ],
-  };
+  return step(id, [...scopeFields(result), ...fields]);
 }
 const smooth = prepare("prepare.smooth", [
   option("method", "exponential", ["exponential", "rolling"]), amount("window_size", 10, "integer"),
@@ -52,13 +41,8 @@ const range = prepare("prepare.range", [
 ]);
 const STEPS = [smooth, despike, change, rolling, math, range];
 
-const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
-  ({ id: "step", kind: "transform", component: component.id, params });
-const definition = normalizeDefinition({
-  input_slots: [{ id: "dc_voltage", label: "DC voltage" }], nodes: [],
-});
-const summary = (component: PipelineComponent, params?: PipelineNode["params"]) =>
-  nodeSummary(node(component, params), component, definition);
+const node = stepNode;
+const summary = stepSummary;
 
 describe("Prepare steps in the composer", () => {
   it("lead the add-step menu", () => {

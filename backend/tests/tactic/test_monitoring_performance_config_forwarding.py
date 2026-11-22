@@ -204,14 +204,12 @@ def test_tactic_builds_static_environment(monkeypatch):
                 "telemetry/c1/L2",
                 "telemetry/c1/L3",
             ],
-            strategy="static_baseline",
-            model_type="pyod_iforest",
-            model_params={"n_estimators": 100},
             performance_config={
                 "sensor_key_strategy": "leaf",
                 "minimum_hold_seconds": 20.0,
             },
-            static_baseline_config={
+            monitoring={
+                "strategy": "static_baseline",
                 "model_type": "pyod_iforest",
                 "model_params": {"n_estimators": 100},
                 "training_window_size": 120,
@@ -294,11 +292,9 @@ def test_tactic_builds_adaptive_environment(monkeypatch):
         config=form_launch(
             container_name="radar",
             mqtt_topics=["telemetry/charger-1/L1"],
-            strategy="adaptive_stream",
-            model_type="aberrant_online_isolation_forest",
-            model_params={"num_trees": 2},
             performance_config={},
-            adaptive_stream_config={
+            monitoring={
+                "strategy": "adaptive_stream",
                 "model_type": "aberrant_online_isolation_forest",
                 "model_params": {"num_trees": 2},
                 "training_window_size": 1200,
@@ -317,9 +313,7 @@ def test_tactic_builds_adaptive_environment(monkeypatch):
     assert validator.call_args.kwargs["family"] == ("adaptive_aberrant")
 
 
-def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict(
-    monkeypatch,
-):
+def test_tactic_resolves_minimal_adaptive_request(monkeypatch):
     _validator(monkeypatch, {"num_trees": 100})
     env = build_radar_environment(
         service_id="svc-dynamic-default",
@@ -327,34 +321,14 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict(
         config=form_launch(
             container_name="radar",
             mqtt_topics=["telemetry/charger-1/L1"],
-            strategy="adaptive_stream",
-            model_type=None,
-            model_params={},
+            monitoring={"strategy": "adaptive_stream"},
             performance_config={},
-            adaptive_stream_config=None,
         ),
     )
     assert (
         json.loads(env["RADAR_MONITORING_CONFIG"])["model_type"]
         == "aberrant_online_isolation_forest"
     )
-
-    with pytest.raises(ValueError, match="model_type conflicts"):
-        build_radar_environment(
-            service_id="svc-dynamic-conflict",
-            validate_params=True,
-            config=form_launch(
-                container_name="radar",
-                mqtt_topics=["telemetry/charger-1/L1"],
-                strategy="adaptive_stream",
-                model_type="aberrant_knn",
-                model_params=None,
-                performance_config={},
-                adaptive_stream_config={
-                    "model_type": "aberrant_online_isolation_forest"
-                },
-            ),
-        )
 
 
 def test_tactic_operational_status_marks_failed_from_docker_exit():

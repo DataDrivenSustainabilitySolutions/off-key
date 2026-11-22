@@ -39,42 +39,11 @@ def test_generated_catalog_matches_pinned_runtime():
 
 
 @pytest.mark.parametrize(
-    ("model_type", "legacy", "canonical"),
-    [
-        ("aberrant_stream_random_histogram_forest", {"max_bins": 8}, {"max_depth": 8}),
-        (
-            "aberrant_moving_geometric_average",
-            {"absolute_values": True},
-            {"absoluteValues": True},
-        ),
-        (
-            "aberrant_knn",
-            {"k": 3, "window_size": 20, "warm_up": 5},
-            {
-                "k": 3,
-                "similarity_engine": {
-                    "id": "faiss",
-                    "params": {"window_size": 20, "warm_up": 5},
-                },
-            },
-        ),
-    ],
-)
-def test_legacy_and_canonical_parameters_have_the_same_fingerprint(
-    model_type, legacy, canonical
-):
-    old = AdaptiveStreamConfig(model_type=model_type, model_params=legacy)
-    new = AdaptiveStreamConfig(model_type=model_type, model_params=canonical)
-    assert old.model_params == new.model_params
-    assert DetectorConfig.from_mapping(detector_mapping(old, ["x"])).fingerprint() == (
-        DetectorConfig.from_mapping(detector_mapping(new, ["x"])).fingerprint()
-    )
-
-
-@pytest.mark.parametrize(
     ("model_type", "params"),
     [
-        ("aberrant_stream_random_histogram_forest", {"max_bins": 8, "max_depth": 9}),
+        ("aberrant_stream_random_histogram_forest", {"max_bins": 8}),
+        ("aberrant_moving_geometric_average", {"absolute_values": True}),
+        ("aberrant_knn", {"window_size": 20, "warm_up": 5}),
         (
             "aberrant_knn",
             {"window_size": 20, "similarity_engine": {"id": "faiss", "params": {}}},

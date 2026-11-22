@@ -25,7 +25,7 @@ def configuration():
         container_name="stable-workload",
         mqtt_topics=["telemetry/room-input/temperature"],
         display_name="Climate",
-        model_type="pyod_iforest",
+        monitoring={"strategy": "static_baseline", "model_type": "pyod_iforest"},
     ).model_dump(mode="json")
 
 

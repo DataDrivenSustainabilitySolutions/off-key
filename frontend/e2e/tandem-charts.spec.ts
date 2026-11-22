@@ -283,7 +283,7 @@ test.describe("Tandem anomaly chart regression", () => {
     const adaptiveDetector = card.getByRole("combobox", { name: "Adaptive detector" });
     await expect(staticDetector).toBeVisible();
     await expect(adaptiveDetector).toBeVisible();
-    await expect(staticDetector).toHaveValue("restarted-martingale:static-service");
+    await expect(staticDetector).toHaveValue("martingale:static-service:primary");
     await expect(adaptiveDetector.locator("option:checked")).toContainText("adaptive-a");
     await staticDetector.focus();
     await expect(staticDetector).toBeFocused();

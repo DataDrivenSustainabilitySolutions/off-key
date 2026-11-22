@@ -408,7 +408,6 @@ def validate_adaptive_model_params(
         raise ValueError(f"Unknown adaptive model type: '{model_type}'") from exc
     # JSON normalization also rejects non-finite values anywhere in nested parameters.
     provided = json.loads(json.dumps(params or {}, allow_nan=False))
-    _migrate_legacy_params(model_type, provided)
     merged = {**deepcopy(definition["default_parameters"]), **provided}
     validate_parameter_schema(
         f"Invalid parameters for '{model_type}'", definition["parameter_schema"], merged
@@ -490,38 +489,6 @@ def validate_adaptive_model_params(
             ],
         )
     return merged
-
-
-def _migrate_legacy_params(model_type: str, provided: dict[str, Any]) -> None:
-    """Translate the persisted 0.5 API shape without hiding conflicting values."""
-    aliases = {
-        "aberrant_stream_random_histogram_forest": ("max_bins", "max_depth"),
-        "aberrant_moving_geometric_average": ("absolute_values", "absoluteValues"),
-    }
-    if model_type in aliases:
-        previous, current = aliases[model_type]
-        if previous in provided:
-            if current in provided and provided[current] != provided[previous]:
-                raise ValueError(f"Conflicting {previous} and {current} values")
-            provided[current] = provided.pop(previous)
-    if model_type == "aberrant_knn":
-        legacy = {
-            key: provided.pop(key)
-            for key in ("window_size", "warm_up")
-            if key in provided
-        }
-        if legacy:
-            if "similarity_engine" in provided:
-                raise ValueError(
-                    "Do not mix legacy KNN parameters with similarity_engine"
-                )
-            engine = deepcopy(
-                ADAPTIVE_MODELS_BY_TYPE[model_type]["default_parameters"][
-                    "similarity_engine"
-                ]
-            )
-            engine["params"].update(legacy)
-            provided["similarity_engine"] = engine
 
 
 def adaptive_model_metadata(model_type: str) -> dict[str, Any]:

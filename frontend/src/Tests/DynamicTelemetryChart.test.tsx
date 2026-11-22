@@ -392,6 +392,7 @@ describe("DynamicTelemetryChart", () => {
               input_timestamps: { voltage: "2026-07-27T10:00:00Z" },
               strategy: "static_baseline",
               restarted_martingale: 10,
+              tracker_results: [trackerResult({ statistic_value: 10, threshold: 5 })],
               threshold: 5,
               alarm: false,
               created: "2026-07-27T10:00:00Z",
@@ -449,15 +450,15 @@ describe("DynamicTelemetryChart", () => {
     const { rerender } = render(view());
     showChart();
     const selector = await screen.findByRole("combobox", { name: "Static detector" });
-    expect((selector as HTMLSelectElement).value).toBe("restarted-martingale:service-adaptive");
+    expect((selector as HTMLSelectElement).value).toBe("martingale:service-adaptive:primary");
     fireEvent.change(selector, { target: { value: "martingale:service-adaptive:secondary" } });
     expect(inspectOption().series.filter(({ id }) => id.startsWith("martingale:")).map(({ id }) => id))
       .toEqual(["martingale:service-adaptive:secondary"]);
     rerender(view());
     expect((selector as HTMLSelectElement).value).toBe("martingale:service-adaptive:secondary");
     rerender(view({ fromMs: Date.parse(lastTime) }));
-    fireEvent.change(selector, { target: { value: "restarted-martingale:service-adaptive" } });
-    expect((selector as HTMLSelectElement).value).toBe("restarted-martingale:service-adaptive");
+    fireEvent.change(selector, { target: { value: "martingale:service-adaptive:primary" } });
+    expect((selector as HTMLSelectElement).value).toBe("martingale:service-adaptive:primary");
     expect(screen.getByRole("status").textContent).toContain("No evaluated observations in selected range");
     expect(inspectOption().series.map(({ id }) => id)).toEqual(["telemetry"]);
   });
@@ -501,10 +502,10 @@ describe("DynamicTelemetryChart", () => {
     const { rerender } = render(view([staticEvidence(firstTime, ["secondary", "primary"])]));
     showChart();
     const selector = await screen.findByRole("combobox", { name: "Static detector" });
-    expect((selector as HTMLSelectElement).value).toBe("restarted-martingale:service-adaptive");
+    expect((selector as HTMLSelectElement).value).toBe("martingale:service-adaptive:primary");
 
     rerender(view([staticEvidence(lastTime, ["secondary"])]));
-    expect((selector as HTMLSelectElement).value).toBe("restarted-martingale:service-adaptive");
+    expect((selector as HTMLSelectElement).value).toBe("martingale:service-adaptive:primary");
     expect(screen.getByRole("status").textContent).toContain("No evaluated observations available");
     expect(inspectOption().series.map(({ id }) => id)).toEqual(["telemetry"]);
 

@@ -9,7 +9,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    TypeAdapter,
     field_validator,
     model_validator,
 )
@@ -48,7 +47,6 @@ __all__ = [
     "AutomaticThresholdCalibrationConfig",
     "FixedThresholdConfig",
     "FormMonitorConfig",
-    "LegacyMonitoringConfig",
     "ManualAlarmThresholdConfig",
     "MartingaleTrackerConfig",
     "MonitorSetup",
@@ -660,56 +658,6 @@ MonitoringConfig = Annotated[
     StaticBaselineConfig | AdaptiveStreamConfig,
     Field(discriminator="strategy"),
 ]
-_MONITORING_CONFIG = TypeAdapter(MonitoringConfig)
-
-
-class LegacyMonitoringConfig(BaseModel):
-    """The setup forms' strategy fields, accepted only at form ingress."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    strategy: MonitoringStrategy = "static_baseline"
-    model_type: str | None = None
-    model_params: dict[str, Any] | None = None
-    static_baseline_config: StaticBaselineConfig | None = None
-    adaptive_stream_config: AdaptiveStreamConfig | None = None
-
-    @field_validator("model_type")
-    @classmethod
-    def normalize_model_type(cls, value: str | None) -> str | None:
-        return value.strip().lower() if value is not None else None
-
-    def to_monitoring(self) -> MonitoringConfig:
-        configs = {
-            "static_baseline": self.static_baseline_config,
-            "adaptive_stream": self.adaptive_stream_config,
-        }
-        for name, value in configs.items():
-            if value is not None and name != self.strategy:
-                raise ValueError(f"{name}_config is not valid for {self.strategy}")
-        config = configs[self.strategy]
-        if config is None:
-            payload = self.model_dump(
-                include={"strategy", "model_type", "model_params"}, exclude_none=True
-            )
-            config = _MONITORING_CONFIG.validate_python(payload)
-        if self.model_type is not None and self.model_type != config.model_type:
-            raise ValueError(
-                f"model_type conflicts with {self.strategy}_config.model_type"
-            )
-        if self.model_params is not None:
-            normalized = (
-                validate_adaptive_model_params(config.model_type, self.model_params)
-                if isinstance(config, AdaptiveStreamConfig)
-                else validate_static_model_params(
-                    config.model_type, self.model_params, include_defaults=False
-                )
-            )
-            if normalized != config.model_params:
-                raise ValueError(
-                    f"model_params conflicts with {self.strategy}_config.model_params"
-                )
-        return config
 
 
 def validate_service_name(value: str) -> str:
@@ -771,28 +719,6 @@ class FormMonitorConfig(_MonitorLaunch):
     """
 
     launch_version: Literal[1] = 1
-
-    @model_validator(mode="before")
-    @classmethod
-    def normalize_legacy_fields(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-        legacy_keys = {
-            "strategy",
-            "model_type",
-            "model_params",
-            "static_baseline_config",
-            "adaptive_stream_config",
-        }
-        legacy = {key: value[key] for key in legacy_keys if key in value}
-        if not legacy:
-            return value
-        if "monitoring" in value:
-            raise ValueError("Do not mix monitoring with legacy strategy fields")
-        return {
-            **{key: item for key, item in value.items() if key not in legacy_keys},
-            "monitoring": LegacyMonitoringConfig(**legacy).to_monitoring(),
-        }
 
     @model_validator(mode="after")
     def validate_feature_schema(self) -> "FormMonitorConfig":

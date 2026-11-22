@@ -9,6 +9,7 @@ from off_key_core.schemas.radar import FormMonitorConfig
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.service import RadarService
 from off_key_tactic_middleware.services.pipelines.library import legacy_definition
+from pydantic import ValidationError
 
 from tests.support.form_pipeline import form_pipeline
 
@@ -22,10 +23,8 @@ def static_form():
     return {
         "container_name": "radar-c1",
         "mqtt_topics": TOPICS,
-        "strategy": "static_baseline",
-        "model_type": "pyod_iforest",
-        "model_params": params,
-        "static_baseline_config": {
+        "monitoring": {
+            "strategy": "static_baseline",
             "model_type": "pyod_iforest",
             "model_params": params,
             "training_window_size": 60,
@@ -51,10 +50,8 @@ def adaptive_form(*steps):
     return {
         "container_name": "radar-c1",
         "mqtt_topics": TOPICS,
-        "strategy": "adaptive_stream",
-        "model_type": "aberrant_online_isolation_forest",
-        "model_params": params,
-        "adaptive_stream_config": {
+        "monitoring": {
+            "strategy": "adaptive_stream",
             "model_type": "aberrant_online_isolation_forest",
             "model_params": params,
             "training_window_size": 40,
@@ -256,9 +253,25 @@ def test_adaptive_form_lowers_steps_in_order_and_renames_incremental_pca():
 )
 def test_min_max_scaling_clips_only_for_unit_interval_detectors(model_type, clipped):
     form = adaptive_form({"type": "min_max_scaler"})
-    form["model_type"] = form["adaptive_stream_config"]["model_type"] = model_type
-    form["model_params"] = form["adaptive_stream_config"]["model_params"] = {}
+    form["monitoring"] |= {"model_type": model_type, "model_params": {}}
     [scaler] = [node for node in lowered(form)["nodes"] if node["kind"] == "transform"]
 
     assert scaler["component"] == "adaptive.min_max_scaler"
     assert scaler.get("params", {}).get("clip", False) is clipped
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "strategy",
+        "model_type",
+        "model_params",
+        "static_baseline_config",
+        "adaptive_stream_config",
+    ],
+)
+def test_form_rejects_top_level_strategy_fields(field):
+    form = static_form()
+    form[field] = form["monitoring"].get(field, {})
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        FormMonitorConfig.model_validate(form)

@@ -390,7 +390,7 @@ async def test_create_radar_service_never_launches_before_intent_commit(
             form_launch(
                 container_name="radar-duplicate",
                 mqtt_topics=[selected_collection.accepted_topic],
-                model_type="pyod_knn",
+                monitoring={"strategy": "static_baseline", "model_type": "pyod_knn"},
             ),
             deployment_revision="release",
         )
@@ -444,7 +444,7 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         form_launch(
             container_name="radar-stale",
             mqtt_topics=["telemetry/charger-1/sine"],
-            model_type="pyod_iforest",
+            monitoring={"strategy": "static_baseline", "model_type": "pyod_iforest"},
         ),
         deployment_revision="release",
     )
@@ -482,7 +482,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
             form_launch(
                 container_name="radar-existing",
                 mqtt_topics=["telemetry/charger-1/sine"],
-                model_type="pyod_knn",
+                monitoring={"strategy": "static_baseline", "model_type": "pyod_knn"},
             ),
             deployment_revision="release",
         )

@@ -141,15 +141,8 @@ function collectChartDetectors(
       groups.set(id, group);
       continue;
     }
-    const trackers = item.tracker_results?.length ? item.tracker_results : [{
-      tracker_id: "primary", betting_function: "power" as const,
-      alarm_statistic: "restarted_martingale" as const,
-      statistic_value: item.restarted_martingale, statistic_is_infinite: false,
-      log_statistic_value: null, threshold: item.threshold, alarm_active: item.alarm,
-    }];
-    for (const tracker of trackers) {
-      const legacy = tracker.tracker_id === "primary" && tracker.betting_function === "power" && tracker.alarm_statistic === "restarted_martingale";
-      const id = legacy ? `restarted-martingale:${item.monitor_id}` : `martingale:${item.monitor_id}:${tracker.tracker_id}`;
+    for (const tracker of item.tracker_results ?? []) {
+      const id = `martingale:${item.monitor_id}:${tracker.tracker_id}`;
       const suffix = tracker.betting_function === "power" && tracker.tracker_id === "primary" ? "" : ` (${bettingLabels[tracker.betting_function]} · ${tracker.tracker_id})`;
       const group = groups.get(id) ?? {
         id, serviceId: item.monitor_id, trackerId: tracker.tracker_id,
@@ -161,11 +154,10 @@ function collectChartDetectors(
         sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(tracker.statistic_value),
         threshold: threshold !== null && threshold > 0 ? threshold : null,
         alarmActive: tracker.alarm_active, logValue: finiteOrNull(tracker.log_statistic_value),
-        // Each tracker says whether its own crossing was muted; a row without trackers says it once.
-        ...muted("alarm_muted" in tracker ? tracker.alarm_muted : item.muted),
+        ...muted(tracker.alarm_muted),
         isInfinite: tracker.statistic_is_infinite,
         ...(includeInputs ? { inputTimestamps: item.input_timestamps,
-          alarmFired: "alarm_fired" in tracker ? tracker.alarm_fired : item.alarm,
+          alarmFired: tracker.alarm_fired,
           ...(item.detector_results?.length ? { detectors: item.detector_results } : {}) } : {}),
       });
       groups.set(id, group);

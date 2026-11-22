@@ -283,7 +283,8 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Test backend
-        run: uv run --project backend python -m pytest -q --timeout=300 --timeout-method=thread
+        # One worker per core of the runner; the database suites run serially in their own job.
+        run: uv run --project backend python -m pytest -q -n auto --timeout=300 --timeout-method=thread
 
   frontend:
     name: frontend

@@ -1,0 +1,618 @@
+[
+ {
+  "component": "prepare.smooth",
+  "params": {},
+  "endings": [
+   "smooth10"
+  ]
+ },
+ {
+  "component": "prepare.smooth",
+  "params": {
+   "method": "exponential"
+  },
+  "endings": [
+   "smooth10"
+  ]
+ },
+ {
+  "component": "prepare.smooth",
+  "params": {
+   "method": "rolling"
+  },
+  "endings": [
+   "smooth10"
+  ]
+ },
+ {
+  "component": "prepare.smooth",
+  "params": {
+   "method": "time_constant"
+  },
+  "endings": [
+   "smooth60s"
+  ]
+ },
+ {
+  "component": "prepare.smooth",
+  "params": {
+   "window_size": 5
+  },
+  "endings": [
+   "smooth5"
+  ]
+ },
+ {
+  "component": "prepare.smooth",
+  "params": {
+   "method": "time_constant",
+   "time_constant": 2.5
+  },
+  "endings": [
+   "smooth2p5s"
+  ]
+ },
+ {
+  "component": "prepare.despike",
+  "params": {},
+  "endings": [
+   "despiked"
+  ]
+ },
+ {
+  "component": "prepare.change",
+  "params": {},
+  "endings": [
+   "diff1"
+  ]
+ },
+ {
+  "component": "prepare.change",
+  "params": {
+   "mode": "difference"
+  },
+  "endings": [
+   "diff1"
+  ]
+ },
+ {
+  "component": "prepare.change",
+  "params": {
+   "mode": "percent"
+  },
+  "endings": [
+   "pct1"
+  ]
+ },
+ {
+  "component": "prepare.change",
+  "params": {
+   "mode": "lag"
+  },
+  "endings": [
+   "lag1"
+  ]
+ },
+ {
+  "component": "prepare.change",
+  "params": {
+   "lag": 24
+  },
+  "endings": [
+   "diff24"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {},
+  "endings": [
+   "lag1min",
+   "lag5min",
+   "lag15min"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {
+   "unit": "observations"
+  },
+  "endings": [
+   "lag1",
+   "lag5",
+   "lag15"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {
+   "unit": "seconds"
+  },
+  "endings": [
+   "lag1s",
+   "lag5s",
+   "lag15s"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {
+   "unit": "minutes"
+  },
+  "endings": [
+   "lag1min",
+   "lag5min",
+   "lag15min"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {
+   "unit": "hours"
+  },
+  "endings": [
+   "lag1h",
+   "lag5h",
+   "lag15h"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {
+   "unit": "days"
+  },
+  "endings": [
+   "lag1d",
+   "lag5d",
+   "lag15d"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {
+   "lags": [
+    24,
+    1,
+    5
+   ]
+  },
+  "endings": [
+   "lag1min",
+   "lag5min",
+   "lag24min"
+  ]
+ },
+ {
+  "component": "prepare.lags",
+  "params": {
+   "unit": "hours",
+   "lags": [
+    1,
+    24
+   ]
+  },
+  "endings": [
+   "lag1h",
+   "lag24h"
+  ]
+ },
+ {
+  "component": "prepare.deseason",
+  "params": {},
+  "endings": [
+   "deseasoned"
+  ]
+ },
+ {
+  "component": "prepare.deseason",
+  "params": {
+   "cycle": "day"
+  },
+  "endings": [
+   "deseasoned"
+  ]
+ },
+ {
+  "component": "prepare.deseason",
+  "params": {
+   "cycle": "week"
+  },
+  "endings": [
+   "deseasoned"
+  ]
+ },
+ {
+  "component": "prepare.cusum",
+  "params": {},
+  "endings": [
+   "cusum"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {},
+  "endings": [
+   "mean60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "mean"
+  },
+  "endings": [
+   "mean60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "median"
+  },
+  "endings": [
+   "median60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "min"
+  },
+  "endings": [
+   "min60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "max"
+  },
+  "endings": [
+   "max60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "std"
+  },
+  "endings": [
+   "std60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "range"
+  },
+  "endings": [
+   "range60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "sum"
+  },
+  "endings": [
+   "sum60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "quantile"
+  },
+  "endings": [
+   "q50_60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "iqr"
+  },
+  "endings": [
+   "iqr60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "mad"
+  },
+  "endings": [
+   "mad60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "slope"
+  },
+  "endings": [
+   "slope60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "zscore"
+  },
+  "endings": [
+   "zscore60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "robust_zscore"
+  },
+  "endings": [
+   "robust_zscore60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "rank"
+  },
+  "endings": [
+   "rank60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "rms"
+  },
+  "endings": [
+   "rms60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "skewness"
+  },
+  "endings": [
+   "skewness60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "kurtosis"
+  },
+  "endings": [
+   "kurtosis60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "quantile",
+   "quantile": 0.1
+  },
+  "endings": [
+   "q10_60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "quantile",
+   "quantile": 0.9
+  },
+  "endings": [
+   "q90_60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "quantile",
+   "quantile": 0.999
+  },
+  "endings": [
+   "q99p9_60"
+  ]
+ },
+ {
+  "component": "prepare.rolling",
+  "params": {
+   "statistic": "quantile",
+   "quantile": 0.125
+  },
+  "endings": [
+   "q12p5_60"
+  ]
+ },
+ {
+  "component": "prepare.math",
+  "params": {},
+  "endings": [
+   "log"
+  ]
+ },
+ {
+  "component": "prepare.math",
+  "params": {
+   "function": "log"
+  },
+  "endings": [
+   "log"
+  ]
+ },
+ {
+  "component": "prepare.math",
+  "params": {
+   "function": "log1p"
+  },
+  "endings": [
+   "log1p"
+  ]
+ },
+ {
+  "component": "prepare.math",
+  "params": {
+   "function": "sqrt"
+  },
+  "endings": [
+   "sqrt"
+  ]
+ },
+ {
+  "component": "prepare.math",
+  "params": {
+   "function": "abs"
+  },
+  "endings": [
+   "abs"
+  ]
+ },
+ {
+  "component": "prepare.math",
+  "params": {
+   "function": "square"
+  },
+  "endings": [
+   "square"
+  ]
+ },
+ {
+  "component": "prepare.math",
+  "params": {
+   "function": "linear"
+  },
+  "endings": [
+   "scaled"
+  ]
+ },
+ {
+  "component": "prepare.range",
+  "params": {},
+  "endings": [
+   "clipped"
+  ]
+ },
+ {
+  "component": "prepare.range",
+  "params": {
+   "action": "clip"
+  },
+  "endings": [
+   "clipped"
+  ]
+ },
+ {
+  "component": "prepare.range",
+  "params": {
+   "action": "skip"
+  },
+  "endings": [
+   "clipped"
+  ]
+ },
+ {
+  "component": "prepare.accumulate",
+  "params": {},
+  "endings": [
+   "total"
+  ]
+ },
+ {
+  "component": "prepare.accumulate",
+  "params": {
+   "function": "sum"
+  },
+  "endings": [
+   "total"
+  ]
+ },
+ {
+  "component": "prepare.accumulate",
+  "params": {
+   "function": "min"
+  },
+  "endings": [
+   "running_min"
+  ]
+ },
+ {
+  "component": "prepare.accumulate",
+  "params": {
+   "function": "max"
+  },
+  "endings": [
+   "running_max"
+  ]
+ },
+ {
+  "component": "prepare.accumulate",
+  "params": {
+   "function": "count"
+  },
+  "endings": [
+   "count"
+  ]
+ },
+ {
+  "component": "prepare.hold",
+  "params": {},
+  "endings": [
+   "held"
+  ]
+ },
+ {
+  "component": "prepare.relation",
+  "params": {},
+  "endings": [
+   "corr60"
+  ]
+ },
+ {
+  "component": "prepare.relation",
+  "params": {
+   "statistic": "correlation"
+  },
+  "endings": [
+   "corr60"
+  ]
+ },
+ {
+  "component": "prepare.relation",
+  "params": {
+   "statistic": "covariance"
+  },
+  "endings": [
+   "cov60"
+  ]
+ },
+ {
+  "component": "prepare.relation",
+  "params": {
+   "statistic": "slope"
+  },
+  "endings": [
+   "beta60"
+  ]
+ },
+ {
+  "component": "prepare.relation",
+  "params": {
+   "statistic": "residual"
+  },
+  "endings": [
+   "resid60"
+  ]
+ },
+ {
+  "component": "prepare.relation",
+  "params": {
+   "window_size": 15
+  },
+  "endings": [
+   "corr15"
+  ]
+ }
+]

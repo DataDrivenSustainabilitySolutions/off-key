@@ -15,7 +15,10 @@ The same script writes the catalog the API serves to
 `frontend/src/Tests/support/fixtures/pipelineCatalog.generated.json`. The
 frontend tests read real steps from it (`catalogStep`), and a hand-built copy of
 a real step is checked against it (`asServed`), so a step the backend changes
-turns those tests red in the same pull request. CI's `--check` fails while the
+turns those tests red in the same pull request. It also writes
+`featureNames.generated.json` beside it: what each Prepare step appends to the
+features it adds, for each option of its settings, which the composer's own
+naming must match. CI's `--check` fails while the
 file is stale; run the script without it to regenerate.
 
 ## What the catalog says about a step

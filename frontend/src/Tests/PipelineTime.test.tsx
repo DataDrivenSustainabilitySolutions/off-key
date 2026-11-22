@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
-  normalizeDefinition,
   type PipelineComponent,
   type PipelineNode,
 } from "@/features/pipelines/contracts";
@@ -10,15 +9,11 @@ import { rangeText } from "@/features/pipelines/features";
 import { PipelineTime } from "@/features/pipelines/PipelineTime";
 import { defaultSuffix, hasScope } from "@/features/pipelines/scope";
 import { stepFamily, stepFields } from "@/features/pipelines/steps";
-import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
+import { type Field, type Issue, step, stepNode, stepSummary } from "./support/pipelineSteps";
 
-type Field = PipelineComponent["fields"][number];
 const flag = (name: string, label: string, value = false): Field =>
   ({ name, label, type: "boolean", default: value, has_default: true });
-const step = (id: string, fields: Field[]): PipelineComponent => ({
-  id, kind: "transform", group: "prepare", label: id, description: "", input_type: "features", output_type: "features", fields,
-});
 const time = step("prepare.time", [
   flag("elapsed", "Seconds since the previous observation", true),
   flag("hour", "Hour of day"),
@@ -39,13 +34,10 @@ const smooth = step("prepare.smooth", [
     shown_when: { field: "method", equals: ["time_constant"] } },
 ]);
 
-const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
-  ({ id: "step", kind: "transform", component: component.id, params });
-const definition = normalizeDefinition({ input_slots: [{ id: "dc_voltage", label: "DC voltage" }], nodes: [] });
+const node = stepNode;
 const summary = (component: PipelineComponent, params?: PipelineNode["params"]) =>
-  nodeSummary(node(component, params), component, definition).text;
+  stepSummary(component, params).text;
 
-type Issue = { path: string[]; message: string };
 function editor(params: PipelineNode["params"] = {}, issues: Issue[] = [], readOnly = false) {
   const changes: [Record<string, JsonValue>, string][] = [];
   render(<PipelineTime node={node(time, params)} component={time} issues={issues} readOnly={readOnly}

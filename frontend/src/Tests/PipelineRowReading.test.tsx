@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
-  normalizeDefinition,
   type PipelineComponent,
   type PipelineNode,
 } from "@/features/pipelines/contracts";
@@ -10,24 +9,10 @@ import { PipelineFormula } from "@/features/pipelines/PipelineFormula";
 import { PipelineApart } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix } from "@/features/pipelines/scope";
 import { CONDITION_STEPS, FORMULA_STEPS, stepFamily, stepFields } from "@/features/pipelines/steps";
-import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
+import { type Issue, option, scopeFields, step, stepNode, stepSummary, text } from "./support/pipelineSteps";
 
-type Field = PipelineComponent["fields"][number];
-const option = (name: string, value: string, options: string[]): Field =>
-  ({ name, label: name, type: "enum", default: value, has_default: true, options });
-const text = (name: string, label: string, required = false): Field => ({
-  name, label, type: "string", required, has_default: !required, nullable: !required,
-  ...(required ? {} : { default: null }), description: `${label} help`,
-});
-const scope: Field[] = [
-  { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
-  option("result", "add", ["replace", "add"]),
-  { name: "suffix", label: "Suffix", type: "string", default: null, has_default: true, nullable: true },
-];
-const step = (id: string, fields: Field[], group: PipelineComponent["group"] = "prepare"): PipelineComponent => ({
-  id, kind: "transform", group, label: id, description: "", input_type: "features", output_type: "features", fields,
-});
+const scope = scopeFields("add");
 const accumulate = step("prepare.accumulate", [
   ...scope, option("function", "sum", ["sum", "min", "max", "count"]), text("reset_when", "Reset when"),
 ]);
@@ -39,13 +24,9 @@ const relation = step("prepare.relation", [
 ]);
 const calculate = step("prepare.calculate", [text("formulas", "Formulas", true)], "combine");
 
-const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
-  ({ id: "step", kind: "transform", component: component.id, params });
-const definition = normalizeDefinition({ input_slots: [{ id: "dc_voltage", label: "DC voltage" }], nodes: [] });
-const summary = (component: PipelineComponent, params?: PipelineNode["params"]) =>
-  nodeSummary(node(component, params), component, definition);
+const node = stepNode;
+const summary = stepSummary;
 
-type Issue = { path: string[]; message: string; fix?: { start: number; end: number; text: string } };
 function panel(component: PipelineComponent, params: PipelineNode["params"], issues: Issue[] = []) {
   const changes: Record<string, JsonValue>[] = [];
   render(<PipelineFormula node={node(component, params)} component={component} features={["dc_voltage", "dc-current"]}

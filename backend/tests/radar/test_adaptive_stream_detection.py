@@ -50,7 +50,7 @@ FAST_PARAMS: dict[str, dict[str, Any]] = {
     "aberrant_random_cut_forest": {"n_trees": 2, "sample_size": 2, "seed": 1},
     "aberrant_stream_random_histogram_forest": {
         "n_estimators": 2,
-        "max_bins": 2,
+        "max_depth": 2,
         "window_size": 2,
         "seed": 1,
     },
@@ -64,7 +64,13 @@ FAST_PARAMS: dict[str, dict[str, Any]] = {
         "init_sample_size": 2,
         "seed": 1,
     },
-    "aberrant_knn": {"k": 1, "window_size": 8, "warm_up": 1},
+    "aberrant_knn": {
+        "k": 1,
+        "similarity_engine": {
+            "id": "faiss",
+            "params": {"window_size": 8, "warm_up": 1},
+        },
+    },
     "aberrant_local_outlier_factor": {"k": 1, "window_size": 8},
     "aberrant_seasonal_residual_detector": {"season_length": 4},
     "aberrant_holt_winters_forecaster": {"season_length": 4, "lead": 2},
@@ -299,7 +305,13 @@ def test_config_rejects_invalid_preprocessing_and_knn_warmup() -> None:
     with pytest.raises(ValidationError, match="k <= warm_up <= window_size"):
         AdaptiveStreamConfig(
             model_type="aberrant_knn",
-            model_params={"k": 5, "warm_up": 3, "window_size": 10},
+            model_params={
+                "k": 5,
+                "similarity_engine": {
+                    "id": "faiss",
+                    "params": {"window_size": 10, "warm_up": 3},
+                },
+            },
         )
 
 

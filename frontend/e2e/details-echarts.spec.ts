@@ -66,6 +66,27 @@ const STATIC_EVIDENCE = INITIAL_POINTS.slice(0, 3).map(({ timestamp }, index) =>
     monitor_id: "radar-service-e2e",
     restarted_martingale: 10 ** -index,
     threshold: 100,
+    tracker_results: [
+      {
+        tracker_id: "primary",
+        betting_function: "power",
+        betting_parameters: { epsilon: 0.5 },
+        alarm_statistic: "restarted_martingale",
+        statistic_value: 10 ** -index,
+        statistic_is_infinite: false,
+        log_statistic_value: -index * Math.LN10,
+        statistics: {},
+        e_value: 1,
+        e_value_is_infinite: false,
+        log_e_value: 0,
+        threshold: 100,
+        alarm_fired: false,
+        alarm_active: false,
+        alarm_muted: false,
+        alarm_count: 0,
+        tested_count: 1,
+      },
+    ],
   }),
 );
 const adaptiveEvidence = (timestamp: string, sequence: number) =>

@@ -47,7 +47,10 @@ BACKEND = [
         "off_key_mqtt_radar.catalog",
         "--check",
     ],
-    ["uv", "run", "--project", "backend", "python", "-m", "pytest", "-q", "-x"],
+    [
+        *("uv", "run", "--project", "backend", "python", "-m", "pytest"),
+        *("-q", "-x", "-n", "auto"),
+    ],
 ]
 FRONTEND = [
     ["npm", "--prefix", "frontend", "ci"],

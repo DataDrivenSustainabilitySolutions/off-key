@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from off_key_core.models.pipeline_catalog import pipeline_catalog
+from off_key_core.models.pipeline_prepare import default_suffix, output_suffixes
 from off_key_core.schemas import dojo, pipelines
 from pydantic import BaseModel
 
@@ -162,6 +163,45 @@ def step_catalog() -> str:
     return json.dumps(catalog, indent=1, ensure_ascii=False) + "\n"
 
 
+# Settings beyond each option of a step's enums, where a number shapes the name.
+NAMED_SETTINGS = {
+    "prepare.smooth": [
+        {"window_size": 5},
+        {"method": "time_constant", "time_constant": 2.5},
+    ],
+    "prepare.change": [{"lag": 24}],
+    "prepare.rolling": [
+        {"statistic": "quantile", "quantile": quantile}
+        for quantile in (0.1, 0.9, 0.999, 0.125)
+    ],
+    "prepare.relation": [{"window_size": 15}],
+    "prepare.lags": [{"lags": [24, 1, 5]}, {"unit": "hours", "lags": [1, 24]}],
+}
+
+
+def feature_names() -> str:
+    """What each Prepare step appends to the features it adds, as the compiler
+    names them, for each option of its enums and the settings above."""
+    cases = []
+    for component in pipeline_catalog().components:
+        try:
+            default_suffix(component.id, {})
+        except (ValueError, KeyError):
+            continue
+        variants: list[dict] = [{}]
+        for field in component.fields:
+            if field.type == "enum" and field.name != "result":
+                variants += [{field.name: option} for option in field.options or []]
+        variants += NAMED_SETTINGS.get(component.id, [])
+        for params in variants:
+            suffix = default_suffix(component.id, params)
+            endings = output_suffixes(component.id, params, suffix)
+            cases.append(
+                {"component": component.id, "params": params, "endings": list(endings)}
+            )
+    return json.dumps(cases, indent=1, ensure_ascii=False) + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
@@ -176,6 +216,10 @@ def main() -> None:
         repository
         / "frontend/src/Tests/support/fixtures/pipelineCatalog.generated.json": (
             step_catalog()
+        ),
+        repository
+        / "frontend/src/Tests/support/fixtures/featureNames.generated.json": (
+            feature_names()
         ),
     }
     for target, text in files.items():

@@ -33,6 +33,7 @@ import type { HistoryPoint, TelemetryHistory } from "@/types/telemetry-history";
 import {
   groupTelemetryEvents,
   buildTelemetryEventMarkPoints,
+  getNumberFormatter,
   type TelemetryEventGroup,
 } from "./telemetry-events";
 
@@ -161,7 +162,6 @@ interface BuildTelemetryChartOptionInput {
 const DEFAULT_SERIES_PALETTE = ["#2f6db3", "#c0562e", "#7a4fb0", "#2e8a57", "#a0711a", "#a43f74", "#3f8590", "#6b6b6b"];
 
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
-const numberFormatters = new Map<string, Intl.NumberFormat>();
 
 const getDateTimeFormatter = (
   timeZone: string,
@@ -185,17 +185,6 @@ const getDateTimeFormatter = (
   return formatter;
 };
 
-const getNumberFormatter = (locale?: string): Intl.NumberFormat => {
-  const key = locale ?? "default";
-  const cached = numberFormatters.get(key);
-  if (cached) return cached;
-
-  const formatter = new Intl.NumberFormat(locale, {
-    maximumFractionDigits: 6,
-  });
-  numberFormatters.set(key, formatter);
-  return formatter;
-};
 
 const formatNumber = (value: number): string => {
   if (!Number.isFinite(value)) return String(value);

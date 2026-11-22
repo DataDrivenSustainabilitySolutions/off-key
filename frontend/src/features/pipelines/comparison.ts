@@ -2,6 +2,7 @@ import type { JsonValue } from "@/types/monitoring";
 import { fieldDefaults, type FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineNode } from "./contracts";
 import { incomingEdges, nodeLabel, type GraphDocument } from "./model";
+import { plural } from "./scope";
 import { componentFor, shownComponent, switchedOff } from "./semantics";
 import { sameSetting } from "./summaries";
 
@@ -25,7 +26,6 @@ const SETTINGS = [
   ["seed", "Random seed"],
 ] as const;
 
-const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 /** A number with as many significant digits as it holds, up to 15, so a small rate or a quantile
  * near one keeps the digits that set it apart. */

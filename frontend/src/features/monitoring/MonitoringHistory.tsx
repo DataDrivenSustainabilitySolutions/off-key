@@ -9,10 +9,11 @@ import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTime
 import { alarmText } from "@/features/charts/telemetry-detectors";
 import { getChartDomain } from "@/features/charts/telemetry-thresholds";
 import type { ActiveService } from "@/types/monitoring";
+import { isScoring } from "@/lib/monitoring-services";
 import type { SystemConnection } from "@/types/system";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
-import { buildServiceHistoryModel, MAX_VISIBLE_READINGS } from "./historyModel";
+import { buildServiceHistoryModel, MAX_VISIBLE_READINGS, serviceHistoryDetectors } from "./historyModel";
 import { useServiceHistory } from "./useServiceHistory";
 import { HistoryViewControls } from "@/features/charts/HistoryViewControls";
 import { combineHistory, DEFAULT_HISTORY_PREFERENCE, historyInterval, presentHistory } from "@/features/charts/history-presentation";
@@ -51,11 +52,10 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const history = useServiceHistory(service.id, selectedInputs, inputs, connections, historyCache);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
   const histories = useMemo(() => new Map([...history.histories].map(([id, value]) => [id, value.telemetry])), [history.histories]);
-  const operational = service.active && service.operational_status.stage === "operational" && !service.operational_status.is_stale;
-  const base = useMemo(() => buildServiceHistoryModel({ serviceId: service.id, inputs: selectedInputs, allInputs: inputs,
-    histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", operational, presentation: presentation.presentation }),
-  [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, operational, presentation.presentation]);
-  const selection = useDetectorSelection(base.detectors, service.id);
+  const operational = isScoring(service);
+  const detectors = useMemo(() => serviceHistoryDetectors(service.id, history.monitoring.evidence, inputs),
+    [service.id, history.monitoring.evidence, inputs]);
+  const selection = useDetectorSelection(detectors, service.id);
   const { model: completeModel } = useMemo(() => buildServiceHistoryModel({ serviceId: service.id, inputs: selectedInputs, allInputs: inputs,
     histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", selectedDetectorIds: selection.selectedDetectorIds, operational, presentation: presentation.presentation }),
   [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, selection.selectedDetectorIds, operational, presentation.presentation]);

@@ -14,6 +14,15 @@ export const MAX_VISIBLE_READINGS = 6;
 const READING_COLORS = ["#3a7e72", "#7161b5", "#b36b32", "#3d7fa5", "#a75679", "#6f8434"];
 const DARK_READING_COLORS = ["#89bdaf", "#b6a2ed", "#e5ac73", "#80bce0", "#e5a0bf", "#becf88"];
 
+/** A monitor's detectors in its evidence; several inputs share one joint anomaly score. */
+export function serviceHistoryDetectors(
+  serviceId: string, evidence: readonly MonitoringChartEvidence[], allInputs: readonly MonitoringInput[],
+) {
+  return collectMonitoringChartDetectors(evidence.filter(item => item.monitor_id === serviceId)).map(detector => ({ ...detector,
+    name: detector.pane === "adaptive" && allInputs.length > 1 ? "Joint anomaly score" : detector.name,
+  }));
+}
+
 export function buildServiceHistoryModel({
   serviceId, inputs, allInputs, histories, evidence, dark, selectedDetectorIds, operational = true, presentation,
 }: {
@@ -28,9 +37,7 @@ export function buildServiceHistoryModel({
   presentation?: HistoryPresentation;
 }) {
   const rows = evidence.filter(item => item.monitor_id === serviceId);
-  const detectors = collectMonitoringChartDetectors(rows).map(detector => ({ ...detector,
-    name: detector.pane === "adaptive" && allInputs.length > 1 ? "Joint anomaly score" : detector.name,
-  }));
+  const detectors = serviceHistoryDetectors(serviceId, rows, allInputs);
   const times = [...new Set(detectors.flatMap(detector => detector.observations.map(observation => observation.timeMs)))].sort((a, b) => a - b);
   const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes: times, selectedDetectorIds });
   const palette = dark ? DARK_READING_COLORS : READING_COLORS;

@@ -6,6 +6,7 @@ import {
   ConnectionLineType,
   SelectionMode,
   applyNodeChanges,
+  type OnConnectStart,
   type OnConnectStartParams,
   type OnConnectEnd,
   type ReactFlowInstance,
@@ -18,13 +19,14 @@ import { useTheme } from "@/components/theme-provider";
 import type { PipelineBlockCreate } from "@/types/pipelines.generated";
 import type { StepChange } from "./comparison";
 import type { PipelineBlock, PipelineComponent, PipelineValidation } from "./contracts";
+import { plural } from "./scope";
 import { addBlockAfter, blockChain, blockChoices, blockedBy, insertBlock, placeBlock, type BlockOutcome } from "./blocks";
 import {
   copySteps, duplicateSteps, fragmentSize, heldSteps, holdSteps, pastedNote, pasteSteps, type Pasted, type StepFragment,
 } from "./clipboard";
 import {
   addAfter, addBlocker, afterBlocker, connectNodes, connectionIssue, disconnectEdge, disconnectNode, duplicateBlocker,
-  insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel, stepTitle,
+  insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel, snap, stepTitle,
   type GraphDocument, type Link,
 } from "./model";
 import { PipelineContextMenu } from "./PipelineContextMenu";
@@ -69,6 +71,10 @@ function fitPadding(covered: CoveredEdges | undefined, room: number, fallback: n
   const side = (edge = 0) => `${edge + room}px` as const;
   return { top: side(covered.top), right: side(covered.right), bottom: side(covered.bottom), left: side() };
 }
+
+/** Shift, Cmd or Ctrl held: a click adds a step to the others instead of choosing it alone. */
+const additiveKeys = (event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) =>
+  event.shiftKey || event.metaKey || event.ctrlKey;
 type Props = {
   document: GraphDocument;
   components: PipelineComponent[];
@@ -117,7 +123,6 @@ type MenuTarget =
   | { kind: "node"; id: string }
   | { kind: "note"; id: string }
   | { kind: "edge"; link: Link };
-const steps = (count: number) => `${count} step${count === 1 ? "" : "s"}`;
 /** A touch held this long without moving opens the menu, as a right-click does. */
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP = 10;
@@ -286,6 +291,9 @@ export default function PipelineCanvas({
   const insertable = useMemo(() => new Set(readOnly ? [] : document.definition.edges
     .filter((edge) => components.some((component) => !insertBlocker(document.definition, edge, component, components)))
     .map(edgeId)), [readOnly, document.definition, components]);
+  /** Why a wire from source to target cannot be drawn; one onto an occupied input replaces it. */
+  const wireIssue = (source: string, target: string) =>
+    connectionIssue(document.definition, source, target, components, { replace: true });
   const nodes = useMemo(() => {
     // While a wire is drawn, every dot says whether it can take it; an occupied
     // input takes it by replacing its current connection.
@@ -318,13 +326,14 @@ export default function PipelineCanvas({
   const connectingNode = graph.nodes.find((node) => node.id === connecting?.nodeId);
   const connectingType = connecting?.handleType === "source"
     ? connectingNode?.data.outputType : connectingNode?.data.inputType;
+  const startConnection: OnConnectStart = (_event, start) => { setFeedback(""); setConnecting(start); };
   const endConnection: OnConnectEnd = (_event, connection) => {
     setConnecting(undefined);
     if (connection.isValid === false && connection.fromNode && connection.toNode) {
       const [source, target] = connection.fromHandle?.type === "source"
         ? [connection.fromNode.id, connection.toNode.id]
         : [connection.toNode.id, connection.fromNode.id];
-      setFeedback(connectionIssue(document.definition, source, target, components, { replace: true }) ?? "");
+      setFeedback(wireIssue(source, target) ?? "");
     }
   };
   const edges = useMemo(
@@ -358,11 +367,8 @@ export default function PipelineCanvas({
     const component = components.find((item) => item.id === componentId);
     const result = component && insertOnEdge(document, link, component, components);
     if (!result) return;
-    setFeedback("");
     setSelectedEdges([]);
-    onChange(result.document);
-    onSelect(result.id);
-    setInserted([result.id]);
+    applied(result);
   };
   const cardElement = (id: string) =>
     surface.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
@@ -392,9 +398,7 @@ export default function PipelineCanvas({
   const placeAt = (clientX: number, clientY: number) => {
     const center = flow?.screenToFlowPosition({ x: clientX, y: clientY }, { snapToGrid: false }) ?? { x: clientX, y: clientY };
     const position = { x: center.x - NODE_SIZE.width / 2, y: center.y - NODE_SIZE.height / 2 };
-    return snapToGrid
-      ? { x: Math.round(position.x / SNAP_GRID[0]) * SNAP_GRID[0], y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1] }
-      : position;
+    return snapToGrid ? { x: snap(position.x), y: snap(position.y) } : position;
   };
   // Where the pointer is over the canvas; steps pasted by key land there.
   const pointer = useRef<{ x: number; y: number }>(undefined);
@@ -433,7 +437,7 @@ export default function PipelineCanvas({
       onChange(removeElements(document, { nodeIds: ids }));
       onSelect(undefined);
     }
-    setFeedback(`${cut ? "Cut" : "Copied"} ${steps(fragment.steps.length)}.`);
+    setFeedback(`${cut ? "Cut" : "Copied"} ${plural(fragment.steps.length, "step")}.`);
     return text;
   };
   /** A menu has no clipboard event to write to, so it asks the browser; Paste in the menu works without it. */
@@ -453,7 +457,7 @@ export default function PipelineCanvas({
     if (readOnly || !ids.length) return false;
     const turned = switchSteps(document, ids, components);
     if (turned) onChange(turned.document);
-    setFeedback(turned ? `Switched ${turned.off ? "off" : "on"} ${steps(turned.ids.length)}.`
+    setFeedback(turned ? `Switched ${turned.off ? "off" : "on"} ${plural(turned.ids.length, "step")}.`
       : "Only a step that changes features can be switched off.");
     return true;
   };
@@ -477,7 +481,7 @@ export default function PipelineCanvas({
     const blocker = noteBlocker(document);
     setFeedback(blocker ?? "");
     const top = card.y + NODE_SIZE.height / 2 - SNAP_GRID[1];
-    if (!blocker) setNoteWriting({ at: { x: card.x, y: snapToGrid ? Math.round(top / SNAP_GRID[1]) * SNAP_GRID[1] : top } });
+    if (!blocker) setNoteWriting({ at: { x: card.x, y: snapToGrid ? snap(top) : top } });
   };
   const keepNote = (text: string | undefined, byKey: boolean) => {
     const writing = noteWriting;
@@ -535,7 +539,7 @@ export default function PipelineCanvas({
       return { ...add, items: [...add.items,
         { key: "note", label: "Add a note", icon: StickyNote, keys: SHORTCUTS.note, separated: true,
           blocked: noteBlocker(document), run: () => writeNote(target.position) },
-        ...(held ? [{ key: "paste", label: "Paste", detail: steps(held.steps.length), icon: ClipboardPaste, keys: SHORTCUTS.paste,
+        ...(held ? [{ key: "paste", label: "Paste", detail: plural(held.steps.length, "step"), icon: ClipboardPaste, keys: SHORTCUTS.paste,
           run: () => paste(held, { x: target.position.x + NODE_SIZE.width / 2, y: target.position.y + NODE_SIZE.height / 2 }) }] : []),
       ] };
     }
@@ -562,12 +566,12 @@ export default function PipelineCanvas({
     // A step chosen with others answers for all of them.
     if (selection.length > 1 && selection.includes(id)) {
       const turn = switchSteps(document, selection, components);
-      return { label: steps(selection.length), items: [
+      return { label: plural(selection.length, "step"), items: [
       { key: "duplicate", label: "Duplicate", icon: CopyPlus, keys: SHORTCUTS.duplicate, run: () => { duplicate(); } },
       { key: "copy", label: "Copy", icon: Copy, keys: SHORTCUTS.copy, run: () => copyFromMenu() },
       { key: "cut", label: "Cut", icon: Scissors, keys: SHORTCUTS.cut, run: () => copyFromMenu(true) },
       { key: "switch", label: turn?.off === false ? "Switch on" : "Switch off", icon: turn?.off === false ? Power : PowerOff,
-        detail: turn && turn.ids.length < selection.length ? steps(turn.ids.length) : undefined, keys: SHORTCUTS.switch,
+        detail: turn && turn.ids.length < selection.length ? plural(turn.ids.length, "step") : undefined, keys: SHORTCUTS.switch,
         blocked: turn ? undefined : "None of these steps changes features.", run: () => { switchChosen(); } },
       { key: "delete", label: "Delete", icon: Trash2, keys: SHORTCUTS.remove, destructive: true, separated: true,
         run: () => { onChange(removeElements(document, { nodeIds: selection })); onSelect(undefined); } },
@@ -633,6 +637,8 @@ export default function PipelineCanvas({
     if (file) return onOpenFile?.(file);
     onAdd(event.dataTransfer.getData("application/off-key-component"), placeAt(event.clientX, event.clientY));
   };
+  const fitAllPadding = fitPadding(insets, FIT_ROOM, 0.15);
+  const fitReadable = () => { if (flow && surface.current) void fitReadableView(flow, surface.current, selected, insets); };
   return (
     <div
       className="pl-canvas-wrap"
@@ -644,8 +650,8 @@ export default function PipelineCanvas({
         if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.defaultPrevented
           && event.currentTarget.contains(origin) && !origin.closest("input, textarea, select, [contenteditable='true']")) {
           const act = event.key === "?" ? () => setShortcutsOpen((open) => !open)
-            : event.key === "1" ? () => { void flow?.fitView({ padding: fitPadding(insets, FIT_ROOM, 0.15) }); }
-            : event.key === "0" ? () => { if (flow && surface.current) void fitReadableView(flow, surface.current, selected, insets); }
+            : event.key === "1" ? () => { void flow?.fitView({ padding: fitAllPadding }); }
+            : event.key === "0" ? fitReadable
             : event.key === "+" || event.key === "=" ? () => { void flow?.zoomIn(); }
             : event.key === "-" ? () => { void flow?.zoomOut(); }
             : event.key.toLowerCase() === "a" && !event.shiftKey && !readOnly ? () => {
@@ -690,8 +696,8 @@ export default function PipelineCanvas({
           openMenu(x, y, aimed);
         }, LONG_PRESS_MS) };
       }}
-      onPointerDownCapture={(event) => { additive.current = event.shiftKey || event.metaKey || event.ctrlKey; }}
-      onKeyDownCapture={(event) => { additive.current = event.shiftKey || event.metaKey || event.ctrlKey; }}
+      onPointerDownCapture={(event) => { additive.current = additiveKeys(event); }}
+      onKeyDownCapture={(event) => { additive.current = additiveKeys(event); }}
       onPointerLeave={() => { pointer.current = undefined; }}
       onPointerMove={(event) => {
         pointer.current = surface.current?.contains(event.target as Node) ? { x: event.clientX, y: event.clientY } : undefined;
@@ -743,28 +749,19 @@ export default function PipelineCanvas({
           snapGrid={SNAP_GRID}
           nodesDraggable={layoutEditable || !readOnly}
           nodesConnectable={!readOnly}
-          onConnectStart={(_event, start) => { setFeedback(""); setConnecting(start); }}
+          onConnectStart={startConnection}
           onConnectEnd={endConnection}
-          onClickConnectStart={(_event, start) => { setFeedback(""); setConnecting(start); }}
+          onClickConnectStart={startConnection}
           onClickConnectEnd={endConnection}
           connectionLineStyle={{ stroke: connectingType ? `var(--pl-${connectingType})` : undefined, strokeWidth: 2 }}
           connectionLineType={ConnectionLineType.SmoothStep}
-          isValidConnection={(connection) =>
-            !readOnly &&
-            !connectionIssue(
-              document.definition,
-              connection.source,
-              connection.target,
-              components,
-              { replace: true },
-            )
-          }
+          isValidConnection={(connection) => !readOnly && !wireIssue(connection.source, connection.target)}
           elementsSelectable
           onEdgeMouseEnter={(_event, edge) => hover(edge.id)}
           onEdgeMouseLeave={() => hover()}
           onNodeClick={(event, node) => {
             // A plain click chooses this step alone and opens its settings.
-            if (!(event.shiftKey || event.metaKey || event.ctrlKey)) onSelect(node.id);
+            if (!additiveKeys(event)) onSelect(node.id);
           }}
           onSelectionStart={() => { boxing.current = true; }}
           onSelectionEnd={() => { boxing.current = false; }}
@@ -843,13 +840,7 @@ export default function PipelineCanvas({
             })
           }
           onConnect={(connection) => {
-            const issue = connectionIssue(
-              document.definition,
-              connection.source,
-              connection.target,
-              components,
-              { replace: true },
-            );
+            const issue = wireIssue(connection.source, connection.target);
             if (issue) {
               setFeedback(issue);
               return;
@@ -899,12 +890,12 @@ export default function PipelineCanvas({
             onMenu={(event, id) => contextMenuAt(event, { kind: "note", id })} />}
           {slot && onChooseDetector && <PipelineDetectorSlot slot={slot} after={corner(slot.after)} before={corner(slot.before)}
             onChoose={onChooseDetector} />}
-          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: fitPadding(insets, FIT_ROOM, 0.15) }}>
+          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: fitAllPadding }}>
             <ControlButton
               className="pl-canvas-scale"
               aria-label="Readable size"
               title="Return to readable size"
-              onClick={() => { if (flow && surface.current) void fitReadableView(flow, surface.current, selected, insets); }}
+              onClick={fitReadable}
             >
               {Math.round(zoom * 100)}%
             </ControlButton>
@@ -944,7 +935,7 @@ export default function PipelineCanvas({
           if (restore && shownMenu.returnFocus instanceof HTMLElement) shownMenu.returnFocus.focus({ preventScroll: true });
         }} />}
       {/* The rings on the cards show a group; this says it to those who cannot see them. */}
-      <span className="ex-sr-only" aria-live="polite">{selection.length > 1 ? `${steps(selection.length)} chosen` : ""}</span>
+      <span className="ex-sr-only" aria-live="polite">{selection.length > 1 ? `${plural(selection.length, "step")} chosen` : ""}</span>
       {onSaveBlock && savingFrom && blockChain(document.definition, savingFrom).length > 0
         && <PipelineSaveBlock document={document} components={components} from={savingFrom} onSave={onSaveBlock}
           onClose={() => setSavingFrom(undefined)} />}

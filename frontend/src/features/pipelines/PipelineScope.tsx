@@ -2,11 +2,9 @@ import { useId, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
 import { CombinedName } from "./PipelineFormula";
-import { addedNames, addsByDefault, combinedName, defaultSuffix, isExpectation, listed, setting, stepScope } from "./scope";
+import { addedNames, addsByDefault, combinedName, defaultSuffix, isExpectation, listed, plural, setting, stepScope } from "./scope";
 
 type Issue = { path: (string | number)[]; message: string };
-
-const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 const APART = {
   against: {

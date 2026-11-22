@@ -6,6 +6,7 @@ from functools import cached_property
 from off_key_core.models.pipeline_parameters import fusion_mode
 from off_key_core.models.pipeline_prepare import StageSplit, stage_split
 from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
+from off_key_core.schemas.pipeline_versions import component_learning
 from off_key_core.schemas.pipelines import PipelineExecutionConfig, PipelineValidation
 
 from ..execution_errors import ObservationRejected
@@ -75,6 +76,23 @@ class ExecutionPlan:
         """How the calibration step combines detectors: max or mean."""
         identifier = self.compiled.calibration_id or self.policy_id
         return fusion_mode(self.nodes[identifier].params)
+
+    def batch_ids(self) -> list[str]:
+        """The detectors fitted once, in the run's order."""
+        return [
+            identifier
+            for identifier in self.detector_ids
+            if component_learning(self.nodes[identifier].component) == "batch"
+        ]
+
+    def streaming_ids(self) -> list[str]:
+        """The detectors that score and then take in every observation: those that
+        learn continuously and those that are pretrained."""
+        return [
+            identifier
+            for identifier in self.detector_ids
+            if component_learning(self.nodes[identifier].component) != "batch"
+        ]
 
     def detector_features(self, detector_id: str) -> list[str]:
         """The features one detector scores, in their order."""

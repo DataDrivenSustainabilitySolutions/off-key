@@ -8,6 +8,7 @@ Handles MQTT message processing pipeline:
 - Result persistence
 """
 
+import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -354,43 +355,27 @@ class MessageProcessor:
         features: dict[str, float],
         message: MQTTMessage,
         charger_id: str | None,
-        alignment_context: dict[str, Any] | None = None,
+        alignment_context: dict[str, Any],
     ) -> AnomalyResult:
         """Run the anomaly detector and return result."""
-        alignment_context = alignment_context or {}
-        input_timestamps = alignment_context.get("input_timestamps")
         # An observation is measured when its latest reading is.
-        sample_timestamp = alignment_context.get("sample_timestamp")
-        if isinstance(input_timestamps, dict):
-            finite_input_timestamps = [
-                float(timestamp)
-                for timestamp in input_timestamps.values()
-                if isinstance(timestamp, int | float)
-            ]
-            if finite_input_timestamps:
-                sample_timestamp = max(finite_input_timestamps)
+        sample_timestamp = alignment_context["sample_timestamp"]
+        input_timestamps = alignment_context["input_timestamps"]
         result = self.detector.process(
             features,
             topic=message.topic,
             charger_id=charger_id,
-            timestamp=(
-                float(sample_timestamp)
-                if isinstance(sample_timestamp, int | float)
-                else None
-            ),
+            timestamp=sample_timestamp,
         )
         result.context = result.context or {}
         result.context["alignment"] = alignment_context
-        sensor_ages = alignment_context.get("sensor_ages")
-        if isinstance(sensor_ages, dict):
-            result.context["sensor_ages"] = sensor_ages
-        if isinstance(sample_timestamp, int | float):
-            canonical_dt = datetime.fromtimestamp(float(sample_timestamp), tz=UTC)
-            result.timestamp = canonical_dt
-            result.context["canonical_sample_timestamp"] = canonical_dt.isoformat()
+        result.context["sensor_ages"] = alignment_context["sensor_ages"]
+        canonical_dt = datetime.fromtimestamp(sample_timestamp, tz=UTC)
+        result.timestamp = canonical_dt
+        result.context["canonical_sample_timestamp"] = canonical_dt.isoformat()
         try:
             self.detector.primary_service.attach_observation_metadata(
-                result.timestamp, input_timestamps or {}
+                result.timestamp, input_timestamps
             )
         except Exception:
             logger.exception("event=radar.pipeline_diagnostic_metadata_failed")
@@ -416,43 +401,27 @@ class MessageProcessor:
         if result.is_anomaly:
             alignment_context = (result.context or {}).get("alignment", {})
             sensor_ages = alignment_context.get("sensor_ages", {})
-            if result.severity in ["high", "critical"]:
-                logger.warning(
-                    "event=radar.anomaly_detected score=%.3f severity=%s charger=%s",
-                    result.anomaly_score,
-                    result.severity,
-                    result.charger_id,
-                    extra={
-                        **self._log_context,
-                        "anomaly_score": result.anomaly_score,
-                        "severity": result.severity,
-                        "topic": result.topic,
-                        "charger_id": result.charger_id,
-                        "sensor_ages": sensor_ages,
-                        "alignment_status": alignment_context.get("alignment_status"),
-                        "canonical_sample_timestamp": (result.context or {}).get(
-                            "canonical_sample_timestamp"
-                        ),
-                    },
-                )
-            else:
-                logger.debug(
-                    "event=radar.anomaly_detected score=%.3f severity=%s charger=%s",
-                    result.anomaly_score,
-                    result.severity,
-                    result.charger_id,
-                    extra={
-                        **self._log_context,
-                        "anomaly_score": result.anomaly_score,
-                        "severity": result.severity,
-                        "charger_id": result.charger_id,
-                        "sensor_ages": sensor_ages,
-                        "alignment_status": alignment_context.get("alignment_status"),
-                        "canonical_sample_timestamp": (result.context or {}).get(
-                            "canonical_sample_timestamp"
-                        ),
-                    },
-                )
+            logger.log(
+                logging.WARNING
+                if result.severity in ["high", "critical"]
+                else logging.DEBUG,
+                "event=radar.anomaly_detected score=%.3f severity=%s charger=%s",
+                result.anomaly_score,
+                result.severity,
+                result.charger_id,
+                extra={
+                    **self._log_context,
+                    "anomaly_score": result.anomaly_score,
+                    "severity": result.severity,
+                    "topic": result.topic,
+                    "charger_id": result.charger_id,
+                    "sensor_ages": sensor_ages,
+                    "alignment_status": alignment_context.get("alignment_status"),
+                    "canonical_sample_timestamp": (result.context or {}).get(
+                        "canonical_sample_timestamp"
+                    ),
+                },
+            )
 
     def _maybe_cleanup_memory(self) -> None:
         """Trigger periodic memory cleanup."""

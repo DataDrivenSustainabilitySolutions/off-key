@@ -14,7 +14,6 @@ from time import perf_counter_ns
 from typing import Any
 
 import numpy as np
-from off_key_core.models.static import validate_static_model_params
 from off_key_core.schemas.radar import StaticBaselineConfig
 
 from .alarm_calibration import resolve_tracker_thresholds
@@ -32,7 +31,12 @@ from .pipelines.batch import (
 )
 from .pipelines.execution import PipelineExecutionMixin
 from .pipelines.prepare import Withheld
-from .pipelines.pyod import calibrated_detector, instantiate_pyod, seeded_params
+from .pipelines.pyod import (
+    calibrated_detector,
+    instantiate_pyod,
+    node_detector,
+    seeded_params,
+)
 
 
 class StaticConformalState(Enum):
@@ -405,8 +409,6 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             # Scoring only reads the fitted steps, so this observation is skipped.
             self._skip(error.node_id or self.plan.detector_id, "non_finite", str(error))
         self.processed_count += 1
-        if self.alarm_controller is None:
-            self.alarm_controller = self._create_alarm_controller()
         alarm_context = self._update_alarm_policy(p_value)
         is_anomaly = bool(alarm_context["alarm_fired"])
         if is_anomaly:
@@ -525,11 +527,25 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         """Fit the graph, then the detector and calibration on its features."""
         graph = BatchFeatureGraph(self.plan)
         if self.plan.fused:
-            return self._fit_fused(graph, training_matrix, calibration_matrix)
-        fitted, policy = self._fit_baseline_matrices(
-            graph.fit_transform(training_matrix), graph.transform(calibration_matrix)
+            pipeline = self._fit_fused(graph, training_matrix, calibration_matrix)
+        else:
+            pipeline = FittedStaticPipeline(
+                graph,
+                calibrated_detector(
+                    self._create_pyod_detector(),
+                    graph.fit_transform(training_matrix),
+                    graph.transform(calibration_matrix),
+                    self.static_config.seed,
+                ),
+            )
+        # Fused p-values take the values one detector's do, so the thresholds
+        # resolve the same way.
+        resolved_thresholds = resolve_tracker_thresholds(
+            self.static_config.martingale_config,
+            calibration_size=len(calibration_matrix),
+            seed=self.static_config.seed,
         )
-        return FittedStaticPipeline(graph, fitted), policy
+        return pipeline, self._create_alarm_controller(resolved_thresholds)
 
     def _fit_fused(self, graph, training_matrix, calibration_matrix):
         """Fit every detector on its own features, then combine their calibrations.
@@ -542,8 +558,11 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         for identifier in self.plan.detector_ids:
             source = self.plan.detector_inputs[identifier]
             try:
-                detectors[identifier] = self._calibrated_detector(
-                    self.plan.nodes[identifier], training[source], calibration[source]
+                detectors[identifier] = calibrated_detector(
+                    self._create_pyod_detector(self.plan.nodes[identifier]),
+                    training[source],
+                    calibration[source],
+                    self.static_config.seed,
                 )
             except Exception as error:
                 raise FatalExecutionError(str(error), node_id=identifier) from error
@@ -551,47 +570,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             np.column_stack([item.calibration_set for item in detectors.values()]),
             self.plan.fusion,
         )
-        # Fused p-values take the values one detector's do, so the thresholds
-        # resolve the same way.
-        resolved_thresholds = resolve_tracker_thresholds(
-            self.static_config.martingale_config,
-            calibration_size=len(calibration_matrix),
-            seed=self.static_config.seed,
-        )
-        return (
-            FusedStaticPipeline(graph, detectors, fusion, self.static_config.seed),
-            self._create_alarm_controller(resolved_thresholds),
-        )
-
-    def _calibrated_detector(self, node, training_matrix, calibration_matrix):
-        return calibrated_detector(
-            self._create_pyod_detector(node),
-            training_matrix,
-            calibration_matrix,
-            self.static_config.seed,
-        )
-
-    def _fit_baseline_matrices(self, training_matrix, calibration_matrix):
-        """Fit and calibrate with an already materialized numerical schema."""
-        from nonconform import ConformalDetector, Split
-
-        detector = self._create_pyod_detector()
-        detector.fit(training_matrix)
-        conformal_detector = ConformalDetector(
-            detector=detector,
-            strategy=Split(n_calib=0.1),
-            score_polarity="auto",
-            seed=self.static_config.seed,
-        )
-        conformal_detector.calibrate(calibration_matrix)
-
-        resolved_thresholds = resolve_tracker_thresholds(
-            self.static_config.martingale_config,
-            calibration_size=len(calibration_matrix),
-            seed=self.static_config.seed,
-        )
-        alarm_controller = self._create_alarm_controller(resolved_thresholds)
-        return conformal_detector, alarm_controller
+        return FusedStaticPipeline(graph, detectors, fusion, self.static_config.seed)
 
     def _create_alarm_controller(
         self,
@@ -604,16 +583,14 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
 
     def _create_pyod_detector(self, node=None) -> Any:
         """The first detector from the run's settings, or one node of the graph."""
-        if node is None:
-            model_type = self.static_config.model_type
-            params = dict(self.static_config.model_params or {})
-        else:
-            model_type = node.component.removeprefix("detector:")
-            # As the run's settings hold the first detector: without defaults.
-            params = validate_static_model_params(
-                model_type, node.params, include_defaults=False
-            )
-        params = seeded_params(model_type, params, self.static_config.seed)
+        if node is not None:
+            return node_detector(node, self.static_config.seed)
+        model_type = self.static_config.model_type
+        params = seeded_params(
+            model_type,
+            dict(self.static_config.model_params or {}),
+            self.static_config.seed,
+        )
         return self._instantiate_pyod_detector(model_type, params)
 
     def _instantiate_pyod_detector(

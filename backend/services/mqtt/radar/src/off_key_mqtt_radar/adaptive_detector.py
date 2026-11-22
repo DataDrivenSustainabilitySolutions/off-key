@@ -552,9 +552,13 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             self._forecasts or [], self.plan, timestamp, input_timestamps
         )
 
-    def _score(self, data: dict[str, float]) -> float:
-        self._diagnose(self.diagnostics.select_pass, "score")
+    def _begin_pass(self, phase: str) -> None:
+        """Start a score or learn pass's diagnostics at the bound readings."""
+        self._diagnose(self.diagnostics.select_pass, phase)
         self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
+
+    def _score(self, data: dict[str, float]) -> float:
+        self._begin_pass("score")
         try:
             score = float(self.pipeline.score_one(data))
         except GraphExecutionError as error:
@@ -564,8 +568,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         return score
 
     def _learn(self, data: dict[str, float]) -> None:
-        self._diagnose(self.diagnostics.select_pass, "learn")
-        self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
+        self._begin_pass("learn")
         if self.plan.fused:
             self._learn_fused(data)
             return
@@ -599,8 +602,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
 
     def _scores(self, data: dict[str, float]) -> list[float]:
         """Every detector's score; one that fails skips the observation for all."""
-        self._diagnose(self.diagnostics.select_pass, "score")
-        self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
+        self._begin_pass("score")
         scores = []
         for identifier, graph in zip(self.online_ids, self.pipelines, strict=True):
             try:
@@ -630,10 +632,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             try:
                 graph.learn_one(data)
             except GraphExecutionError as error:
-                if not learned:
+                if (
+                    not learned
+                    or isinstance(error, GraphStateUncertainError)
+                    or graph.failed
+                ):
                     self._rolled_back(error, graph, identifier)
-                if isinstance(error, GraphStateUncertainError) or graph.failed:
-                    raise error
                 self._diagnose(
                     self.diagnostics.rejected,
                     self._failure_node(error, identifier),
@@ -661,6 +665,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         """Keep every detector's score; the combined threshold needs them all."""
         scores = self._scores(data)
         self._learn(data)
+        self._keep_calibration(data)
         self.calibration_scores.append(scores)
         self.calibration_count += 1
         self.processed_count += 1
@@ -669,10 +674,17 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             for identifier, score in zip(self.online_ids, scores, strict=True)
         ]
         if self.calibration_count >= self.adaptive_config.calibration_window_size:
-            self._freeze_fusion()
-            self.state = AdaptiveStreamState.OPERATIONAL
-            self._log_calibrated()
+            self._finish_calibration()
         return self._result(data, 0.0, False, "calibration", topic, charger_id, started)
+
+    def _keep_calibration(self, data: dict[str, float]) -> None:
+        """Hold a calibration observation beyond the scores; nothing to hold here."""
+
+    def _finish_calibration(self) -> None:
+        """Freeze the threshold once the calibration window is full."""
+        self._freeze_fusion()
+        self.state = AdaptiveStreamState.OPERATIONAL
+        self._log_calibrated()
 
     def _log_calibrated(self) -> None:
         self.logger.info(

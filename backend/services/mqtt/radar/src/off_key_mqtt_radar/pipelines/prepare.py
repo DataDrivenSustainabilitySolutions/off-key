@@ -336,7 +336,7 @@ class PrepareStage:
         for record in records:
             if record.values is not None:
                 self.updates[record.step.id] += 1
-                if record.step.timed and now is not None:
+                if record.step.timed:
                     self.times[record.step.id] = now
 
     def revert(self) -> None:

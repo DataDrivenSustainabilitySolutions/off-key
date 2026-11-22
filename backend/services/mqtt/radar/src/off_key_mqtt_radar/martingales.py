@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+from off_key_core.utils.numbers import finite_float
 
 from .betting import betting_function
 
@@ -39,18 +40,14 @@ _STATISTICS = {
 }
 
 
-def _finite_or_none(value: float) -> float | None:
-    return float(value) if np.isfinite(value) else None
-
-
 def _statistic_payload(state: Any, statistic: str) -> dict[str, Any]:
     fields = _STATISTICS[statistic]
     value = float(getattr(state, fields.value_field))
     log_value = float(getattr(state, fields.log_field))
     return {
-        "value": _finite_or_none(value),
+        "value": finite_float(value),
         "is_infinite": bool(np.isposinf(value)),
-        "log_value": _finite_or_none(log_value),
+        "log_value": finite_float(log_value),
     }
 
 
@@ -178,11 +175,8 @@ class MartingaleTrackerController:
             "log_statistic_value": selected["log_value"],
             "statistics": statistics,
             "e_value": e_value,
-            "e_value_is_infinite": bool(
-                np.isposinf(log_e_value)
-                or (np.isfinite(log_e_value) and log_e_value > _LOG_FLOAT_MAX)
-            ),
-            "log_e_value": _finite_or_none(log_e_value),
+            "e_value_is_infinite": bool(log_e_value > _LOG_FLOAT_MAX),
+            "log_e_value": finite_float(log_e_value),
             "threshold": self.threshold,
             "threshold_horizon": self.threshold_horizon,
             "threshold_window_position": (

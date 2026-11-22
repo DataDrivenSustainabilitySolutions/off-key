@@ -12,7 +12,6 @@ from off_key_core.config.logs import (
     KeyValueFormatter,
     TruncatingFormatter,
     _apply_log_format,
-    _ensure_root_handlers,
     _expand_env_vars,
     load_yaml_config,
     redact_query_params,
@@ -119,6 +118,15 @@ def test_truncated_output_keeps_extra_context():
     assert formatter.format(_record(rows=3)) == "event=logging_test rows=3"
 
 
+def test_truncation_shortens_only_the_message_after_the_last_separator():
+    formatter = TruncatingFormatter("%(levelname)s - %(message)s", truncate_length=5)
+
+    assert formatter.format(_record()) == "INFO - event..."
+    assert TruncatingFormatter(truncate_length=5).format(_record()) == (
+        "event=logging_test"
+    )
+
+
 def test_redact_query_params_masks_sensitive_fields():
     redacted = redact_query_params(
         {
@@ -150,12 +158,6 @@ def test_apply_log_format_sets_json_formatter_for_all_handlers():
         handler_config["formatter"] == "json"
         for handler_config in config["handlers"].values()
     )
-
-
-def test_ensure_root_handlers_adds_console_when_missing():
-    config = {"root": {"handlers": []}}
-    _ensure_root_handlers(config)
-    assert config["root"]["handlers"] == ["console"]
 
 
 def test_expand_env_vars_resolves_nested_fallback_chain(monkeypatch):

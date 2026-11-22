@@ -12,24 +12,12 @@ import { PipelineApart, PipelineScope } from "@/features/pipelines/PipelineScope
 import { stepFamily, stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
+import { catalogStep } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
-type Field = PipelineComponent["fields"][number];
-const fields = (extra: Field[] = []): Field[] => [
-  { name: "apply_to", label: "Expected from", type: "features", default: null, has_default: true, nullable: true },
-  { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
-  { name: "target", label: "Target", type: "string", required: true, has_default: false },
-  { name: "name", label: "Name", type: "string", default: null, has_default: true, nullable: true },
-  ...extra,
-];
-const transform = (id: string, learning: PipelineComponent["learning"], counterpart: string, list: Field[]) =>
-  ({ id, kind: "transform", group: "reduce", label: id, description: "", learning, counterpart, input_type: "features",
-    output_type: "features", fields: list }) as PipelineComponent;
-const fitted = transform("static.expected_value", "batch", "adaptive.expected_value", fields());
-const continuous = transform("adaptive.expected_value", "online", "static.expected_value", fields([
-  { name: "forgetting", label: "Forgetting", type: "number", default: 1, has_default: true, maximum: 1, exclusive_minimum: 0 },
-]));
+const fitted = catalogStep("static.expected_value");
+const continuous = catalogStep("adaptive.expected_value");
 const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
   ({ id: "expect", kind: "transform", component: component.id, params });
 const slots = ["current", "flow", "pressure", "temperature"];
@@ -176,8 +164,7 @@ describe("an Expected value in the inspector", () => {
     }),
     layout: normalizeLayout(),
   });
-  const source = { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
-    input_type: null, output_type: "features", fields: [] } as PipelineComponent;
+  const source = catalogStep("source.aligned");
   function inspector(component: PipelineComponent, params: PipelineNode["params"], issues: Issue[] = []) {
     const current = document(component, params);
     render(<PipelineInspector document={current} selected="expect" onSelect={() => {}} onChange={() => {}}

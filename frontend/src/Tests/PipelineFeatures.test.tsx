@@ -19,25 +19,28 @@ import { pipelinesApi } from "@/features/pipelines/api";
 import type { GraphDocument } from "@/features/pipelines/model";
 import { PipelineFeatures } from "@/features/pipelines/PipelineFeatures";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
-import { groupOf } from "./support/fixtures/pipelines";
+import { asServed, groupOf, servedShape } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
 type Field = PipelineComponent["fields"][number];
-const scoped: Field[] = [
+const scope = (result = "replace"): Field[] => [
   { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
-  { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
+  { name: "result", label: "Result", type: "enum", default: result, has_default: true, options: ["replace", "add"] },
 ];
+const scoped = scope();
 const component = (id: string, kind: PipelineComponent["kind"], fields: Field[] = [], label = id,
-  group = groupOf(kind)): PipelineComponent => ({
-  id, kind, group, label, description: "", fields,
+  group?: PipelineComponent["group"]): PipelineComponent => asServed({
+  id, kind, group: groupOf(kind), label, description: "", fields,
   input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : kind === "output" ? "evidence" : "features",
+  ...servedShape(id),
+  ...(group ? { group } : {}),
 });
 const components = [
   component("source.aligned", "source", [], "Input"),
   component("prepare.smooth", "transform", scoped, "Smooth"),
-  component("prepare.change", "transform", scoped, "Change"),
+  component("prepare.change", "transform", scope("add"), "Change"),
   component("prepare.range", "transform", scoped, "Range check"),
   component("prepare.formula", "transform", [], "Formula", "combine"),
   component("prepare.gate", "transform", [], "Gate", "route"),

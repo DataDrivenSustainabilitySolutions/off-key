@@ -1,25 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { stepMenu } from "@/features/pipelines/contextMenu";
-import { normalizeDefinition, type PipelineComponent } from "@/features/pipelines/contracts";
+import { normalizeDefinition } from "@/features/pipelines/contracts";
 import { familyLabel, STEP_FAMILIES, stepFamily } from "@/features/pipelines/steps";
 import { connectionIssue } from "@/features/pipelines/model";
 import { dataKinds, takes } from "@/features/pipelines/semantics";
+import { catalogStep } from "./support/fixtures/pipelines";
 
-/** As the catalog lists them: a detector whose output is forecasts is filed as a forecaster. */
-const detector = (id: string, label: string, output_type = "forecasts") => ({
-  id, kind: "detector", group: output_type === "forecasts" ? "forecaster" : "detector", label,
-  description: "Forecast the value of one cycle ago, and score the miss.",
-  fields: [], input_type: "features", output_type,
-}) as PipelineComponent;
-
-const holtWinters = detector("detector:aberrant_holt_winters_forecaster", "Holt-Winters forecaster");
-const seasonalNaive = detector("detector:aberrant_seasonal_naive_forecaster", "Seasonal naive forecaster");
-const timestral = detector("forecast.timestral", "Timestral forecaster");
-const knn = detector("detector:aberrant_knn", "k-nearest neighbors", "scores");
-const calibration = { id: "calibrate.aci", kind: "calibration", group: "calibration", label: "ACI", description: "", fields: [],
-  input_type: "scores", output_type: "p_values" } as PipelineComponent;
-const policy = { id: "policy.exceedance", kind: "policy", group: "policy", label: "Exceedance rule", description: "", fields: [],
-  input_type: "p_values", output_type: "decisions" } as PipelineComponent;
+const holtWinters = catalogStep("detector:aberrant_holt_winters_forecaster");
+const seasonalNaive = catalogStep("detector:aberrant_seasonal_naive_forecaster");
+const timestral = catalogStep("forecast.timestral");
+const knn = catalogStep("detector:aberrant_knn");
+const calibration = catalogStep("calibrate.aci");
+const policy = catalogStep("policy.exceedance");
 
 describe("Forecaster steps in the composer", () => {
   it("have a family of their own, listed before the other detectors", () => {

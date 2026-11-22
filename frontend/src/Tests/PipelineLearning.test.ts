@@ -14,13 +14,14 @@ import {
 } from "@/features/pipelines/learning";
 import { addDetector, connectionIssue, insertBlocker } from "@/features/pipelines/model";
 import type * as Wire from "@/types/pipelines.generated";
-import { groupOf } from "./support/fixtures/pipelines";
+import { asServed, groupOf, servedShape } from "./support/fixtures/pipelines";
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], learning: Wire.PipelineComponent["learning"],
-  fields: Wire.ComponentField[] = [], facts: Partial<Wire.PipelineComponent> = {}): Wire.PipelineComponent => ({
+  fields: Wire.ComponentField[] = [], facts: Partial<Wire.PipelineComponent> = {}): Wire.PipelineComponent => asServed({
   id, kind, group: groupOf(kind), label: id, description: "", learning, fields,
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions" : "features",
+  ...servedShape(id),
   ...facts,
 });
 const alpha: Wire.ComponentField = { name: "alpha", label: "Alarm rate", type: "number", default: 0.01, has_default: true };
@@ -32,7 +33,7 @@ const catalog = normalizeCatalog({
     component("prepare.smooth", "transform", "none"),
     // The catalog names the step that learns the other way.
     component("static.standard_scaler", "transform", "batch", [
-      { name: "with_mean", label: "Center", type: "boolean", default: true, has_default: true },
+      { name: "suffix", label: "Suffix", type: "string", default: "std", has_default: true },
       { name: "with_std", label: "Scale", type: "boolean", default: true, has_default: true },
     ], { group: "normalize", counterpart: "adaptive.standard_scaler" }),
     component("adaptive.standard_scaler", "transform", "online", [
@@ -136,7 +137,7 @@ describe("changing how a detector learns", () => {
     const change = changeDetector(before, "model", find("detector:pyod_iforest"), components);
     const after = nodes(change.definition);
     // A learned step keeps the settings both versions share and takes defaults for the rest.
-    expect(after.scale).toMatchObject({ component: "static.standard_scaler", params: { with_mean: true, with_std: false } });
+    expect(after.scale).toMatchObject({ component: "static.standard_scaler", params: { suffix: "std", with_std: false } });
     // A step without a counterpart stays; the check names it.
     expect(after.extra?.component).toBe("adaptive.only");
     expect(after.model).toMatchObject({ component: "detector:pyod_iforest", params: { n_estimators: 100 } });

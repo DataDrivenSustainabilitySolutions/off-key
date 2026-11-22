@@ -3,17 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import { cycleLag, LagReadingsContext, redundantPairs, suggestedLags } from "@/features/pipelines/lagContext";
 import type { Autocorrelation } from "@/types/dojo.generated";
-import { normalizeDefinition, type PipelineComponent, type PipelineNode } from "@/features/pipelines/contracts";
+import { normalizeDefinition, type PipelineNode } from "@/features/pipelines/contracts";
 import { PipelineLags } from "@/features/pipelines/PipelineLags";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix, lagText, parseLags, stepScope } from "@/features/pipelines/scope";
 import { stepFields } from "@/features/pipelines/steps";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
+import { catalogStep } from "./support/fixtures/pipelines";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
 
-type Field = PipelineComponent["fields"][number];
 const minutely: Autocorrelation = {
   step_seconds: 60, count: 4000, regular: true, bound: 0.03, persistent: false,
   acf: [0.97, 0.9, 0.8, 0.7, 0.6], pacf: [0.97, -0.4, 0.2, 0.01, 0],
@@ -21,18 +21,7 @@ const minutely: Autocorrelation = {
     { observations: 3, seconds: 180, partial: 0.2 }],
   seasons: [{ observations: 1440, seconds: 86400, strength: 0.8 }],
 };
-const lags = {
-  id: "prepare.lags", kind: "transform", group: "prepare", label: "Lags", description: "",
-  input_type: "features", output_type: "features",
-  fields: [
-    { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
-    { name: "result", label: "Result", type: "enum", default: "add", has_default: true, options: ["add"] },
-    { name: "suffix", label: "Suffix", type: "string", default: null, has_default: true, nullable: true },
-    { name: "unit", label: "Unit", type: "enum", default: "minutes", has_default: true,
-      options: ["observations", "seconds", "minutes", "hours", "days"] },
-    { name: "lags", label: "Lags", type: "number_list", default: [1, 5, 15], has_default: true },
-  ] as Field[],
-} as PipelineComponent;
+const lags = catalogStep("prepare.lags");
 const node = (params: PipelineNode["params"] = {}): PipelineNode =>
   ({ id: "lags", kind: "transform", component: "prepare.lags", params });
 

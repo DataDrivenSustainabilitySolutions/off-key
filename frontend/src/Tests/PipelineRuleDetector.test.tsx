@@ -17,13 +17,15 @@ import { addDetector } from "@/features/pipelines/model";
 import { PipelineDesignSettings } from "@/features/pipelines/PipelineDesignSettings";
 import { startupEstimate } from "@/features/pipelines/startup";
 import type * as Wire from "@/types/pipelines.generated";
+import { asServed, servedShape } from "./support/fixtures/pipelines";
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], learning: Wire.PipelineComponent["learning"],
-  label = id): Wire.PipelineComponent => ({
+  label = id): Wire.PipelineComponent => asServed({
   id, kind, label, description: "", learning, fields: [],
   group: kind === "source" ? "input" : kind === "transform" ? "prepare" : kind === "merge" ? "route" : kind,
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions" : "features",
+  ...servedShape(id),
 });
 const catalog = normalizeCatalog({
   catalog_id: "rule", authoring_enabled: true,

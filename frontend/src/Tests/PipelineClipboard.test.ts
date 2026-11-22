@@ -6,9 +6,10 @@ import { normalizeCatalog, normalizeDefinition, normalizeLayout } from "@/featur
 import type { GraphDocument } from "@/features/pipelines/model";
 import { NODE_SIZE, switchedOff } from "@/features/pipelines/semantics";
 import { switchOff } from "@/features/pipelines/stepSwitch";
+import { asServedList, catalogStep } from "./support/fixtures/pipelines";
 
 const components = normalizeCatalog({
-  catalog_id: "test", authoring_enabled: true, templates: [], components: [
+  catalog_id: "test", authoring_enabled: true, templates: [], components: asServedList([
     { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
       input_type: null, output_type: "features" },
     { id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
@@ -19,7 +20,7 @@ const components = normalizeCatalog({
       input_type: "features", output_type: "features" },
     { id: "detector:a", kind: "detector", group: "detector", label: "Detector A", description: "",
       input_type: "features", output_type: "scores" },
-  ],
+  ]),
 }).components;
 
 /** Input feeds a scaled and a plain branch, which a combining step joins before the detector. */
@@ -156,18 +157,14 @@ describe("duplicating steps", () => {
 });
 
 describe("duplicating steps that name a feature", () => {
-  const formulas = normalizeCatalog({
-    catalog_id: "test", authoring_enabled: true, templates: [], components: [
+  const formulas = [catalogStep("prepare.formula"), ...normalizeCatalog({
+    catalog_id: "test", authoring_enabled: true, templates: [], components: asServedList([
       { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
         input_type: null, output_type: "features" },
-      { id: "prepare.formula", kind: "transform", group: "prepare", label: "Formula", description: "",
-        input_type: "features", output_type: "features", fields: [
-          { name: "name", label: "Name", type: "string", default: "formula" },
-          { name: "expression", label: "Expression", type: "string", default: "" }] },
       { id: "features.keep", kind: "transform", group: "route", label: "Keep", description: "",
         input_type: "features", output_type: "features", fields: [{ name: "features", label: "Features", type: "features", default: [] }] },
-    ],
-  }).components;
+    ]),
+  }).components];
   const chain = (): GraphDocument => ({
     definition: normalizeDefinition({
       input_slots: [{ id: "voltage", label: "Voltage" }, { id: "current", label: "Current" }],

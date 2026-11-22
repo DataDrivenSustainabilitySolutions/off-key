@@ -15,16 +15,18 @@ import { PipelineContextMenu } from "@/features/pipelines/PipelineContextMenu";
 import { PipelineSaveBlock } from "@/features/pipelines/PipelineSaveBlock";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
 import type * as Wire from "@/types/pipelines.generated";
+import { asServed, servedShape } from "./support/fixtures/pipelines";
 
 /** A step as the catalog lists it; `facts` are the group it is filed in and the step that learns the other way. */
 const component = (id: string, kind: Wire.PipelineComponent["kind"], label: string,
   learning: Wire.PipelineComponent["learning"] = "none", fields: Wire.ComponentField[] = [],
-  facts: Partial<Pick<Wire.PipelineComponent, "group" | "counterpart">> = {}): Wire.PipelineComponent => ({
+  facts: Partial<Pick<Wire.PipelineComponent, "group" | "counterpart">> = {}): Wire.PipelineComponent => asServed({
   id, kind, label, description: "", learning, fields,
   group: kind === "source" ? "input" : kind === "transform" ? "prepare" : kind === "merge" ? "route" : kind,
-  ...facts,
   input_type: kind === "source" ? null : kind === "policy" ? "scores" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : "features",
+  ...servedShape(id),
+  ...facts,
 });
 const flag = (name: string): Wire.ComponentField => ({ name, label: name, type: "boolean", default: true, has_default: true });
 const components = normalizeCatalog({
@@ -33,7 +35,7 @@ const components = normalizeCatalog({
     component("source.aligned", "source", "Aligned inputs"),
     component("prepare.formula", "transform", "Formula", "none", [], { group: "combine" }),
     component("prepare.smooth", "transform", "Smooth"),
-    component("static.standard_scaler", "transform", "Standard scaling", "batch", [flag("with_mean"), flag("with_std")],
+    component("static.standard_scaler", "transform", "Standard scaling", "batch", [flag("with_std")],
       { group: "normalize", counterpart: "adaptive.standard_scaler" }),
     component("adaptive.standard_scaler", "transform", "Standard scaling", "online", [flag("with_std")],
       { group: "normalize", counterpart: "static.standard_scaler" }),
@@ -76,7 +78,7 @@ const step = (id: string, extra: Partial<BlockStep> = {}): BlockStep => ({ compo
 const block = (name: string, steps: BlockStep[], description = ""): PipelineBlock =>
   ({ id: name.toLocaleLowerCase().replace(/ /g, "-"), name, description, steps, created_at: "2026-11-12T09:00:00Z" });
 const POWER = step("prepare.formula", { params: { expression: "voltage * current", name: "power" }, label: "Power" });
-const scaled = block("Power, scaled", [POWER, step("static.standard_scaler", { params: { with_mean: false, with_std: false } })]);
+const scaled = block("Power, scaled", [POWER, step("static.standard_scaler", { params: { with_std: false } })]);
 const calm = block("Calm", [step("prepare.smooth")], "Take out short spikes");
 const retired = block("Old step", [step("prepare.retired")]);
 const placed = (outcome: BlockOutcome) => {
@@ -132,7 +134,7 @@ describe("adding a block beside the design", () => {
     expect(result.id).toBe("prepare_formula_1");
     // The name of the feature stays as saved, although the design already gives one of that name.
     expect(node(result.document, "prepare_formula_1").params).toEqual(POWER.params);
-    expect(node(result.document, "static_standard_scaler_1").params).toEqual({ with_mean: false, with_std: false });
+    expect(node(result.document, "static_standard_scaler_1").params).toEqual({ with_std: false });
     // The title is part of the design; the layout holds where the step stands.
     expect(node(result.document, "prepare_formula_1").label).toBe("Power");
     expect(result.document.layout.nodes.prepare_formula_1).toEqual({ x: 0, y: 400 });
@@ -178,7 +180,7 @@ describe("inserting a block on a connection", () => {
     ]));
     // Before a detector fitted once the step stays as it was saved.
     const fitted = placed(insertBlock(design("detector:pyod_iforest"), { source: "scale", target: "model" }, scaled, components));
-    expect(node(fitted.document, "static_standard_scaler_1").params).toEqual({ with_mean: false, with_std: false });
+    expect(node(fitted.document, "static_standard_scaler_1").params).toEqual({ with_std: false });
     // A step without a title is told apart from the one of its kind already there.
     expect(node(fitted.document, "static_standard_scaler_1").label).toBe("Standard scaling 2");
   });

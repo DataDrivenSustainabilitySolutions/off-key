@@ -1,6 +1,8 @@
 """Generate browser contracts from the canonical Pydantic pipeline and Dojo schemas.
 
-The schema of a design file is written beside them, for the documentation to publish.
+The schema of a design file is written beside them, for the documentation to publish,
+and the step catalog the API serves is written for the frontend tests to read, so a
+step the backend changes turns those tests red in the same pull request.
 """
 
 import argparse
@@ -9,6 +11,7 @@ import json
 import re
 from pathlib import Path
 
+from off_key_core.models.pipeline_catalog import pipeline_catalog
 from off_key_core.schemas import dojo, pipelines
 from pydantic import BaseModel
 
@@ -153,6 +156,12 @@ def dojo_contracts(shared: dict) -> str:
     return text
 
 
+def step_catalog() -> str:
+    """The catalog ``GET /v1/pipeline-components`` serves, with authoring enabled."""
+    catalog = pipeline_catalog(authoring_enabled=True).model_dump(mode="json")
+    return json.dumps(catalog, indent=1, ensure_ascii=False) + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
@@ -164,6 +173,10 @@ def main() -> None:
         types / "pipelines.generated.ts": pipeline_contracts(shared),
         types / "dojo.generated.ts": dojo_contracts(shared),
         repository / "docs/reference/design-file.schema.json": design_file_schema(),
+        repository
+        / "frontend/src/Tests/support/fixtures/pipelineCatalog.generated.json": (
+            step_catalog()
+        ),
     }
     for target, text in files.items():
         if options.check:

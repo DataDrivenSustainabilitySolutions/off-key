@@ -10,29 +10,11 @@ import { PipelineTime } from "@/features/pipelines/PipelineTime";
 import { defaultSuffix, hasScope } from "@/features/pipelines/scope";
 import { stepFamily, stepFields } from "@/features/pipelines/steps";
 import type { JsonValue } from "@/types/monitoring";
-import { type Field, type Issue, step, stepNode, stepSummary } from "./support/pipelineSteps";
+import { catalogStep } from "./support/fixtures/pipelines";
+import { type Issue, stepNode, stepSummary } from "./support/pipelineSteps";
 
-const flag = (name: string, label: string, value = false): Field =>
-  ({ name, label, type: "boolean", default: value, has_default: true });
-const time = step("prepare.time", [
-  flag("elapsed", "Seconds since the previous observation", true),
-  flag("hour", "Hour of day"),
-  flag("weekday", "Day of week"),
-  flag("daily_cycle", "Daily cycle"),
-  flag("weekly_cycle", "Weekly cycle"),
-  { name: "timezone", label: "Time zone", type: "string", default: "UTC", has_default: true },
-]);
-const smooth = step("prepare.smooth", [
-  { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
-  { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
-  { name: "suffix", label: "Suffix", type: "string", default: null, has_default: true, nullable: true },
-  { name: "method", label: "Method", type: "enum", default: "exponential", has_default: true,
-    options: ["exponential", "rolling", "time_constant"] },
-  { name: "window_size", label: "Window", type: "integer", default: 10, has_default: true,
-    shown_when: { field: "method", not_equals: ["time_constant"] } },
-  { name: "time_constant", label: "Time constant", type: "number", default: 60, has_default: true,
-    shown_when: { field: "method", equals: ["time_constant"] } },
-]);
+const time = catalogStep("prepare.time");
+const smooth = catalogStep("prepare.smooth");
 
 const node = stepNode;
 const summary = (component: PipelineComponent, params?: PipelineNode["params"]) =>

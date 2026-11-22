@@ -9,11 +9,11 @@ import { AlarmBudgetSetting } from "@/features/pipelines/AlarmBudgetSetting";
 import { normalizeCatalog, normalizeDefinition, type PipelineNode } from "@/features/pipelines/contracts";
 import type { GraphDocument } from "@/features/pipelines/model";
 import type * as Wire from "@/types/pipelines.generated";
-import { groupOf } from "./support/fixtures/pipelines";
+import { asServed, groupOf } from "./support/fixtures/pipelines";
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], fields: Wire.ComponentField[] = [],
   facts: Partial<Wire.PipelineComponent> = {}): Wire.PipelineComponent =>
-  ({ id, kind, group: groupOf(kind), label: id, description: "", fields, ...facts });
+  asServed({ id, kind, group: groupOf(kind), label: id, description: "", fields, ...facts });
 const alpha: Wire.ComponentField = { name: "alpha", label: "Target alarm rate", type: "number", default: 0.01, has_default: true };
 const { components } = normalizeCatalog({
   catalog_id: "budget", authoring_enabled: true, templates: [],

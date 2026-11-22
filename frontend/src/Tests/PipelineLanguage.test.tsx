@@ -9,8 +9,9 @@ import { connectionIssue, connectNodes } from "@/features/pipelines/model";
 import { presentGraph } from "@/features/pipelines/graphPresentation";
 import { edgeId } from "@/features/pipelines/semantics";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
+import { asServedList } from "./support/fixtures/pipelines";
 
-const components: PipelineComponent[] = [
+const components: PipelineComponent[] = asServedList<PipelineComponent>([
   {
     id: "source.aligned",
     kind: "source",
@@ -71,7 +72,7 @@ const components: PipelineComponent[] = [
     input_type: "decisions",
     output_type: "evidence",
   },
-];
+]);
 const fixture = () => ({
   definition: normalizeDefinition({
     input_slots: [{ id: "x", label: "Value" }],

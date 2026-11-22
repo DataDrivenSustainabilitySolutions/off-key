@@ -24,7 +24,7 @@ import { PipelineFeatures } from "@/features/pipelines/PipelineFeatures";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
 import { nodeSummary } from "@/features/pipelines/summaries";
-import { groupOf } from "./support/fixtures/pipelines";
+import { asServed, groupOf } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
@@ -41,7 +41,7 @@ const alpha: Field = { name: "alpha", label: "Alarm rate", type: "number", defau
 const component = (
   id: string, kind: PipelineComponent["kind"], fields: Field[] = [], label = id,
   learning: PipelineComponent["learning"] = "none", group = groupOf(kind),
-): PipelineComponent => ({
+): PipelineComponent => asServed({
   id, kind, group, label, description: "", fields, learning,
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values"
     : kind === "output" ? "decisions" : "features",

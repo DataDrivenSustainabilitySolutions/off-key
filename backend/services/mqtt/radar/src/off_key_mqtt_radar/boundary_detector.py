@@ -128,8 +128,7 @@ class BoundaryDetectionService(MixedDetectionService):
             return self._fused_scores(data)
         if self.pipeline is not None:
             return [self._score(data)]
-        self._diagnose(self.diagnostics.select_pass, "score")
-        self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
+        self._begin_pass("score")
         identifier = self.plan.detector_id
         score = self._batch_scores(data)[identifier]
         self._scored_features = self.batch.last_features[identifier]

@@ -27,7 +27,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .boundary import ScoreBoundary, adapts
 from .config.config import AnomalyDetectionConfig
-from .mixed_detector import learning_ids, streaming_ids
 from .pipelines.adapters import adaptive_graph, resolved_detector_config
 from .pipelines.batch import BatchFeatureGraph
 from .pipelines.plan import ExecutionPlan
@@ -107,7 +106,7 @@ def _build_detectors(
     boundary = adapts(plan)
     if boundary:
         ScoreBoundary(plan)
-    online, fitted_once = streaming_ids(plan), learning_ids(plan, "batch")
+    online, fitted_once = plan.streaming_ids(), plan.batch_ids()
     if not online and not boundary:
         return _static_preflight(plan, config)
     readiness, capabilities = [], None

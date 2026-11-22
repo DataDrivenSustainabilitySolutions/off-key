@@ -39,16 +39,6 @@ def test_extracts_representative_device_topics(topic):
     assert metadata.telemetry_type == topic.rsplit("/", 1)[1]
 
 
-def test_extracts_fluid_topic_with_custom_regex():
-    extractor = TopicMetadataExtractor(
-        topic_regex=(r"^tenant/(?P<charger_id>[^/]+)/metrics/(?P<telemetry_type>.+)$")
-    )
-    metadata = extractor.extract("tenant/charger-9/metrics/voltage/a", payload={})
-    assert metadata is not None
-    assert metadata.charger_id == "charger-9"
-    assert metadata.telemetry_type == "voltage/a"
-
-
 def test_does_not_use_payload_metadata_when_topic_does_not_match():
     extractor = TopicMetadataExtractor()
     metadata = extractor.extract(
@@ -62,11 +52,6 @@ def test_returns_none_when_neither_topic_nor_payload_has_required_metadata():
     extractor = TopicMetadataExtractor()
     metadata = extractor.extract("unknown/topic/shape", payload={"value": 1.0})
     assert metadata is None
-
-
-def test_rejects_regex_without_required_named_groups():
-    with pytest.raises(ValueError, match="named groups"):
-        TopicMetadataExtractor(topic_regex=r"^charger/([^/]+)/(.+)$")
 
 
 def test_normalizes_and_deduplicates_monitoring_topic_filters():

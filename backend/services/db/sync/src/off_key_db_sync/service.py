@@ -129,9 +129,6 @@ class SyncService:
                 f"Failed to start database sync service: {e}",
                 exc_info=True,
             )
-
-            # Cleanup on failure
-            await self.stop()
             raise
 
     async def stop(self):
@@ -182,11 +179,8 @@ class SyncService:
     def get_health_status(self):
         """Get current health status"""
         return {
-            "status": (
-                "healthy"
-                if self.is_running and self.schema_ready
-                else ("starting" if self.is_running else "stopped")
-            ),
+            # The service runs only once its schema is ready.
+            "status": "healthy" if self.is_running else "stopped",
             "schema_ready": self.schema_ready,
             # Kept in the /health shape the gateway waits on; equals schema_ready.
             "initial_sync_complete": self.schema_ready,

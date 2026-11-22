@@ -17,7 +17,6 @@ from time import perf_counter_ns
 from typing import Any
 
 import numpy as np
-from off_key_core.schemas.pipeline_versions import component_learning
 
 from .adaptive_detector import AdaptiveStreamDetectionService, AdaptiveStreamState
 from .config.config import AnomalyDetectionConfig
@@ -28,25 +27,6 @@ from .pipelines.plan import ExecutionPlan
 from .pipelines.pyod import calibrated_detector, node_detector
 
 logger = logging.getLogger(__name__)
-
-
-def learning_ids(plan: ExecutionPlan, mode: str) -> list[str]:
-    """The detectors that learn this way, in the run's order."""
-    return [
-        identifier
-        for identifier in plan.detector_ids
-        if component_learning(plan.nodes[identifier].component) == mode
-    ]
-
-
-def streaming_ids(plan: ExecutionPlan) -> list[str]:
-    """The detectors that score and then take in every observation: those that
-    learn continuously and those that are pretrained."""
-    return [
-        identifier
-        for identifier in plan.detector_ids
-        if component_learning(plan.nodes[identifier].component) != "batch"
-    ]
 
 
 def fit_batch_branches(
@@ -164,23 +144,23 @@ class MixedDetectionService(AdaptiveStreamDetectionService):
 
     @staticmethod
     def _runs(plan) -> bool:
-        return bool(learning_ids(plan, "batch")) and bool(streaming_ids(plan))
+        return bool(plan.batch_ids()) and bool(plan.streaming_ids())
 
     def _online_ids(self) -> list[str]:
-        return streaming_ids(self.plan)
+        return self.plan.streaming_ids()
 
     def _initialize_fresh(self) -> None:
         super()._initialize_fresh()
         self.batch = BatchBranches(
             self.plan,
-            learning_ids(self.plan, "batch"),
+            self.plan.batch_ids(),
             self.adaptive_config.training_window_size,
         )
 
     def _restore(self, checkpoint: dict[str, Any]) -> None:
         batch = checkpoint.get("batch")
         if not isinstance(batch, BatchBranches) or batch.detector_ids != (
-            learning_ids(self.plan, "batch")
+            self.plan.batch_ids()
         ):
             raise ValueError("Checkpoint is missing the detectors fitted once")
         self.batch = batch
@@ -211,26 +191,18 @@ class MixedDetectionService(AdaptiveStreamDetectionService):
             return self._result(data, 0.0, False, "fitting", topic, charger_id, started)
         return super()._process_current_state(data, topic, charger_id, started)
 
-    def _calibrate_fused(self, data, topic, charger_id, started) -> AnomalyResult:
-        """Online detectors score and learn; the others keep the observation."""
-        scores = self._scores(data)
-        self._learn(data)
+    def _keep_calibration(self, data: dict[str, float]) -> None:
+        """The detectors fitted once keep the observation to fit on."""
         self.batch.calibration.append(self.batch.vector(data))
-        self.calibration_scores.append(scores)
-        self.calibration_count += 1
-        self.processed_count += 1
-        self._detector_results = [
-            {"detector_id": identifier, "score": score, "surprise": None}
-            for identifier, score in zip(self.online_ids, scores, strict=True)
-        ]
-        if self.calibration_count >= self.adaptive_config.calibration_window_size:
-            self.state = AdaptiveStreamState.FITTING
-            self._submit_fit()
-            self.logger.info(
-                "event=radar.mixed_fitting_started calibration_count=%s",
-                self.calibration_count,
-            )
-        return self._result(data, 0.0, False, "calibration", topic, charger_id, started)
+
+    def _finish_calibration(self) -> None:
+        """Fit the detectors that learn once; the threshold freezes after them."""
+        self.state = AdaptiveStreamState.FITTING
+        self._submit_fit()
+        self.logger.info(
+            "event=radar.mixed_fitting_started calibration_count=%s",
+            self.calibration_count,
+        )
 
     def _fused_scores(self, data: dict[str, float]) -> list[float]:
         online = dict(zip(self.online_ids, self._scores(data), strict=True))

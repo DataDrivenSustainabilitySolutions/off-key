@@ -307,17 +307,15 @@ class RadarPool:
                 continue
             await self.collect_output(child)
             code = exit_code(child.process.returncode)
-            if not child.restart:
+            if code == 0 or not child.restart:
+                # A monitor that ends cleanly decided not to run (it was
+                # stopped before it started); it is not restarted.
                 await self.finish(
                     child,
                     state="complete" if code == 0 else "failed",
                     exit_code=code,
                     crash=False,
                 )
-            elif code == 0:
-                # A monitor that ends cleanly decided not to run (it was
-                # stopped before it started); it is not restarted.
-                await self.finish(child, state="complete", exit_code=code, crash=False)
             else:
                 await self.finish(child, state="pending", exit_code=code, crash=True)
 

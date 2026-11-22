@@ -140,32 +140,19 @@ class JsonFormatter(logging.Formatter):
 
 
 class TruncatingFormatter(logging.Formatter):
-    """Formatter that truncates long messages for stdout."""
+    """Formatter that truncates the message after the last " - " for stdout."""
 
     def __init__(self, base_format=None, truncate_length=40):
-        self.base_formatter = KeyValueFormatter(base_format) if base_format else None
+        super().__init__()
+        self.base_formatter = KeyValueFormatter(base_format)
         self.truncate_length = truncate_length
 
     def format(self, record):
-        # Format using the base formatter if provided
-        if self.base_formatter:
-            formatted_msg = self.base_formatter.format(record)
-        else:
-            formatted_msg = super().format(record)
-
-        # Find the message part after the last " - "
-        parts = formatted_msg.split(" - ")
-        if len(parts) > 1:
-            # Reconstruct with truncated message
-            prefix_parts = parts[:-1]
-            message_part = parts[-1]
-
-            if len(message_part) > self.truncate_length:
-                message_part = message_part[: self.truncate_length] + "..."
-
-            return " - ".join([*prefix_parts, message_part])
-
-        return formatted_msg
+        formatted = self.base_formatter.format(record)
+        prefix, separator, message = formatted.rpartition(" - ")
+        if separator and len(message) > self.truncate_length:
+            return f"{prefix}{separator}{message[: self.truncate_length]}..."
+        return formatted
 
 
 class CorrelationIdMiddleware:
@@ -409,7 +396,7 @@ def load_yaml_config(service_config_path: str | None = None) -> None:
     Args:
         service_config_path: Path to service-specific logging.yaml
     """
-    global _default_logger_instance, _service_logger_name
+    global _yaml_configured, _service_logger_name
 
     # Load base configuration from core
     core_config_path = Path(__file__).parent / "logging.yaml"
@@ -430,10 +417,9 @@ def load_yaml_config(service_config_path: str | None = None) -> None:
         config = _merge_configs(config, service_config)
 
     _apply_log_format(config)
-    _ensure_root_handlers(config)
 
     # Disable the lazy logger since we're using YAML config
-    _default_logger_instance = "YAML_CONFIGURED"
+    _yaml_configured = True
 
     # Apply the configuration
     logging.config.dictConfig(config)
@@ -460,14 +446,6 @@ def _apply_log_format(config: dict[str, Any]) -> None:
             handler["formatter"] = "truncated"
             continue
         handler["formatter"] = "detailed"
-
-
-def _ensure_root_handlers(config: dict[str, Any]) -> None:
-    """Ensure root logger has a fallback handler for unknown logger names."""
-    root_logger = config.setdefault("root", {})
-    handlers = root_logger.get("handlers")
-    if not handlers:
-        root_logger["handlers"] = ["console"]
 
 
 def log_startup_logging_configuration(
@@ -545,7 +523,7 @@ def _merge_configs(base: dict[str, Any], override: dict[str, Any]) -> dict[str, 
 
 
 # Global variables for YAML configuration
-_default_logger_instance = None
+_yaml_configured = False
 _service_logger_name = None  # Store the service logger name when YAML is configured
 
 
@@ -553,7 +531,7 @@ class LazyLogger:
     """A lazy logger that creates the actual logger on first use."""
 
     def __getattr__(self, name):
-        if _default_logger_instance == "YAML_CONFIGURED":
+        if _yaml_configured:
             # When YAML config is used, return the service logger
             if _service_logger_name:
                 return getattr(logging.getLogger(_service_logger_name), name)

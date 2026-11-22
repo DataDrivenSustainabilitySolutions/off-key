@@ -14,24 +14,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 Transport = Literal["tcp", "websockets"]
 
 
-def _validate_auth_credentials(
-    *,
-    enabled: bool,
-    username: str,
-    api_key: str,
-    label: str,
-) -> None:
-    """Validate credentials only when their authentication path is active."""
-    if not enabled:
-        return
-    if not username.strip():
-        raise ValueError(f"{label} username is required when auth is enabled")
-    if len(api_key.strip()) < 10:
-        raise ValueError(
-            f"{label} API key must be at least 10 characters when auth is enabled"
-        )
-
-
 class MQTTConfig(BaseModel):
     """
     Validated runtime configuration for MQTT proxy.
@@ -98,14 +80,15 @@ class MQTTConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_runtime_dependencies(self) -> Self:
-        """Validate broker authentication."""
-        _validate_auth_credentials(
-            enabled=self.use_auth,
-            username=self.mqtt_username,
-            api_key=self.mqtt_api_key,
-            label="MQTT",
-        )
-
+        """Validate broker credentials when authentication is enabled."""
+        if not self.use_auth:
+            return self
+        if not self.mqtt_username.strip():
+            raise ValueError("MQTT username is required when auth is enabled")
+        if len(self.mqtt_api_key.strip()) < 10:
+            raise ValueError(
+                "MQTT API key must be at least 10 characters when auth is enabled"
+            )
         return self
 
     def get_client_id(self) -> str:

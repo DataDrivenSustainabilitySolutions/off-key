@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-DEFAULT_TOPIC_REGEX = r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"
+_TOPIC = re.compile(r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$")
 SENSOR_KEY_STRATEGIES = frozenset({"full_hierarchy", "top_level", "leaf"})
 
 
@@ -24,39 +24,6 @@ class TopicMetadataExtractor:
     Resolve charger metadata from the canonical concrete topic.
     """
 
-    def __init__(
-        self,
-        topic_regex: str = DEFAULT_TOPIC_REGEX,
-    ):
-        self.topic_regex = topic_regex
-        self._compiled_regex = self._compile_topic_regex(topic_regex)
-
-    @staticmethod
-    def _compile_topic_regex(topic_regex: str) -> re.Pattern[str]:
-        try:
-            compiled = re.compile(topic_regex)
-        except re.error as exc:
-            raise ValueError(f"Invalid MQTT topic regex: {exc}") from exc
-
-        required = {"charger_id", "telemetry_type"}
-        groups = set(compiled.groupindex.keys())
-        missing = required - groups
-        if missing:
-            raise ValueError(
-                "MQTT topic regex must include named groups: charger_id, "
-                f"telemetry_type (missing: {sorted(missing)})"
-            )
-        return compiled
-
-    @staticmethod
-    def _normalize_value(value: Any) -> str | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            return normalized or None
-        return str(value)
-
     def extract(
         self,
         topic: str,
@@ -65,16 +32,11 @@ class TopicMetadataExtractor:
         """
         Extract metadata from a concrete topic; payload metadata is not accepted.
         """
-        charger_id: str | None = None
-        telemetry_type: str | None = None
-
-        topic_match = self._compiled_regex.match(topic)
-        if topic_match:
-            charger_id = self._normalize_value(topic_match.group("charger_id"))
-            telemetry_type = self._normalize_value(topic_match.group("telemetry_type"))
-
-        if charger_id is None or telemetry_type is None:
+        topic_match = _TOPIC.match(topic)
+        if topic_match is None:
             return None
+        charger_id = topic_match.group("charger_id").strip()
+        telemetry_type = topic_match.group("telemetry_type").strip()
         if any(
             not segment or "+" in segment or "#" in segment
             for segment in (charger_id, *telemetry_type.split("/"))

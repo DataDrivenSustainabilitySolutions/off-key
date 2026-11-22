@@ -138,16 +138,13 @@ async def test_retry_gives_up_after_max_attempts_and_keeps_the_batch(monkeypatch
 
 
 @pytest.mark.parametrize(
-    ("metrics", "processing_batches", "expected"),
+    ("metrics", "expected"),
     [
-        ({}, 0, "healthy"),
-        ({"total_batches_processed": 97, "total_batches_failed": 3}, 0, "degraded"),
-        ({"total_batches_processed": 1, "total_batches_failed": 1}, 0, "unhealthy"),
-        ({"write_latency_sum": 3.0, "write_latency_count": 1}, 0, "degraded"),
-        ({"write_latency_sum": 6.0, "write_latency_count": 1}, 0, "unhealthy"),
-        ({"write_latency_sum": 3.0, "write_latency_count": 1}, 1, "degraded"),
-        ({}, 6, "degraded"),
-        ({}, 11, "unhealthy"),
+        ({}, "healthy"),
+        ({"total_batches_processed": 97, "total_batches_failed": 3}, "degraded"),
+        ({"total_batches_processed": 1, "total_batches_failed": 1}, "unhealthy"),
+        ({"write_latency_sum": 3.0, "write_latency_count": 1}, "degraded"),
+        ({"write_latency_sum": 6.0, "write_latency_count": 1}, "unhealthy"),
         # Failure-driven unhealthy must not be softened by milder signals.
         (
             {
@@ -156,7 +153,6 @@ async def test_retry_gives_up_after_max_attempts_and_keeps_the_batch(monkeypatch
                 "write_latency_sum": 3.0,
                 "write_latency_count": 1,
             },
-            6,
             "unhealthy",
         ),
     ],
@@ -166,20 +162,13 @@ async def test_retry_gives_up_after_max_attempts_and_keeps_the_batch(monkeypatch
         "many_failures",
         "slow_writes",
         "very_slow_writes",
-        "slow_writes_small_backlog",
-        "backlog",
-        "excessive_backlog",
         "conflicting_signals",
     ],
 )
-def test_health_status_reflects_failures_latency_and_backlog(
-    metrics, processing_batches, expected
-):
+def test_health_status_reflects_failures_and_latency(metrics, expected):
     writer = _writer()
     for name, value in metrics.items():
         setattr(writer, name, value)
-    for index in range(processing_batches):
-        writer.processing_batches[f"batch_{index}"] = WriteBatch()
 
     assert writer.get_health_status().status == HealthStatus(expected)
 

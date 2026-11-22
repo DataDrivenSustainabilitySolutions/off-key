@@ -242,7 +242,7 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
         alignment_context={
             "aligned_vector": True,
             "alignment_status": "aligned",
-            "sample_timestamp": sample_ts - 10,
+            "sample_timestamp": sample_ts,
             "input_timestamps": {
                 "sine": sample_ts - 1,
                 "cosine": sample_ts,

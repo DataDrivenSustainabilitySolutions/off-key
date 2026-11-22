@@ -11,7 +11,6 @@ import numpy as np
 from off_key_core.models.pipeline_calibration import calibrator_id
 from off_key_core.models.pipeline_prepare import LANE_COMPONENTS, kernel
 from off_key_core.models.pipeline_scope import step_scope
-from off_key_core.schemas.pipeline_versions import component_learning
 from pydantic import BaseModel
 
 from .plan import ExecutionPlan
@@ -201,19 +200,10 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
     # A static baseline fits everything once. Detectors that learn in
     # different ways fit some once and copy the steps of the others.
     static = definition.lane == "static_baseline"
-    online = [
-        identifier
-        for identifier in plan.detector_ids
-        if component_learning(plan.nodes[identifier].component) != "batch"
-    ]
-    buffered = static or len(online) < len(plan.detector_ids)
-    fitted_once = frozenset().union(
-        *(
-            plan.reads(identifier)
-            for identifier in plan.detector_ids
-            if identifier not in online
-        )
-    )
+    online = plan.streaming_ids()
+    batch = plan.batch_ids()
+    buffered = static or bool(batch)
+    fitted_once = frozenset().union(*(plan.reads(identifier) for identifier in batch))
     # Static baselines buffer what the learned stage reads: the readings, or
     # the prepared columns when the design has a Prepare stage.
     columns = plan.input_columns

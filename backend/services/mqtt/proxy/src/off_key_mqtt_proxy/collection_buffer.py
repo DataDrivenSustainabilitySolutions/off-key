@@ -24,14 +24,14 @@ class Observation:
     received_at: datetime
     snapshot: bool
 
-    def telemetry_record(self, created: datetime | None = None) -> TelemetryRecord:
+    def telemetry_record(self) -> TelemetryRecord:
         """The numeric telemetry row for this observation, without re-parsing."""
         return TelemetryRecord(
             charger_id=self.stream.charger_id,
             timestamp=self.received_at,
             value=float(self.value),
             telemetry_type=self.stream.key,
-            created=created or datetime.now(UTC),
+            created=datetime.now(UTC),
         )
 
     def message(self) -> MQTTMessage:
@@ -141,10 +141,6 @@ class CollectionBuffer:
                 result.append(self._original.popleft())
             self.counters["accepted"] += len(result)
         return result
-
-    def count(self, event: str) -> None:
-        with self._lock:
-            self.counters[event] += 1
 
     def metrics(self) -> dict:
         with self._lock:

@@ -16,19 +16,10 @@ const preferences = (): ExplorerPreferences => ({
   expanded: ['["connection","broker:one"]', '["topic","[\\"connection\\",\\"broker:one\\"]","telemetry"]'],
 });
 describe("explorer preference persistence", () => {
-  it("reads favourites an earlier version kept, per account, so they can move to the server", () => {
-    const saved = { ...preferences(), favourites: [{ kind: "service" as const, id: "same-id" }, { kind: "reading" as const, id: "same-id" }] };
-    expect(saveExplorerPreferences("alice", saved)).toBe(true);
-    expect(loadExplorerPreferences("alice")).toEqual(saved);
-    expect(loadExplorerPreferences("bob").favourites).toBeUndefined();
-  });
-
-  it("discards malformed favourite entries and copies only validated identities", () => {
-    localStorage.setItem(key(), JSON.stringify({ ...preferences(), favourites: [
-      { kind: "service", id: "valid", password: "private" }, { kind: "service", id: "valid" },
-      { kind: "reading", id: "__proto__" }, { kind: "camera", id: "invalid" }, null,
-    ] }));
-    expect(loadExplorerPreferences("alice")).toEqual({ ...preferences(), favourites: [{ kind: "service", id: "valid" }] });
+  it("drops what earlier versions kept here: favourites and the drill-down location", () => {
+    localStorage.setItem(key(), JSON.stringify({ ...preferences(), favourites: [{ kind: "service", id: "m1" }],
+      scopeKey: "catalogue:building-a" }));
+    expect(loadExplorerPreferences("alice")).toEqual(preferences());
   });
 
   it("persists sidebar width per account without replacing existing navigation", () => {
@@ -102,9 +93,6 @@ describe("explorer preference persistence", () => {
     "null",
     JSON.stringify({ ...preferences(), version: 2 }),
     JSON.stringify({ ...preferences(), sidebarOpen: "yes" }),
-    JSON.stringify({ ...preferences(), scopeKey: "" }),
-    JSON.stringify({ ...preferences(), scopeKey: "path\ncontrol" }),
-    JSON.stringify({ ...preferences(), scopeKey: "x".repeat(4097) }),
     JSON.stringify({ version: 1 }),
   ])("recovers a usable default from invalid storage", (saved) => {
     localStorage.setItem(key(), saved);
@@ -124,13 +112,6 @@ describe("explorer preference persistence", () => {
     const saved = loadExplorerPreferences("alice").expanded!;
     expect(saved).toHaveLength(MAX_EXPANDED_NODES);
     expect(saved[saved.length - 1]).toBe(`branch-${MAX_EXPANDED_NODES + 9}`);
-  });
-
-  it("reads where the earlier drill-down sidebar stood so the tree can reveal it", () => {
-    localStorage.setItem(key(), JSON.stringify({ version: 1, sidebarOpen: true, scopeKey: '["device",null,"pump"]' }));
-    expect(loadExplorerPreferences("alice")).toEqual({ version: 1, sidebarOpen: true, scopeKey: '["device",null,"pump"]' });
-    localStorage.setItem(key(), JSON.stringify({ version: 1, sidebarOpen: true, scopeKey: "catalogue:building-a" }));
-    expect(loadExplorerPreferences("alice")).toEqual({ version: 1, sidebarOpen: true, collection: "building-a" });
   });
 
   it("bounds reads by UTF-8 bytes before parsing", () => {

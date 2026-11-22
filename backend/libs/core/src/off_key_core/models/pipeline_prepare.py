@@ -142,7 +142,8 @@ class PrepareFailure(ValueError):
         self.reason = reason
 
 
-def _finite(value: float) -> float:
+def finite_result(value: float) -> float:
+    """``value``, or a ``non_finite`` failure when a computation overflowed."""
     if not math.isfinite(value):
         raise PrepareFailure("non_finite", "The result is not a finite number")
     return value
@@ -312,7 +313,9 @@ class Exponential(Kernel):
 
     def advance(self, state: State, value: float) -> tuple[State, float | None]:
         count, level = state
-        level = _finite(value if count == 0 else level + self.alpha * (value - level))
+        level = finite_result(
+            value if count == 0 else level + self.alpha * (value - level)
+        )
         count = min(count + 1, self.span)
         return (count, level), level if count == self.span else None
 
@@ -358,7 +361,7 @@ class Decay(Kernel):
         if seen and elapsed is not None:
             weight = -math.expm1(-elapsed / self.time_constant)
             value = level + weight * (value - level)
-        level = _finite(value)
+        level = finite_result(value)
         return (True, level), level
 
     def accepts(self, state: State) -> bool:
@@ -397,7 +400,7 @@ class Rolling(Kernel):
         if len(window) < self.size:
             return new, None
         try:
-            return new, _finite(self._statistic(window, new[-1]))
+            return new, finite_result(self._statistic(window, new[-1]))
         except OverflowError:
             raise PrepareFailure(
                 "non_finite", "The result is not a finite number"
@@ -615,7 +618,7 @@ class Accumulate(Kernel):
             carry += (previous - total) + value
         else:
             carry += (value - total) + previous
-        result = _finite(total + carry)
+        result = finite_result(total + carry)
         return (True, total, carry), result
 
     def accepts(self, state: State) -> bool:
@@ -685,7 +688,7 @@ class Relation(Kernel):
         if len(values) < self.size:
             return (values, others), None
         try:
-            return (values, others), _finite(self._statistic(values, others))
+            return (values, others), finite_result(self._statistic(values, others))
         except OverflowError:
             raise PrepareFailure(
                 "non_finite", "The result is not a finite number"
@@ -776,10 +779,10 @@ class Change(Kernel):
         if self.mode == "lag":
             return (window,), reference
         if self.mode == "difference":
-            return (window,), _finite(value - reference)
+            return (window,), finite_result(value - reference)
         if reference == 0:
             raise PrepareFailure("out_of_domain", "Percent change from 0 is undefined")
-        return (window,), _finite(100 * (value - reference) / abs(reference))
+        return (window,), finite_result(100 * (value - reference) / abs(reference))
 
     def accepts(self, state: State) -> bool:
         return _window_state(state, self.lag, 1)
@@ -1101,8 +1104,8 @@ class Function(Kernel):
             case "abs":
                 return state, abs(value)
             case "square":
-                return state, _finite(value * value)
-        return state, _finite(self.scale * value + self.offset)
+                return state, finite_result(value * value)
+        return state, finite_result(self.scale * value + self.offset)
 
 
 class Bound(Kernel):

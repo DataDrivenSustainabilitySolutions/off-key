@@ -9,6 +9,7 @@ from typing import Any
 
 from off_key_core.schemas.pipelines import MAX_DETECTORS
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+from off_key_core.utils.numbers import finite_float
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .config.runtime import get_radar_checkpoint_settings
@@ -26,14 +27,6 @@ VALUE_TYPES = {
     "adaptive_stream": "anomaly_score",
 }
 MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
-
-
-def _optional_finite_float(value: Any) -> float | None:
-    """Return a JSON/database-safe finite float or ``None``."""
-    if not isinstance(value, int | float):
-        return None
-    normalized = float(value)
-    return normalized if math.isfinite(normalized) else None
 
 
 def _nonnegative_int(value: Any) -> int:
@@ -55,8 +48,8 @@ def _normalize_detector_results(value: Any) -> list[dict[str, Any]]:
     return [
         {
             "detector_id": candidate["detector_id"][:100],
-            "score": _optional_finite_float(candidate.get("score")),
-            "surprise": _optional_finite_float(candidate.get("surprise")),
+            "score": finite_float(candidate.get("score")),
+            "surprise": finite_float(candidate.get("surprise")),
         }
         for candidate in value[:MAX_DETECTORS]
         if isinstance(candidate, dict) and isinstance(candidate.get("detector_id"), str)
@@ -69,7 +62,7 @@ MAX_STORED_INPUTS = 64
 
 def _input_values(value: dict[Any, Any]) -> dict[str, float | None]:
     return {
-        name[:120]: _optional_finite_float(number)
+        name[:120]: finite_float(number)
         for name, number in list(value.items())[:MAX_STORED_INPUTS]
         if isinstance(name, str)
     }
@@ -107,15 +100,15 @@ def _normalize_forecasts(value: Any) -> list[dict[str, Any]]:
         if not isinstance(candidate, dict):
             continue
         identifier, target = candidate.get("detector_id"), candidate.get("target")
-        expected = _optional_finite_float(candidate.get("expected"))
+        expected = finite_float(candidate.get("expected"))
         if (
             not isinstance(identifier, str)
             or not isinstance(target, str)
             or expected is None
         ):
             continue
-        lower = _optional_finite_float(candidate.get("lower"))
-        upper = _optional_finite_float(candidate.get("upper"))
+        lower = finite_float(candidate.get("lower"))
+        upper = finite_float(candidate.get("upper"))
         banded = lower is not None and upper is not None and lower <= upper
         slot = candidate.get("slot")
         forecasts.append(
@@ -154,7 +147,7 @@ def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
         tracker_id = candidate.get("tracker_id")
         betting_function = candidate.get("betting_function")
         alarm_statistic = candidate.get("alarm_statistic")
-        threshold = _optional_finite_float(candidate.get("threshold"))
+        threshold = finite_float(candidate.get("threshold"))
         if (
             not all(
                 isinstance(item, str)
@@ -177,9 +170,9 @@ def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
                 if not isinstance(statistic, dict):
                     continue
                 statistics[name] = {
-                    "value": _optional_finite_float(statistic.get("value")),
+                    "value": finite_float(statistic.get("value")),
                     "is_infinite": bool(statistic.get("is_infinite", False)),
-                    "log_value": _optional_finite_float(statistic.get("log_value")),
+                    "log_value": finite_float(statistic.get("log_value")),
                 }
 
         parameters = candidate.get("betting_parameters")
@@ -191,21 +184,19 @@ def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
                 if isinstance(parameters, dict)
                 else {},
                 "alarm_statistic": alarm_statistic,
-                "statistic_value": _optional_finite_float(
-                    candidate.get("statistic_value")
-                ),
+                "statistic_value": finite_float(candidate.get("statistic_value")),
                 "statistic_is_infinite": bool(
                     candidate.get("statistic_is_infinite", False)
                 ),
-                "log_statistic_value": _optional_finite_float(
+                "log_statistic_value": finite_float(
                     candidate.get("log_statistic_value")
                 ),
                 "statistics": statistics,
-                "e_value": _optional_finite_float(candidate.get("e_value")),
+                "e_value": finite_float(candidate.get("e_value")),
                 "e_value_is_infinite": bool(
                     candidate.get("e_value_is_infinite", False)
                 ),
-                "log_e_value": _optional_finite_float(candidate.get("log_e_value")),
+                "log_e_value": finite_float(candidate.get("log_e_value")),
                 "threshold": threshold,
                 "threshold_horizon": _optional_nonnegative_int(
                     candidate.get("threshold_horizon")
@@ -462,18 +453,18 @@ class ResultProjector:
                     ),
                     "p_value": float(p_value) if is_static else None,
                     "anomaly_score": (float(anomaly_score) if is_adaptive else None),
-                    "e_value": _optional_finite_float(context.get("e_value")),
+                    "e_value": finite_float(context.get("e_value")),
                     "e_value_is_infinite": bool(
                         context.get("e_value_is_infinite", False)
                     ),
-                    "log_e_value": _optional_finite_float(context.get("log_e_value")),
-                    "restarted_martingale": _optional_finite_float(
+                    "log_e_value": finite_float(context.get("log_e_value")),
+                    "restarted_martingale": finite_float(
                         context.get("restarted_martingale")
                     ),
                     "restarted_martingale_is_infinite": bool(
                         context.get("restarted_martingale_is_infinite", False)
                     ),
-                    "log_restarted_martingale": _optional_finite_float(
+                    "log_restarted_martingale": finite_float(
                         context.get("log_restarted_martingale")
                     ),
                     "tracker_results": _normalize_tracker_results(

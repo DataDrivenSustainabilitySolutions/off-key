@@ -87,14 +87,6 @@ describe("application home", () => {
       expect(router.state.location.pathname).toBe("/");
     });
 
-  it("opens catalogue settings from an earlier link as the overlay's catalogue section", async () => {
-    const router = visit("/sources?catalogue=settings");
-    const dialog = await screen.findByRole("dialog", { name: "Settings" });
-    expect(await within(dialog).findByRole("heading", { name: "Catalogue", level: 2 })).toBeTruthy();
-    await waitFor(() => expect(router.state.location.search).toBe("?settings=catalogue"));
-    expect(router.state.location.pathname).toBe("/sources");
-  });
-
   it("lists the workspaces in the sidebar instead of a top navigation bar and marks the current one", async () => {
     const router = visit("/anomalies");
     await screen.findByRole("heading", { name: "Reporting" });

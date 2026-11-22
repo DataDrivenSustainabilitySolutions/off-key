@@ -6,8 +6,6 @@ import { clientLogger } from "@/lib/logger";
 /** A catalogue device, a catalogue reading or a monitor, each by its id. */
 export type FavouriteKind = "device" | "reading" | "monitor";
 export type Favourite = { kind: FavouriteKind; id: string };
-/** Favourites earlier versions kept in this browser, where a monitor was a "service". */
-export type LegacyFavourite = { kind: "service" | "reading"; id: string };
 
 const ENDPOINT = API_CONFIG.ENDPOINTS.FAVORITES;
 const same = (left: Favourite) => (right: Favourite) => left.kind === right.kind && left.id === right.id;
@@ -16,17 +14,14 @@ const NONE: Favourite[] = [];
 
 /**
  * The signed-in member's favourites, kept on the server so they follow the
- * account to every browser and agents see the same list. Favourites an earlier
- * version left in this browser are added to the account once, then dropped.
+ * account to every browser and agents see the same list.
  */
-export function useFavourites(account: string | number | null, legacy: LegacyFavourite[] | undefined, dropLegacy: () => void) {
+export function useFavourites(account: string | number | null) {
   // Kept with the account they belong to, so another sign-in never shows them.
   type Owned = { account: string | number | null; items: Favourite[] };
   const [owned, setOwned] = useState<Owned>({ account: null, items: [] });
   const [error, setError] = useState("");
   const latest = useRef<Owned>(owned);
-  const migration = useRef({ legacy, dropLegacy });
-  useEffect(() => { migration.current = { legacy, dropLegacy }; }, [legacy, dropLegacy]);
   const update = useCallback((next: Owned) => { latest.current = next; setOwned(next); }, []);
 
   useEffect(() => {
@@ -35,13 +30,7 @@ export function useFavourites(account: string | number | null, legacy: LegacyFav
     void (async () => {
       try {
         const saved = await apiUtils.get<Favourite[]>(ENDPOINT, { signal: controller.signal });
-        const { legacy, dropLegacy } = migration.current;
-        const moved = (legacy ?? []).map(({ kind, id }): Favourite => ({ kind: kind === "service" ? "monitor" : kind, id }))
-          .filter(item => !saved.some(same(item)));
-        for (const item of moved) await apiUtils.post<Favourite>(ENDPOINT, item);
-        if (controller.signal.aborted) return;
-        if (legacy) dropLegacy();
-        update({ account, items: [...saved.map(({ kind, id }) => ({ kind, id })), ...moved] });
+        update({ account, items: saved.map(({ kind, id }) => ({ kind, id })) });
         setError("");
       } catch (failure) {
         if (controller.signal.aborted) return;

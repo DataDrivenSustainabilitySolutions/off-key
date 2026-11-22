@@ -1,10 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Activity, Database, SlidersHorizontal, UserCircle, X, type LucideIcon } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { useOverlayDocumentTitle } from "@/hooks/use-document-title";
-import { settingsHref, settingsReturnFocus, useSettingsNavigation, type SettingsSection } from "@/lib/settings-navigation";
+import { settingsReturnFocus, useSettingsNavigation, type SettingsSection } from "@/lib/settings-navigation";
 import { useOptionalCatalogue } from "@/features/workspace/catalogue-context";
 import { AppearanceSettings } from "@/features/settings/AppearanceSettings";
 import "@/features/settings/settings.css";
@@ -45,8 +44,6 @@ export function SettingsOverlay() {
   const { section, select, close } = useSettingsNavigation();
   const { isAuthenticated } = useAuth();
   const catalogue = useOptionalCatalogue();
-  const location = useLocation();
-  const navigate = useNavigate();
   const saving = !!catalogue?.system.saving;
   const sections = SECTIONS.filter(entry => !entry.membersOnly || isAuthenticated);
   const current = sections.find(entry => entry.id === section);
@@ -59,15 +56,6 @@ export function SettingsOverlay() {
   // Braced: browsers may return a promise from scrollIntoView, which an effect must not return.
   const revealSection = () => { nav.current?.querySelector<HTMLElement>("[aria-current]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); };
   useEffect(() => { revealSection(); }, [current?.id]);
-
-  // Earlier links opened catalogue settings with ?catalogue=settings.
-  const legacyCatalogue = new URLSearchParams(location.search).get("catalogue") === "settings";
-  useEffect(() => {
-    if (!legacyCatalogue) return;
-    const params = new URLSearchParams(location.search);
-    params.delete("catalogue");
-    navigate(settingsHref({ ...location, search: `?${params}` }, "catalogue"), { replace: true, state: location.state });
-  }, [legacyCatalogue, location, navigate]);
 
   return <Dialog.Root open={!!current} onOpenChange={open => { if (!open && !saving) close(); }}>
     <Dialog.Portal>

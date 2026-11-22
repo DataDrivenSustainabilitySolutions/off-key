@@ -49,12 +49,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   const history = useMemo(() => navigationDraft(`history:${userId}`, () => new ReadingHistoryCache(userId)), [userId]);
   const [preferences, setPreferences] = useState(() => loadExplorerPreferences(userId ?? null));
   const [stored, setStored] = useState(true);
-  const dropLegacyFavourites = useCallback(() => setPreferences(previous => {
-    const next = { ...previous };
-    delete next.favourites;
-    return next;
-  }), []);
-  const favourites = useFavourites(isAuthenticated ? userId ?? null : null, preferences.favourites, dropLegacyFavourites);
+  const favourites = useFavourites(isAuthenticated ? userId ?? null : null);
   const [query, setQuery] = useNavigationDraft(`catalogue:${userId}:query`, "");
   const [positions] = useNavigationDraft(`catalogue:${userId}:positions`, () => new Map<string, ListPosition>());
   const expanded = useMemo(() => new Set(preferences.expanded ?? []), [preferences.expanded]);
@@ -71,34 +66,24 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   }), []);
 
   // Reveal the selected source in the tree: on a deep link, on Back and Forward,
-  // and when a row, page or favourite chooses it. An earlier sidebar's location is
-  // revealed the same way once, then forgotten.
+  // and when a row, page or favourite chooses it.
   const revealed = useRef<string | null>(null);
   const selectedKey = selected?.key;
-  const legacyScope = preferences.scopeKey;
   useEffect(() => {
     if (!system.document) return;
     const reveal = selectedKey && revealed.current !== selectedKey ? selectedKey : undefined;
-    if (!reveal && legacyScope === undefined) return;
+    if (!reveal) return;
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
-      revealed.current = selectedKey ?? null;
-      if (legacyScope !== undefined) {
-        setPreferences(previous => {
-          const next = { ...previous };
-          delete next.scopeKey;
-          return next;
-        });
-        if (index.nodes.has(legacyScope)) expand([...ancestorKeys(index, legacyScope), legacyScope]);
-      }
+      revealed.current = reveal;
       // A chosen branch opens too, so its contents are in view. Opening a branch
       // never chooses it.
-      const node = reveal ? index.nodes.get(reveal) : undefined;
+      const node = index.nodes.get(reveal);
       if (node) expand([...ancestorKeys(index, node.key), ...(node.entityKind !== "stream" && node.children.length ? [node.key] : [])]);
     });
     return () => { active = false; };
-  }, [system.document, index, selectedKey, legacyScope, expand]);
+  }, [system.document, index, selectedKey, expand]);
 
   useEffect(() => {
     if (!system.document) return;

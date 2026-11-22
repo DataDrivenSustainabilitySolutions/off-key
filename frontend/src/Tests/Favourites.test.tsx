@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import { useFavourites, type Favourite, type LegacyFavourite } from "@/features/workspace/favourites";
+import { useFavourites, type Favourite } from "@/features/workspace/favourites";
 
 vi.mock("@/lib/api-client", () => ({
   apiUtils: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
@@ -26,8 +26,8 @@ function server(initial: Record<number, Favourite[]> = {}) {
   return { list, signIn: (next: number) => { account = next; } };
 }
 
-const mount = (account: number | null, legacy?: LegacyFavourite[], dropLegacy = vi.fn()) =>
-  renderHook(({ account, legacy }) => useFavourites(account, legacy, dropLegacy), { initialProps: { account, legacy } });
+const mount = (account: number | null) =>
+  renderHook(({ account }) => useFavourites(account), { initialProps: { account } });
 
 beforeEach(() => { vi.mocked(apiUtils.get).mockReset(); vi.mocked(apiUtils.post).mockReset(); vi.mocked(apiUtils.delete).mockReset(); });
 
@@ -44,27 +44,6 @@ describe("favourites kept on the server", () => {
     await waitFor(() => expect(remote.list()).toEqual([{ kind: "monitor", id: "m1" }]));
     expect(apiUtils.delete).toHaveBeenCalledWith("/v1/favorites?kind=reading&id=line%2Ftemperature");
     expect(hook.result.current.error).toBe("");
-  });
-
-  it("moves favourites this browser kept to the account once, as monitors and readings", async () => {
-    const remote = server({ 1: [{ kind: "reading", id: "kept" }] });
-    const dropLegacy = vi.fn();
-    const hook = mount(1, [{ kind: "service", id: "m1" }, { kind: "reading", id: "kept" }], dropLegacy);
-
-    await waitFor(() => expect(dropLegacy).toHaveBeenCalledOnce());
-    expect(remote.list()).toEqual([{ kind: "reading", id: "kept" }, { kind: "monitor", id: "m1" }]);
-    expect(apiUtils.post).toHaveBeenCalledExactlyOnceWith("/v1/favorites", { kind: "monitor", id: "m1" });
-    expect(hook.result.current.favourites).toEqual(remote.list());
-  });
-
-  it("keeps browser favourites when the move fails, so the next sign-in retries", async () => {
-    server();
-    vi.mocked(apiUtils.post).mockRejectedValue(new Error("offline"));
-    const dropLegacy = vi.fn();
-    const hook = mount(1, [{ kind: "service", id: "m1" }], dropLegacy);
-
-    await waitFor(() => expect(hook.result.current.error).toContain("could not be loaded"));
-    expect(dropLegacy).not.toHaveBeenCalled();
   });
 
   it("undoes a star the server refused and says so", async () => {
@@ -121,11 +100,11 @@ describe("favourites kept on the server", () => {
     await waitFor(() => expect(hook.result.current.favourites).toHaveLength(1));
 
     remote.signIn(2);
-    hook.rerender({ account: 2, legacy: undefined });
+    hook.rerender({ account: 2 });
     expect(hook.result.current.favourites).toEqual([]);
     await waitFor(() => expect(apiUtils.get).toHaveBeenCalledTimes(2));
     expect(hook.result.current.favourites).toEqual([]);
-    hook.rerender({ account: null as unknown as number, legacy: undefined });
+    hook.rerender({ account: null as unknown as number });
     expect(hook.result.current.favourites).toEqual([]);
   });
 });

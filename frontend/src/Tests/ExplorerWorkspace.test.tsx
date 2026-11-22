@@ -9,7 +9,7 @@ import MonitoringWorkspace from "@/pages/MonitoringWorkspace";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 import Reporting from "@/pages/Anomalies";
 import { buildNavigationIndex } from "@/domain/system/navigationIndex";
-import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorerPreferences } from "@/features/workspace/preferences";
+import { loadExplorerPreferences } from "@/features/workspace/preferences";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { Alarm, AlarmPage, AlarmQuery } from "@/types/charger";
 import type { ActiveService } from "@/types/monitoring";
@@ -459,7 +459,6 @@ describe("service-centred monitoring workspace", () => {
     const view = mount();
     fireEvent.click(await screen.findByRole("button", { name: "Add Room climate to favourites" }));
     await waitFor(() => expect(starred).toEqual([{ kind: "monitor", id: "service-one" }]));
-    expect(loadExplorerPreferences(1).favourites).toBeUndefined();
     fireEvent.click(screen.getByRole("button", { name: "Favourites 1" }));
     fireEvent.click(screen.getByRole("link", { name: "Room climate" }));
     const details = await screen.findByRole("region", { name: "Monitoring service details" });
@@ -597,8 +596,7 @@ describe("hierarchical explorer workspace", () => {
     expect((request[1] as { document: SystemDocument }).document.groups).toEqual(fixture().groups);
   });
 
-  it("returns a retired personal scope to the catalogue", async () => {
-    saveExplorerPreferences(1, { ...createDefaultExplorerPreferences(), scopeKey: "personal:watch" });
+  it("narrows the tree to a collection without personal groups", async () => {
     mount(); await loaded();
     expect(screen.queryByText("Favorites")).toBeNull();
     expect(screen.getByRole("button", { name: "Building broker, open" }).querySelector<HTMLElement>(".ex-row-icon")?.style.color).toBe("");
@@ -620,7 +618,6 @@ describe("hierarchical explorer workspace", () => {
     // The reading is a member itself and also inside its member station, which opens to reveal it.
     expect(screen.getAllByRole("button", { name: "Air temperature, preview" }).map(row => row.getAttribute("aria-current"))).toEqual(["true", "true"]);
     await waitFor(() => expect(loadExplorerPreferences(1).collection).toBe("roof"));
-    expect(loadExplorerPreferences(1).scopeKey).toBeUndefined();
     expect(apiUtils.put).not.toHaveBeenCalled();
 
     await openCatalogueSettings();

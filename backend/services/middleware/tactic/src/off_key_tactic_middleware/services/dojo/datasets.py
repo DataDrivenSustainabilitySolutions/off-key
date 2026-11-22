@@ -6,7 +6,7 @@ do not take the collection lock: a long import must not block catalogue edits.
 """
 
 import builtins
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import cast
@@ -560,11 +560,15 @@ class DojoDatasets:
         *,
         created_by: int | None,
         created_by_agent: Agent | None = None,
+        extras: Sequence[dict] | None = None,
+        source_extra: dict | None = None,
     ) -> DatasetView:
         """Copy a dataset with faults written in, each one a new label.
 
         The copy keeps the source's labels and readings, so a run on it is
-        scored on every known problem, injected or not.
+        scored on every known problem, injected or not. ``extras`` adds facts
+        to each fault's record, and ``source_extra`` to the copy's source,
+        such as a protocol suite's cell and role.
         """
         await require_application_writes(self.session)
         source = await self._row(dataset_id)
@@ -577,12 +581,18 @@ class DojoDatasets:
                 )
             ).all()
         )
-        labels = await dataset_labels(self.session, source.id)
+        cut = request.end_at
+        labels = [
+            label
+            for label in await dataset_labels(self.session, source.id)
+            if cut is None or label.start_at <= cut
+        ]
         planned = await plan_faults(
             self.session,
             request.faults,
             {item.id: item for item in originals},
             labels,
+            cut,
         )
         copies = {
             item.id: _Series(
@@ -594,25 +604,44 @@ class DojoDatasets:
             )
             for item in originals
         }
+        notes = [item.note() for item in planned]
+        label_ids = [str(uuid4()) for _ in planned]
         faults = [
             {
                 **item.fault.model_dump(mode="json"),
-                "series_id": copies[item.series.id].id,
-                "size": item.size,
+                "series_id": copies[item.fault.series_id].id,
+                "with_series": [copies[name].id for name in item.fault.with_series],
+                "size": item.targets[0].size,
+                "sigma": item.targets[0].sigma,
+                "sigmas": item.sigmas,
+                "label_id": label_id,
+                "label_end": item.interval[1].isoformat(),
+                "note": note,
+                **(extras[number] if extras else {}),
             }
-            for item in planned
+            for number, (item, note, label_id) in enumerate(
+                zip(planned, notes, label_ids, strict=True)
+            )
         ]
         dataset = self._dataset(
             request.name,
             request.description,
             source.origin,
-            {**source.source, "copied_from": source.id, "faults": faults},
+            {
+                **{
+                    key: value
+                    for key, value in source.source.items()
+                    if key not in ("faults", "protocol")
+                },
+                "copied_from": source.id,
+                "faults": faults,
+                **(source_extra or {}),
+            },
             created_by,
             created_by_agent,
         )
         await self._store_series(dataset.id, copies.values())
         for original in originals:
-            mine = [item for item in planned if item.series.id == original.id]
             copy = copies[original.id]
             await self.session.execute(
                 insert(DojoPoint).from_select(
@@ -620,25 +649,32 @@ class DojoDatasets:
                     select(
                         literal(copy.id, Text),
                         DojoPoint.timestamp,
-                        written_value(mine),
-                    ).where(DojoPoint.series_id == original.id, kept(mine)),
+                        written_value(planned, original.id),
+                    ).where(
+                        DojoPoint.series_id == original.id,
+                        kept(planned, original.id, cut),
+                    ),
                 )
             )
             await self._measure(copy)
         intervals = [
             (
+                str(uuid4()),
                 label.start_at,
-                label.end_at,
+                min(label.end_at, cut) if cut else label.end_at,
                 label.note,
                 label.rule,
                 label.suggested_by_agent,
             )
             for label in labels
         ]
-        intervals += [(*item.interval, item.note(), "", None) for item in planned]
+        intervals += [
+            (label_id, *item.interval, note, "", None)
+            for item, note, label_id in zip(planned, notes, label_ids, strict=True)
+        ]
         self.session.add_all(
             DojoLabel(
-                id=str(uuid4()),
+                id=label_id,
                 dataset_id=dataset.id,
                 start_at=start,
                 end_at=end,
@@ -647,7 +683,7 @@ class DojoDatasets:
                 suggested_by_agent=agent,
                 created_by=created_by,
             )
-            for start, end, note, rule, agent in intervals
+            for label_id, start, end, note, rule, agent in intervals
         )
         return await self._finish(dataset, copies.values())
 

@@ -3,10 +3,12 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DojoWorkspace } from "@/features/dojo/DojoWorkspace";
 import { dojoApi } from "@/features/dojo/api";
+import { ProtocolPanel } from "@/features/dojo/ProtocolPanel";
 import { FaultSuiteDialog } from "@/features/dojo/SuiteDialogs";
-import { describePValue, sharedSeriesNames, studyProgress } from "@/features/dojo/suites";
+import { caughtFrom, describePValue, formatLevel, sharedSeriesNames, studyProgress } from "@/features/dojo/suites";
 import { pipelinesApi } from "@/features/pipelines/api";
-import type { DatasetSummary, DatasetView, StudySummary, StudyTotals, SuiteView } from "@/types/dojo.generated";
+import type { DatasetSummary, DatasetView, ProtocolFamily, ProtocolReport, StudySummary, StudyTotals, SuiteView }
+  from "@/types/dojo.generated";
 
 const access = vi.hoisted(() => ({ guest: false }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: !access.guest, isGuest: access.guest,
@@ -150,12 +152,41 @@ describe("suite helpers", () => {
 });
 
 describe("fault suites", () => {
-  it("asks for a reproducible suite of fault-injected copies", async () => {
+  it("asks for a screening protocol suite with the design's windows", async () => {
     vi.mocked(dojoApi.createFaultSuite).mockResolvedValue(suite);
     const onCreated = vi.fn();
     const view: DatasetView = { ...datasets[0]!, origin: "history", source: {}, series: [] };
     render(<FaultSuiteDialog open dataset={view} onOpenChange={vi.fn()} onCreated={onCreated} />);
     const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("radio", { name: "Screening protocol" })).toHaveProperty("checked", true);
+    fireEvent.change(within(dialog).getByLabelText(/Warm-up/), { target: { value: "200" } });
+    fireEvent.change(within(dialog).getByLabelText(/Window/), { target: { value: "40" } });
+    fireEvent.change(within(dialog).getByLabelText("Seed"), { target: { value: "7" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create suite" }));
+    await waitFor(() => expect(dojoApi.createFaultSuite).toHaveBeenCalledWith({ dataset_id: "d0", name: "Pump A · faults",
+      protocol: "screening-v1", purpose: "practice", seed: 7, warmup_values: 200, window_values: 40 }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(suite));
+  });
+
+  it("leaves the seed to the server for a test suite", async () => {
+    vi.mocked(dojoApi.createFaultSuite).mockResolvedValue(suite);
+    const view: DatasetView = { ...datasets[0]!, origin: "history", source: {}, series: [] };
+    render(<FaultSuiteDialog open dataset={view} onOpenChange={vi.fn()} onCreated={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Purpose"), { target: { value: "test" } });
+    expect(within(dialog).queryByLabelText("Seed")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create suite" }));
+    await waitFor(() => expect(dojoApi.createFaultSuite).toHaveBeenCalledWith({ dataset_id: "d0", name: "Pump A · faults",
+      protocol: "screening-v1", purpose: "test", seed: 0 }));
+  });
+
+  it("asks for a reproducible suite of freely drawn faults", async () => {
+    vi.mocked(dojoApi.createFaultSuite).mockResolvedValue(suite);
+    const onCreated = vi.fn();
+    const view: DatasetView = { ...datasets[0]!, origin: "history", source: {}, series: [] };
+    render(<FaultSuiteDialog open dataset={view} onOpenChange={vi.fn()} onCreated={onCreated} />);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Free draw" }));
     fireEvent.change(within(dialog).getByLabelText("Copies"), { target: { value: "4" } });
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "Gap" }));
     fireEvent.change(within(dialog).getByLabelText("Seed"), { target: { value: "7" } });
@@ -169,7 +200,40 @@ describe("fault suites", () => {
     const view: DatasetView = { ...datasets[0]!, origin: "history", source: {}, series: [] };
     render(<FaultSuiteDialog open dataset={view} onOpenChange={vi.fn()} onCreated={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Free draw" }));
     for (const name of ["Step", "Drift", "Frozen value", "Gap"]) fireEvent.click(within(dialog).getByRole("checkbox", { name }));
     expect(within(dialog).getByRole("button", { name: "Create suite" })).toHaveProperty("disabled", true);
+  });
+});
+
+describe("protocol report", () => {
+  const level = (value: number, caught: number) => ({ level: value, faults: 2, scored: 2, caught, confounded: 0,
+    rate: caught / 2, low: 0, high: 1, simple_rules: 0 });
+  const family = (fields: Partial<ProtocolFamily>): ProtocolFamily => ({ family: "step", title: "Sudden step",
+    measure: "sigmas", sanity: false, faults: 8, scored: 8, caught: 5, chance_detections: 0.1, adjusted_detection_rate: 0.6,
+    half: 2.1, ninety: 4.4, median_delay_seconds: 120, median_sigmas_at_detection: null, simple_rules_caught: 2,
+    levels: [level(1, 0), level(2, 1), level(4, 2), level(8, 2)], ...fields });
+  const report: ProtocolReport = { protocol: "screening-v1", version: 1, purpose: "practice", seed: 3, warmup_values: 200,
+    window_values: 40, clean_run_id: "r0", false_alarms_per_day: 0.4, alarm_share: 0.002, budget_per_day: 1,
+    budget_share: 0.01, within_budget: true, adjusted_detection_rate: 0.3, faults: 16, caught: 5, simple_rules_caught: 2,
+    sanity_missed: 0, untestable: [], headline: "0.4 false alarms a day; catches sudden step from 2.1σ.",
+    families: [family({}), family({ family: "noise", title: "Rising noise", measure: "factor", half: null, ninety: null,
+      caught: 0, levels: [level(2, 0), level(4, 0), level(8, 0)] })] };
+
+  it("leads with the budget and gives each family where its catches start", () => {
+    render(<ProtocolPanel report={report} />);
+    expect(screen.getByText(report.headline)).toBeTruthy();
+    expect(screen.getByText("Within the false-alarm budget")).toBeTruthy();
+    const rows = screen.getAllByRole("row");
+    expect(within(rows[1]!).getByText("from 2.1σ")).toBeTruthy();
+    expect(within(rows[1]!).getByText("4.4σ")).toBeTruthy();
+    expect(within(rows[2]!).getByText("not up to ×8")).toBeTruthy();
+  });
+
+  it("formats sizes as the family measures them", () => {
+    expect(formatLevel({ measure: "sigmas" }, 2.345)).toBe("2.3σ");
+    expect(formatLevel({ measure: "factor" }, 4)).toBe("×4");
+    expect(formatLevel({ measure: "values" }, null)).toBe("–");
+    expect(caughtFrom(family({ measure: "values", caught: 3, scored: 6 }))).toBe("3 of 6");
   });
 });

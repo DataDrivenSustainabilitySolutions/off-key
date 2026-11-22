@@ -182,26 +182,39 @@ export type DatasetView = {
 export type DatasetWithFaults = {
   name: string;
   description?: string;
-  faults: Array<Fault>;
+  faults?: Array<Fault>;
+  end_at?: string | null;
 };
 
 export type DojoModel = Record<string, unknown>;
 
 export type Fault = {
-  kind: "step" | "drift" | "freeze" | "gap";
+  kind: "step" | "drift" | "gain" | "noise" | "spike" | "freeze" | "gap" | "out_of_range";
   series_id: string;
+  with_series?: Array<string>;
   start_at: string;
   end_at: string;
   size?: number | null;
+  sigmas?: number | null;
+  onset_seconds?: number | null;
+  recovery?: "sudden" | "gradual" | "none";
+  recovery_seconds?: number | null;
+  noise_factor?: number | null;
+  value?: number | null;
+  seed?: number;
 };
 
 export type FaultSuiteCreate = {
   dataset_id: string;
   name: string;
   description?: string;
+  protocol?: "screening-v1" | "full-v1" | null;
+  purpose?: "practice" | "test";
+  warmup_values?: number | null;
+  window_values?: number | null;
   copies?: number;
   faults_per_copy?: number;
-  kinds?: Array<"step" | "drift" | "freeze" | "gap">;
+  kinds?: Array<"step" | "drift" | "gain" | "noise" | "spike" | "freeze" | "gap" | "out_of_range">;
   series?: Array<string>;
   clean_share?: number;
   seed?: number;
@@ -240,6 +253,8 @@ export type LabelOutcome = {
   outcome: "detected" | "missed" | "unscored";
   first_alarm_at: string | null;
   delay_seconds: number | null;
+  results?: number;
+  chance?: number | null;
 };
 
 export type LabelRule = {
@@ -377,6 +392,59 @@ export type PromotedBinding = {
   reading_id: string | null;
 };
 
+export type ProtocolFamily = {
+  family: string;
+  title: string;
+  measure: "sigmas" | "factor" | "values" | "none";
+  sanity: boolean;
+  faults: number;
+  scored: number;
+  caught: number;
+  chance_detections: number | null;
+  adjusted_detection_rate: number | null;
+  half: number | null;
+  ninety: number | null;
+  median_delay_seconds: number | null;
+  median_sigmas_at_detection: number | null;
+  simple_rules_caught: number;
+  levels: Array<ProtocolLevel>;
+};
+
+export type ProtocolLevel = {
+  level: number | null;
+  faults: number;
+  scored: number;
+  caught: number;
+  confounded: number;
+  rate: number | null;
+  low: number | null;
+  high: number | null;
+  simple_rules: number;
+};
+
+export type ProtocolReport = {
+  protocol: string;
+  version: number;
+  purpose: "practice" | "test";
+  seed: number | null;
+  warmup_values: number | null;
+  window_values: number | null;
+  clean_run_id: string | null;
+  false_alarms_per_day: number | null;
+  alarm_share: number | null;
+  budget_per_day: number;
+  budget_share: number;
+  within_budget: boolean | null;
+  adjusted_detection_rate: number | null;
+  faults: number;
+  caught: number;
+  simple_rules_caught: number;
+  sanity_missed: number;
+  untestable: Array<string>;
+  families: Array<ProtocolFamily>;
+  headline: string;
+};
+
 export type RecentValues = {
   count: number;
   missing: number;
@@ -465,6 +533,9 @@ export type RunMetrics = {
   false_alarms: number;
   evaluated_seconds: number;
   false_alarms_per_day: number | null;
+  alarm_share?: number | null;
+  chance_detections?: number | null;
+  adjusted_detection_rate?: number | null;
   scores?: ScoreMetrics | null;
   diagnostics?: RunDiagnostics | null;
   labels: Array<LabelOutcome>;
@@ -741,6 +812,7 @@ export type StudyView = {
   bindings: Record<string, string>;
   alignment: RunAlignment;
   items: Array<StudyItem>;
+  protocol?: ProtocolReport | null;
 };
 
 export type SuggestedLag = {
@@ -810,4 +882,4 @@ export type SuiteView = {
   unfinished: Array<StudySummary>;
 };
 
-export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, outlineBuckets: 2000, labels: 500, benchmarkImport: 20, comparedRuns: 6, suiteDatasets: 50 } as const;
+export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, outlineBuckets: 2000, labels: 500, benchmarkImport: 20, comparedRuns: 6, suiteDatasets: 100 } as const;

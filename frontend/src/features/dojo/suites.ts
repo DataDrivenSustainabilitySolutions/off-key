@@ -1,4 +1,4 @@
-import type { StudyComparison, StudySummary, StudyTotals, SuiteDataset } from "@/types/dojo.generated";
+import type { StudyComparison, StudySummary, StudyTotals, SuiteDataset, ProtocolFamily } from "@/types/dojo.generated";
 
 export type StudyMetric = StudyComparison["metric"];
 
@@ -38,4 +38,22 @@ export function sharedSeriesNames(items: Pick<SuiteDataset, "series_names">[]) {
 export function describePValue(value: number | null | undefined) {
   if (value == null) return "Too few datasets differ to test";
   return value < 0.05 ? `p = ${value.toPrecision(2)}, unlikely to be chance` : `p = ${value.toPrecision(2)}, could be chance`;
+}
+
+/** A size as the family measures it: in short-term noise, or as a noise factor. */
+export function formatLevel(family: Pick<ProtocolFamily, "measure">, value: number | null | undefined) {
+  if (value == null) return "–";
+  if (family.measure === "sigmas") return `${Number(value.toPrecision(2))}σ`;
+  if (family.measure === "factor") return `×${Number(value.toPrecision(2))}`;
+  return String(value);
+}
+
+/** Where a family's catches start, or that none came within the grid. */
+export function caughtFrom(family: ProtocolFamily) {
+  if (family.measure !== "sigmas" && family.measure !== "factor") return `${family.caught} of ${family.scored}`;
+  if (family.half == null) {
+    const top = Math.max(0, ...family.levels.map(item => item.level ?? 0));
+    return `not up to ${formatLevel(family, top)}`;
+  }
+  return `from ${formatLevel(family, family.half)}`;
 }

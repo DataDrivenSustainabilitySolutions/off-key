@@ -150,7 +150,7 @@ export function suggestionNote(item: Pick<LabelSuggestion, "alarm_count">) {
   return item.alarm_count === 1 ? "Recorded alarm" : `${item.alarm_count.toLocaleString()} recorded alarms`;
 }
 
-const FAULT_KINDS = ["step", "drift", "freeze", "gap"] as const;
+const FAULT_KINDS = ["step", "drift", "gain", "noise", "spike", "freeze", "gap", "out_of_range"] as const;
 
 /** The faults written into a copy, by kind, such as "3: 2 step, 1 gap"; nothing for an original. */
 export function injectedFaults(source: Record<string, unknown>): string | undefined {

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.models import User
 from off_key_core.schemas.system import SystemStream
-from off_key_core.utils.payload_decode import decode_value
+from off_key_core.utils.payload_decode import PayloadDecoder
 from off_key_tactic_middleware.config.system_live import (
     LiveCredential,
     LiveSocksProxy,
@@ -228,7 +228,7 @@ def test_typed_values_and_json_pointer(kind, pointer, payload, expected):
         value_type=kind,
         payload_pointer=pointer,
     )
-    assert decode_value(payload, stream) == expected
+    assert PayloadDecoder(payload).value(stream) == expected
 
 
 @pytest.mark.parametrize(
@@ -267,7 +267,7 @@ def test_invalid_and_oversized_values_are_rejected(kind, pointer, payload):
         payload_pointer=pointer,
     )
     with pytest.raises((ValueError, UnicodeError)):
-        decode_value(payload, stream)
+        PayloadDecoder(payload).value(stream)
 
 
 def test_settings_default_closed_and_empty_private_credentials(monkeypatch):

@@ -11,13 +11,26 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
-from off_key_core.models.adaptive import CATALOG
+from off_key_core.models.adaptive import (
+    CATALOG,
+    aberrant_model,
+    bind_detector_parameters,
+)
 from off_key_core.models.pipelines import validate_pipeline
 from off_key_core.schemas.pipelines import PipelineDefinition
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.catalog import generate_catalog
 
 from tests.support.pipelines import template
+
+
+def detector_mapping(config: AdaptiveStreamConfig, features: list[str]) -> dict:
+    """The Aberrant mapping a detector's settings bind to for these features."""
+    definition = ADAPTIVE_MODELS_BY_TYPE[config.model_type]
+    params = bind_detector_parameters(
+        definition["bound_parameters"], config.model_params, features
+    )
+    return {"version": 1, "model": aberrant_model(definition, params)}
 
 
 def test_generated_catalog_matches_pinned_runtime():
@@ -53,8 +66,8 @@ def test_legacy_and_canonical_parameters_have_the_same_fingerprint(
     old = AdaptiveStreamConfig(model_type=model_type, model_params=legacy)
     new = AdaptiveStreamConfig(model_type=model_type, model_params=canonical)
     assert old.model_params == new.model_params
-    assert DetectorConfig.from_mapping(old.detector_mapping(["x"])).fingerprint() == (
-        DetectorConfig.from_mapping(new.detector_mapping(["x"])).fingerprint()
+    assert DetectorConfig.from_mapping(detector_mapping(old, ["x"])).fingerprint() == (
+        DetectorConfig.from_mapping(detector_mapping(new, ["x"])).fingerprint()
     )
 
 
@@ -163,7 +176,7 @@ def test_seasonal_forecast_detector_needs_its_season_and_one_feature():
     assert config.validate_feature_schema(["x"]) == 1
     with pytest.raises(ValueError, match="exactly one feature"):
         config.validate_feature_schema(["x", "y"])
-    mapping = config.detector_mapping(["x"])
+    mapping = detector_mapping(config, ["x"])
     assert mapping["model"]["params"]["key"] == "x"
     assert DetectorConfig.from_mapping(mapping).capabilities().warmup.minimum == 48
 
@@ -228,14 +241,14 @@ def test_forecaster_step_is_a_residual_detector_around_its_forecaster(
     config = AdaptiveStreamConfig(model_type=model_type, model_params=params)
     with pytest.raises(ValueError, match="exactly one feature"):
         config.validate_feature_schema(["x", "y"])
-    model = config.detector_mapping(["x"])["model"]
+    model = detector_mapping(config, ["x"])["model"]
     assert model["id"] == "residual_detector"
     assert model["params"]["target"] == "x"
     assert model["params"]["lead"] == params["lead"]
     assert model["params"]["model"]["id"] == forecaster_id
     assert forecaster_params.items() <= model["params"]["model"]["params"].items()
     capabilities = DetectorConfig.from_mapping(
-        config.detector_mapping(["x"])
+        detector_mapping(config, ["x"])
     ).capabilities()
     assert capabilities.warmup.minimum == warmup
 

@@ -77,10 +77,10 @@ from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationEr
 from . import protocol as fault_protocol
 from .datasets import DojoDatasets
 from .faults import noise_sigma
-from .labels import dataset_labels
+from .labels import dataset_labels, dataset_series
 from .metrics import DojoMetrics
 from .owners import made_by, require_no_evidence
-from .runs import ACTIVE, DojoRuns, compile_design, dataset_series
+from .runs import ACTIVE, DojoRuns, compile_design, request_cancel
 
 # Reading a study calculates the metrics of its finished runs for at most
 # this long; the rest wait for the next read.
@@ -569,7 +569,7 @@ class DojoSuites:
         bound: list[tuple[DojoDataset, dict[str, DojoSeries]]] = []
         problems = []
         for dataset in datasets:
-            series = list((await dataset_series(self.session, dataset.id)).values())
+            series = await dataset_series(self.session, dataset.id)
             chosen, missing = _bind(slots, series, request.bindings)
             if missing:
                 problems.append(f"{dataset.name!r} has no series for {missing}")
@@ -844,11 +844,7 @@ class DojoSuites:
             raise ConflictError("No run of the study waits or runs")
         now = datetime.now(UTC)
         for run in runs:
-            if run.status == "queued":
-                run.status = "cancelled"
-                run.finished_at = now
-            else:
-                run.cancel_requested = True
+            request_cancel(run, now)
         await self.session.commit()
         return await self.get_study(study.id)
 

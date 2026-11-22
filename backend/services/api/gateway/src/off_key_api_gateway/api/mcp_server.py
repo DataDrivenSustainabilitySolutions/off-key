@@ -46,7 +46,7 @@ def _caller(ctx: ServerRequestContext) -> State:
 async def _list_tools(
     ctx: ServerRequestContext, params: types.PaginatedRequestParams | None
 ) -> types.ListToolsResult:
-    agent: AgentProfile = _caller(ctx).agent
+    agent = _caller(ctx).api.agent
     return types.ListToolsResult(
         tools=[
             types.Tool(
@@ -91,7 +91,7 @@ async def _call_tool(
     tool = TOOLS.get(params.name)
     if tool is None:
         return _answer(f"There is no tool called {params.name}", refused=True)
-    if not _offered(tool, state.agent):
+    if not _offered(tool, state.api.agent):
         return _answer(
             f"This key may not start monitors, so {params.name} is not offered "
             "to it. Propose the design with propose_design: a member decides "
@@ -125,9 +125,8 @@ class _Door:
         headers = {"X-Forwarded-For": client_ip(request), **correlation_headers()}
         if authorization := request.headers.get("authorization"):
             headers["Authorization"] = authorization
-        api = Api(self.client, headers)
         try:
-            agent = AgentProfile.model_validate(await api.get("/v1/agents/me"))
+            api = await Api.signed_in(self.client, headers)
         except ApiRefusal as refusal:
             answer = JSONResponse({"detail": refusal.detail}, refusal.status)
             if refusal.status == 401:
@@ -137,7 +136,6 @@ class _Door:
             await answer(scope, receive, send)
             return
         request.state.api = api
-        request.state.agent = agent
         await self.serve(scope, receive, send)
 
 

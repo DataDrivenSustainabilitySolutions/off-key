@@ -55,7 +55,7 @@ from sqlalchemy import Text, delete, func, insert, literal, select, update
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from .csv_import import LabelRuns, read_points
 from .faults import kept, plan_faults, written_value
-from .labels import dataset_labels
+from .labels import dataset_labels, dataset_row, dataset_series
 from .owners import made_by, require_no_evidence
 
 COPY_BATCH = 20_000
@@ -150,14 +150,8 @@ class DojoDatasets:
         )
 
     async def get(self, dataset_id: str) -> DatasetView:
-        row = await self._row(dataset_id)
-        series = (
-            await self.session.scalars(
-                select(DojoSeries)
-                .where(DojoSeries.dataset_id == row.id)
-                .order_by(DojoSeries.position)
-            )
-        ).all()
+        row = await dataset_row(self.session, dataset_id)
+        series = await dataset_series(self.session, row.id)
         return DatasetView(
             **self._summary(row, len(series)).model_dump(),
             source=row.source,
@@ -171,7 +165,7 @@ class DojoDatasets:
 
     async def change(self, dataset_id: str, change: DatasetChange) -> DatasetView:
         await require_application_writes(self.session)
-        row = await self._row(dataset_id, lock=True)
+        row = await dataset_row(self.session, dataset_id, lock=True)
         if change.name is not None:
             row.name = self._name(change.name)
         if change.description is not None:
@@ -184,7 +178,7 @@ class DojoDatasets:
         holding only runs it queued, none of them a proposal's or monitor's test.
         """
         await require_application_writes(self.session)
-        row = await self._row(dataset_id, lock=True)
+        row = await dataset_row(self.session, dataset_id, lock=True)
         agent = caller if isinstance(caller, Agent) else None
         if agent is not None:
             await self._require_agent_may_delete(row, agent)
@@ -292,16 +286,8 @@ class DojoDatasets:
 
     async def profile_dataset(self, dataset_id: str) -> DatasetProfile:
         """Every series of a dataset, how they move together, and its labels."""
-        dataset = await self._row(dataset_id)
-        rows = list(
-            (
-                await self.session.scalars(
-                    select(DojoSeries)
-                    .where(DojoSeries.dataset_id == dataset_id)
-                    .order_by(DojoSeries.position)
-                )
-            ).all()
-        )
+        dataset = await dataset_row(self.session, dataset_id)
+        rows = await dataset_series(self.session, dataset_id)
         share = DATASET_PROFILE_POINTS // max(len(rows), 1)
         series = []
         for row in rows:
@@ -571,16 +557,8 @@ class DojoDatasets:
         such as a protocol suite's cell and role.
         """
         await require_application_writes(self.session)
-        source = await self._row(dataset_id)
-        originals = list(
-            (
-                await self.session.scalars(
-                    select(DojoSeries)
-                    .where(DojoSeries.dataset_id == source.id)
-                    .order_by(DojoSeries.position)
-                )
-            ).all()
-        )
+        source = await dataset_row(self.session, dataset_id)
+        originals = await dataset_series(self.session, source.id)
         cut = request.end_at
         labels = [
             label
@@ -751,7 +729,7 @@ class DojoDatasets:
             names = {item.id: item.name for item in series.values()}
             raise ValidationError(
                 "A series has two values for the same timestamp"
-                + (f" ({names[batch[0][0]]!r} or another)" if batch else "")
+                f" ({names[batch[0][0]]!r} or another)"
             ) from None
 
     async def _finish(self, dataset, series: Iterable[_Series]) -> DatasetView:
@@ -778,22 +756,10 @@ class DojoDatasets:
             raise ValidationError("The dataset contains no values")
         if dataset.point_count > MAX_DATASET_POINTS:
             raise _too_many_points()
-        dataset.start_at = min(
-            (item.start_at for item in filled if item.start_at), default=None
-        )
-        dataset.end_at = max(
-            (item.end_at for item in filled if item.end_at), default=None
-        )
+        dataset.start_at = min(item.start_at for item in filled if item.start_at)
+        dataset.end_at = max(item.end_at for item in filled if item.end_at)
         await self.session.commit()
         return await self.get(dataset.id)
-
-    async def _row(self, dataset_id: str, *, lock: bool = False) -> DojoDataset:
-        row = await self.session.get(
-            DojoDataset, dataset_id, with_for_update=lock, populate_existing=True
-        )
-        if row is None:
-            raise NotFoundError("Dataset not found")
-        return row
 
     @staticmethod
     def _name(value: str) -> str:

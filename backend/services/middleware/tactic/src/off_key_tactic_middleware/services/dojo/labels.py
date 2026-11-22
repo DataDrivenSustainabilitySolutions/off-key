@@ -51,6 +51,53 @@ def label_view(row: DojoLabel) -> LabelView:
     )
 
 
+async def dataset_row(session, dataset_id: str, *, lock: bool = False) -> DojoDataset:
+    row = await session.get(
+        DojoDataset, dataset_id, with_for_update=lock, populate_existing=True
+    )
+    if row is None:
+        raise NotFoundError("Dataset not found")
+    return row
+
+
+async def dataset_series(session, dataset_id: str) -> list[DojoSeries]:
+    """The series of a dataset, in their order."""
+    return list(
+        (
+            await session.scalars(
+                select(DojoSeries)
+                .where(DojoSeries.dataset_id == dataset_id)
+                .order_by(DojoSeries.position)
+            )
+        ).all()
+    )
+
+
+async def require_label_room(session, dataset_id: str, adding: int) -> None:
+    count = await session.scalar(
+        select(func.count()).where(DojoLabel.dataset_id == dataset_id)
+    )
+    if count + adding > MAX_DATASET_LABELS:
+        raise ConflictError(f"A dataset holds at most {MAX_DATASET_LABELS} labels")
+
+
+def require_ordered(start_at: datetime, end_at: datetime) -> None:
+    if end_at <= start_at:
+        raise ValidationError("end_at must be after start_at")
+
+
+def require_inside(dataset: DojoDataset, start_at: datetime, end_at: datetime) -> None:
+    if (
+        dataset.start_at is not None
+        and dataset.end_at is not None
+        and (end_at < dataset.start_at or start_at > dataset.end_at)
+    ):
+        raise ValidationError(
+            "The label lies outside the dataset, which spans "
+            f"{dataset.start_at.isoformat()} to {dataset.end_at.isoformat()}"
+        )
+
+
 async def dataset_labels(session, dataset_id: str) -> list[DojoLabel]:
     return list(
         (
@@ -93,7 +140,7 @@ class DojoLabels:
         Only series copied from recorded readings have a reading to look up,
         and only while the catalogue still collects it; an upload has none.
         """
-        dataset = await self.dataset_row(dataset_id)
+        dataset = await dataset_row(self.session, dataset_id)
         none = LabelSuggestionList(items=[], truncated=False)
         reading_ids = list(
             (
@@ -159,7 +206,7 @@ class DojoLabels:
         )
 
     async def list(self, dataset_id: str) -> LabelList:
-        await self.dataset_row(dataset_id)
+        await dataset_row(self.session, dataset_id)
         rows = await dataset_labels(self.session, dataset_id)
         return LabelList(items=[label_view(row) for row in rows])
 
@@ -178,12 +225,8 @@ class DojoLabels:
     ) -> builtins.list[LabelView]:
         """Add labels in one transaction: all of them, or none when one is refused."""
         await require_application_writes(self.session)
-        dataset = await self.dataset_row(dataset_id, lock=True)
-        count = await self.session.scalar(
-            select(func.count()).where(DojoLabel.dataset_id == dataset.id)
-        )
-        if count + len(requests) > MAX_DATASET_LABELS:
-            raise ConflictError(f"A dataset holds at most {MAX_DATASET_LABELS} labels")
+        dataset = await dataset_row(self.session, dataset_id, lock=True)
+        await require_label_room(self.session, dataset.id, len(requests))
         rows = []
         for request in requests:
             # The session flushes earlier rows before this query, so labels of
@@ -206,12 +249,11 @@ class DojoLabels:
         self, dataset_id: str, label_id: str, change: LabelChange
     ) -> LabelView:
         await require_application_writes(self.session)
-        dataset = await self.dataset_row(dataset_id, lock=True)
+        dataset = await dataset_row(self.session, dataset_id, lock=True)
         row = await self._row(dataset_id, label_id)
         start_at = change.start_at or row.start_at
         end_at = change.end_at or row.end_at
-        if end_at <= start_at:
-            raise ValidationError("end_at must be after start_at")
+        require_ordered(start_at, end_at)
         await self.check_free(dataset, start_at, end_at, row.id)
         row.start_at = start_at
         row.end_at = end_at
@@ -222,7 +264,7 @@ class DojoLabels:
 
     async def remove(self, dataset_id: str, label_id: str) -> None:
         await require_application_writes(self.session)
-        await self.dataset_row(dataset_id, lock=True)
+        await dataset_row(self.session, dataset_id, lock=True)
         row = await self._row(dataset_id, label_id)
         await self.session.delete(row)
         await self.session.commit()
@@ -234,15 +276,7 @@ class DojoLabels:
         end_at: datetime,
         label_id: str | None,
     ) -> None:
-        if (
-            dataset.start_at is not None
-            and dataset.end_at is not None
-            and (end_at < dataset.start_at or start_at > dataset.end_at)
-        ):
-            raise ValidationError(
-                "The label lies outside the dataset, which spans "
-                f"{dataset.start_at.isoformat()} to {dataset.end_at.isoformat()}"
-            )
+        require_inside(dataset, start_at, end_at)
         statement = select(DojoLabel).where(
             DojoLabel.dataset_id == dataset.id,
             DojoLabel.start_at < end_at,
@@ -259,14 +293,6 @@ class DojoLabels:
                 f"{other.start_at.isoformat()} to {other.end_at.isoformat()} "
                 "already covers part of this interval"
             )
-
-    async def dataset_row(self, dataset_id: str, *, lock: bool = False) -> DojoDataset:
-        row = await self.session.get(
-            DojoDataset, dataset_id, with_for_update=lock, populate_existing=True
-        )
-        if row is None:
-            raise NotFoundError("Dataset not found")
-        return row
 
     async def _row(self, dataset_id: str, label_id: str) -> DojoLabel:
         row = await self.session.get(DojoLabel, label_id, populate_existing=True)

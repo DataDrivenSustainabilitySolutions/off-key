@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { clearNavigationDrafts, rememberNavigation } from "@/lib/navigation-draft";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 import { ApplicationWorkspace } from "@/app/ApplicationWorkspace";
@@ -218,6 +218,9 @@ describe("dedicated Sources configuration", () => {
   });
 
   it("records and stops a broker from its overview row", async () => {
+    // The overview learns that recording started from the next status poll, five seconds on.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => { vi.useRealTimers(); });
     mount();
     const overview = await screen.findByRole("region", { name: "Broker overview" });
     // The Record button says that recording is off, so no label repeats it.
@@ -230,11 +233,12 @@ describe("dedicated Sources configuration", () => {
     vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/recording/status"
       ? { revision: saved.revision, runtime: saved.runtime }
       : { revision: 4, collection_revision: 5, selected_readings: 0, sampled_rows_per_day_ceiling: 0, original_rate_readings: 0, affected_monitors: [], changed_readings: 2, starting_readings: 0, stopping_readings: 2, rate_changed_readings: 0 });
-    fireEvent.click(await within(overview).findByRole("button", { name: "Stop recording Workshop broker" }, { timeout: 7000 }));
+    await vi.advanceTimersByTimeAsync(5000);
+    fireEvent.click(await within(overview).findByRole("button", { name: "Stop recording Workshop broker" }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledTimes(2));
     expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [
       { scope: { kind: "broker", broker_id: "broker" }, operation: "inherit" }] }), expect.anything());
-  }, 15000);
+  });
 
   describe("an HTTP source", () => {
     beforeEach(() => {

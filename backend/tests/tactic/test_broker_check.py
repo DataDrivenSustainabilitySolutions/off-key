@@ -31,13 +31,19 @@ from tests.support.system_live import snapshot
 pytestmark = pytest.mark.timeout(15)
 
 
-def _checker(**overrides):
+def _checker(timeout=1.0, **overrides):
     settings = SystemLiveSettings(
         SYSTEM_LIVE_ALLOWED_HOSTS=["127.0.0.1", "broker"],
         SYSTEM_CONNECTION_CHECK_TIMEOUT_SECONDS=1,
         **overrides,
     )
+    # Below the configurable floor of one second, so a silent peer is waited
+    # out quickly; a peer that answers answers well within it.
+    settings.SYSTEM_CONNECTION_CHECK_TIMEOUT_SECONDS = timeout
     return BrokerCheck(settings)
+
+
+SILENT = 0.2
 
 
 def _connection(port=1883, **fields):
@@ -72,7 +78,7 @@ async def test_refused_credentials_are_reported_as_rejected():
 
 async def test_a_silent_peer_times_out_and_its_socket_is_closed():
     async with withholding_server("connack") as peer:
-        result = await _checker().check(_connection(peer.port))
+        result = await _checker(SILENT).check(_connection(peer.port))
         assert result.status == "timeout"
         assert peer.connections == 1
         await wait_until(lambda: not peer.writers, 5)
@@ -100,7 +106,7 @@ async def test_a_silent_tls_handshake_times_out_with_a_tls_hint():
     # A real MQTT broker is not silent here: it parses the ClientHello as a
     # CONNECT, and a few random hellos decode completely and are rejected.
     async with withholding_server("connack") as peer:
-        result = await _checker().check(_connection(peer.port, tls=True))
+        result = await _checker(SILENT).check(_connection(peer.port, tls=True))
         assert result.status == "timeout"
         assert "TLS" in result.message
         assert peer.connections == 1
@@ -203,9 +209,9 @@ def _http(port, **fields):
     )
 
 
-def _http_checker(port, **overrides):
+def _http_checker(port, timeout=1.0, **overrides):
     return _checker(
-        SYSTEM_HTTP_ALLOWED_ORIGINS=[f"http://127.0.0.1:{port}"], **overrides
+        timeout, SYSTEM_HTTP_ALLOWED_ORIGINS=[f"http://127.0.0.1:{port}"], **overrides
     )
 
 
@@ -288,7 +294,7 @@ async def test_an_unreachable_or_foreign_http_port_is_named():
     )
     # A broker waits for MQTT and never answers an HTTP request.
     async with withholding_server("connack") as broker:
-        silent = await _http_checker(broker.port).check(_http(broker.port))
+        silent = await _http_checker(broker.port, SILENT).check(_http(broker.port))
     assert (silent.status, silent.message) == (
         "timeout",
         "The server did not respond in time.",

@@ -1,5 +1,5 @@
 import { fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
@@ -212,6 +212,9 @@ describe("proposals", () => {
   });
 
   it("starts a proposal from the list, live or in shadow, and accepts it", async () => {
+    // The list learns that the start finished from its next poll of the activation.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => { vi.useRealTimers(); });
     const onStarted = vi.fn();
     render(<PipelineProposalList onReview={() => {}} onBack={() => {}} onStarted={onStarted} canDecide />);
     fireEvent.click(await screen.findByRole("button", { name: "Start Pump vibration" }));
@@ -224,7 +227,8 @@ describe("proposals", () => {
       display_name: "Pump vibration", bindings: { value: "current" }, replace_monitor_id: null, shadow: true }));
     expect(screen.queryByRole("button", { name: "Decline Pump vibration" })).toBeNull();
     vi.mocked(pipelinesApi.activation).mockResolvedValue({ ...activation, phase: "succeeded" });
-    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("service"), { timeout: 5000 });
+    await vi.advanceTimersByTimeAsync(5000);
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("service"));
   });
 
   it("starts nothing and decides nothing when the start is cancelled or refused", async () => {

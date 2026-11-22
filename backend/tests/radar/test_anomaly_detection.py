@@ -167,3 +167,16 @@ class TestMemoryManager:
 
     def test_force_cleanup(self):
         assert isinstance(MemoryManager().force_cleanup(), float)
+
+    def test_collects_above_the_threshold_at_most_once_per_interval(self):
+        now = [100.0]
+        manager = MemoryManager(
+            max_memory_mb=0.001, interval_seconds=30, clock=lambda: now[0]
+        )
+        assert manager.should_cleanup() is True
+        manager.force_cleanup()
+        # Still above the threshold, but a collection just ran.
+        now[0] += 29
+        assert manager.should_cleanup() is False
+        now[0] += 1
+        assert manager.should_cleanup() is True

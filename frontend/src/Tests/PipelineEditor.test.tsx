@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
@@ -237,6 +237,9 @@ describe("simple monitoring setup", () => {
   });
 
   it("tests the design on the history of its readings, for members who may use the Dojo", async () => {
+    // The composer checks a design 800 ms after its last change.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => { vi.useRealTimers(); });
     vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ definition: normalizeDefinition(definition),
       valid: !!definition.nodes?.some((node) => node.kind === "detector"), issues: [], features: {}, provenance_complete: true }));
     // The screen that mounts the composer hands it the test, where the member may use the Dojo.
@@ -257,7 +260,8 @@ describe("simple monitoring setup", () => {
     // The detector is still to choose, so there is nothing to run yet.
     expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("Checking the design…")).toBeTruthy();
-    expect(await screen.findByText(/The design is not ready to run/, undefined, { timeout: 3000 })).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(await screen.findByText(/The design is not ready to run/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Close test" }));
     expect(screen.queryByRole("heading", { name: "Test on history" })).toBeNull();
@@ -266,8 +270,8 @@ describe("simple monitoring setup", () => {
     fireEvent.click(within(screen.getByRole("menu", { name: "Choose a detector" })).getByRole("menuitem", { name: /Suggested$/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Three phases" } });
     fireEvent.click(open);
-    await waitFor(() => expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(false),
-      { timeout: 3000 });
+    await vi.advanceTimersByTimeAsync(800);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(false));
     // The run stays queued: the button that opens the panel says so while the panel is closed.
     vi.mocked(dojoApi.importHistory).mockResolvedValue({ id: "copy", name: "Room · last 7 days", description: "", origin: "history",
       point_count: 3, series_count: 3, start_at: null, end_at: null, created_by: 1, created_at: "2026-10-20T10:00:00Z", source: {},

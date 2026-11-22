@@ -120,9 +120,9 @@ describe("joint monitoring history", () => {
     }]);
     const latest = detectors.map(detector => detector.observations[detector.observations.length - 1]!);
     expect(detectors.map((detector, index) => [detector.trackerId, latest[index]!.alarmMuted]))
-      .toEqual([["slow", undefined], ["primary", true]]);
+      .toEqual([["primary", true], ["slow", undefined]]);
     // The statistic is above its threshold, and the alarm it stands for was not raised.
-    expect(latest.map(alarmText)).toEqual(["inactive", "muted"]);
+    expect(latest.map(alarmText)).toEqual(["muted", "inactive"]);
     expect(alarmText({ alarmActive: true })).toBe("active");
   });
 

@@ -33,8 +33,13 @@ const evidence = (
   timestamp: string,
   martingale: number | null,
   sequenceNumber = 1,
-): MonitoringChartEvidence =>
-  chartEvidence({ monitor_id: serviceId, timestamp, sequence_number: sequenceNumber, restarted_martingale: martingale });
+  { threshold = 100, alarm = false }: { threshold?: number; alarm?: boolean } = {},
+): MonitoringChartEvidence => chartEvidence({
+  monitor_id: serviceId, timestamp, sequence_number: sequenceNumber, restarted_martingale: martingale, threshold, alarm,
+  tracker_results: [trackerFixture({
+    statistic_value: martingale, log_statistic_value: null, threshold, alarm_active: alarm, alarm_fired: alarm,
+  })],
+});
 
 const adaptiveEvidence = (
   serviceId: string,
@@ -224,8 +229,8 @@ describe("telemetry chart model", () => {
       trackerResult("primary", "power", "restarted_martingale", 4, 40),
     ];
     const { model, detectors } = buildFixture({ evidence: [row] });
-    expect(getDefaultDetectorId(detectors, "static")).toBe("restarted-martingale:service-a");
-    expect(model.secondarySeries[0]?.id).toBe("restarted-martingale:service-a");
+    expect(getDefaultDetectorId(detectors, "static")).toBe("martingale:service-a:primary");
+    expect(model.secondarySeries[0]?.id).toBe("martingale:service-a:primary");
     const selectedOutsideRange = buildModel({
       detectors, selectedDetectorIds: { static: "martingale:service-a:missing" },
     });
@@ -255,7 +260,7 @@ describe("telemetry chart model", () => {
     const catalogBeforeRangeChange = structuredClone(detectors);
     const primary = buildModel({
       detectors, telemetry: [{ timestamp: secondTime, value: 13 }],
-      selectedDetectorIds: { static: "restarted-martingale:service-a" },
+      selectedDetectorIds: { static: "martingale:service-a:primary" },
     });
     expect(primary.secondarySeries).toEqual([]);
     const secondary = buildModel({
@@ -269,7 +274,7 @@ describe("telemetry chart model", () => {
       startMs: Date.parse(secondTime), endMs: Date.parse(secondTime) + 500, threshold: 40,
     }]);
     const fullRange = buildModel({ detectors });
-    expect(fullRange.secondarySeries[0]?.id).toBe("restarted-martingale:service-a");
+    expect(fullRange.secondarySeries[0]?.id).toBe("martingale:service-a:primary");
     expect(chartValues(fullRange.secondarySeries[0]?.data)).toEqual([
       [Date.parse(firstTime), 1],
     ]);
@@ -329,7 +334,7 @@ describe("telemetry ECharts option", () => {
     );
     expect(chartValues(option.series[1]?.data)).toEqual([[Date.parse(alignedTimestamp), 0.5]]);
     expect(option.series[1]).toMatchObject({
-      id: "restarted-martingale:service-a",
+      id: "martingale:service-a:primary",
       smooth: false,
       step: false,
       showSymbol: false,
@@ -413,7 +418,7 @@ describe("telemetry ECharts option", () => {
 
   it("keeps static threshold history separate from the latest threshold summary", () => {
     const first = evidence("static-a", "2026-01-01T00:00:00Z", 2);
-    const second = { ...evidence("static-a", "2026-01-01T00:01:00Z", 3), threshold: 200 };
+    const second = evidence("static-a", "2026-01-01T00:01:00Z", 3, 1, { threshold: 200 });
     const model = buildModel({ evidence: [first, second] });
     expect(model.secondarySeries[0]?.latestObservation.threshold).toBe(200);
     expect(model.secondarySeries[0]?.thresholdRegions.map(({ threshold }) => threshold)).toEqual([100, 200]);
@@ -536,15 +541,14 @@ describe("telemetry ECharts option", () => {
 
   it("keeps finite log bounds for extreme evidence and shows the threshold used at the hovered observation", () => {
     const timestamp = "2026-01-01T00:00:00Z";
-    const row = evidence("static-a", timestamp, 1e203);
-    row.threshold = 1e200;
+    const row = evidence("static-a", timestamp, 1e203, 1, { threshold: 1e200 });
     const model = buildModel({ evidence: [row] });
     const option = inspect(buildOption(model));
     expect(Number.isFinite(option.yAxis[1]?.max)).toBe(true);
     expect(option.yAxis[1]?.max).toBeGreaterThan(1e203);
     expect((option.series[1]?.lineStyle as { color?: string })?.color).toBe(colors.primary);
     const text = option.tooltip.formatter([{
-      seriesId: "restarted-martingale:static-a", seriesName: "Restarted e-process",
+      seriesId: "martingale:static-a:primary", seriesName: "Restarted e-process",
       value: [Date.parse(timestamp), 1e203], data: option.series[1]?.data[0],
     }]);
     expect(text).toContain("Alarm threshold: 1.00e+200");
@@ -562,9 +566,8 @@ describe("telemetry ECharts option", () => {
       ? [adaptiveEvidence("service-a", timestamp, 1, 2), {
           ...adaptiveEvidence("service-a", timestamp, secondValue, 3), sequence_number: 2, alarm: true,
         }]
-      : [{ ...evidence("service-a", timestamp, 1, 1), threshold: 2, alarm: false }, {
-          ...evidence("service-a", timestamp, secondValue, 2), threshold: 3, alarm: true,
-        }];
+      : [evidence("service-a", timestamp, 1, 1, { threshold: 2 }),
+          evidence("service-a", timestamp, secondValue, 2, { threshold: 3, alarm: true })];
     const option = inspect(buildOption(buildModel({ evidence: rows })));
     const detector = option.series[1]!;
     const evaluatedPoints = detector.data.filter((point): point is DetectionChartPoint =>

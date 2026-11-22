@@ -3,6 +3,7 @@ Database Writer for MQTT Telemetry Data
 """
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -246,7 +247,9 @@ class DatabaseWriter:
                 await self._trigger_batch_processing()
                 if self.processing_batches:
                     # Retain exhausted batches and apply backpressure.
-                    await asyncio.sleep(self.config.get_jittered_backoff_delay(3))
+                    await asyncio.sleep(
+                        self.config.get_jittered_backoff_delay(self.max_retries)
+                    )
                 elif self.pending_batch.size():
                     self._batch_ready_event.set()
         finally:
@@ -292,7 +295,6 @@ class DatabaseWriter:
                 success = await self._persist_owned_batch(batch)
 
                 if success:
-                    batch.status = WriteStatus.SUCCESS
                     self.processing_batches.pop(batch_id, None)
                     logger.debug(
                         "event=db_writer.batch_success batch_id=%s "
@@ -508,17 +510,10 @@ class DatabaseWriter:
                 metrics = self.get_performance_metrics()
                 health = self.get_health_status()
 
-                if health.status != HealthStatus.HEALTHY:
-                    logger.warning(
-                        f"Database writer health check: {health.status}",
-                        extra={
-                            **self._log_context,
-                            "health_status": health,
-                            "performance_metrics": metrics,
-                        },
-                    )
-                elif self.total_batches_processed % 100 == 0:
-                    logger.info(
+                healthy = health.status == HealthStatus.HEALTHY
+                if not healthy or self.total_batches_processed % 100 == 0:
+                    logger.log(
+                        logging.INFO if healthy else logging.WARNING,
                         f"Database writer health check: {health.status}",
                         extra={
                             **self._log_context,
@@ -587,15 +582,6 @@ class DatabaseWriter:
             status = HealthStatus.UNHEALTHY
         elif (
             metrics.average_write_latency > 2.0 and status is not HealthStatus.UNHEALTHY
-        ):
-            status = HealthStatus.DEGRADED
-
-        # Check for too many pending batches
-        if metrics.processing_batches_count > 10:
-            status = HealthStatus.UNHEALTHY
-        elif (
-            metrics.processing_batches_count > 5
-            and status is not HealthStatus.UNHEALTHY
         ):
             status = HealthStatus.DEGRADED
 

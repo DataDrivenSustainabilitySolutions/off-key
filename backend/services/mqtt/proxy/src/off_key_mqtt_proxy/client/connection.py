@@ -167,8 +167,6 @@ class ConnectionManager:
             await close_client(client)
         except Exception:
             logger.debug("Failed MQTT client cleanup raised", exc_info=True)
-        finally:
-            self.client = None
 
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         """MQTT connection callback"""
@@ -177,16 +175,14 @@ class ConnectionManager:
         if reason_code == 0:
             self.state = ConnectionState.CONNECTED
             logger.info("MQTT broker connection successful")
-            if self._event_loop and not self._event_loop.is_closed():
-                self._event_loop.call_soon_threadsafe(self._connection_event.set)
         else:
             self.state = ConnectionState.FAILED
             logger.error(
                 f"MQTT connection failed with code {reason_code}: "
                 f"{connack_refusal(reason_code)}"
             )
-            if self._event_loop and not self._event_loop.is_closed():
-                self._event_loop.call_soon_threadsafe(self._connection_event.set)
+        if self._event_loop and not self._event_loop.is_closed():
+            self._event_loop.call_soon_threadsafe(self._connection_event.set)
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         """MQTT disconnection callback; the collection loop reconnects."""

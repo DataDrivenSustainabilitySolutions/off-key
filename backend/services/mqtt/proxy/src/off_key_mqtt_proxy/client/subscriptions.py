@@ -6,8 +6,7 @@ import paho.mqtt.client as mqtt
 
 
 class SubscriptionManager:
-    def __init__(self, default_qos: int = 0):
-        self.default_qos = default_qos
+    def __init__(self):
         self.client: mqtt.Client | None = None
         self.subscriptions: set[str] = set()
         self.pending_subscriptions: set[str] = set()
@@ -28,11 +27,11 @@ class SubscriptionManager:
         client.on_subscribe = self._on_subscribe
         client.on_unsubscribe = self._on_unsubscribe
 
-    async def _request(self, operation: str, topic: str, qos: int = 0) -> bool:
+    async def _request(self, operation: str, topic: str) -> bool:
         if self.client is None or self._loop is None:
             return False
         result, mid = (
-            self.client.subscribe(topic, qos)
+            self.client.subscribe(topic, 0)
             if operation == "subscribe"
             else self.client.unsubscribe(topic)
         )
@@ -52,11 +51,9 @@ class SubscriptionManager:
             if self._acks.get(key) is future:
                 self._acks.pop(key)
 
-    async def subscribe(self, topic: str, qos: int | None = None) -> bool:
+    async def subscribe(self, topic: str) -> bool:
         self.pending_subscriptions.add(topic)
-        if await self._request(
-            "subscribe", topic, self.default_qos if qos is None else qos
-        ):
+        if await self._request("subscribe", topic):
             self.subscriptions.add(topic)
             self.pending_subscriptions.discard(topic)
             return True

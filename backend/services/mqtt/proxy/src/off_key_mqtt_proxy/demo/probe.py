@@ -5,8 +5,6 @@ Discovery lasts at most 30 seconds and never publishes to a public broker.
 """
 
 import argparse
-import json
-import os
 import sys
 import threading
 import time
@@ -16,10 +14,10 @@ from pathlib import Path
 from off_key_core.demo.catalogue import FeedSelection
 
 from .normalize import Normalizer
-from .relay import feeds, subscriber
+from .relay import feeds, load_selection, subscriber
 
 
-def candidate(source: str, mqtt_topic: str, data: dict) -> dict:
+def candidate(source: str, mqtt_topic: str) -> dict:
     if source in ("weather", "traffic"):
         return {f"{source}_station": int(mqtt_topic.split("/")[1])}
     return {}
@@ -30,22 +28,21 @@ def _receiver(feed, selection, discover, chosen, counts):
 
     def receive(client, _userdata, message):
         nonlocal normalizer
-        if message.retain or len(message.payload) > 65_536:
-            return
         if discover and feed.id not in chosen:
             try:
-                data = json.loads(message.payload)
-                if not isinstance(data, dict):
-                    return
-                change = candidate(feed.id, message.topic, data)
+                change = candidate(feed.id, message.topic)
                 selected = FeedSelection.model_validate(selection.model_dump() | change)
                 candidate_normalizer = Normalizer(selected)
-                messages = candidate_normalizer.messages(
-                    feed.id, message.topic, message.payload, received_at=time.time()
-                )
-                if not messages:
-                    return
             except (ValueError, TypeError, KeyError, IndexError, OverflowError):
+                return
+            messages = candidate_normalizer.messages(
+                feed.id,
+                message.topic,
+                message.payload,
+                received_at=time.time(),
+                retained=message.retain,
+            )
+            if not messages:
                 return
             chosen[feed.id] = change
             normalizer = candidate_normalizer
@@ -55,7 +52,11 @@ def _receiver(feed, selection, discover, chosen, counts):
                 client.subscribe([(topic, 0) for topic in narrowed.topics])
         else:
             messages = normalizer.messages(
-                feed.id, message.topic, message.payload, received_at=time.time()
+                feed.id,
+                message.topic,
+                message.payload,
+                received_at=time.time(),
+                retained=message.retain,
             )
         counts[feed.id] = counts.get(feed.id, 0) + bool(messages)
 
@@ -112,11 +113,7 @@ def main() -> None:
     parser.add_argument("--seconds", type=int, choices=range(1, 31), default=20)
     parser.add_argument("--selection", type=Path, help="JSON selections to verify")
     args = parser.parse_args()
-    selected = FeedSelection.model_validate_json(
-        args.selection.read_text()
-        if args.selection
-        else os.environ.get("DEMO_FEEDS_JSON") or "{}"
-    )
+    selected = load_selection(args.selection)
     print(probe(selected, args.seconds, args.discover).model_dump_json(indent=2))
 
 

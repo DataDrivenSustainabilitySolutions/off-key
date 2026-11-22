@@ -111,6 +111,13 @@ def subscriber(feed: Feed, receive) -> Client:
     return client
 
 
+def load_selection(path: Path | None) -> FeedSelection:
+    """The selections in ``path``, else in DEMO_FEEDS_JSON, else the examples."""
+    return FeedSelection.model_validate_json(
+        path.read_text() if path else os.environ.get("DEMO_FEEDS_JSON") or "{}"
+    )
+
+
 def run(selected: FeedSelection, output_host: str) -> None:
     output = Client(
         CallbackAPIVersion.VERSION2, client_id=f"demo-output-{uuid4().hex[:12]}"
@@ -166,11 +173,7 @@ def main() -> None:
         help="JSON selections; otherwise read DEMO_FEEDS_JSON or use the examples",
     )
     args = parser.parse_args()
-    selected = FeedSelection.model_validate_json(
-        args.selection.read_text()
-        if args.selection
-        else os.environ.get("DEMO_FEEDS_JSON") or "{}"
-    )
+    selected = load_selection(args.selection)
     host = os.environ.get("DEMO_RELAY_HOST", "demo-broker")
     if args.catalogue:
         print(

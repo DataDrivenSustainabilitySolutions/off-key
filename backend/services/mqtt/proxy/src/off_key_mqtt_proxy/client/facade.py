@@ -39,9 +39,7 @@ class MQTTClient:
 
         self.subscription_manager = SubscriptionManager()
 
-        self.message_handler = MessageHandler(
-            max_queue_size=config.max_message_queue_size
-        )
+        self.message_handler = MessageHandler()
 
     @property
     def state(self) -> ConnectionState:
@@ -69,15 +67,13 @@ class MQTTClient:
     async def disconnect(self) -> None:
         """Disconnect from MQTT broker"""
         await self.connection_manager.disconnect()
-        self.message_handler.clear_handler()
 
-    async def subscribe(self, topic: str, qos: int | None = None) -> bool:
+    async def subscribe(self, topic: str) -> bool:
         """
-        Subscribe to MQTT topic
+        Subscribe to MQTT topic at QoS 0
 
         Args:
             topic: MQTT topic to subscribe to
-            qos: Quality of Service level
 
         Returns:
             True if subscription successful, False otherwise
@@ -86,7 +82,7 @@ class MQTTClient:
             logger.warning(f"Cannot subscribe to {topic}: not connected")
             return False
 
-        return await self.subscription_manager.subscribe(topic, qos)
+        return await self.subscription_manager.subscribe(topic)
 
     async def unsubscribe(self, topic: str) -> bool:
         """

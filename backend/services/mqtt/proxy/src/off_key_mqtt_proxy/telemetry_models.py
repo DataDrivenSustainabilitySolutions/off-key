@@ -35,7 +35,6 @@ class WriterHealthStatus:
 class WriteStatus(Enum):
     PENDING = "pending"
     PROCESSING = "processing"
-    SUCCESS = "success"
     FAILED = "failed"
     RETRYING = "retrying"
 

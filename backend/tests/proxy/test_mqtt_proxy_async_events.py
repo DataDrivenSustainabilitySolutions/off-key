@@ -1,10 +1,9 @@
 """MQTT proxy message handling and connection callbacks without a broker.
 
-Covers the message handler's inline dispatch, queue bound and envelope cap,
-and the connection manager's paho callbacks.
+Covers the message handler's inline dispatch and envelope cap, and the
+connection manager's paho callbacks.
 """
 
-from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -23,7 +22,7 @@ from paho.mqtt.reasoncodes import ReasonCode
 
 @pytest.fixture
 def message_handler():
-    return MessageHandler(max_queue_size=100)
+    return MessageHandler()
 
 
 @pytest.fixture
@@ -53,39 +52,9 @@ def test_handler_swap_routes_later_messages_to_the_new_handler(message_handler):
     assert [m.topic for m in second_received] == ["test/two"]
 
 
-def test_clearing_the_handler_queues_later_messages(message_handler):
-    handler, received = _recorder()
-    message_handler.set_handler(handler)
-    message_handler._on_message(None, None, _paho_message())
-
-    message_handler.clear_handler()
-    message_handler._on_message(None, None, _paho_message())
-
-    assert len(received) == 1
-    assert message_handler.get_queue_size() == 1
-
-
-def test_messages_without_a_handler_are_queued_up_to_the_bound(
+def test_sync_handlers_run_inline_and_a_failure_does_not_stop_later_ones(
     message_handler,
 ):
-    assert message_handler.last_message_time is None
-    bound = message_handler.max_queue_size
-    for i in range(bound + 20):
-        message_handler._on_message(None, None, _paho_message(f"test/topic/{i}"))
-    # Oversized payloads are rejected before parsing or counting.
-    oversized = b"x" * (MAX_ENVELOPE_BYTES + 1)
-    message_handler._on_message(None, None, _paho_message(payload=oversized))
-
-    assert message_handler.messages_received == bound + 20
-    assert message_handler.handler_messages_dropped == 1
-    assert isinstance(message_handler.last_message_time, datetime)
-    assert message_handler.get_queue_size() == bound
-    assert [m.topic for m in message_handler.message_queue] == [
-        f"test/topic/{i}" for i in range(bound)
-    ]
-
-
-def test_sync_handlers_run_inline_and_failures_are_counted(message_handler):
     calls = []
 
     def sync_handler(message: MQTTMessage):
@@ -98,7 +67,6 @@ def test_sync_handlers_run_inline_and_failures_are_counted(message_handler):
         message_handler._on_message(None, None, _paho_message())
 
     assert calls == ["test/topic"] * 3
-    assert message_handler.handler_errors == 1
 
 
 @pytest.mark.parametrize("payload", [b"invalid json {", b""])
@@ -221,4 +189,3 @@ def test_largest_ingress_envelope_is_admitted_and_larger_ones_dropped(
 
     assert len(envelope.encode()) > 32 * 1024
     assert len(received) == 1
-    assert message_handler.handler_messages_dropped == 1

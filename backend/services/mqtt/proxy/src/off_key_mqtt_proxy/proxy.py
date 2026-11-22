@@ -124,8 +124,7 @@ class MQTTProxyService:
             self.buffer.pause()
             self.revision = self._prepared_revision = -1
             self.mqtt_client.set_message_handler(self.buffer.receive)
-            if self.mqtt_client.state.value != "connecting":
-                await self.mqtt_client.connect()
+            await self.mqtt_client.connect()
             if not self.mqtt_client.is_connected:
                 raise RuntimeError("Local MQTT broker is disconnected")
         if (

@@ -154,13 +154,6 @@ export const getAlarms = (
 ): Promise<Alarm[]> =>
   get<Alarm[]>(API_CONFIG.ENDPOINTS.ALARMS.LIST(scope), signal);
 
-export const deleteAlarm = async (alarmId: string): Promise<void> => {
-  if (!alarmId) {
-    throw new Error("Alarm ID is required");
-  }
-  await apiUtils.delete(API_CONFIG.ENDPOINTS.ALARMS.DELETE(alarmId));
-};
-
 export const getAlarm = (id: string, signal?: AbortSignal) =>
   get<AlarmDetail>(API_CONFIG.ENDPOINTS.ALARMS.ITEM(id), signal);
 export const previewAlarmDeletion = (selection: AlarmSelection) =>

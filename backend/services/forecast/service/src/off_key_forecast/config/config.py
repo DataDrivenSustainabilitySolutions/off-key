@@ -77,7 +77,3 @@ class ForecastSettings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_forecast_settings() -> ForecastSettings:
     return ForecastSettings()
-
-
-def clear_forecast_settings_cache() -> None:
-    get_forecast_settings.cache_clear()

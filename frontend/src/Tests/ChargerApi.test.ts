@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import {
-  deleteAlarm,
   getAllTelemetryData,
   getTelemetryCursor,
   getTelemetryHistory,
@@ -14,12 +13,10 @@ import {
 vi.mock("@/lib/api-client", () => ({
   apiUtils: {
     get: vi.fn(),
-    delete: vi.fn(),
   },
 }));
 
 const mockGet = vi.mocked(apiUtils.get);
-const mockDelete = vi.mocked(apiUtils.delete);
 
 const readings = [
   { id: "reading:cpu", label: "CPU", category: "Processor" },
@@ -216,11 +213,5 @@ describe("measurement API", () => {
   it("asks for a device's alarms by device, and other alarms reading by reading", () => {
     expect(API_CONFIG.ENDPOINTS.ALARMS.LIST({ deviceId: "pump/1" })).toBe("/v1/alarms?device_id=pump%2F1");
     expect(API_CONFIG.ENDPOINTS.ALARMS.LIST({ readingIds: ["wind", "rain"] })).toBe("/v1/alarms?reading_id=wind&reading_id=rain");
-    expect(API_CONFIG.ENDPOINTS.ALARMS.DELETE("a/1")).toBe("/v1/alarms/a%2F1");
-  });
-
-  it("rejects an alarm deletion without an identifier", async () => {
-    await expect(deleteAlarm("")).rejects.toThrow("Alarm ID is required");
-    expect(mockDelete).not.toHaveBeenCalled();
   });
 });

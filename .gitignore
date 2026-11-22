@@ -6,13 +6,25 @@ compose.env
 dev.env
 *.local
 
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+
 # Editors and operating systems
 .idea/
 .vscode/
 *.suo
 *.sw?
 .DS_Store
+._*
 Thumbs.db
+desktop.ini
+*.code-workspace
+.fleet/
+.zed/
 
 # Python environments, caches, and generated output
 .venv/
@@ -47,6 +59,17 @@ npm-debug.log*
 /data/*.db
 /logs/
 *.log
+*.sqlite
+*.sqlite3
+*.dump
+
+# Stray patches, merge leftovers and scratch files
+*.patch
+*.diff
+*.orig
+*.rej
+*.bak
+*~
 
 # Local tool state
 /.agent/execplans/
@@ -59,8 +82,12 @@ npm-debug.log*
 /.tmp_uv_cache/
 /.uv-cache/
 /.uv_cache/
+/.cursor/
+/.windsurf/
+/.aider*
 AGENTS.md
 CLAUDE.md
+GEMINI.md
 
 # Local deployment and smoke-test output
 /dev/local/state/

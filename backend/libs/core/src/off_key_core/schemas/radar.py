@@ -19,10 +19,6 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
-from off_key_core.models.adaptive import (
-    aberrant_model,
-    bind_detector_parameters,
-)
 from off_key_core.models.parameter_validation import parameter_location
 from off_key_core.models.static import (
     get_static_model_definition,
@@ -419,32 +415,6 @@ class AdaptiveStreamConfig(BaseModel):
                 f"{requirement['minimum']} features"
             )
         return feature_count
-
-    def detector_mapping(self, feature_keys: list[str] | None = None) -> dict[str, Any]:
-        """Bind aligned features to the versioned, allowlisted Aberrant format."""
-        if feature_keys is not None:
-            self.validate_feature_schema(feature_keys)
-        definition = ADAPTIVE_MODELS_BY_TYPE[self.model_type]
-        transformers = [
-            {"id": "feature_schema_guard", "params": {"features": feature_keys}}
-        ]
-        current_keys = feature_keys
-        for step in self.preprocessing_steps:
-            params = step.model_dump(mode="json", exclude={"type"})
-            if isinstance(step, IncrementalPCAConfig | RandomProjectionConfig):
-                params["keys"] = current_keys
-                current_keys = [
-                    f"component_{index}" for index in range(step.n_components)
-                ]
-            transformers.append({"id": step.type, "params": params})
-        params = bind_detector_parameters(
-            definition["bound_parameters"], self.model_params, current_keys
-        )
-        return {
-            "version": 1,
-            "transformers": transformers,
-            "model": aberrant_model(definition, params),
-        }
 
 
 class ManualAlarmThresholdConfig(BaseModel):

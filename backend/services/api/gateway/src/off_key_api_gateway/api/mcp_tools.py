@@ -21,8 +21,10 @@ from uuid import uuid4
 
 import anyio
 import httpx2
+from off_key_core.schemas.agents import AgentProfile
 from off_key_core.schemas.pipeline_tools import ComponentSearchQuery, DesignEdit
 from off_key_core.schemas.pipelines import MonitorRationale
+from off_key_core.utils.timestamps import parse_utc_timestamp
 from pydantic import BaseModel, ConfigDict, Field
 
 INSTRUCTIONS = """\
@@ -172,11 +174,26 @@ def _answered(response: httpx2.Response) -> Any:
 
 
 class Api:
-    """The gateway's own routes, called as the caller of the MCP request."""
+    """The gateway's own routes, called as the caller of the MCP request,
+    whose key ``agent`` describes."""
 
-    def __init__(self, client: httpx2.AsyncClient, headers: dict[str, str]):
+    def __init__(
+        self,
+        client: httpx2.AsyncClient,
+        headers: dict[str, str],
+        agent: AgentProfile,
+    ):
         self._client = client
         self._headers = headers
+        self.agent = agent
+
+    @classmethod
+    async def signed_in(
+        cls, client: httpx2.AsyncClient, headers: dict[str, str]
+    ) -> "Api":
+        """The routes as the key the headers carry, once the API knows it."""
+        agent = await client.get("/v1/agents/me", headers=headers)
+        return cls(client, headers, AgentProfile.model_validate(_answered(agent)))
 
     async def get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         return _answered(
@@ -313,7 +330,6 @@ async def get_access(api: Api, args: Nothing):
     how many proposals wait. Read it first: it says whether a design of yours
     can start now or only be proposed, and whether a member who accepts a
     proposal has room to start it."""
-    agent = await api.get("/v1/agents/me")
     waiting = await api.get("/v1/pipeline-proposals", {"status": "open"})
     room = _room(waiting.get("capacity"))
     if room is not None:
@@ -321,9 +337,9 @@ async def get_access(api: Api, args: Nothing):
         shadow = sum(1 for item in running if item.get("shadow"))
         room |= {"live": len(running) - shadow, "shadow": shadow}
     answer = {
-        "key": agent["name"],
-        "starts": agent["starts"],
-        "may": _MAY.get(agent["starts"], _MAY["nothing"]),
+        "key": api.agent.name,
+        "starts": api.agent.starts.value,
+        "may": _MAY[api.agent.starts],
         "monitors": room,
         "open_proposals": len(waiting.get("items", [])),
     }
@@ -410,7 +426,7 @@ async def _interval(api: Api, reading: str) -> float | None:
     if not isinstance(values, list):
         return None
     times = sorted(
-        _instant(item["timestamp"])
+        parse_utc_timestamp(item["timestamp"])
         for item in values
         if isinstance(item, dict) and item.get("timestamp")
     )
@@ -755,10 +771,8 @@ async def _with_faults(api: Api, dataset: dict, series: dict, args: Test) -> dic
 
 def _fault(item: InjectedFault, series: dict) -> dict[str, Any]:
     shape = item.model_dump(
-        exclude={"reading", "also", "start", "end"}, exclude_none=True
+        exclude={"reading", "also", "start", "end"}, exclude_defaults=True
     )
-    if shape.get("recovery") == "sudden":
-        del shape["recovery"]
     return {
         **shape,
         "series_id": series[item.reading],
@@ -772,6 +786,14 @@ def _hidden(dataset: Mapping[str, Any]) -> bool:
     """A test suite's copy: where its faults lie is kept from keys."""
     plan = (dataset.get("source") or {}).get("protocol") or {}
     return plan.get("purpose") == "test"
+
+
+WARM_UP_WINDOWS = ("training_window_size", "calibration_window_size")
+
+
+def _windows(settings: Mapping[str, Any], keys: tuple[str, ...]) -> int:
+    """The observations the named windows of a design's settings take."""
+    return sum(settings.get(key) or 0 for key in keys)
 
 
 def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str:
@@ -794,15 +816,8 @@ def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str
             "observation, whatever training_window_size and "
             "calibration_window_size say."
         )
-    windows = (
-        ("calibration_window_size",)
-        if rules_only
-        else (
-            "training_window_size",
-            "calibration_window_size",
-        )
-    )
-    warm_up = sum(settings.get(key) or 0 for key in windows)
+    windows = ("calibration_window_size",) if rules_only else WARM_UP_WINDOWS
+    warm_up = _windows(settings, windows)
     observations = points // max(inputs, 1)
     if not warm_up or not observations:
         return ""
@@ -860,7 +875,7 @@ async def get_test(api: Api, args: TestRef):
     path = f"/v1/dojo/runs/{_segment(args.run_id)}"
     run = await _settled(
         lambda: api.get(path),
-        lambda state: state["status"] not in {"queued", "running"},
+        _run_ended,
         args.wait_seconds,
     )
     # The agent holds the design; the compiled copy of it is long.
@@ -892,11 +907,8 @@ async def get_test(api: Api, args: TestRef):
         if metrics.get("scored_from") is None:
             answer["note"] = _unscored(run)
         elif run.get("alarm_count"):
-            try:
+            with suppress(ApiRefusal):
                 alarmed = await _alarmed(api, path)
-            except ApiRefusal:
-                alarmed = None
-            if alarmed is not None:
                 answer["alarms"], around = _episodes(*alarmed, metrics)
                 with suppress(ApiRefusal):
                     answer["alarms"]["excerpts"] = {
@@ -1011,14 +1023,10 @@ def _labelled(episode: dict[str, Any], labels: list[dict[str, Any]]) -> bool:
     return any(
         item.get("start_at") is not None
         and item.get("end_at") is not None
-        and _instant(episode["start"]) <= _instant(item["end_at"])
-        and _instant(item["start_at"]) <= _instant(episode["end"])
+        and parse_utc_timestamp(episode["start"]) <= parse_utc_timestamp(item["end_at"])
+        and parse_utc_timestamp(item["start_at"]) <= parse_utc_timestamp(episode["end"])
         for item in labels
     )
-
-
-def _instant(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _episodes(
@@ -1075,10 +1083,7 @@ async def _excerpt(api: Api, path: str, episode: dict[str, Any]) -> list[list]:
 def _unscored(run: dict) -> str:
     """Zero alarms reads as a good design; say when it only means no scores."""
     settings = (run.get("definition") or {}).get("settings") or {}
-    warm_up = sum(
-        settings.get(key) or 0
-        for key in ("training_window_size", "calibration_window_size")
-    )
+    warm_up = _windows(settings, WARM_UP_WINDOWS)
     needed = f" its warm-up of {warm_up} observations" if warm_up else " its warm-up"
     return (
         f"Nothing was scored: the replay gave {run.get('result_count', 0)} "
@@ -1204,7 +1209,7 @@ async def delete_mine(api: Api, args: Mine):
     runs; a dataset with only your tests on it; a suite with only your
     studies; or a proposal once withdrawn or declined. A test a proposal or
     monitor names as evidence stays."""
-    named = {key: value for key, value in _sent(args).items() if isinstance(value, str)}
+    named = _sent(args)
     if len(named) != 1:
         raise ApiRefusal(
             422, "Name one of run_id, dataset_id, study_id, suite_id or proposal_id"
@@ -1278,6 +1283,17 @@ async def get_dataset(api: Api, args: DatasetRef):
     }
 
 
+async def _series_path(api: Api, dataset_id: str, name: str) -> str:
+    """The route of a dataset's series, found by its name."""
+    path = f"/v1/dojo/datasets/{_segment(dataset_id)}"
+    dataset = await api.get(path)
+    found = next((item for item in dataset["series"] if item["name"] == name), None)
+    if found is None:
+        names = ", ".join(item["name"] for item in dataset["series"])
+        raise ApiRefusal(404, f"No series {name!r}; the dataset has {names}")
+    return f"{path}/series/{_segment(found['id'])}"
+
+
 class DatasetValues(Args):
     dataset_id: str
     series: str = Field(description="Its name.")
@@ -1288,18 +1304,11 @@ class DatasetValues(Args):
 @tool(DatasetValues)
 async def get_dataset_values(api: Api, args: DatasetValues):
     """The values of a dataset's series in time order, a page at a time."""
-    path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}"
-    dataset = await api.get(path)
-    found = next(
-        (item for item in dataset["series"] if item["name"] == args.series), None
-    )
-    if found is None:
-        names = ", ".join(item["name"] for item in dataset["series"])
-        raise ApiRefusal(404, f"No series {args.series!r}; the dataset has {names}")
+    series = await _series_path(api, args.dataset_id, args.series)
     query: dict[str, Any] = {"limit": args.limit}
     if args.after is not None:
         query["after"] = args.after.isoformat()
-    page = await api.get(f"{path}/series/{_segment(found['id'])}/points", query)
+    page = await api.get(f"{series}/points", query)
     return {
         "rows": [[item["timestamp"], item["value"]] for item in page["items"]],
         "next_after": page.get("next_after"),
@@ -1320,14 +1329,8 @@ async def profile_series(api: Api, args: SeriesProfileQuery):
     path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}"
     if args.series is None:
         return await api.get(f"{path}/profile")
-    dataset = await api.get(path)
-    found = next(
-        (item for item in dataset["series"] if item["name"] == args.series), None
-    )
-    if found is None:
-        names = ", ".join(item["name"] for item in dataset["series"])
-        raise ApiRefusal(404, f"No series {args.series!r}; the dataset has {names}")
-    return await api.get(f"{path}/series/{_segment(found['id'])}/profile")
+    series = await _series_path(api, args.dataset_id, args.series)
+    return await api.get(f"{series}/profile")
 
 
 class ProposedLabel(Args):
@@ -1456,12 +1459,10 @@ async def create_suite(api: Api, args: SuiteMade):
             "seed": args.seed,
         }
         if args.protocol is not None:
-            body |= {
-                "protocol": args.protocol,
-                "purpose": args.purpose,
-                **({"warmup_values": args.warmup_values} if args.warmup_values else {}),
-                **({"window_values": args.window_values} if args.window_values else {}),
-            }
+            body |= args.model_dump(
+                include={"protocol", "purpose", "warmup_values", "window_values"},
+                exclude_none=True,
+            )
         suite = await api.post("/v1/dojo/suites/faults", body)
     return {"suite_id": suite["id"], "datasets": len(suite["items"])}
 
@@ -1493,8 +1494,7 @@ class StudyRef(Args):
 
 
 def _finished(study: Mapping[str, Any]) -> bool:
-    waiting = sum(study["runs"].get(key, 0) for key in ACTIVE_RUN)
-    return not waiting and not study["metrics_pending"]
+    return _runs_ended(study) and not study["metrics_pending"]
 
 
 @tool(StudyRef)
@@ -1588,16 +1588,12 @@ def _protocol(report: Mapping[str, Any]) -> dict[str, Any]:
 
 async def _ended(api: Api, run: dict[str, Any]) -> None:
     """Cancel a run that still waits or runs, and wait for its end."""
-    if run["status"] not in ACTIVE_RUN:
+    if _run_ended(run):
         return
     path = f"/v1/dojo/runs/{_segment(run['id'])}"
     await api.post(f"{path}/cancel")
-    run = await _settled(
-        lambda: api.get(path),
-        lambda state: state["status"] not in ACTIVE_RUN,
-        CANCEL_WAIT,
-    )
-    if run["status"] in ACTIVE_RUN:
+    run = await _settled(lambda: api.get(path), _run_ended, CANCEL_WAIT)
+    if not _run_ended(run):
         raise ApiRefusal(
             409,
             f"Test {run['id']} is cancelled and still ending; call delete_mine "
@@ -1608,14 +1604,10 @@ async def _ended(api: Api, run: dict[str, Any]) -> None:
 async def _study_ended(api: Api, study_id: str) -> None:
     """Cancel a study whose runs still wait or run, and wait for their end."""
     path = f"/v1/dojo/studies/{_segment(study_id)}"
-
-    def ended(study: Mapping[str, Any]) -> bool:
-        return not any(study["runs"].get(key) for key in ACTIVE_RUN)
-
-    if ended(await api.get(path)):
+    if _runs_ended(await api.get(path)):
         return
     await api.post(f"{path}/cancel")
-    if not ended(await _settled(lambda: api.get(path), ended, CANCEL_WAIT)):
+    if not _runs_ended(await _settled(lambda: api.get(path), _runs_ended, CANCEL_WAIT)):
         raise ApiRefusal(
             409,
             f"Study {study_id} is cancelled and still ending; call delete_mine "
@@ -1624,6 +1616,17 @@ async def _study_ended(api: Api, study_id: str) -> None:
 
 
 ACTIVE_RUN = {"queued", "running"}
+
+
+def _run_ended(run: Mapping[str, Any]) -> bool:
+    return run["status"] not in ACTIVE_RUN
+
+
+def _runs_ended(study: Mapping[str, Any]) -> bool:
+    """Whether none of a study's runs waits or runs."""
+    return not any(study["runs"].get(key) for key in ACTIVE_RUN)
+
+
 # A running replay ends at the worker's next beat, within seconds.
 CANCEL_WAIT = 30
 
@@ -1635,8 +1638,16 @@ def _started_by(monitor: Mapping[str, Any]) -> dict[str, Any] | None:
     return {"author": origin["author"], "kind": origin["author_kind"]}
 
 
-async def _me(api: Api) -> str:
-    return (await api.get("/v1/agents/me"))["name"]
+def _monitor(monitor: Mapping[str, Any]) -> dict[str, Any]:
+    """What list_monitors and get_monitor both say of a monitor, first."""
+    return {
+        "id": monitor["id"],
+        "name": monitor.get("display_name"),
+        "active": monitor.get("active"),
+        "shadow": monitor.get("shadow", False),
+        "reading_ids": monitor.get("reading_ids", []),
+        "started_at": monitor.get("created_at"),
+    }
 
 
 def _mine(monitor: Mapping[str, Any], me: str) -> bool:
@@ -1662,15 +1673,10 @@ async def list_monitors(api: Api, args: Monitors):
     taken: a reading belongs to one monitor at a time."""
     params = {"active": args.active} if args.active is not None else None
     monitors = await api.get("/v1/monitors", params)
-    me = await _me(api)
+    me = api.agent.name
     listed = [
         {
-            "id": item["id"],
-            "name": item.get("display_name"),
-            "active": item.get("active"),
-            "shadow": item.get("shadow", False),
-            "reading_ids": item.get("reading_ids", []),
-            "started_at": item.get("created_at"),
+            **_monitor(item),
             "started_by": _started_by(item),
             "mine": _mine(item, me),
         }
@@ -1693,14 +1699,9 @@ async def get_monitor(api: Api, args: MonitorRef):
     monitor = await api.get(f"/v1/monitors/{_segment(args.monitor_id)}")
     origin = monitor.get("origin")
     return {
-        "id": monitor["id"],
-        "name": monitor.get("display_name"),
-        "active": monitor.get("active"),
-        "shadow": monitor.get("shadow", False),
-        "reading_ids": monitor.get("reading_ids", []),
-        "started_at": monitor.get("created_at"),
+        **_monitor(monitor),
         "status": monitor.get("operational_status") or {},
-        "mine": _mine(monitor, await _me(api)),
+        "mine": _mine(monitor, api.agent.name),
         "origin": origin,
     }
 

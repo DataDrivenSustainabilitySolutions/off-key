@@ -6,15 +6,16 @@ import {
 import type { GraphDocument } from "@/features/pipelines/model";
 import { NODE_SIZE } from "@/features/pipelines/semantics";
 import type * as Wire from "@/types/pipelines.generated";
-import { groupOf } from "./support/fixtures/pipelines";
+import { asServed, groupOf, servedShape } from "./support/fixtures/pipelines";
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], learning: Wire.PipelineComponent["learning"],
-  facts: Partial<Wire.PipelineComponent> = {}): Wire.PipelineComponent => ({
+  facts: Partial<Wire.PipelineComponent> = {}): Wire.PipelineComponent => asServed({
   id, kind, group: groupOf(kind), label: id, description: "Scores each observation.", learning, fields: [],
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values"
     : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions"
     : kind === "output" ? "evidence" : "features",
+  ...servedShape(id),
   ...facts,
 });
 

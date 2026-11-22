@@ -13,6 +13,7 @@ import { ApiRequestError } from "@/lib/api-client";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import type { ActiveService } from "@/types/monitoring";
 import type { PipelineProposalSummary } from "@/types/pipelines.generated";
+import { asServed } from "./support/fixtures/pipelines";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, can: () => false }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
@@ -27,7 +28,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => (
   system: { snapshot: { runtime: { collection: { status: "applied" } } } }, document: undefined, telemetry, liveStreamIds: [], previewStreamIds: [] }) }));
 
 const component = (id: string, kind: string, input: string | null, output: string, extra: object = {}) =>
-  ({ id, kind, group: kind === "source" ? "input" : kind, label: id, description: "", input_type: input, output_type: output, ...extra });
+  asServed({ id, kind, group: kind === "source" ? "input" : kind, label: id, description: "", input_type: input, output_type: output, ...extra });
 const catalog = normalizeCatalog({
   catalog_id: "catalog", authoring_enabled: true, templates: [],
   components: [

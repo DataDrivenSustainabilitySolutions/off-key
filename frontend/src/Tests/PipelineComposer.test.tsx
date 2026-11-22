@@ -21,11 +21,12 @@ import { startupEstimate } from "@/features/pipelines/startup";
 import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import { clearNavigationDrafts, useNavigationDraft } from "@/lib/navigation-draft";
+import { asServedList } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
 const catalog = normalizeCatalog({
-  catalog_id: "test", authoring_enabled: true, templates: [], components: [
+  catalog_id: "test", authoring_enabled: true, templates: [], components: asServedList([
     { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
       input_type: null, output_type: "features" },
     { id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
@@ -34,7 +35,7 @@ const catalog = normalizeCatalog({
       input_type: "features", output_type: "scores" },
     { id: "detector:static", kind: "detector", group: "detector", label: "Static detector", description: "",
       input_type: "features", output_type: "p_values" },
-  ],
+  ]),
 });
 const components = catalog.components;
 const passthrough = components.find((item) => item.id === "features.passthrough")!;

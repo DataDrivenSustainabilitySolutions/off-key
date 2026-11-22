@@ -23,7 +23,7 @@ import {
   normalizeLayout,
   type PipelineComponent,
 } from "@/features/pipelines/contracts";
-import { groupOf } from "./support/fixtures/pipelines";
+import { catalogStep, groupOf } from "./support/fixtures/pipelines";
 
 const definition = () =>
   normalizeDefinition({
@@ -101,21 +101,7 @@ describe("visual pipeline documents", () => {
   });
 
   it("adds stable unique IDs and typed descriptor defaults without interpreting arbitrary schemas", () => {
-    const component: PipelineComponent = {
-      id: "adaptive.standard_scaler",
-      kind: "transform",
-      group: "normalize",
-      label: "Scale",
-      description: "",
-      fields: [
-        {
-          name: "with_std",
-          label: "Standard deviation",
-          type: "boolean",
-          default: true,
-        },
-      ],
-    };
+    const component = catalogStep("adaptive.standard_scaler");
     const first = addComponent(
       { definition: definition(), layout: normalizeLayout() },
       component,
@@ -127,19 +113,12 @@ describe("visual pipeline documents", () => {
     ]);
     expect(
       second.definition.nodes[second.definition.nodes.length - 1]?.params,
-    ).toEqual({ with_std: true });
+    ).toEqual({ apply_to: null, result: "replace", suffix: "std", with_std: true });
   });
 
   it("names a second Formula or Aggregate so the features they compute do not clash", () => {
-    const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
-      id, kind: "transform", group: "combine", label: id, description: "", fields,
-    });
-    const name = { name: "name", label: "Name", type: "string", has_default: true, nullable: true } as const;
-    const formula = step("prepare.formula", [name]);
-    const aggregate = step("prepare.aggregate", [
-      { name: "function", label: "Function", type: "enum", default: "mean", has_default: true, options: ["mean", "std"] },
-      name,
-    ]);
+    const formula = catalogStep("prepare.formula");
+    const aggregate = catalogStep("prepare.aggregate");
     let document = { definition: definition(), layout: normalizeLayout() };
     for (const component of [formula, formula, formula, aggregate, aggregate]) document = addComponent(document, component);
     expect(document.definition.nodes.slice(-5).map((node) => node.params.name ?? null)).toEqual([
@@ -150,14 +129,7 @@ describe("visual pipeline documents", () => {
 
 
   it("applies authoring limits to dropped components as well as toolbox buttons", () => {
-    const component: PipelineComponent = {
-      id: "features.passthrough",
-      kind: "transform",
-      group: "route",
-      label: "Raw",
-      description: "",
-      fields: [],
-    };
+    const component = catalogStep("features.passthrough");
     const full = {
       definition: {
         ...definition(),

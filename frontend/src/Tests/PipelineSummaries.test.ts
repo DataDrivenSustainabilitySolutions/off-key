@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeDefinition, type PipelineComponent, type PipelineNode } from "@/features/pipelines/contracts";
 import { nodeSummary } from "@/features/pipelines/summaries";
+import { catalogStep } from "./support/fixtures/pipelines";
 
 const definition = normalizeDefinition({
   input_slots: [
@@ -46,11 +47,7 @@ describe("card summaries", () => {
   });
 
   it("keeps a small rate and a quantile close to 1 apart from 0 and 1", () => {
-    const calibration: PipelineComponent = {
-      id: "calibrate.aci", kind: "calibration", group: "calibration", label: "ACI", description: "", fields: [
-        { name: "alpha", label: "Target alarm rate", type: "number", default: 0.01 },
-      ],
-    };
+    const calibration = catalogStep("calibrate.aci");
     expect(summary("calibrate.aci", { alpha: 0.0005 }, calibration)).toEqual({ text: "Target alarm rate 0.0005" });
     expect(summary("calibrate.aci", { alpha: 8.26720e-6 }, calibration)).toEqual({ text: "Target alarm rate 0.000008267" });
     expect(summary("calibrate.aci", { alpha: 0.123456 }, calibration)).toEqual({ text: "Target alarm rate 0.1235" });
@@ -79,20 +76,9 @@ describe("card summaries", () => {
   });
 
   it("names the features a scoped step uses and the ones it adds", () => {
-    const scope: PipelineComponent["fields"] = [
-      { name: "apply_to", label: "Applies to", type: "features", default: null },
-      { name: "result", label: "Result", type: "enum", default: "replace" },
-    ];
-    const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
-      id, kind: "transform", group: "normalize", label: id, description: "", fields,
-    });
-    const scaler = step("adaptive.standard_scaler", [...scope,
-      { name: "suffix", label: "Suffix", type: "string", default: "std" },
-      { name: "with_std", label: "With Std", type: "boolean", default: true }]);
-    const robust = step("adaptive.robust_scaler", [...scope,
-      { name: "suffix", label: "Suffix", type: "string", default: "robust" },
-      { name: "window_size", label: "Window Size", type: "integer", default: 256 }]);
-    const pca = step("static.pca", [...scope, { name: "n_components", label: "N Components", type: "integer", default: 1 }]);
+    const scaler = catalogStep("adaptive.standard_scaler");
+    const robust = catalogStep("adaptive.robust_scaler");
+    const pca = catalogStep("static.pca");
 
     // A step that changes values in place lists the readings it uses.
     expect(summary("adaptive.standard_scaler", { apply_to: ["value", "input_2"] }, scaler))

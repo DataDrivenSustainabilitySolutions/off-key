@@ -7,16 +7,17 @@ import {
   addNote, moveNote, noteBlocker, NOTE_LIMITS, notesOf, notesWithCards, readNotes, removeNote, setNoteText,
 } from "@/features/pipelines/notes";
 import PipelineCanvas from "@/features/pipelines/PipelineCanvas";
+import { asServedList } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
 const { components } = normalizeCatalog({
-  catalog_id: "test", authoring_enabled: true, templates: [], components: [
+  catalog_id: "test", authoring_enabled: true, templates: [], components: asServedList([
     { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
       input_type: null, output_type: "features" },
     { id: "features.scale", kind: "transform", group: "prepare", label: "Scale", description: "",
       input_type: "features", output_type: "features" },
-  ],
+  ]),
 });
 
 const design = (notes?: Array<{ id: string; x: number; y: number; text: string }>): GraphDocument => ({

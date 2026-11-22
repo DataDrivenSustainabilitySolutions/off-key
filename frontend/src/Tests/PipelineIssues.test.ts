@@ -3,14 +3,15 @@ import { normalizeCatalog, normalizeDefinition, normalizeLayout } from "@/featur
 import { openSummary, showIssues } from "@/features/pipelines/issues";
 import type { GraphDocument } from "@/features/pipelines/model";
 import type * as Wire from "@/types/pipelines.generated";
-import { groupOf } from "./support/fixtures/pipelines";
+import { asServed, groupOf, servedShape } from "./support/fixtures/pipelines";
 
-const component = (id: string, kind: Wire.PipelineComponent["kind"], label: string): Wire.PipelineComponent => ({
+const component = (id: string, kind: Wire.PipelineComponent["kind"], label: string): Wire.PipelineComponent => asServed({
   id, kind, group: groupOf(kind), label, description: "", learning: kind === "detector" ? "online" : "none", fields: [],
   input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values"
     : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions"
     : kind === "output" ? "evidence" : "features",
+  ...servedShape(id),
 });
 const { components } = normalizeCatalog({
   catalog_id: "issues", authoring_enabled: true,

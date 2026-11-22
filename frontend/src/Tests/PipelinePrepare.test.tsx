@@ -11,34 +11,15 @@ import { defaultSuffix, stepScope } from "@/features/pipelines/scope";
 import { STEP_FAMILIES, stepFamily, stepFields } from "@/features/pipelines/steps";
 import { changeDetector } from "@/features/pipelines/learning";
 import type { JsonValue } from "@/types/monitoring";
-import { type Field, option, scopeFields, step, stepNode, stepSummary } from "./support/pipelineSteps";
+import { catalogStep } from "./support/fixtures/pipelines";
+import { stepNode, stepSummary } from "./support/pipelineSteps";
 
-const amount = (name: string, value: number, type: "integer" | "number" = "number", nullable = false): Field =>
-  ({ name, label: name, type, default: value, has_default: true, nullable });
-
-/** The catalog's Prepare steps, as core describes them. */
-function prepare(id: string, fields: Field[], result = "replace"): PipelineComponent {
-  return step(id, [...scopeFields(result), ...fields]);
-}
-const smooth = prepare("prepare.smooth", [
-  option("method", "exponential", ["exponential", "rolling"]), amount("window_size", 10, "integer"),
-]);
-const despike = prepare("prepare.despike", [amount("window_size", 11, "integer"), amount("threshold", 3)]);
-const change = prepare("prepare.change", [
-  option("mode", "difference", ["difference", "percent", "lag"]), amount("lag", 1, "integer"),
-], "add");
-const rolling = prepare("prepare.rolling", [
-  option("statistic", "mean", ["mean", "median", "min", "max", "std", "range"]), amount("window_size", 60, "integer"),
-], "add");
-const math = prepare("prepare.math", [
-  option("function", "log", ["log", "log1p", "sqrt", "abs", "square", "linear"]),
-  // The catalog says which settings depend on another.
-  ...[amount("scale", 1), amount("offset", 0)].map((field): Field =>
-    ({ ...field, shown_when: { field: "function", equals: ["linear"] } })),
-]);
-const range = prepare("prepare.range", [
-  amount("low", 0, "number", true), amount("high", 1, "number", true), option("action", "clip", ["clip", "skip"]),
-]);
+const smooth = catalogStep("prepare.smooth");
+const despike = catalogStep("prepare.despike");
+const change = catalogStep("prepare.change");
+const rolling = catalogStep("prepare.rolling");
+const math = catalogStep("prepare.math");
+const range = catalogStep("prepare.range");
 const STEPS = [smooth, despike, change, rolling, math, range];
 
 const node = stepNode;
@@ -68,6 +49,8 @@ describe("Prepare steps in the composer", () => {
       .toEqual(["q90_60", "q10_60", "q99p9_60", "q12p5_60", "q30_60", "q0_60", "q100_60"]);
     // A draft without the setting uses the median, the catalog's default.
     expect(quantile()).toBe("q50_60");
+    // Without the catalog to give its default, a quantile reads as the median.
+    expect(defaultSuffix(node(rolling, { statistic: "quantile", window_size: 60 }))).toBe("q50_60");
     expect(defaultSuffix(node(rolling, { statistic: "iqr", quantile: 0.9 }), rolling)).toBe("iqr60");
   });
 

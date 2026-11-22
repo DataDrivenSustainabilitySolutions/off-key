@@ -5,6 +5,7 @@ import type { GraphDocument } from "@/features/pipelines/model";
 import { switchOff } from "@/features/pipelines/stepSwitch";
 import { ApiRequestError } from "@/lib/api-client";
 import { DESIGN_FILE, type PipelineDefinition, type PipelineDesignFile } from "@/types/pipelines.generated";
+import { asServedList } from "./support/fixtures/pipelines";
 
 // Arranging stands every card in a row, so a test can tell it happened.
 vi.mock("@/features/pipelines/layout", () => ({
@@ -84,8 +85,8 @@ describe("a design as a file", () => {
   });
 
   it("writes what a switched-off step was, and opens it switched off", async () => {
-    const stand = [{ id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
-      input_type: "features", output_type: "features", fields: [] }] as unknown as PipelineComponent[];
+    const stand = asServedList<PipelineComponent>([{ id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
+      input_type: "features", output_type: "features", fields: [] }]) as unknown as PipelineComponent[];
     const document = switchOff(design(), ["smooth"], stand);
     // What the layout remembers of a step that is on, or gone, is not written.
     document.layout.switched_off!.input = { component: "source.other", contract_version: 1, params: {} };

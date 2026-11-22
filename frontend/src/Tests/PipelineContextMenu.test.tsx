@@ -11,14 +11,15 @@ import { PipelineNodeCard } from "@/features/pipelines/PipelineNodeCard";
 import { CardActionsContext } from "@/features/pipelines/cardActions";
 import type { CanvasNode } from "@/features/pipelines/types";
 import { normalizeDefinition, normalizeLayout, type PipelineComponent } from "@/features/pipelines/contracts";
-import { groupOf } from "./support/fixtures/pipelines";
+import { asServed, groupOf, servedShape } from "./support/fixtures/pipelines";
 
-const component = (id: string, kind: PipelineComponent["kind"], label: string, extra: Partial<PipelineComponent> = {}) => ({
+const component = (id: string, kind: PipelineComponent["kind"], label: string, extra: Partial<PipelineComponent> = {}) => asServed({
   id, kind, group: groupOf(kind), label, description: "", fields: [],
   input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : kind === "output" ? null : "features",
+  ...servedShape(id),
   ...extra,
-}) as PipelineComponent;
+} as PipelineComponent);
 
 const components = [
   component("source.aligned", "source", "Aligned inputs"),

@@ -10,21 +10,17 @@ import { PipelineApart } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix } from "@/features/pipelines/scope";
 import { CONDITION_STEPS, FORMULA_STEPS, stepFamily, stepFields } from "@/features/pipelines/steps";
 import type { JsonValue } from "@/types/monitoring";
-import { type Issue, option, scopeFields, step, stepNode, stepSummary, text } from "./support/pipelineSteps";
+import { catalogStep } from "./support/fixtures/pipelines";
+import { type Issue, stepNode, stepSummary } from "./support/pipelineSteps";
 
-const scope = scopeFields("add");
-const accumulate = step("prepare.accumulate", [
-  ...scope, option("function", "sum", ["sum", "min", "max", "count"]), text("reset_when", "Reset when"),
-]);
-const hold = step("prepare.hold", [...scope, text("update_when", "Update when", true)]);
-const relation = step("prepare.relation", [
-  ...scope, text("against", "Against", true),
-  option("statistic", "correlation", ["correlation", "covariance", "slope", "residual"]),
-  { name: "window_size", label: "Window", type: "integer", default: 60, has_default: true },
-]);
-const calculate = step("prepare.calculate", [text("formulas", "Formulas", true)], "combine");
+const accumulate = catalogStep("prepare.accumulate");
+const hold = catalogStep("prepare.hold");
+const relation = catalogStep("prepare.relation");
+const calculate = catalogStep("prepare.calculate");
 
 const node = stepNode;
+const help = (component: PipelineComponent, name: string) =>
+  component.fields.find((field) => field.name === name)?.description ?? "";
 const summary = stepSummary;
 
 function panel(component: PipelineComponent, params: PipelineNode["params"], issues: Issue[] = []) {
@@ -101,7 +97,7 @@ describe("the lines of a Calculate step", () => {
     expect(area.maxLength).toBe(4096);
     fireEvent.change(area, { target: { value: "power = dc_voltage * 2" } });
     expect(changes).toEqual([{ formulas: "power = dc_voltage * 2" }]);
-    expect(screen.getByText("Formulas help")).toBeTruthy();
+    expect(screen.getByText(help(calculate, "formulas"))).toBeTruthy();
   });
 
   it("offer the features written above the caret, and only features for a name", () => {
@@ -148,7 +144,7 @@ describe("the condition of a step that works on each feature", () => {
     expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
     fireEvent.change(area, { target: { value: "" } });
     expect(changes).toEqual([{ function: "count" }]);
-    expect(screen.getByText("Reset when help")).toBeTruthy();
+    expect(screen.getByText(help(accumulate, "reset_when"))).toBeTruthy();
   });
 
   it("offers and, or and not, and shows its problem beside it", () => {

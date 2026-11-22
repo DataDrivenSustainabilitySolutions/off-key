@@ -26,6 +26,7 @@ import { useDesignTest } from "@/features/dojo/designTest";
 import { DesignTestContext } from "@/features/pipelines/designTest";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { ApiRequestError } from "@/lib/api-client";
+import { asServedList } from "./support/fixtures/pipelines";
 
 const access = vi.hoisted(() => ({ dojo: false }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1,
@@ -67,7 +68,7 @@ const catalog = normalizeCatalog({
   catalog_id: "catalog",
   authoring_enabled: true,
   templates: [],
-  components: [
+  components: asServedList([
     {
       id: "source.aligned",
       kind: "source",
@@ -116,7 +117,7 @@ const catalog = normalizeCatalog({
       input_type: "decisions",
       output_type: "evidence",
     },
-  ],
+  ]),
 });
 const pipeline = () =>
   normalizeView({

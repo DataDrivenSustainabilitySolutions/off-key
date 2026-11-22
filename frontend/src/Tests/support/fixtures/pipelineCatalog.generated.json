@@ -1,0 +1,5814 @@
+{
+ "schema_version": 1,
+ "catalog_id": "fd7c1178d380f664668e79ac75e38438284cb6f0a82323567ea14386b8931e10",
+ "authoring_enabled": true,
+ "components": [
+  {
+   "id": "source.aligned",
+   "contract_version": 1,
+   "kind": "source",
+   "group": "input",
+   "label": "Aligned inputs",
+   "description": "The chosen readings as one observation.",
+   "details": "An observation takes the latest value of every input. A value is used for 3 of its reading's usual intervals and at least 30 s, then the observation is dropped as stale. Hold an input sent only when it changes, so its last value is used until the next one.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "hold",
+     "label": "Hold",
+     "type": "object_list",
+     "description": "Inputs whose last value stays usable for a set time. Without it, a value is used for 3 of its reading's usual intervals and at least 30 s. Set it for a reading sent only when it changes, such as a setpoint, so it is held until its next value.",
+     "fields": [
+      {
+       "name": "input",
+       "label": "Input",
+       "type": "string",
+       "required": true,
+       "description": "Id of the input, as in the design's input_slots."
+      },
+      {
+       "name": "seconds",
+       "label": "Seconds",
+       "type": "number",
+       "required": true,
+       "maximum": 604800.0,
+       "exclusive_minimum": 0.0,
+       "description": "How long its last value stays usable, in seconds."
+      }
+     ]
+    }
+   ],
+   "input_type": null,
+   "output_type": "features"
+  },
+  {
+   "id": "features.select",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "route",
+   "label": "Select features",
+   "description": "Keep only the chosen features.",
+   "details": "The features leave in the order they are chosen.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "features",
+     "label": "Features",
+     "type": "features",
+     "required": true,
+     "description": "The features to keep, in this order."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "features.rename",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "route",
+   "label": "Rename features",
+   "description": "Give features new names.",
+   "details": "Distinct names keep branches from colliding where they merge.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "mapping",
+     "label": "Mapping",
+     "type": "rename",
+     "required": true,
+     "description": "The new name of each feature to rename."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "features.passthrough",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "route",
+   "label": "Pass through",
+   "description": "Forward features unchanged.",
+   "details": "Connected to the input, it carries the raw readings past other steps.",
+   "learning": "none",
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "features.merge",
+   "contract_version": 1,
+   "kind": "merge",
+   "group": "route",
+   "label": "Merge features",
+   "description": "Join branches into one feature list.",
+   "details": "The features follow the order of the connections.",
+   "learning": "none",
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.smooth",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Smooth",
+   "description": "Average recent values to calm noise, over observations or over time.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "method",
+     "label": "Method",
+     "type": "enum",
+     "default": "exponential",
+     "has_default": true,
+     "options": [
+      "exponential",
+      "rolling",
+      "time_constant"
+     ],
+     "description": "Exponential weighs recent values more, with alpha = 2 / (window + 1). Rolling takes the plain mean of the window. Time constant weighs values by the seconds since they arrived, so readings every second and every ten are smoothed alike."
+    },
+    {
+     "name": "window_size",
+     "label": "Window",
+     "type": "integer",
+     "default": 10,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 3600.0,
+     "description": "Observations to smooth over.",
+     "shown_when": {
+      "field": "method",
+      "equals": null,
+      "not_equals": [
+       "time_constant"
+      ]
+     }
+    },
+    {
+     "name": "time_constant",
+     "label": "Time constant",
+     "type": "number",
+     "default": 60.0,
+     "has_default": true,
+     "maximum": 2592000.0,
+     "exclusive_minimum": 0.0,
+     "description": "Seconds until a lasting change shows to 63% in the result; after three times as long it shows to 95%.",
+     "shown_when": {
+      "field": "method",
+      "equals": [
+       "time_constant"
+      ],
+      "not_equals": null
+     }
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.despike",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Despike",
+   "description": "Replace sudden spikes with the recent median.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "window_size",
+     "label": "Window",
+     "type": "integer",
+     "default": 11,
+     "has_default": true,
+     "minimum": 5.0,
+     "maximum": 301.0,
+     "description": "Recent observations, an odd number, whose median replaces a spike."
+    },
+    {
+     "name": "threshold",
+     "label": "Threshold",
+     "type": "number",
+     "default": 3.0,
+     "has_default": true,
+     "maximum": 100.0,
+     "exclusive_minimum": 0.0,
+     "description": "How many scaled median absolute deviations a value may differ from the window median before the median replaces it."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.change",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Change",
+   "description": "Add the change since earlier observations.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "mode",
+     "label": "Mode",
+     "type": "enum",
+     "default": "difference",
+     "has_default": true,
+     "options": [
+      "difference",
+      "percent",
+      "lag"
+     ],
+     "description": "Difference x(t) - x(t - lag), percent change against x(t - lag), or the value lag observations back."
+    },
+    {
+     "name": "lag",
+     "label": "Lag",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 3600.0,
+     "description": "Observations back to compare with."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.lags",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Lags",
+   "description": "Add values from several observations back, such as lags 1 to 3 and 24.",
+   "details": "With the current value beside its lags, a detector that treats observations as unrelated sees how a reading moves over time. Each lag adds one feature per feature used; the step has output once the largest lag has arrived.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "add"
+     ],
+     "description": "Keep the features this step uses and add one feature per lag."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix><lag>, with the unit of a time, as in power_lag15min. Leave unset for lag."
+    },
+    {
+     "name": "unit",
+     "label": "Unit",
+     "type": "enum",
+     "default": "minutes",
+     "has_default": true,
+     "options": [
+      "observations",
+      "seconds",
+      "minutes",
+      "hours",
+      "days"
+     ],
+     "description": "Count lags in time, which stays right across gaps and readings sent on change: a lag is the last value at or before that long ago. Count them in observations for a series measured at a steady interval."
+    },
+    {
+     "name": "lags",
+     "label": "Lags",
+     "type": "number_list",
+     "default": [
+      1,
+      5,
+      15
+     ],
+     "has_default": true,
+     "description": "How far back, in the unit, such as 1, 2, 3 and 24. Each lag adds one feature per feature used."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.deseason",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Deseason",
+   "description": "Take out the usual level at this time of day or week.",
+   "details": "Learns each slot of the day or week, such as 14:00 to 15:00, and passes on how far a value lies from it, so a detector sees what is unusual for the time rather than the daily rhythm. With trend it also takes out a slow drift, as STL does. For a daily and a weekly pattern, chain a daily step and a weekly one. It has output once a whole cycle has passed.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses with what is left once their usual level at this time is taken out, or keep them and add it."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "cycle",
+     "label": "Cycle",
+     "type": "enum",
+     "default": "day",
+     "has_default": true,
+     "options": [
+      "day",
+      "week"
+     ],
+     "description": "The pattern to take out: the same time each day, or each week, where weekdays and weekends differ."
+    },
+    {
+     "name": "slot_minutes",
+     "label": "Slot in minutes",
+     "type": "integer",
+     "default": 60,
+     "has_default": true,
+     "minimum": 5.0,
+     "maximum": 360.0,
+     "description": "Minutes of the cycle that share one usual level. Shorter slots follow a sharper pattern and need more observations each."
+    },
+    {
+     "name": "memory",
+     "label": "Memory in cycles",
+     "type": "integer",
+     "default": 7,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 365.0,
+     "description": "How many cycles the usual levels remember. Fewer follow a pattern that changes; more hold steady through an unusual day."
+    },
+    {
+     "name": "timezone",
+     "label": "Time zone",
+     "type": "string",
+     "default": "UTC",
+     "has_default": true,
+     "description": "The clock the cycle follows, such as Europe/Berlin, with its daylight saving time."
+    },
+    {
+     "name": "trend",
+     "label": "Take out the trend too",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "Also follow a slow trend, over about one cycle, and take it out, as STL does, so a series that drifts up or down keeps its usual pattern around the drift."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.cusum",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "CUSUM",
+   "description": "Sum up how far values drift from their usual level, to find a lasting shift.",
+   "details": "A small shift that lasts adds up over observations until it stands out, where a detector of single values misses it. The sum starts over once it passes Reset at, so a rule or detector after it sees one rise per shift.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Keep the features this step uses and add their cumulative sum, or replace them with it."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "window_size",
+     "label": "Window",
+     "type": "integer",
+     "default": 200,
+     "has_default": true,
+     "minimum": 10.0,
+     "maximum": 3600.0,
+     "description": "Observations the usual level and spread are learned from before the sum starts, and the pace at which they follow later."
+    },
+    {
+     "name": "slack",
+     "label": "Slack",
+     "type": "number",
+     "default": 0.5,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 10.0,
+     "description": "Spreads a value may lie from the usual level without adding to the sum: half the shift you want to find fast."
+    },
+    {
+     "name": "reset_at",
+     "label": "Reset at",
+     "type": "number",
+     "default": 5.0,
+     "has_default": true,
+     "maximum": 100.0,
+     "exclusive_minimum": 0.0,
+     "description": "Where the sum, in spreads, starts over and the usual level moves to where the series now is, so a lasting shift is found once."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.rolling",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Rolling statistic",
+   "description": "Add a sum, quantile, spread, trend, shape or score of recent values.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "statistic",
+     "label": "Statistic",
+     "type": "enum",
+     "default": "mean",
+     "has_default": true,
+     "options": [
+      "mean",
+      "median",
+      "min",
+      "max",
+      "std",
+      "range",
+      "sum",
+      "quantile",
+      "iqr",
+      "mad",
+      "slope",
+      "zscore",
+      "robust_zscore",
+      "rank",
+      "rms",
+      "skewness",
+      "kurtosis"
+     ],
+     "description": "Statistic of the window. std uses n - 1; iqr is the interquartile range; mad is the unscaled median absolute deviation. Quantiles use linear interpolation. Slope is a fitted change per observation. zscore and robust_zscore say how far the latest value lies from the window's mean in standard deviations, or from its median in scaled MADs. rank places the latest value among the window's values, from 0 for the lowest to 1 for the highest. rms is the root mean square; skewness and kurtosis describe the shape, kurtosis as excess over a normal distribution."
+    },
+    {
+     "name": "window_size",
+     "label": "Window",
+     "type": "integer",
+     "default": 60,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 3600.0,
+     "description": "Recent observations the statistic covers."
+    },
+    {
+     "name": "quantile",
+     "label": "Quantile",
+     "type": "number",
+     "default": 0.5,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "Quantile to compute, from 0 to 1.",
+     "shown_when": {
+      "field": "statistic",
+      "equals": [
+       "quantile"
+      ],
+      "not_equals": null
+     }
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.math",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Math",
+   "description": "Take a log, root, absolute value, square or scale.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "function",
+     "label": "Function",
+     "type": "enum",
+     "default": "log",
+     "has_default": true,
+     "options": [
+      "log",
+      "log1p",
+      "sqrt",
+      "abs",
+      "square",
+      "linear"
+     ],
+     "description": "log needs values above 0, log1p above -1 and sqrt at least 0; linear computes scale * x + offset."
+    },
+    {
+     "name": "scale",
+     "label": "Scale",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "description": "Factor of linear.",
+     "shown_when": {
+      "field": "function",
+      "equals": [
+       "linear"
+      ],
+      "not_equals": null
+     }
+    },
+    {
+     "name": "offset",
+     "label": "Offset",
+     "type": "number",
+     "default": 0.0,
+     "has_default": true,
+     "description": "Constant added by linear.",
+     "shown_when": {
+      "field": "function",
+      "equals": [
+       "linear"
+      ],
+      "not_equals": null
+     }
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.range",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Range check",
+   "description": "Clip values to a range, or skip observations outside it.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "low",
+     "label": "Low",
+     "type": "number",
+     "default": 0.0,
+     "has_default": true,
+     "nullable": true,
+     "description": "Smallest accepted value; none leaves it open."
+    },
+    {
+     "name": "high",
+     "label": "High",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "nullable": true,
+     "description": "Largest accepted value; none leaves it open."
+    },
+    {
+     "name": "action",
+     "label": "Action",
+     "type": "enum",
+     "default": "clip",
+     "has_default": true,
+     "options": [
+      "clip",
+      "skip"
+     ],
+     "description": "Clip moves values outside the range to its nearest end. Skip drops the whole observation and counts it as a coverage gap."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.aggregate",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "combine",
+   "label": "Aggregate",
+   "description": "Combine features into their mean, sum, extreme, spread or range.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Keep the features this step uses and add the computed feature, or replace them with it."
+    },
+    {
+     "name": "function",
+     "label": "Function",
+     "type": "enum",
+     "default": "mean",
+     "has_default": true,
+     "options": [
+      "mean",
+      "sum",
+      "min",
+      "max",
+      "std",
+      "range"
+     ],
+     "description": "Computed across the features of each observation; std is the sample standard deviation and range is max minus min."
+    },
+    {
+     "name": "name",
+     "label": "Name",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Name of the computed feature: letters, digits and underscores, not starting with a digit. Leave unset for the function's name, such as mean."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.formula",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "combine",
+   "label": "Formula",
+   "description": "Compute a feature from others, such as dc_voltage * dc_current.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "expression",
+     "label": "Formula",
+     "type": "string",
+     "required": true,
+     "description": "Arithmetic over the features arriving here, such as dc_voltage * dc_current, with + - * / ^, parentheses, the functions abs, atan2, ceil, clip, cos, exp, floor, hypot, log, log1p, max, mean, min, mod, round, sign, sin, sqrt and sum, pi, and if(condition, when_true, when_false). Only the chosen branch of if is evaluated. Write a name with other characters between backticks. In a formula for each feature, x stands for that feature."
+    },
+    {
+     "name": "name",
+     "label": "Name",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Name of the computed feature: letters, digits and underscores, not starting with a digit. Leave unset for formula."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Keep the features the formula reads and add the computed feature, or replace them with it."
+    },
+    {
+     "name": "apply_to",
+     "label": "For each",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Compute the formula once for each of these features, with x standing for the feature, such as x / mean - 1. Leave unset to compute one feature."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "For each feature, keeping features adds <feature>_<suffix>. Leave unset for formula."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.gate",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "route",
+   "label": "Gate",
+   "description": "Learn and score only while a condition holds.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "condition",
+     "label": "Condition",
+     "type": "string",
+     "required": true,
+     "description": "Observations where it is false are recorded but neither learned nor scored, such as dc_current > 1. Compare with < <= > >= == != and join with and, or and not."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.mute",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "route",
+   "label": "Mute alarms",
+   "description": "Raise no alarm while a condition holds.",
+   "details": "Learning and scoring go on, unlike at a Gate.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "condition",
+     "label": "Condition",
+     "type": "string",
+     "required": true,
+     "description": "Observations where it is true are learned and scored as usual, and an alarm for one of them is kept as muted instead of raised, such as speed < 100. Compare with < <= > >= == != and join with and, or and not."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.constant",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "combine",
+   "label": "Constant",
+   "description": "Add a named constant to use in later steps.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "name",
+     "label": "Name",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Name of the computed feature: letters, digits and underscores, not starting with a digit. Leave unset for constant."
+    },
+    {
+     "name": "value",
+     "label": "Value",
+     "type": "number",
+     "default": 0.0,
+     "has_default": true,
+     "description": "Add this named value to each observation for later steps to use."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.condition",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "combine",
+   "label": "Condition",
+   "description": "Turn a comparison or Boolean condition into a 1 or 0 feature.",
+   "details": "Every observation goes on, unlike at a Gate.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "name",
+     "label": "Name",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Name of the computed feature: letters, digits and underscores, not starting with a digit. Leave unset for condition."
+    },
+    {
+     "name": "condition",
+     "label": "Condition",
+     "type": "string",
+     "required": true,
+     "description": "Add 1 when this condition holds and 0 otherwise, keeping the observation. Use comparisons with and, or, not; later steps can read the flag with flag == 1."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.set",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "combine",
+   "label": "Set feature",
+   "description": "Calculate or replace one feature, keeping the others.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "name",
+     "label": "Name",
+     "type": "string",
+     "default": "feature",
+     "has_default": true,
+     "description": "The feature to calculate. An existing one of that name is replaced."
+    },
+    {
+     "name": "expression",
+     "label": "Formula",
+     "type": "string",
+     "required": true,
+     "description": "Compute this feature from the incoming values. Replace only the named feature if it exists, or add it. All other features stay unchanged. Use if(condition, when_true, when_false) to choose a value."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.accumulate",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Accumulate",
+   "description": "Keep a running total, minimum, maximum or count, and start over on a condition.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Keep the features this step uses and add the running value, or replace them with it."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "function",
+     "label": "Function",
+     "type": "enum",
+     "default": "sum",
+     "has_default": true,
+     "options": [
+      "sum",
+      "min",
+      "max",
+      "count"
+     ],
+     "description": "Total, minimum, maximum or number of observations since this step's first accepted observation. Restoring a checkpoint continues the accumulation; a new run starts over."
+    },
+    {
+     "name": "reset_when",
+     "label": "Reset when",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Start over on each observation where this condition holds, such as dc_current < 1. That observation is the first of the new accumulation. Leave empty to never start over."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.hold",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Hold",
+   "description": "Keep each value from the last time a condition held.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Keep the features this step uses and add the held value, or replace them with it."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "update_when",
+     "label": "Update when",
+     "type": "string",
+     "required": true,
+     "description": "Take the current value on each observation where this condition holds, such as valid == 1, and keep it until the next one. The first observation is always taken."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.relation",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Rolling relation",
+   "description": "Add how features move with one other feature: correlation, slope or residual.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "add",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Keep the features this step uses and add the statistic, or replace them with it."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Added features are named <feature>_<suffix>. Leave unset for the step's short name."
+    },
+    {
+     "name": "against",
+     "label": "Against",
+     "type": "string",
+     "required": true,
+     "description": "The feature every other feature is compared with."
+    },
+    {
+     "name": "statistic",
+     "label": "Statistic",
+     "type": "enum",
+     "default": "correlation",
+     "has_default": true,
+     "options": [
+      "correlation",
+      "covariance",
+      "slope",
+      "residual"
+     ],
+     "description": "Correlation, from -1 to 1, and covariance, with n - 1, say how the feature moves with the other one. Slope is the feature's fitted change per unit of the other one. Residual is how far the latest value lies from that fitted line. A window where either feature stays flat gives a correlation and a slope of 0."
+    },
+    {
+     "name": "window_size",
+     "label": "Window",
+     "type": "integer",
+     "default": 60,
+     "has_default": true,
+     "minimum": 3.0,
+     "maximum": 3600.0,
+     "description": "Recent observations the statistic covers."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.calculate",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "combine",
+   "label": "Calculate",
+   "description": "Calculate several named features, one formula per line.",
+   "details": "The lines run in order, so a line can read the features above it.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "formulas",
+     "label": "Formulas",
+     "type": "string",
+     "required": true,
+     "description": "One feature per line, written name = formula, such as power = dc_voltage * dc_current. Lines run from top to bottom, so a line can read the features above it. A name that already arrives is replaced; a new one is added. Lines that start with # are notes."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "prepare.time",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "prepare",
+   "label": "Time features",
+   "description": "Add the seconds since the previous observation, the hour or the weekday.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "elapsed",
+     "label": "Seconds since the previous observation",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Adds dt. The first observation has none before it, so the step is ready after two."
+    },
+    {
+     "name": "hour",
+     "label": "Hour of day",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "Adds hour, from 0 at midnight up to 24, with minutes as a fraction."
+    },
+    {
+     "name": "weekday",
+     "label": "Day of week",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "Adds weekday, from 1 for Monday to 7 for Sunday."
+    },
+    {
+     "name": "daily_cycle",
+     "label": "Daily cycle",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "Adds hour_sin and hour_cos, the time of day on a circle, where 23:59 lies next to 0:00."
+    },
+    {
+     "name": "weekly_cycle",
+     "label": "Weekly cycle",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "Adds weekday_sin and weekday_cos, the time of week on a circle, where Sunday night lies next to Monday morning."
+    },
+    {
+     "name": "timezone",
+     "label": "Time zone",
+     "type": "string",
+     "default": "UTC",
+     "has_default": true,
+     "description": "The clock the hour and the weekday follow, such as Europe/Berlin, with its daylight saving time."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "static.standard_scaler",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "normalize",
+   "label": "Standard scaling",
+   "description": "Center and scale with training statistics.",
+   "details": "Means and variances are fitted on the training window and then stay.",
+   "learning": "batch",
+   "counterpart": "adaptive.standard_scaler",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": "std",
+     "has_default": true,
+     "description": "Added features are named <feature>_<suffix>."
+    },
+    {
+     "name": "with_std",
+     "label": "With Std",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Divide by the standard deviation. Off only centers each feature."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "static.min_max_scaler",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "normalize",
+   "label": "Min-max scaling",
+   "description": "Scale to 0 to 1 with training bounds.",
+   "details": "Later values beyond the training bounds leave 0 to 1 unless clipped.",
+   "learning": "batch",
+   "counterpart": "adaptive.min_max_scaler",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": "minmax",
+     "has_default": true,
+     "description": "Added features are named <feature>_<suffix>."
+    },
+    {
+     "name": "feature_range",
+     "label": "Feature Range",
+     "type": "number_pair",
+     "default": [
+      0.0,
+      1.0
+     ],
+     "has_default": true,
+     "description": "The range that the lowest and the highest value seen map to."
+    },
+    {
+     "name": "clip",
+     "label": "Clip",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "Keep values beyond the bounds at the ends of the range."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "static.robust_scaler",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "normalize",
+   "label": "Robust scaling",
+   "description": "Center on the median and divide by the quartile range of training data.",
+   "learning": "batch",
+   "counterpart": "adaptive.robust_scaler",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": "robust",
+     "has_default": true,
+     "description": "Added features are named <feature>_<suffix>."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "static.pca",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "reduce",
+   "label": "Centered PCA",
+   "description": "Keep the main directions of the training data.",
+   "details": "Centered principal components, fitted on the training window.",
+   "learning": "batch",
+   "counterpart": "adaptive.uncentered_pca",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "n_components",
+     "label": "N Components",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 100.0,
+     "description": "Features that leave the step. No more than arrive."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "static.random_projection",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "reduce",
+   "label": "Random projection",
+   "description": "Fewer dimensions through a fixed random map.",
+   "details": "The map follows from the seed alone, so nothing is learned.",
+   "learning": "batch",
+   "counterpart": "adaptive.random_projection",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "n_components",
+     "label": "N Components",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 100.0,
+     "description": "Features that leave the step. No more than arrive."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "static.expected_value",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "reduce",
+   "label": "Expected value",
+   "description": "Give how far one feature is from what the others imply, by a fit on training data.",
+   "learning": "batch",
+   "counterpart": "adaptive.expected_value",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Expected from",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features the target is expected from. Leave unset to use every other feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the target and the features it is expected from with the residual, or keep them and add it."
+    },
+    {
+     "name": "target",
+     "label": "Target",
+     "type": "string",
+     "required": true,
+     "description": "The feature whose value is expected from the others."
+    },
+    {
+     "name": "name",
+     "label": "Name",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Name of the computed feature: letters, digits and underscores, not starting with a digit. Leave unset for <target>_residual."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "adaptive.standard_scaler",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "normalize",
+   "label": "Online standard scaling",
+   "description": "Center and scale with running statistics.",
+   "details": "Each observation is scaled with the statistics before it, then joins them.",
+   "learning": "online",
+   "counterpart": "static.standard_scaler",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": "std",
+     "has_default": true,
+     "description": "Added features are named <feature>_<suffix>."
+    },
+    {
+     "name": "with_std",
+     "label": "With Std",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Divide by the standard deviation. Off only centers each feature."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "adaptive.min_max_scaler",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "normalize",
+   "label": "Online min-max scaling",
+   "description": "Scale to 0 to 1 with the bounds seen so far.",
+   "details": "A value beyond the bounds so far leaves 0 to 1 unless clipped.",
+   "learning": "online",
+   "counterpart": "static.min_max_scaler",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": "minmax",
+     "has_default": true,
+     "description": "Added features are named <feature>_<suffix>."
+    },
+    {
+     "name": "feature_range",
+     "label": "Feature Range",
+     "type": "number_pair",
+     "default": [
+      0.0,
+      1.0
+     ],
+     "has_default": true,
+     "description": "The range that the lowest and the highest value seen map to."
+    },
+    {
+     "name": "clip",
+     "label": "Clip",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "Keep values beyond the bounds at the ends of the range."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "adaptive.robust_scaler",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "normalize",
+   "label": "Online robust scaling",
+   "description": "Center on the recent median and divide by the recent quartile range.",
+   "learning": "online",
+   "counterpart": "static.robust_scaler",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "suffix",
+     "label": "Suffix",
+     "type": "string",
+     "default": "robust",
+     "has_default": true,
+     "description": "Added features are named <feature>_<suffix>."
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 3600.0,
+     "description": "Recent observations per feature for the median and quartiles."
+    },
+    {
+     "name": "min_samples",
+     "label": "Min Samples",
+     "type": "integer",
+     "default": 32,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 3600.0,
+     "description": "Observations per feature before the step is ready."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "adaptive.uncentered_pca",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "reduce",
+   "label": "Online uncentered PCA",
+   "description": "Keep the main directions, updated as data arrives.",
+   "details": "The components are taken around zero. Center or standardize the features first for a conventional PCA.",
+   "learning": "online",
+   "counterpart": "static.pca",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "n_components",
+     "label": "N Components",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 100.0,
+     "description": "Features that leave the step. No more than arrive."
+    },
+    {
+     "name": "n0",
+     "label": "N0",
+     "type": "integer",
+     "default": 50,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Observations collected before the first components are set. At least as many as the components."
+    },
+    {
+     "name": "tol",
+     "label": "Tol",
+     "type": "number",
+     "default": 1e-07,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "What is left of an observation below this size counts as nothing new. Rarely needs changing."
+    },
+    {
+     "name": "forgetting_factor",
+     "label": "Forgetting Factor",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "nullable": true,
+     "description": "Weight of each new observation, between 0 and 1. Empty weighs all observations alike."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "adaptive.random_projection",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "reduce",
+   "label": "Random projection",
+   "description": "Fewer dimensions through a fixed random map.",
+   "details": "The map follows from the seed alone, so nothing is learned.",
+   "learning": "online",
+   "counterpart": "static.random_projection",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Applies to",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features this step uses. Leave unset to use every feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the features this step uses, or keep them and add the step's output as new features."
+    },
+    {
+     "name": "n_components",
+     "label": "N Components",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 100.0,
+     "description": "Features that leave the step. No more than arrive."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "adaptive.expected_value",
+   "contract_version": 1,
+   "kind": "transform",
+   "group": "reduce",
+   "label": "Online expected value",
+   "description": "Give how far one feature is from what the others imply, by a fit updated as data arrives.",
+   "details": "Each observation is compared with the fit before it, then joins it.",
+   "learning": "online",
+   "counterpart": "static.expected_value",
+   "fields": [
+    {
+     "name": "apply_to",
+     "label": "Expected from",
+     "type": "features",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "The features the target is expected from. Leave unset to use every other feature."
+    },
+    {
+     "name": "result",
+     "label": "Result",
+     "type": "enum",
+     "default": "replace",
+     "has_default": true,
+     "options": [
+      "replace",
+      "add"
+     ],
+     "description": "Replace the target and the features it is expected from with the residual, or keep them and add it."
+    },
+    {
+     "name": "target",
+     "label": "Target",
+     "type": "string",
+     "required": true,
+     "description": "The feature whose value is expected from the others."
+    },
+    {
+     "name": "name",
+     "label": "Name",
+     "type": "string",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Name of the computed feature: letters, digits and underscores, not starting with a digit. Leave unset for <target>_residual."
+    },
+    {
+     "name": "forgetting",
+     "label": "Forgetting",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How much earlier observations count at every update. 1 weighs every observation alike; 0.999 remembers roughly the last 1,000, so the fit follows slow drift. Below 1, readings that stop varying for long make the fit unstable, so keep 1 for readings that rest."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "features"
+  },
+  {
+   "id": "calibrate.fixed_split",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "Fixed split",
+   "description": "Rank every score against the calibration window, which then stays as it is.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "exchangeable"
+  },
+  {
+   "id": "calibrate.split",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "Rolling split CP",
+   "description": "Rank each score against the most recent scores, so the boundary follows slow change. Slow to react to a sudden shift.",
+   "details": "Empirical (1-alpha)(1+1/n) quantile of the last W scores. Valid under exchangeability, slow to react to shifts.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "exchangeable",
+   "reference": "Vovk et al. 2005; rolling calibration window"
+  },
+  {
+   "id": "calibrate.aci",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "ACI",
+   "description": "Rank against recent scores at a level that rises after each crossing and falls a little otherwise.",
+   "details": "Adapts the working miscoverage level alpha_t += gamma (alpha - err_t). Long-run coverage holds for any sequence.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "gamma",
+     "label": "Step size",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "How far the level moves after each observation. Larger follows change faster and wobbles more."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Gibbs & Candes, NeurIPS 2021"
+  },
+  {
+   "id": "calibrate.dtaci",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "DtACI",
+   "description": "ACI at several speeds at once, trusting whichever has done best. No step size to choose.",
+   "details": "Runs ACI over a grid of step sizes and reweights the experts online, so the step size tunes itself.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "interval",
+     "label": "Interval",
+     "type": "number",
+     "default": 100.0,
+     "has_default": true,
+     "minimum": 1.0,
+     "description": "Local-regret interval that sets the learning rates."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Gibbs & Candes, JMLR 2024"
+  },
+  {
+   "id": "calibrate.agaci",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "AgACI",
+   "description": "Several ACI trackers combined by how well each has predicted the scores so far.",
+   "details": "Aggregates ACI experts with online expert aggregation on the pinball loss.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Zaffran et al., ICML 2022"
+  },
+  {
+   "id": "calibrate.qt",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "Quantile tracker",
+   "description": "Move the boundary itself: up after a crossing, down a little otherwise. The simplest tracker, with one step size.",
+   "details": "Online gradient descent on the pinball loss of the threshold itself: q += eta (err - alpha).",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "lr",
+     "label": "Learning rate",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Step as a fraction of the recent score range."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Angelopoulos, Candes & Tibshirani, NeurIPS 2023"
+  },
+  {
+   "id": "calibrate.pid",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "Conformal PID",
+   "description": "A quantile tracker that also corrects for a run of past misses in one direction.",
+   "details": "Quantile tracker plus a saturated integrator of past coverage errors.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "lr",
+     "label": "Learning rate",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "How far the boundary moves after each observation. Larger follows change faster and wobbles more."
+    },
+    {
+     "name": "ki",
+     "label": "Integrator gain",
+     "type": "number",
+     "default": 0.5,
+     "has_default": true,
+     "minimum": 0.0,
+     "description": "In units of the recent score range."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Angelopoulos, Candes & Tibshirani, NeurIPS 2023"
+  },
+  {
+   "id": "calibrate.nexcp",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "NexCP",
+   "description": "Rank each score against past scores, counting recent ones more. Robust to gradual drift.",
+   "details": "Weighted split conformal with geometric weights rho^age, robust to drift.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "rho",
+     "label": "Decay",
+     "type": "number",
+     "default": 0.99,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Weight of a score one step older."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Barber, Candes, Ramdas & Tibshirani, Ann. Stat. 2023"
+  },
+  {
+   "id": "calibrate.eci",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "ECI",
+   "description": "A quantile tracker that also weighs how far a score fell from the boundary. A tighter boundary, without a rate guarantee.",
+   "details": "Quantile tracker plus an error-quantification term that also weighs how far the score fell from the threshold. Trades some coverage for width.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "lr",
+     "label": "Learning rate",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Step as a fraction of the recent score range."
+    },
+    {
+     "name": "c",
+     "label": "Sigmoid slope",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Slope of the smoothed miss indicator, per unit of the recent score range."
+    },
+    {
+     "name": "h",
+     "label": "Cutoff",
+     "type": "number",
+     "default": 0.0,
+     "has_default": true,
+     "minimum": 0.0,
+     "description": "Apply the error term only beyond this share of the range."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "none",
+   "reference": "Wu, Hu, Bao, Xia & Zou, ICLR 2025"
+  },
+  {
+   "id": "calibrate.sfogd",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "SF-OGD",
+   "description": "Track the boundary with steps that scale themselves to the scores. No step size to choose.",
+   "details": "Scale-free gradient descent on the pinball loss, with no learning rate to tune.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Orabona & Pal 2016; Bhatnagar et al., ICML 2023"
+  },
+  {
+   "id": "calibrate.saocp",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "SAOCP",
+   "description": "Trackers over short and long stretches, combined so the boundary does well on every stretch, also right after a shift.",
+   "details": "SF-OGD experts on geometric covering intervals, combined by coin betting: low regret on every time interval.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "g",
+     "label": "Lifetime",
+     "type": "integer",
+     "default": 8,
+     "has_default": true,
+     "minimum": 1.0,
+     "description": "An expert started at t lives g * 2^(trailing zeros of t) steps."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "conformal",
+   "coverage": "long_run",
+   "reference": "Bhatnagar, Wang, Xiong & Bai, ICML 2023"
+  },
+  {
+   "id": "calibrate.belief",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "Bayesian belief CP",
+   "description": "Set the boundary from a prior belief blended with recent scores, older ones counting less.",
+   "details": "Threshold = quantile of a belief: a prior mixed with the discounted empirical score distribution.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "beta",
+     "label": "Discount",
+     "type": "number",
+     "default": 0.99,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Per-step discount of past scores."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "bayesian",
+   "coverage": "none",
+   "reference": "Zhang, Bombara & Yang, The Benefit of Being Bayesian in Online Conformal Prediction, 2024"
+  },
+  {
+   "id": "calibrate.bocpd_aci",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "BOCPD + ACI",
+   "description": "Model the scores of the current regime, start over when they change, and adjust the level as ACI does.",
+   "details": "Bayesian changepoint predictive, with its level set by ACI so long-run coverage holds.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "lambda",
+     "label": "Run length",
+     "type": "number",
+     "default": 250.0,
+     "has_default": true,
+     "minimum": 1.0,
+     "description": "Expected steps between changepoints (hazard 1/lambda)."
+    },
+    {
+     "name": "gamma",
+     "label": "Step size",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "How far the level moves after each observation. Larger follows change faster and wobbles more."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "bayesian",
+   "coverage": "long_run",
+   "reference": "Adams & MacKay 2007; Gibbs & Candes 2021"
+  },
+  {
+   "id": "calibrate.cpcp",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "Changepoint CP",
+   "description": "Rank each score against past scores, counting each by how likely it belongs to the current regime.",
+   "details": "Weighted split conformal; a past score's weight is the posterior probability it is in the current regime.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "lambda",
+     "label": "Run length",
+     "type": "number",
+     "default": 250.0,
+     "has_default": true,
+     "minimum": 1.0,
+     "description": "Expected steps between changepoints (hazard 1/lambda)."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "bayesian",
+   "coverage": "none",
+   "reference": "Barber et al. 2023 weights from Adams & MacKay 2007"
+  },
+  {
+   "id": "calibrate.bocpd",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "BOCPD",
+   "description": "Model the scores of the current regime and start over when they change.",
+   "details": "Bayesian online changepoint detection with a Normal-Inverse-Gamma model per regime; threshold = predictive quantile.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "lambda",
+     "label": "Run length",
+     "type": "number",
+     "default": 250.0,
+     "has_default": true,
+     "minimum": 1.0,
+     "description": "Expected steps between changepoints (hazard 1/lambda)."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "bayesian",
+   "coverage": "none",
+   "reference": "Adams & MacKay 2007"
+  },
+  {
+   "id": "calibrate.nig",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "Discounted Bayes",
+   "description": "Model the scores as a bell curve whose mean and spread follow the data, older scores counting less.",
+   "details": "Gaussian score with unknown mean and variance, evidence discounted per step; Student-t predictive quantile.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "delta",
+     "label": "Discount",
+     "type": "number",
+     "default": 0.98,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Keeps about 1/(1 - delta) effective observations."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "bayesian",
+   "coverage": "none",
+   "reference": "West & Harrison 1997, discount variance learning"
+  },
+  {
+   "id": "policy.martingale",
+   "contract_version": 1,
+   "kind": "policy",
+   "group": "policy",
+   "label": "Conformal alarm policy",
+   "description": "Alarm when evidence of change builds up.",
+   "details": "A conformal martingale over the p-values of a fixed split.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "trackers",
+     "label": "Trackers",
+     "type": "object_list",
+     "description": "The evidence series that can raise an alarm. Each bets on the p-values in its own way.",
+     "discriminator": "betting_function",
+     "variants": {
+      "power": [
+       {
+        "name": "tracker_id",
+        "label": "Tracker Id",
+        "type": "string",
+        "required": true,
+        "description": "A lasting name for this series, stored with its evidence and shown in charts."
+       },
+       {
+        "name": "alarm_statistic",
+        "label": "Alarm Statistic",
+        "type": "enum",
+        "default": "restarted_martingale",
+        "has_default": true,
+        "options": [
+         "martingale",
+         "restarted_martingale",
+         "cusum",
+         "shiryaev_roberts"
+        ],
+        "description": "The running value compared with the threshold: all evidence so far, evidence since the last restart, CUSUM or Shiryaev-Roberts."
+       },
+       {
+        "name": "threshold_config",
+        "label": "Threshold Config",
+        "type": "object",
+        "description": "Set the threshold by hand, or let training calibrate it. Automatic needs CUSUM or Shiryaev-Roberts.",
+        "discriminator": "mode",
+        "variants": {
+         "automatic": [
+          {
+           "name": "mode",
+           "label": "Mode",
+           "type": "enum",
+           "default": "automatic",
+           "has_default": true,
+           "options": [
+            "automatic"
+           ],
+           "description": "Manual uses the value entered; automatic calibrates one during training."
+          }
+         ],
+         "manual": [
+          {
+           "name": "mode",
+           "label": "Mode",
+           "type": "enum",
+           "default": "manual",
+           "has_default": true,
+           "options": [
+            "manual"
+           ],
+           "description": "Manual uses the value entered; automatic calibrates one during training."
+          },
+          {
+           "name": "value",
+           "label": "Value",
+           "type": "number",
+           "default": 100.0,
+           "has_default": true,
+           "exclusive_minimum": 0.0,
+           "description": "The value to cross. Above 1 for the two martingale statistics; larger asks for stronger evidence."
+          }
+         ]
+        }
+       },
+       {
+        "name": "betting_function",
+        "label": "Betting Function",
+        "type": "enum",
+        "default": "power",
+        "has_default": true,
+        "options": [
+         "power"
+        ],
+        "description": "How a p-value becomes a bet. Power uses one epsilon, simple mixture averages many, simple jumper moves capital between a few."
+       },
+       {
+        "name": "epsilon",
+        "label": "Epsilon",
+        "type": "number",
+        "default": 0.5,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "The power bet's exponent, above 0 up to 1. Smaller values bet more on small p-values."
+       }
+      ],
+      "simple_jumper": [
+       {
+        "name": "tracker_id",
+        "label": "Tracker Id",
+        "type": "string",
+        "required": true,
+        "description": "A lasting name for this series, stored with its evidence and shown in charts."
+       },
+       {
+        "name": "alarm_statistic",
+        "label": "Alarm Statistic",
+        "type": "enum",
+        "default": "restarted_martingale",
+        "has_default": true,
+        "options": [
+         "martingale",
+         "restarted_martingale",
+         "cusum",
+         "shiryaev_roberts"
+        ],
+        "description": "The running value compared with the threshold: all evidence so far, evidence since the last restart, CUSUM or Shiryaev-Roberts."
+       },
+       {
+        "name": "threshold_config",
+        "label": "Threshold Config",
+        "type": "object",
+        "description": "Set the threshold by hand, or let training calibrate it. Automatic needs CUSUM or Shiryaev-Roberts.",
+        "discriminator": "mode",
+        "variants": {
+         "automatic": [
+          {
+           "name": "mode",
+           "label": "Mode",
+           "type": "enum",
+           "default": "automatic",
+           "has_default": true,
+           "options": [
+            "automatic"
+           ],
+           "description": "Manual uses the value entered; automatic calibrates one during training."
+          }
+         ],
+         "manual": [
+          {
+           "name": "mode",
+           "label": "Mode",
+           "type": "enum",
+           "default": "manual",
+           "has_default": true,
+           "options": [
+            "manual"
+           ],
+           "description": "Manual uses the value entered; automatic calibrates one during training."
+          },
+          {
+           "name": "value",
+           "label": "Value",
+           "type": "number",
+           "default": 100.0,
+           "has_default": true,
+           "exclusive_minimum": 0.0,
+           "description": "The value to cross. Above 1 for the two martingale statistics; larger asks for stronger evidence."
+          }
+         ]
+        }
+       },
+       {
+        "name": "betting_function",
+        "label": "Betting Function",
+        "type": "enum",
+        "default": "simple_jumper",
+        "has_default": true,
+        "options": [
+         "simple_jumper"
+        ],
+        "description": "How a p-value becomes a bet. Power uses one epsilon, simple mixture averages many, simple jumper moves capital between a few."
+       },
+       {
+        "name": "jump",
+        "label": "Jump",
+        "type": "number",
+        "default": 0.01,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How much capital moves between the jumper's bettors at each observation."
+       }
+      ],
+      "simple_mixture": [
+       {
+        "name": "tracker_id",
+        "label": "Tracker Id",
+        "type": "string",
+        "required": true,
+        "description": "A lasting name for this series, stored with its evidence and shown in charts."
+       },
+       {
+        "name": "alarm_statistic",
+        "label": "Alarm Statistic",
+        "type": "enum",
+        "default": "restarted_martingale",
+        "has_default": true,
+        "options": [
+         "martingale",
+         "restarted_martingale",
+         "cusum",
+         "shiryaev_roberts"
+        ],
+        "description": "The running value compared with the threshold: all evidence so far, evidence since the last restart, CUSUM or Shiryaev-Roberts."
+       },
+       {
+        "name": "threshold_config",
+        "label": "Threshold Config",
+        "type": "object",
+        "description": "Set the threshold by hand, or let training calibrate it. Automatic needs CUSUM or Shiryaev-Roberts.",
+        "discriminator": "mode",
+        "variants": {
+         "automatic": [
+          {
+           "name": "mode",
+           "label": "Mode",
+           "type": "enum",
+           "default": "automatic",
+           "has_default": true,
+           "options": [
+            "automatic"
+           ],
+           "description": "Manual uses the value entered; automatic calibrates one during training."
+          }
+         ],
+         "manual": [
+          {
+           "name": "mode",
+           "label": "Mode",
+           "type": "enum",
+           "default": "manual",
+           "has_default": true,
+           "options": [
+            "manual"
+           ],
+           "description": "Manual uses the value entered; automatic calibrates one during training."
+          },
+          {
+           "name": "value",
+           "label": "Value",
+           "type": "number",
+           "default": 100.0,
+           "has_default": true,
+           "exclusive_minimum": 0.0,
+           "description": "The value to cross. Above 1 for the two martingale statistics; larger asks for stronger evidence."
+          }
+         ]
+        }
+       },
+       {
+        "name": "betting_function",
+        "label": "Betting Function",
+        "type": "enum",
+        "default": "simple_mixture",
+        "has_default": true,
+        "options": [
+         "simple_mixture"
+        ],
+        "description": "How a p-value becomes a bet. Power uses one epsilon, simple mixture averages many, simple jumper moves capital between a few."
+       },
+       {
+        "name": "epsilons",
+        "label": "Epsilons",
+        "type": "number_list",
+        "default": null,
+        "has_default": true,
+        "nullable": true,
+        "description": "The epsilon values to average. Empty uses an even grid from the smallest epsilon to 1."
+       },
+       {
+        "name": "n_grid",
+        "label": "N Grid",
+        "type": "integer",
+        "default": 100,
+        "has_default": true,
+        "minimum": 2.0,
+        "maximum": 10000.0,
+        "description": "How many epsilon values the mixture averages. More cost more per observation."
+       },
+       {
+        "name": "min_epsilon",
+        "label": "Min Epsilon",
+        "type": "number",
+        "default": 0.01,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "The smallest epsilon of the mixture's grid, above 0 up to 1."
+       }
+      ]
+     }
+    },
+    {
+     "name": "automatic_threshold_calibration",
+     "label": "Automatic Threshold Calibration",
+     "type": "object",
+     "description": "How automatic thresholds are calibrated during training.",
+     "fields": [
+      {
+       "name": "false_alarm_probability",
+       "label": "False Alarm Probability",
+       "type": "number",
+       "default": 0.01,
+       "has_default": true,
+       "exclusive_minimum": 0.0,
+       "exclusive_maximum": 1.0,
+       "description": "The chance of a false alarm within one window, shared by all automatic trackers."
+      },
+      {
+       "name": "horizon",
+       "label": "Horizon",
+       "type": "integer",
+       "default": 1000,
+       "has_default": true,
+       "minimum": 10.0,
+       "maximum": 100000.0,
+       "description": "Aligned observations per calibrated monitoring window; automatic tracker state resets before the next window"
+      },
+      {
+       "name": "simulation_count",
+       "label": "Simulation Count",
+       "type": "integer",
+       "default": 5000,
+       "has_default": true,
+       "minimum": 100.0,
+       "maximum": 100000.0,
+       "description": "Simulated runs the thresholds are estimated from. More allow smaller probabilities and take longer."
+      }
+     ]
+    }
+   ],
+   "input_type": "p_values",
+   "output_type": "decisions"
+  },
+  {
+   "id": "policy.quantile",
+   "contract_version": 1,
+   "kind": "policy",
+   "group": "policy",
+   "label": "Calibrated score threshold",
+   "description": "Alarm when scores pass a calibrated threshold.",
+   "details": "The threshold is a quantile of the calibration scores and then stays.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "mode",
+     "label": "Mode",
+     "type": "enum",
+     "default": "calibrated_quantile",
+     "has_default": true,
+     "options": [
+      "calibrated_quantile"
+     ],
+     "description": "How the threshold is set: from the calibration scores."
+    },
+    {
+     "name": "quantile",
+     "label": "Quantile",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "The share of calibration scores the threshold lies above. 1 puts it at the highest score."
+    }
+   ],
+   "input_type": "p_values",
+   "output_type": "decisions"
+  },
+  {
+   "id": "policy.threshold",
+   "contract_version": 1,
+   "kind": "policy",
+   "group": "policy",
+   "label": "Fixed threshold",
+   "description": "Alarm when a score is at or above a value you set.",
+   "details": "No calibration step: the detector's scores reach the policy directly. Suits rules, whose scores mean what they say.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "value",
+     "label": "Alarm at or above",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "description": "A score at or above it alarms. It is not calibrated, so set it in the score's own units."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "decisions"
+  },
+  {
+   "id": "policy.exceedance",
+   "contract_version": 1,
+   "kind": "policy",
+   "group": "policy",
+   "label": "Exceedance rule",
+   "description": "Alarm when scores stay above the boundary the calibration step adapts.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "consecutive",
+     "label": "Exceedances in a row",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000.0,
+     "description": "Alarm once this many scores in a row are above the boundary. More than one ignores short spikes. The alarm rate then falls below the target, but not to its power: exceedances tend to come together."
+    }
+   ],
+   "input_type": "p_values",
+   "output_type": "decisions"
+  },
+  {
+   "id": "output.evidence",
+   "contract_version": 1,
+   "kind": "output",
+   "group": "output",
+   "label": "Evidence and alarms",
+   "description": "Store scores, evidence and alarms.",
+   "learning": "none",
+   "input_type": "decisions",
+   "output_type": "evidence"
+  },
+  {
+   "id": "detector:pyod_iforest",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Isolation forest",
+   "description": "Score by how easily random splits isolate an observation. A fast, robust first choice for several features.",
+   "library": "PyOD",
+   "learning": "batch",
+   "fields": [
+    {
+     "name": "n_estimators",
+     "label": "N Estimators",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000.0,
+     "description": "Number of isolation trees in the ensemble"
+    },
+    {
+     "name": "contamination",
+     "label": "Contamination",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 0.5,
+     "description": "Expected outlier fraction used by PyOD internals",
+     "advanced": true
+    },
+    {
+     "name": "random_state",
+     "label": "Random State",
+     "type": "integer",
+     "default": 42,
+     "has_default": true,
+     "nullable": true,
+     "description": "Random seed for reproducible static training",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:pyod_knn",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "k-nearest neighbors",
+   "description": "Score by the distance to the nearest training observations. Finds isolated points; slower on long training windows.",
+   "library": "PyOD",
+   "learning": "batch",
+   "fields": [
+    {
+     "name": "n_neighbors",
+     "label": "N Neighbors",
+     "type": "integer",
+     "default": 5,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 200.0,
+     "description": "Number of neighbors used for outlier scoring"
+    },
+    {
+     "name": "method",
+     "label": "Method",
+     "type": "enum",
+     "default": "largest",
+     "has_default": true,
+     "options": [
+      "largest",
+      "mean",
+      "median"
+     ],
+     "description": "Neighbor-distance aggregation method"
+    },
+    {
+     "name": "contamination",
+     "label": "Contamination",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 0.5,
+     "description": "Expected outlier fraction used by PyOD internals",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:pyod_lof",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Local outlier factor",
+   "description": "Score by how sparse the surroundings are compared with those of the neighbors. Finds points that are unusual for their region.",
+   "library": "PyOD",
+   "learning": "batch",
+   "fields": [
+    {
+     "name": "n_neighbors",
+     "label": "N Neighbors",
+     "type": "integer",
+     "default": 20,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 500.0,
+     "description": "Neighborhood size for local-density comparison"
+    },
+    {
+     "name": "contamination",
+     "label": "Contamination",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 0.5,
+     "description": "Expected outlier fraction used by PyOD internals",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:pyod_ocsvm",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "One-class SVM",
+   "description": "Score by the distance from a boundary learned around the training data. Fits curved shapes; slow on long training windows.",
+   "library": "PyOD",
+   "learning": "batch",
+   "fields": [
+    {
+     "name": "kernel",
+     "label": "Kernel",
+     "type": "enum",
+     "default": "rbf",
+     "has_default": true,
+     "options": [
+      "rbf",
+      "linear",
+      "poly",
+      "sigmoid"
+     ],
+     "description": "SVM kernel"
+    },
+    {
+     "name": "nu",
+     "label": "Nu",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Upper bound on training outlier fraction"
+    },
+    {
+     "name": "gamma",
+     "label": "Gamma",
+     "type": "enum",
+     "default": "scale",
+     "has_default": true,
+     "options": [
+      "scale",
+      "auto"
+     ],
+     "description": "Kernel coefficient strategy",
+     "advanced": true
+    },
+    {
+     "name": "contamination",
+     "label": "Contamination",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 0.5,
+     "description": "Expected outlier fraction used by PyOD internals",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:pyod_hbos",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Histogram-based outlier score",
+   "description": "Score each feature by how rare its value is in a histogram. Very fast; does not see relations between features.",
+   "library": "PyOD",
+   "learning": "batch",
+   "fields": [
+    {
+     "name": "n_bins",
+     "label": "N Bins",
+     "type": "integer",
+     "default": 10,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 200.0,
+     "description": "Histogram bin count"
+    },
+    {
+     "name": "alpha",
+     "label": "Alpha",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "Regularization parameter for empty bins",
+     "advanced": true
+    },
+    {
+     "name": "tol",
+     "label": "Tol",
+     "type": "number",
+     "default": 0.5,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "Tolerance for histogram boundary extension",
+     "advanced": true
+    },
+    {
+     "name": "contamination",
+     "label": "Contamination",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 0.5,
+     "description": "Expected outlier fraction used by PyOD internals",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:pyod_pca",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Principal components",
+   "description": "Score by the distance from the main directions of the training data. For features that move together.",
+   "library": "PyOD",
+   "learning": "batch",
+   "fields": [
+    {
+     "name": "n_components",
+     "label": "N Components",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "nullable": true,
+     "description": "Directions to keep. Empty keeps all of them."
+    },
+    {
+     "name": "contamination",
+     "label": "Contamination",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 0.5,
+     "description": "Expected outlier fraction used by PyOD internals",
+     "advanced": true
+    },
+    {
+     "name": "weighted",
+     "label": "Weighted",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Weigh each direction's distance by how little the training data varies along it.",
+     "advanced": true
+    },
+    {
+     "name": "standardization",
+     "label": "Standardization",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Scale every feature to unit variance first.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_asd_isolation_forest",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Sliding-window isolation forest",
+   "description": "Retrain an isolation forest on a recent window at fixed intervals. Steady between retrains; follows a drift only at the next one.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "max_samples",
+     "label": "Max Samples",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Observations from the window used to build each tree.",
+     "advanced": true
+    },
+    {
+     "name": "n_estimators",
+     "label": "N Estimators",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Trees in the forest. More give steadier scores and cost time and memory."
+    },
+    {
+     "name": "retrain_interval",
+     "label": "Retrain Interval",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "New observations between retrains. Empty retrains once per window."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Recent observations kept for retraining. Empty uses the samples per tree."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_gadget_svm",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Graph-gated one-class SVM",
+   "description": "Pass each observation along a chain of small linear models, where the next is asked only when the one before is surprised. Experimental.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "graph",
+     "label": "Graph",
+     "type": "integer_adjacency",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Which model passes on to which, by number. Empty uses the chain 0, 1, 2."
+    },
+    {
+     "name": "lambda_reg",
+     "label": "Lambda Reg",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "minimum": 0.0,
+     "description": "Weight decay of every model. Larger values forget faster.",
+     "advanced": true
+    },
+    {
+     "name": "learning_rate",
+     "label": "Learning Rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Step size of every model's update."
+    },
+    {
+     "name": "nu",
+     "label": "Nu",
+     "type": "number",
+     "default": 0.5,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Weight of the bias update in every model.",
+     "advanced": true
+    },
+    {
+     "name": "threshold",
+     "label": "Threshold",
+     "type": "number",
+     "default": 0.0,
+     "has_default": true,
+     "description": "A model passes an observation on only when its own score is above this."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_half_space_trees",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Half-space trees",
+   "description": "Count how often recent observations fall into random regions of the feature space. Very fast; expects features scaled to 0 to 1.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "height",
+     "label": "Height",
+     "type": "integer",
+     "default": 8,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 20.0,
+     "description": "Depth of each tree. Deeper trees separate finer regions and need more data."
+    },
+    {
+     "name": "n_trees",
+     "label": "N Trees",
+     "type": "integer",
+     "default": 10,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Trees in the forest. More give steadier scores and cost time and memory."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 250,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations per reference window. The counts start over after each."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_holt_winters_forecaster",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Holt-Winters forecaster",
+   "description": "Forecast from a level, a trend and a repeating cycle, and score the miss.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Alpha",
+     "type": "number",
+     "default": 0.2,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "How fast the level follows new values, from 0 to 1.",
+     "advanced": true
+    },
+    {
+     "name": "beta",
+     "label": "Beta",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "How fast the trend follows new values, from 0 to 1.",
+     "advanced": true
+    },
+    {
+     "name": "gamma",
+     "label": "Gamma",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "How fast the cycle follows new values, from 0 to 1 minus the level weight.",
+     "advanced": true
+    },
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "season_length",
+     "label": "Season Length",
+     "type": "integer",
+     "required": true,
+     "minimum": 2.0,
+     "maximum": 500000.0,
+     "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
+  },
+  {
+   "id": "detector:aberrant_incremental_one_class_svm_adaptive_kernel",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Adaptive-kernel one-class SVM",
+   "description": "Keep a budget of support vectors and tune the kernel width to recent data. Follows curved shapes at a higher cost per observation. Experimental.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "adaptation_rate",
+     "label": "Adaptation Rate",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How far each adaptation moves the kernel width toward its estimate, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "buffer_size",
+     "label": "Buffer Size",
+     "type": "integer",
+     "default": 200,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations used to estimate the kernel width.",
+     "advanced": true
+    },
+    {
+     "name": "gamma_bounds",
+     "label": "Gamma Bounds",
+     "type": "number_pair",
+     "default": [
+      0.001,
+      100.0
+     ],
+     "has_default": true,
+     "description": "Smallest and largest kernel width the adaptation may reach.",
+     "advanced": true
+    },
+    {
+     "name": "initial_gamma",
+     "label": "Initial Gamma",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Kernel width the model starts from.",
+     "advanced": true
+    },
+    {
+     "name": "nu",
+     "label": "Nu",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Scale of the support-vector weights, above 0 up to 1."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "sv_budget",
+     "label": "Sv Budget",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Most support vectors kept. More follow finer shapes and cost more per observation."
+    },
+    {
+     "name": "tolerance",
+     "label": "Tolerance",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Margin within which an observation counts as inside the boundary.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_knn",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "k-nearest neighbors",
+   "description": "Score by the mean distance to the nearest recent observations. Simple and exact; the cost grows with the window.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "k",
+     "label": "K",
+     "type": "integer",
+     "default": 5,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 10000.0,
+     "description": "Neighbors the distance is averaged over."
+    },
+    {
+     "name": "similarity_engine",
+     "label": "Similarity Engine",
+     "type": "component",
+     "default": {
+      "id": "faiss",
+      "params": {
+       "warm_up": 20,
+       "window_size": 1000
+      }
+     },
+     "required": true,
+     "has_default": true,
+     "description": "The index that holds the recent observations.",
+     "fields": [
+      {
+       "name": "warm_up",
+       "label": "Warm Up",
+       "type": "integer",
+       "required": true,
+       "minimum": 1.0,
+       "maximum": 1000000.0,
+       "description": "Observations before scoring starts."
+      },
+      {
+       "name": "window_size",
+       "label": "Window Size",
+       "type": "integer",
+       "required": true,
+       "minimum": 1.0,
+       "maximum": 1000000.0,
+       "description": "Recent observations kept to search in."
+      }
+     ]
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_local_outlier_factor",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Local outlier factor",
+   "description": "Score by how sparse the surroundings are compared with those of the neighbors in a recent window. Finds points unusual for their region.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "distance",
+     "label": "Distance",
+     "type": "enum",
+     "default": "euclidean",
+     "has_default": true,
+     "options": [
+      "euclidean",
+      "manhattan"
+     ],
+     "description": "How distance is measured: in a straight line (euclidean) or along the axes (manhattan).",
+     "advanced": true
+    },
+    {
+     "name": "k",
+     "label": "K",
+     "type": "integer",
+     "default": 10,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 10000.0,
+     "description": "Neighbors used to estimate how dense the surroundings are."
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 1000,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_mondrian_forest",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Mondrian isolation forest",
+   "description": "Isolation scores from trees that grow with every observation. Adapts at once; set a window to bound its memory.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "lambda_",
+     "label": "Lambda ",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Lifetime budget of the trees. Larger values allow more splits.",
+     "advanced": true
+    },
+    {
+     "name": "n_estimators",
+     "label": "N Estimators",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Trees in the forest. More give steadier scores and cost time and memory."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "subspace_size",
+     "label": "Subspace Size",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Features each tree samples.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Rebuild the trees from this many recent observations. Empty learns for the whole run, and memory then keeps growing."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_average",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving average",
+   "description": "Score how much a new value changes the mean of a recent window. For one feature with a stable level.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_average_absolute_deviation",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving absolute deviation",
+   "description": "Score how much a new value changes the mean absolute deviation of a recent window. For one feature whose spread should stay steady.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_correlation_coefficient",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving correlation",
+   "description": "Score how much a new observation changes the correlation of two features over a recent window. For exactly two features that move together.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "bias",
+     "label": "Bias",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Divide by the number of observations when on, by one less when off.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_covariance",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving covariance",
+   "description": "Score how much a new observation changes the covariance of two features over a recent window. For exactly two features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "bias",
+     "label": "Bias",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Divide by the number of observations when on, by one less when off.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_geometric_average",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving geometric mean",
+   "description": "Score how much a new value changes the geometric mean of a recent window. For one feature above zero, such as a ratio or a growth factor.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "absoluteValues",
+     "label": "Absolutevalues",
+     "type": "boolean",
+     "default": false,
+     "has_default": true,
+     "description": "On reads the values as levels and follows the average growth between them. Off takes the geometric mean of the values.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_harmonic_average",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving harmonic mean",
+   "description": "Score how much a new value changes the harmonic mean of a recent window. For one feature that is a rate; zeros are left out.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_interquartile_range",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving interquartile range",
+   "description": "Score how much a new value changes the quartile range of a recent window. For one feature; single outliers barely move it.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_kurtosis",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving kurtosis",
+   "description": "Score how much a new value changes the weight of the tails of a recent window. For one feature where rare extremes matter.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_mahalanobis_distance",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving Mahalanobis distance",
+   "description": "Score the distance from the recent mean, measured in the spread and correlation of the features. A simple, strong baseline for several related features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "bias",
+     "label": "Bias",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Divide by the number of observations when on, by one less when off.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_median",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving median",
+   "description": "Score how much a new value changes the median of a recent window. For one feature; single outliers barely move it.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_quantile",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving quantile",
+   "description": "Score how much a new value changes a chosen quantile of a recent window. For one feature where one tail matters.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "quantile",
+     "label": "Quantile",
+     "type": "number",
+     "default": 0.5,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "The quantile to follow, from 0 to 1. 0.5 is the median."
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_skewness",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving skewness",
+   "description": "Score how much a new value changes the asymmetry of a recent window. For one feature that is normally balanced.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_moving_variance",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Moving variance",
+   "description": "Score how much a new value changes the variance of a recent window. For one feature whose spread should stay steady.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 100,
+     "required": true,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_multivariate_rolling_matrix_profile",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Matrix profile, several features",
+   "description": "Score how unlike the latest stretch of values is to every earlier stretch in the window, across all features at once. Finds unusual shapes; costs more per observation.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "exclusion_zone",
+     "label": "Exclusion Zone",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Earlier stretches that start this close to the latest one are not compared. Empty uses a quarter of the subsequence length.",
+     "advanced": true
+    },
+    {
+     "name": "normalize",
+     "label": "Normalize",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Compare shapes regardless of level and amplitude. Off also scores changes of level.",
+     "advanced": true
+    },
+    {
+     "name": "subsequence_length",
+     "label": "Subsequence Length",
+     "type": "integer",
+     "default": 32,
+     "required": true,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 10000.0,
+     "description": "Consecutive values compared as one shape."
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 512,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Values kept to compare against. Empty uses 16 times the subsequence length."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_online_copod",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Online COPOD",
+   "description": "Like online ECOD, with the tails combined as a copula. Has nothing to tune and suits many features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "aggregation",
+     "label": "Aggregation",
+     "type": "enum",
+     "default": "paper",
+     "has_default": true,
+     "options": [
+      "paper",
+      "pyod"
+     ],
+     "description": "Combine the features' tail scores as the paper does, or as PyOD does.",
+     "advanced": true
+    },
+    {
+     "name": "compression",
+     "label": "Compression",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Detail of the sketch. More is closer and costs memory.",
+     "advanced": true
+    },
+    {
+     "name": "half_life",
+     "label": "Half Life",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Observations after which a value counts half in the sketch. Empty keeps everything alike.",
+     "advanced": true
+    },
+    {
+     "name": "memory",
+     "label": "Memory",
+     "type": "enum",
+     "default": "sketch",
+     "has_default": true,
+     "options": [
+      "sketch",
+      "window",
+      "hybrid"
+     ],
+     "description": "How each feature's distribution is kept: a sketch of everything seen, a window of recent values, or both."
+    },
+    {
+     "name": "min_samples",
+     "label": "Min Samples",
+     "type": "integer",
+     "default": 64,
+     "has_default": true,
+     "description": "Observations before scores start."
+    },
+    {
+     "name": "tail",
+     "label": "Tail",
+     "type": "enum",
+     "default": "empirical",
+     "has_default": true,
+     "options": [
+      "empirical",
+      "pareto"
+     ],
+     "description": "Read the tails as they are, or fit a Pareto tail beyond a quantile.",
+     "advanced": true
+    },
+    {
+     "name": "tail_quantile",
+     "label": "Tail Quantile",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Where the fitted Pareto tail starts.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Recent values kept per feature, with a window.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_online_ecod",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Online ECOD",
+   "description": "Score how far into the tails of each feature's own distribution the values fall. Has nothing to tune and suits many features; treats them as unrelated.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "aggregation",
+     "label": "Aggregation",
+     "type": "enum",
+     "default": "paper",
+     "has_default": true,
+     "options": [
+      "paper",
+      "pyod"
+     ],
+     "description": "Combine the features' tail scores as the paper does, or as PyOD does.",
+     "advanced": true
+    },
+    {
+     "name": "compression",
+     "label": "Compression",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Detail of the sketch. More is closer and costs memory.",
+     "advanced": true
+    },
+    {
+     "name": "half_life",
+     "label": "Half Life",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Observations after which a value counts half in the sketch. Empty keeps everything alike.",
+     "advanced": true
+    },
+    {
+     "name": "memory",
+     "label": "Memory",
+     "type": "enum",
+     "default": "sketch",
+     "has_default": true,
+     "options": [
+      "sketch",
+      "window",
+      "hybrid"
+     ],
+     "description": "How each feature's distribution is kept: a sketch of everything seen, a window of recent values, or both."
+    },
+    {
+     "name": "min_samples",
+     "label": "Min Samples",
+     "type": "integer",
+     "default": 64,
+     "has_default": true,
+     "description": "Observations before scores start."
+    },
+    {
+     "name": "tail",
+     "label": "Tail",
+     "type": "enum",
+     "default": "empirical",
+     "has_default": true,
+     "options": [
+      "empirical",
+      "pareto"
+     ],
+     "description": "Read the tails as they are, or fit a Pareto tail beyond a quantile.",
+     "advanced": true
+    },
+    {
+     "name": "tail_quantile",
+     "label": "Tail Quantile",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Where the fitted Pareto tail starts.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Recent values kept per feature, with a window.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_online_isolation_forest",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Online isolation forest",
+   "description": "Isolation trees that learn each observation and forget the oldest. A strong general choice for several features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "branching_factor",
+     "label": "Branching Factor",
+     "type": "integer",
+     "default": 2,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 64.0,
+     "description": "Children created at each split.",
+     "advanced": true
+    },
+    {
+     "name": "max_leaf_samples",
+     "label": "Max Leaf Samples",
+     "type": "integer",
+     "default": 32,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations a leaf holds before it may split."
+    },
+    {
+     "name": "metric",
+     "label": "Metric",
+     "type": "enum",
+     "default": "axisparallel",
+     "has_default": true,
+     "options": [
+      "axisparallel"
+     ],
+     "description": "Geometry of the splits. Only axis-parallel is available.",
+     "advanced": true
+    },
+    {
+     "name": "n_jobs",
+     "label": "N Jobs",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 64.0,
+     "description": "Worker threads for batches. Single observations always run on one.",
+     "advanced": true
+    },
+    {
+     "name": "num_trees",
+     "label": "Num Trees",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Trees in the forest. More give steadier scores and cost time and memory."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "subsample",
+     "label": "Subsample",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "Share of the observations each tree learns, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "tree_type",
+     "label": "Tree Type",
+     "type": "enum",
+     "default": "adaptive",
+     "has_default": true,
+     "options": [
+      "fixed",
+      "adaptive"
+     ],
+     "description": "Fixed keeps that leaf size at every depth; adaptive doubles it with each level.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 2048,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations the trees keep. Older ones are unlearned."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_random_cut_forest",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Random cut forest",
+   "description": "Score by how much an observation would change a forest of random cuts over a recent sample. Robust on noisy streams; shingles catch short patterns.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "n_trees",
+     "label": "N Trees",
+     "type": "integer",
+     "default": 40,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Trees in the forest. More give steadier scores and cost time and memory."
+    },
+    {
+     "name": "normalize_score",
+     "label": "Normalize Score",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Map the scores to 0 to 1.",
+     "advanced": true
+    },
+    {
+     "name": "sample_size",
+     "label": "Sample Size",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Most recent points each tree holds."
+    },
+    {
+     "name": "score_scale",
+     "label": "Score Scale",
+     "type": "number",
+     "default": 8.0,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Scale of that mapping. Larger values place typical scores lower.",
+     "advanced": true
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "shingle_size",
+     "label": "Shingle Size",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 10000.0,
+     "description": "Consecutive observations joined into one point, to score short patterns. 1 scores single observations."
+    },
+    {
+     "name": "warmup_samples",
+     "label": "Warmup Samples",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Points before scores start. Empty waits for a full sample.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_rolling_matrix_profile",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Matrix profile",
+   "description": "Score how unlike the latest stretch of values is to every earlier stretch in the window. For one feature with repeating shapes.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "exclusion_zone",
+     "label": "Exclusion Zone",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Earlier stretches that start this close to the latest one are not compared. Empty uses a quarter of the subsequence length.",
+     "advanced": true
+    },
+    {
+     "name": "normalize",
+     "label": "Normalize",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Compare shapes regardless of level and amplitude. Off also scores changes of level.",
+     "advanced": true
+    },
+    {
+     "name": "subsequence_length",
+     "label": "Subsequence Length",
+     "type": "integer",
+     "default": 32,
+     "required": true,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 10000.0,
+     "description": "Consecutive values compared as one shape."
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 512,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Values kept to compare against. Empty uses 16 times the subsequence length."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_seasonal_naive_forecaster",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Seasonal naive forecaster",
+   "description": "Forecast the value of one cycle ago, and score the miss.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "season_length",
+     "label": "Season Length",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 500000.0,
+     "description": "Observations in one cycle. 1 repeats the last value."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
+  },
+  {
+   "id": "detector:aberrant_seasonal_residual_detector",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Seasonal residual",
+   "description": "Learn a level, a trend and a repeating cycle of one feature, and score how far each value misses the forecast one step ahead.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Alpha",
+     "type": "number",
+     "default": 0.2,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "How fast the level follows new values, from 0 to 1.",
+     "advanced": true
+    },
+    {
+     "name": "beta",
+     "label": "Beta",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "How fast the trend follows new values, from 0 to 1.",
+     "advanced": true
+    },
+    {
+     "name": "gamma",
+     "label": "Gamma",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "How fast the cycle follows new values, from 0 to 1 minus the level weight.",
+     "advanced": true
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "normalize",
+     "label": "Normalize",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Divide the miss by the typical forecast error. Off reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "season_length",
+     "label": "Season Length",
+     "type": "integer",
+     "required": true,
+     "minimum": 2.0,
+     "maximum": 500000.0,
+     "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_stream_random_histogram_forest",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Random histogram forest",
+   "description": "Trees that split where the values are most heavy-tailed, replaced with each new window. Good at rare extremes across several features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "max_depth",
+     "label": "Max Depth",
+     "type": "integer",
+     "default": 10,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 128.0,
+     "description": "Deepest level of each tree.",
+     "advanced": true
+    },
+    {
+     "name": "n_estimators",
+     "label": "N Estimators",
+     "type": "integer",
+     "default": 25,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Trees in the forest. More give steadier scores and cost time and memory."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations per window. Each completed window replaces what the detector compares against."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_streaming_loda",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "LODA",
+   "description": "Score how rare an observation is in many random one-dimensional views, each with its own histogram. Fast on many features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "decay",
+     "label": "Decay",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "description": "How much the histograms keep of the past at each observation; 1 keeps everything.",
+     "advanced": true
+    },
+    {
+     "name": "eps",
+     "label": "Eps",
+     "type": "number",
+     "default": 1e-12,
+     "has_default": true,
+     "description": "Smallest density a score is taken of.",
+     "advanced": true
+    },
+    {
+     "name": "n_bins",
+     "label": "N Bins",
+     "type": "integer",
+     "default": 32,
+     "has_default": true,
+     "description": "Bins of each view's histogram.",
+     "advanced": true
+    },
+    {
+     "name": "n_projections",
+     "label": "N Projections",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "description": "Random views. More give steadier scores and cost time."
+    },
+    {
+     "name": "pseudocount",
+     "label": "Pseudocount",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "description": "Count every bin starts with, so no bin is impossible.",
+     "advanced": true
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "sparsity",
+     "label": "Sparsity",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Share of features each view leaves out. Empty uses the paper's choice for the number of features.",
+     "advanced": true
+    },
+    {
+     "name": "warm_up_samples",
+     "label": "Warm Up Samples",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "description": "Observations that fix the histograms' bins before scores start."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_x_lag_damp",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "DAMP discords",
+   "description": "Score how unlike the latest stretch of values is to its nearest match far back, fast. Finds odd shapes made of normal values in one feature.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "eps",
+     "label": "Eps",
+     "type": "number",
+     "default": 1e-12,
+     "has_default": true,
+     "description": "Smallest spread a stretch may have; flatter ones are skipped.",
+     "advanced": true
+    },
+    {
+     "name": "start_index",
+     "label": "Start Index",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Value at which scoring starts. Empty starts four subsequences in.",
+     "advanced": true
+    },
+    {
+     "name": "subsequence_length",
+     "label": "Subsequence Length",
+     "type": "integer",
+     "default": 32,
+     "required": true,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 10000.0,
+     "description": "Values in one stretch: about one cycle, or the length of the shape an anomaly takes."
+    },
+    {
+     "name": "x_lag",
+     "label": "X Lag",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Values searched back for a match. Empty uses 16 times the subsequence length."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_x_stream",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "xStream",
+   "description": "Random projections and chains of half-space cuts over a rolling window. Handles many features, and features that come and go.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "cms_num_hashes",
+     "label": "Cms Num Hashes",
+     "type": "integer",
+     "default": 4,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 128.0,
+     "description": "Rows per count sketch.",
+     "advanced": true
+    },
+    {
+     "name": "cms_width",
+     "label": "Cms Width",
+     "type": "integer",
+     "default": 1024,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Counters per row of each count sketch. More reduce collisions.",
+     "advanced": true
+    },
+    {
+     "name": "density",
+     "label": "Density",
+     "type": "number",
+     "default": 0.3333333333333333,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "Share of the projected dimensions each feature contributes to, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "depth",
+     "label": "Depth",
+     "type": "integer",
+     "default": 15,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 128.0,
+     "description": "Levels in each chain."
+    },
+    {
+     "name": "init_sample_size",
+     "label": "Init Sample Size",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Observations used to set the chains' scales before scoring starts.",
+     "advanced": true
+    },
+    {
+     "name": "k",
+     "label": "K",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 10000.0,
+     "description": "Dimensions the features are projected to.",
+     "advanced": true
+    },
+    {
+     "name": "max_feature_cache_size",
+     "label": "Max Feature Cache Size",
+     "type": "integer",
+     "default": 10000,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Most feature names whose projections are cached.",
+     "advanced": true
+    },
+    {
+     "name": "n_chains",
+     "label": "N Chains",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Chains in the ensemble. More give steadier scores."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations per window. Each completed window replaces what the detector compares against."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "forecast.timestral",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Timestral forecaster",
+   "description": "Forecast with a pretrained model from the recent values, and score the miss.",
+   "learning": "pretrained",
+   "fields": [
+    {
+     "name": "checkpoint",
+     "label": "Checkpoint",
+     "type": "enum",
+     "default": "mistralai/Timestral-5M",
+     "has_default": true,
+     "options": [
+      "mistralai/Timestral-5M",
+      "mistralai/Timestral-28M",
+      "mistralai/Timestral-123M",
+      "mistralai/Timestral-209M"
+     ],
+     "description": "The model's size. Larger checkpoints forecast better and need more memory and time."
+    },
+    {
+     "name": "context_length",
+     "label": "Context Length",
+     "type": "integer",
+     "default": 512,
+     "has_default": true,
+     "minimum": 16.0,
+     "maximum": 32768.0,
+     "description": "Recent values the model reads for each forecast.",
+     "advanced": true
+    },
+    {
+     "name": "minimum_context",
+     "label": "Minimum Context",
+     "type": "integer",
+     "default": 32,
+     "has_default": true,
+     "minimum": 16.0,
+     "maximum": 32768.0,
+     "description": "Values that must arrive before the first forecast.",
+     "advanced": true
+    },
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
+  },
+  {
+   "id": "rule.score",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Rule detector",
+   "description": "Take one feature's value as the score, with no training. A step before it states the rule, such as a 1 where a limit is crossed.",
+   "learning": "none",
+   "input_type": "features",
+   "output_type": "scores"
+  }
+ ],
+ "templates": [
+  {
+   "id": "static_baseline",
+   "name": "Static baseline",
+   "definition": {
+    "schema_version": 2,
+    "input_slots": [
+     {
+      "id": "value",
+      "label": "Value",
+      "unit": null
+     }
+    ],
+    "nodes": [
+     {
+      "id": "input",
+      "kind": "source",
+      "component": "source.aligned",
+      "contract_version": 1,
+      "params": {},
+      "label": null
+     },
+     {
+      "id": "detector",
+      "kind": "detector",
+      "component": "detector:pyod_iforest",
+      "contract_version": 1,
+      "params": {
+       "n_estimators": 100,
+       "contamination": 0.1,
+       "random_state": 42
+      },
+      "label": null
+     },
+     {
+      "id": "calibrate",
+      "kind": "calibration",
+      "component": "calibrate.fixed_split",
+      "params": {}
+     },
+     {
+      "id": "policy",
+      "kind": "policy",
+      "component": "policy.martingale",
+      "contract_version": 1,
+      "params": {
+       "trackers": [
+        {
+         "tracker_id": "primary",
+         "alarm_statistic": "restarted_martingale",
+         "threshold_config": {
+          "mode": "manual",
+          "value": 100.0
+         },
+         "betting_function": "power",
+         "epsilon": 0.5
+        }
+       ],
+       "automatic_threshold_calibration": {
+        "false_alarm_probability": 0.01,
+        "horizon": 1000,
+        "simulation_count": 5000
+       }
+      },
+      "label": null
+     },
+     {
+      "id": "output",
+      "kind": "output",
+      "component": "output.evidence",
+      "contract_version": 1,
+      "params": {},
+      "label": null
+     }
+    ],
+    "edges": [
+     {
+      "source": "input",
+      "target": "detector",
+      "order": 0
+     },
+     {
+      "source": "detector",
+      "target": "calibrate",
+      "order": 0
+     },
+     {
+      "source": "policy",
+      "target": "output",
+      "order": 0
+     },
+     {
+      "source": "calibrate",
+      "target": "policy",
+      "order": 0
+     }
+    ],
+    "settings": {
+     "training_window_size": 1200,
+     "calibration_window_size": 360,
+     "seed": 42,
+     "conformal_strategy": "split"
+    }
+   },
+   "layout": {
+    "schema_version": 1,
+    "version": 1,
+    "nodes": {
+     "input": {
+      "x": 0.0,
+      "y": 100.0
+     },
+     "detector": {
+      "x": 288.0,
+      "y": 100.0
+     },
+     "calibrate": {
+      "x": 576.0,
+      "y": 100.0
+     },
+     "policy": {
+      "x": 864.0,
+      "y": 100.0
+     },
+     "output": {
+      "x": 1152.0,
+      "y": 100.0
+     }
+    },
+    "viewport": null,
+    "switched_off": {},
+    "notes": []
+   }
+  },
+  {
+   "id": "adaptive_stream",
+   "name": "Adaptive stream",
+   "definition": {
+    "schema_version": 2,
+    "input_slots": [
+     {
+      "id": "value",
+      "label": "Value",
+      "unit": null
+     }
+    ],
+    "nodes": [
+     {
+      "id": "input",
+      "kind": "source",
+      "component": "source.aligned",
+      "contract_version": 1,
+      "params": {},
+      "label": null
+     },
+     {
+      "id": "lags",
+      "kind": "transform",
+      "component": "prepare.lags",
+      "contract_version": 1,
+      "params": {
+       "unit": "minutes",
+       "lags": [
+        1,
+        5,
+        15
+       ]
+      },
+      "label": null
+     },
+     {
+      "id": "detector",
+      "kind": "detector",
+      "component": "detector:aberrant_online_isolation_forest",
+      "contract_version": 1,
+      "params": {
+       "branching_factor": 2,
+       "max_leaf_samples": 32,
+       "metric": "axisparallel",
+       "n_jobs": 1,
+       "num_trees": 100,
+       "seed": null,
+       "subsample": 1.0,
+       "tree_type": "adaptive",
+       "window_size": 2048
+      },
+      "label": null
+     },
+     {
+      "id": "calibrate",
+      "kind": "calibration",
+      "component": "calibrate.fixed_split",
+      "params": {}
+     },
+     {
+      "id": "policy",
+      "kind": "policy",
+      "component": "policy.quantile",
+      "contract_version": 1,
+      "params": {
+       "mode": "calibrated_quantile",
+       "quantile": 1.0
+      },
+      "label": null
+     },
+     {
+      "id": "output",
+      "kind": "output",
+      "component": "output.evidence",
+      "contract_version": 1,
+      "params": {},
+      "label": null
+     }
+    ],
+    "edges": [
+     {
+      "source": "input",
+      "target": "lags",
+      "order": 0
+     },
+     {
+      "source": "lags",
+      "target": "detector",
+      "order": 0
+     },
+     {
+      "source": "detector",
+      "target": "calibrate",
+      "order": 0
+     },
+     {
+      "source": "policy",
+      "target": "output",
+      "order": 0
+     },
+     {
+      "source": "calibrate",
+      "target": "policy",
+      "order": 0
+     }
+    ],
+    "settings": {
+     "training_window_size": 1200,
+     "calibration_window_size": 360,
+     "seed": 42,
+     "conformal_strategy": "split"
+    }
+   },
+   "layout": {
+    "schema_version": 1,
+    "version": 1,
+    "nodes": {
+     "input": {
+      "x": 0.0,
+      "y": 100.0
+     },
+     "lags": {
+      "x": 288.0,
+      "y": 100.0
+     },
+     "detector": {
+      "x": 576.0,
+      "y": 100.0
+     },
+     "calibrate": {
+      "x": 864.0,
+      "y": 100.0
+     },
+     "policy": {
+      "x": 1152.0,
+      "y": 100.0
+     },
+     "output": {
+      "x": 1440.0,
+      "y": 100.0
+     }
+    },
+    "viewport": null,
+    "switched_off": {},
+    "notes": []
+   }
+  }
+ ]
+}

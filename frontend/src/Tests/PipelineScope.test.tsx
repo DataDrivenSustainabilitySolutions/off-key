@@ -14,31 +14,13 @@ import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { hasScope, isWarning, stepScope } from "@/features/pipelines/scope";
 import { changeDetector } from "@/features/pipelines/learning";
 import type { JsonValue } from "@/types/monitoring";
+import { catalogStep } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
-type Field = PipelineComponent["fields"][number];
-const scopeFields = (suffix?: string): Field[] => [
-  { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
-  { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
-  ...(suffix ? [{ name: "suffix", label: "Suffix", type: "string", default: suffix, has_default: true } satisfies Field] : []),
-];
-const transform = (id: string, learning: PipelineComponent["learning"], fields: PipelineComponent["fields"],
-  facts: Partial<PipelineComponent> = {}): PipelineComponent =>
-  ({ id, kind: "transform", group: "normalize", label: id, description: "", learning, input_type: "features",
-    output_type: "features", fields, ...facts });
-
-// Each names the step that learns the other way, as the catalog does.
-const robust = transform("adaptive.robust_scaler", "online", [
-  ...scopeFields("robust"),
-  { name: "window_size", label: "Window Size", type: "integer", default: 256, has_default: true },
-], { counterpart: "static.robust_scaler" });
-const staticRobust = transform("static.robust_scaler", "batch", scopeFields("robust"),
-  { counterpart: "adaptive.robust_scaler" });
-const pca = transform("static.pca", "batch", [
-  ...scopeFields(),
-  { name: "n_components", label: "N Components", type: "integer", default: 1, has_default: true },
-], { group: "reduce" });
+const robust = catalogStep("adaptive.robust_scaler");
+const staticRobust = catalogStep("static.robust_scaler");
+const pca = catalogStep("static.pca");
 const incoming = ["dc_voltage", "dc_current", "temp"];
 const labels = { dc_voltage: "DC voltage", dc_current: "DC current" };
 
@@ -170,7 +152,7 @@ describe("scope settings", () => {
     const node = (params: PipelineNode["params"]): PipelineNode =>
       ({ id: "scale", kind: "transform", component: robust.id, params });
     expect(hasScope(robust)).toBe(true);
-    expect(hasScope(transform("features.select", "none", []))).toBe(false);
+    expect(hasScope(catalogStep("features.select"))).toBe(false);
     expect(stepScope(node({ apply_to: null, result: "replace", suffix: "robust" }), robust))
       .toEqual({ applyTo: undefined, add: false, suffix: "robust", endings: ["robust"], elementwise: true });
     expect(stepScope(node({ result: "add", suffix: "" }), robust)?.suffix).toBe("robust");
@@ -216,8 +198,7 @@ describe("warnings", () => {
     }),
     layout: normalizeLayout(),
   });
-  const source: PipelineComponent = { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs",
-    description: "", input_type: null, output_type: "features", fields: [] };
+  const source = catalogStep("source.aligned");
   const warning = { node_id: "scale", code: "unused", message: "dc_current is not used after this step.",
     severity: "warning" as const };
 

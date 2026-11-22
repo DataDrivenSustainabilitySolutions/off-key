@@ -13,31 +13,20 @@ import { combinedName, formulaName } from "@/features/pipelines/scope";
 import { STEP_FAMILIES, stepFamily, stepFields } from "@/features/pipelines/steps";
 import type { PipelineState } from "@/features/pipelines/diagnostics";
 import type { JsonValue } from "@/types/monitoring";
-import { type Field, type Issue, oneReading, step, stepNode, stepSummary } from "./support/pipelineSteps";
+import { catalogStep } from "./support/fixtures/pipelines";
+import { type Issue, oneReading, stepNode, stepSummary } from "./support/pipelineSteps";
 
-const text = (name: string, label: string, required = false): Field => ({
-  name, label, type: "string", required, has_default: !required, nullable: !required,
-  description: `${label} help`,
-});
-const result: Field = { name: "result", label: "Result", type: "enum", default: "add", has_default: true, options: ["replace", "add"] };
-const component = (id: string, fields: Field[], group: PipelineComponent["group"] = "combine") =>
-  step(id, fields, group);
-const aggregate = component("prepare.aggregate", [
-  { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
-  result,
-  { name: "function", label: "Function", type: "enum", default: "mean", has_default: true,
-    options: ["mean", "sum", "min", "max", "std", "range"] },
-  text("name", "Name"),
-]);
-const formula = component("prepare.formula", [text("expression", "Formula", true), text("name", "Name"), result]);
-const gate = component("prepare.gate", [text("condition", "Condition", true)], "route");
-const mute = component("prepare.mute", [text("condition", "Condition", true)], "route");
-const condition = component("prepare.condition", [text("condition", "Condition", true), text("name", "Name")]);
-const assignment = component("prepare.set", [text("expression", "Formula", true), text("name", "Name")]);
-const constant = component("prepare.constant", [text("name", "Name"),
-  { name: "value", label: "Value", type: "number", default: 0, has_default: true }]);
+const aggregate = catalogStep("prepare.aggregate");
+const formula = catalogStep("prepare.formula");
+const gate = catalogStep("prepare.gate");
+const mute = catalogStep("prepare.mute");
+const condition = catalogStep("prepare.condition");
+const assignment = catalogStep("prepare.set");
+const constant = catalogStep("prepare.constant");
 
 const node = stepNode;
+const help = (component: PipelineComponent, name: string) =>
+  component.fields.find((field) => field.name === name)?.description ?? "";
 const definition = oneReading;
 const summary = stepSummary;
 
@@ -132,7 +121,7 @@ describe("the formula editor", () => {
     expect(screen.queryByRole("button", { name: "Keep features" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox", { name: "Condition" }), { target: { value: "dc_voltage > 1" } });
     expect(changes).toEqual([{ condition: "dc_voltage > 1" }]);
-    expect(screen.getByText("Condition help")).toBeTruthy();
+    expect(screen.getByText(help(gate, "condition"))).toBeTruthy();
   });
 
   it("writes the condition of a Mute alarms step under what it does", () => {
@@ -394,18 +383,14 @@ describe("numeric primitives", () => {
   });
 
   it("offers a quantile setting only for the quantile statistic", () => {
-    const rolling = component("prepare.rolling", [
-      { name: "statistic", label: "Statistic", type: "enum", default: "mean", has_default: true },
-      { name: "quantile", label: "Quantile", type: "number", default: .5, has_default: true,
-        shown_when: { field: "statistic", equals: ["quantile"] } },
-    ], "prepare");
-    expect(stepFields(node(rolling), rolling).map(field => field.name)).toEqual(["statistic"]);
+    const rolling = catalogStep("prepare.rolling");
+    expect(stepFields(node(rolling), rolling).map(field => field.name)).toEqual(["statistic", "window_size"]);
     expect(stepFields(node(rolling, { statistic: "quantile" }), rolling).map(field => field.name))
-      .toEqual(["statistic", "quantile"]);
-    expect(summary(rolling, { statistic: "quantile", quantile: .9, window_size: 5 }).text)
+      .toEqual(["statistic", "window_size", "quantile"]);
+    expect(summary(rolling, { statistic: "quantile", quantile: .9, window_size: 5, result: "replace" }).text)
       .toBe("Quantile 0.9 of last 5");
     // A score or a rank places the latest value within the window.
-    const rolled = (statistic: string) => summary(rolling, { statistic, window_size: 60 }).text;
+    const rolled = (statistic: string) => summary(rolling, { statistic, window_size: 60, result: "replace" }).text;
     expect(["zscore", "robust_zscore", "rank"].map(rolled))
       .toEqual(["Z-score within last 60", "Robust z-score within last 60", "Rank within last 60"]);
     expect(["rms", "skewness", "kurtosis"].map(rolled))

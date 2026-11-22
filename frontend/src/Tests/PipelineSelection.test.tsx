@@ -10,6 +10,7 @@ import { PipelineWorkbench } from "@/features/pipelines/PipelineWorkbench";
 import { SHORTCUTS } from "@/features/pipelines/shortcuts";
 import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
 import { useStepShortcuts } from "@/features/pipelines/useStepShortcuts";
+import { asServedList } from "./support/fixtures/pipelines";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
@@ -20,14 +21,14 @@ vi.mock("@/features/pipelines/PipelineCanvas", () => ({
 }));
 
 const catalog = normalizeCatalog({
-  catalog_id: "test", authoring_enabled: true, templates: [], components: [
+  catalog_id: "test", authoring_enabled: true, templates: [], components: asServedList([
     { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
       input_type: null, output_type: "features" },
     { id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
       input_type: "features", output_type: "features" },
     { id: "detector:a", kind: "detector", group: "detector", label: "Detector A", description: "",
       input_type: "features", output_type: "scores" },
-  ],
+  ]),
 });
 
 const design = (): GraphDocument => ({

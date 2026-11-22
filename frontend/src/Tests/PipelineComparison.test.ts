@@ -5,9 +5,10 @@ import { normalizeCatalog, normalizeDefinition, normalizeLayout } from "@/featur
 import { presentGraph } from "@/features/pipelines/graphPresentation";
 import { addAfter, removeNode, setNodeLabel, setNodeParams, type GraphDocument } from "@/features/pipelines/model";
 import { switchOff } from "@/features/pipelines/stepSwitch";
+import { asServedList } from "./support/fixtures/pipelines";
 
 const { components } = normalizeCatalog({
-  catalog_id: "test", authoring_enabled: true, templates: [], components: [
+  catalog_id: "test", authoring_enabled: true, templates: [], components: asServedList([
     { id: "source.aligned", kind: "source", group: "input", label: "Aligned inputs", description: "",
       input_type: null, output_type: "features" },
     { id: "features.passthrough", kind: "transform", group: "route", label: "Pass through", description: "",
@@ -24,7 +25,7 @@ const { components } = normalizeCatalog({
       input_type: "features", output_type: "scores" },
     { id: "detector:b", kind: "detector", group: "detector", label: "Detector B", description: "",
       input_type: "features", output_type: "scores" },
-  ],
+  ]),
 });
 
 /** What runs now: input, a scaling step, a smoothing step and a detector. */

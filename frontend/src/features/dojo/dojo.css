@@ -103,3 +103,11 @@
 .dj-benchmark-list { max-height: 300px; }
 .dj-benchmark-list label > span { display: flex; flex-direction: column; min-width: 0; }
 .dj-benchmark-list label > span small { margin-left: 0; }
+
+/* A study on a protocol suite: the budget first, then the profile per fault family. */
+.dj-protocol { display: grid; gap: 12px; margin: 16px 0; }
+.dj-protocol-headline { font-size: var(--text-body); color: var(--ex-ink); margin: 0; max-width: 72ch; overflow-wrap: anywhere; }
+.dj-protocol-budget { display: grid; gap: 8px 24px; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); margin: 0; }
+.dj-protocol-budget dt { font-size: var(--text-caption); color: var(--ex-ink); font-weight: 500; }
+.dj-protocol-budget dd { margin: 2px 0 0; font-size: var(--text-caption); color: var(--ex-muted); }
+.dj-protocol-level { display: inline-block; margin-inline-end: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }

@@ -222,9 +222,10 @@ async def test_an_agent_finds_the_tools_its_key_allows(gateway, key):
     # An agent reads the whole list with every session, so it stays short. The
     # suite and study tools raised it from 31,500 for the loop of comparing
     # candidates over many datasets, and the rationale's one-line summary,
-    # which members read first, to 35,500.
+    # which members read first, to 35,500; the fault-injection protocol's
+    # fault shapes and suite settings to 37,000.
     listing = [tool.model_dump(mode="json", exclude_none=True) for tool in granted]
-    assert len(json.dumps(listing)) < 35_500
+    assert len(json.dumps(listing)) < 37_000
 
 
 def test_a_schema_says_nothing_twice():
@@ -1668,6 +1669,144 @@ async def test_an_agent_runs_and_compares_studies_over_a_suite(
         "st1",
         "vus_pr",
     )
+
+
+def protocol_report() -> dict:
+    level = {
+        "level": 2.0,
+        "faults": 2,
+        "scored": 2,
+        "caught": 1,
+        "confounded": 0,
+        "rate": 0.5,
+        "low": 0.09,
+        "high": 0.91,
+        "simple_rules": 0,
+    }
+    family = {
+        "family": "step",
+        "title": "Sudden step",
+        "measure": "sigmas",
+        "sanity": False,
+        "faults": 2,
+        "scored": 2,
+        "caught": 1,
+        "chance_detections": 0.0,
+        "adjusted_detection_rate": 0.5,
+        "half": 2.0,
+        "ninety": None,
+        "median_delay_seconds": 60.0,
+        "median_sigmas_at_detection": None,
+        "simple_rules_caught": 0,
+        "levels": [level],
+    }
+    return {
+        "protocol": "screening-v1",
+        "version": 1,
+        "purpose": "test",
+        "seed": None,
+        "warmup_values": 200,
+        "window_values": 40,
+        "clean_run_id": "run-0",
+        "false_alarms_per_day": 0.4,
+        "alarm_share": 0.002,
+        "budget_per_day": 1.0,
+        "budget_share": 0.01,
+        "within_budget": True,
+        "adjusted_detection_rate": 0.5,
+        "faults": 2,
+        "caught": 1,
+        "simple_rules_caught": 0,
+        "sanity_missed": 0,
+        "untestable": [],
+        "families": [family],
+        "headline": "0.4 false alarms a day; catches sudden step from 2σ.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_agent_reports_on_a_protocol_suite(gateway, key, stores, no_pause):
+    """A protocol suite is asked for with the design's windows, and its study
+    answers with the profile; a test suite's copies keep their faults hidden."""
+    suite = {
+        "id": "su1",
+        "name": "Screen",
+        "description": "",
+        "derived_from": None,
+        "datasets": 1,
+        "studies": 0,
+        "created_by": None,
+        "created_by_agent": "Designer",
+        "reviewed": False,
+        "created_at": THEN,
+        "items": [],
+        "leaderboard": [],
+        "unfinished": [],
+    }
+    stores.suites.create_fault_suite.return_value = suite
+    stores.suites.get_study.return_value = study_view() | {
+        "protocol": protocol_report()
+    }
+    stores.datasets.get.return_value = {
+        "id": "d2",
+        "name": "Screen · copy 1",
+        "description": "",
+        "origin": "csv",
+        "source": {"protocol": {"purpose": "test", "role": "faulted"}},
+        "point_count": 2,
+        "series_count": 1,
+        "start_at": THEN,
+        "end_at": THEN,
+        "created_by": None,
+        "created_at": THEN,
+        "series": [],
+    }
+    label = {
+        "dataset_id": "d2",
+        "start_at": THEN,
+        "end_at": THEN,
+        "rule": "",
+        "suggested_by_agent": None,
+        "created_by": None,
+        "created_at": THEN,
+    }
+    stores.labels.list.return_value = {
+        "items": [
+            label | {"id": "l1", "note": "Injected step of +2 (+2σ) on power"},
+            label | {"id": "l2", "note": "known trip"},
+        ]
+    }
+    stores.pending.list.return_value = {"items": []}
+    async with connected(gateway) as client:
+        await client.call_tool(
+            "create_suite",
+            {
+                "name": "Screen",
+                "faults_of": "d1",
+                "protocol": "screening-v1",
+                "purpose": "test",
+                "warmup_values": 200,
+                "window_values": 40,
+            },
+        )
+        studied = said(await client.call_tool("get_study", {"study_id": "st1"}))
+        dataset = said(await client.call_tool("get_dataset", {"dataset_id": "d2"}))
+    request = stores.suites.create_fault_suite.await_args.args[0]
+    assert (request.protocol, request.purpose) == ("screening-v1", "test")
+    assert (request.warmup_values, request.window_values) == (200, 40)
+    report = studied["protocol"]
+    assert report["headline"].startswith("0.4 false alarms a day")
+    assert report["within_budget"] is True
+    (family,) = report["families"]
+    assert (family["family"], family["half"], family["by_level"]) == (
+        "Sudden step",
+        2.0,
+        [[2.0, 1, 2]],
+    )
+    # With the profile, only runs that did not succeed are listed.
+    assert studied["datasets"] == []
+    # The injected fault's place is kept from the key; a known problem is not.
+    assert [item["note"] for item in dataset["labels"]] == ["known trip"]
 
 
 @pytest.mark.asyncio

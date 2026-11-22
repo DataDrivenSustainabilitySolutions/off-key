@@ -13,6 +13,7 @@ only judge of the test it is scored on.
 
 import math
 import random
+import secrets
 import time
 from collections import Counter, defaultdict
 from collections.abc import Sequence
@@ -38,12 +39,16 @@ from off_key_core.db.models import (
 )
 from off_key_core.models.dojo_runs import result_kind
 from off_key_core.schemas.dojo import (
+    MAX_PROTOCOL_POINTS,
+    MAX_SUITE_DATASETS,
     MAX_SUITE_STUDIES,
+    TEST_SEEDS,
     DatasetOrigin,
     DatasetWithFaults,
     Fault,
     FaultSuiteCreate,
     PairedDataset,
+    ProtocolReport,
     RunAlignment,
     RunMetrics,
     RunStatus,
@@ -65,10 +70,13 @@ from off_key_core.schemas.dojo import (
     SuiteSummary,
     SuiteView,
 )
-from sqlalchemy import delete, func, select
+from sqlalchemy import Float, delete, extract, func, select, text
+from sqlalchemy import cast as sql_cast
 
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from . import protocol as fault_protocol
 from .datasets import DojoDatasets
+from .faults import noise_sigma
 from .labels import dataset_labels
 from .metrics import DojoMetrics
 from .owners import made_by, require_no_evidence
@@ -151,6 +159,14 @@ class DojoSuites:
         ]
         if not targets or source.start_at is None or source.end_at is None:
             raise ValidationError("The dataset holds no values to write faults into")
+        if request.protocol is not None:
+            return await self._protocol_suite(
+                request,
+                source,
+                targets,
+                created_by=created_by,
+                created_by_agent=created_by_agent,
+            )
         spreads = {
             series_id: spread
             for series_id, spread in (
@@ -216,6 +232,213 @@ class DojoSuites:
             for dataset_id in made:
                 await datasets.remove(dataset_id)
             raise
+
+    async def _protocol_suite(
+        self,
+        request: FaultSuiteCreate,
+        source,
+        targets,
+        *,
+        created_by: int | None,
+        created_by_agent: Agent | None,
+    ) -> SuiteView:
+        """One clean copy and one copy per grid cell, each with its fault."""
+        assert request.protocol is not None
+        grid = fault_protocol.cells(request.protocol, len(targets))
+        if len(grid) + 1 > MAX_SUITE_DATASETS:
+            raise ValidationError("The protocol's grid outgrows a suite")
+        if (len(grid) + 1) * source.point_count > MAX_PROTOCOL_POINTS:
+            most = MAX_PROTOCOL_POINTS // (len(grid) + 1)
+            raise ValidationError(
+                f"{request.protocol} writes {len(grid) + 1} copies; copy at most "
+                f"{most:,} values of {source.name} first, such as a shorter span"
+            )
+        values = max(item.point_count for item in targets)
+        warmup = request.warmup_values or int(fault_protocol.WARMUP_SHARE * values)
+        window = request.window_values or max(
+            fault_protocol.MIN_WINDOW, int(fault_protocol.WINDOW_SHARE * values)
+        )
+        seed = (
+            TEST_SEEDS + secrets.randbelow(TEST_SEEDS)
+            if request.purpose == "test"
+            else request.seed
+        )
+        labels = [
+            (label.start_at.timestamp(), label.end_at.timestamp())
+            for label in await dataset_labels(self.session, source.id)
+        ]
+        timelines = {
+            item.id: fault_protocol.Timeline.of(
+                item.id, await self._epochs(item.id), labels, window
+            )
+            for item in targets
+        }
+        sigmas = {item.id: await noise_sigma(self.session, item.id) for item in targets}
+        placements, untestable = fault_protocol.place(
+            request.protocol, timelines, warmup, window, seed
+        )
+        if not placements:
+            shortest = min(fault_protocol.span_values(cell, window) for cell in grid)
+            raise ValidationError(
+                f"No fault of {request.protocol} fits: each needs {warmup} values "
+                f"of warm-up, {window} clear values and at least {shortest} for "
+                f"the fault and its scoring, about {warmup + window + shortest} "
+                "values without labels or gaps in all"
+            )
+        datasets = DojoDatasets(self.session)
+        plan = {
+            "name": request.protocol,
+            "version": fault_protocol.VERSION,
+            "purpose": request.purpose,
+            "seed": seed,
+            "warmup_values": warmup,
+            "window_values": window,
+            "source_id": source.id,
+            "source_hash": await self._values_hash(source.id),
+            "budget": {
+                "per_day": fault_protocol.BUDGET_PER_DAY,
+                "share": fault_protocol.BUDGET_SHARE,
+            },
+        }
+        made: list[str] = []
+        try:
+            for placement in placements:
+                cell = placement.cell
+                try:
+                    copy = await datasets.inject_faults(
+                        source.id,
+                        DatasetWithFaults(
+                            name=f"{request.name} · copy {len(made) + 1}",
+                            description=f"{request.protocol}, seed {seed}",
+                            faults=[placement.fault],
+                            end_at=placement.cut,
+                        ),
+                        created_by=created_by,
+                        created_by_agent=created_by_agent,
+                        extras=[
+                            {
+                                "cell": cell.id,
+                                "family": cell.family.key,
+                                "title": cell.family.title,
+                                "measure": cell.family.measure,
+                                "level": cell.level,
+                                "length": cell.length,
+                                "sanity": cell.family.sanity,
+                            }
+                        ],
+                        source_extra={
+                            "protocol": {**plan, "role": "faulted", "cell": cell.id}
+                        },
+                    )
+                except ValidationError:
+                    await self.session.rollback()
+                    untestable.append(cell.id)
+                    continue
+                made.append(copy.id)
+                await self._mark_simple_rules(
+                    copy.id, sigmas.get(placement.series_id), window
+                )
+            plan["untestable"] = sorted(set(untestable))
+            plan["copies"] = len(made)
+            clean = await datasets.inject_faults(
+                source.id,
+                DatasetWithFaults(
+                    name=f"{request.name} · clean",
+                    description=f"{request.protocol}, seed {seed}: no faults",
+                ),
+                created_by=created_by,
+                created_by_agent=created_by_agent,
+                source_extra={"protocol": {**plan, "role": "clean"}},
+            )
+            made.insert(0, clean.id)
+            shown = "drawn by the server" if request.purpose == "test" else seed
+            return await self.create_suite(
+                SuiteCreate(
+                    name=request.name,
+                    description=request.description
+                    or (
+                        f"{request.protocol} {request.purpose} suite of "
+                        f"{source.name}: {len(made) - 1} copies with one planted "
+                        f"fault each and one clean copy, seed {shown}, warm-up "
+                        f"{warmup} values, window {window}"
+                    ),
+                    dataset_ids=made,
+                ),
+                created_by=created_by,
+                created_by_agent=created_by_agent,
+            )
+        except BaseException:
+            await self.session.rollback()
+            for dataset_id in made:
+                await datasets.remove(dataset_id)
+            raise
+
+    async def _epochs(self, series_id: str) -> list[float]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(sql_cast(extract("epoch", DojoPoint.timestamp), Float))
+                    .where(DojoPoint.series_id == series_id)
+                    .order_by(DojoPoint.timestamp)
+                )
+            ).all()
+        )
+
+    async def _values_hash(self, dataset_id: str) -> str | None:
+        """A fingerprint of the source's values, so a manifest can be checked."""
+        return await self.session.scalar(
+            text(
+                "SELECT md5(string_agg(s.name || '@' || "
+                "extract(epoch FROM p.timestamp)::text || '=' || p.value::text, "
+                "',' ORDER BY s.position, p.timestamp)) FROM dojo_dataset_points p "
+                "JOIN dojo_dataset_series s ON s.id = p.series_id "
+                "WHERE s.dataset_id = :id"
+            ),
+            {"id": dataset_id},
+        )
+
+    async def _mark_simple_rules(
+        self, dataset_id: str, sigma: float | None, window: int
+    ) -> None:
+        """Record whether trivial rules catch the copy's fault."""
+        row = await self.session.get(DojoDataset, dataset_id)
+        assert row is not None
+        faults = list(row.source.get("faults", []))
+        if not faults:
+            return
+        fault = faults[0]
+        onset = datetime.fromisoformat(fault["start_at"])
+        label_end = datetime.fromisoformat(fault["label_end"])
+        series_id = fault["series_id"]
+        before = (
+            await self.session.execute(
+                select(
+                    sql_cast(extract("epoch", DojoPoint.timestamp), Float),
+                    DojoPoint.value,
+                )
+                .where(DojoPoint.series_id == series_id, DojoPoint.timestamp < onset)
+                .order_by(DojoPoint.timestamp.desc())
+                .limit(window)
+            )
+        ).all()
+        after = (
+            await self.session.execute(
+                select(
+                    sql_cast(extract("epoch", DojoPoint.timestamp), Float),
+                    DojoPoint.value,
+                )
+                .where(DojoPoint.series_id == series_id, DojoPoint.timestamp >= onset)
+                .order_by(DojoPoint.timestamp)
+                .limit(fault_protocol.MAX_RULE_VALUES)
+            )
+        ).all()
+        values = [(float(a), float(b)) for a, b in [*reversed(before), *after]]
+        caught = fault_protocol.simple_rules(
+            values, onset.timestamp(), label_end.timestamp(), sigma, window
+        )
+        faults[0] = {**fault, "simple_rules": caught}
+        row.source = {**row.source, "faults": faults}
+        await self.session.commit()
 
     async def list_suites(
         self, query: SuiteListQuery, caller: User | Agent | None = None
@@ -431,6 +654,7 @@ class DojoSuites:
         found = await self._metrics(runs, labels, calculate=calculate)
         size = len(await self._datasets(study.suite_id))
         names = await self._dataset_names([run.dataset_id for run in runs])
+        report = await self._protocol_report(runs, labels, found)
         return StudyView(
             **_study_summary(study, runs, found, size).model_dump(),
             definition=study.config["definition"],
@@ -447,7 +671,106 @@ class DojoSuites:
                 )
                 for run in runs
             ],
+            protocol=report,
         )
+
+    async def _protocol_report(
+        self,
+        runs: Sequence[DojoRun],
+        labels: dict[str, list[DojoLabel]],
+        found: dict[str, RunMetrics | None],
+    ) -> ProtocolReport | None:
+        """The detection profile of a study on a protocol suite."""
+        sources = dict(
+            (
+                await self.session.execute(
+                    select(DojoDataset.id, DojoDataset.source).where(
+                        DojoDataset.id.in_({run.dataset_id for run in runs})
+                    )
+                )
+            ).all()
+        )
+        plans = {
+            run.id: (sources.get(run.dataset_id) or {}).get("protocol") for run in runs
+        }
+        if not any(plans.values()):
+            return None
+        clean = next(
+            (run for run in runs if (plans[run.id] or {}).get("role") == "clean"),
+            None,
+        )
+        plan = (plans[clean.id] if clean else None) or next(
+            item for item in plans.values() if item
+        )
+        faulted = []
+        for run in runs:
+            if (plans[run.id] or {}).get("role") != "faulted":
+                continue
+            for fault in (sources.get(run.dataset_id) or {}).get("faults", []):
+                metrics = found.get(run.id)
+                outcome = None
+                if metrics is not None:
+                    outcome = next(
+                        (
+                            item
+                            for item in metrics.labels
+                            if item.label_id == fault.get("label_id")
+                        ),
+                        None,
+                    )
+                faulted.append((fault, outcome))
+        quiet = await self._clean_alarms(
+            clean.id if clean and clean.status == "succeeded" else None,
+            [
+                (
+                    datetime.fromisoformat(fault["start_at"]),
+                    datetime.fromisoformat(fault["label_end"]),
+                )
+                for fault, _ in faulted
+            ],
+        )
+        planted = [
+            fault_protocol.Planted(
+                family=fault.get("family", fault["kind"]),
+                title=fault.get("title", fault["kind"]),
+                measure=fault.get("measure", "none"),
+                level=fault.get("level"),
+                sanity=bool(fault.get("sanity")),
+                outcome=outcome,
+                confounded=confounded,
+                simple_rules=bool(fault.get("simple_rules")),
+                onset_seconds=float(fault.get("onset_seconds") or 0.0),
+                sigmas=fault.get("sigmas"),
+            )
+            for (fault, outcome), confounded in zip(faulted, quiet, strict=True)
+        ]
+        clean_metrics = found.get(clean.id) if clean else None
+        return fault_protocol.report(
+            plan, clean_metrics, clean.id if clean else None, planted
+        )
+
+    async def _clean_alarms(
+        self, run_id: str | None, spans: Sequence[tuple[datetime, datetime]]
+    ) -> list[bool]:
+        """For each span, whether the clean run alarmed inside it."""
+        if run_id is None or not spans:
+            return [False] * len(spans)
+        rows = await self.session.execute(
+            text(
+                "SELECT t.i FROM unnest(CAST(:starts AS timestamptz[]), "
+                "CAST(:ends AS timestamptz[])) WITH ORDINALITY AS t(s, e, i) "
+                "WHERE EXISTS (SELECT 1 FROM dojo_run_results r "
+                "WHERE r.run_id = :run AND r.alarm "
+                "AND r.timestamp >= t.s AND r.timestamp <= t.e)"
+            ),
+            {
+                "starts": [start for start, _ in spans],
+                "ends": [end for _, end in spans],
+                "run": run_id,
+            },
+        )
+        hit = {int(row[0]) for row in rows}
+        return [index in hit for index in range(1, len(spans) + 1)]
 
     async def compare_studies(
         self, suite_id: str, query: StudyComparisonQuery

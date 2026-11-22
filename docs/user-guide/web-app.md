@@ -398,11 +398,27 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    unlikely to be chance across these datasets, not that it holds elsewhere.
    Choosing a study's name lists its run and metrics for each dataset.
 7. **Fault suite**, on a dataset, tests designs on data that has no labels,
-   such as a setup's recorded history. It makes labelled copies with faults
-   written in at drawn places (steps, drifts, frozen values and gaps, as you
-   choose) after a clean start kept for warm-up, apart from the dataset's own
-   labels, and gathers the copies into a suite to run studies on. The same
-   seed writes the same faults again.
+   such as a setup's recorded history. The **screening protocol** (the
+   default, 48 copies) and the **full protocol** (about 90) plant one fault
+   per copy from a fixed grid: sudden steps, slow drifts that recover or not,
+   gain errors, rising noise, spikes, frozen values, gaps and impossible
+   values. Sizes are multiples of the reading's short-term noise (σ), lengths
+   count observations against the design's calibration window, and every
+   fault starts after the warm-up you give, clear of the dataset's labels and
+   gaps. A clean copy without faults comes with them. A **practice** suite
+   takes your seed; a **test** suite draws its own and keeps where its faults
+   lie from agent keys. **Free draw** instead writes faults of the kinds you
+   choose at drawn places after a clean start. The same seed writes the same
+   faults again.
+
+   A study on a protocol suite shows **Planted faults**. It first checks the
+   design against a false-alarm budget on the clean copy (1 alarm a day and
+   1% of the time in alarm). Then, per fault type, it shows how many faults
+   were caught, the size at which half and nine in ten are caught, catches
+   beyond what the alarm rate would hit by chance, and how many simple rules
+   already catch. A fault counts as caught only where the clean copy stayed
+   quiet, so an alarm that never stops earns nothing. Missing a fault type is
+   a fair result.
 
 A design that is still being built is tested without leaving it: **Test** in
 the monitoring setup copies the recorded values of its readings into a dataset

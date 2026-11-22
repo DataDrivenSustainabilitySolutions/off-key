@@ -32,11 +32,13 @@ MAX_COMPARED_RUNS = 6
 # Faults one copy of a dataset may carry, each labelled as a known problem.
 MAX_FAULTS = 20
 MAX_FAULT_COPIES = 20
+# A protocol suite writes at most this many values across its copies.
+MAX_PROTOCOL_POINTS = 20_000_000
 # Benchmark series one import may add; each becomes a dataset of its own.
 MAX_BENCHMARK_IMPORT = 20
 MAX_BENCHMARK_PAGE = 250
 # A benchmark suite holds at most this many datasets; a study runs on each.
-MAX_SUITE_DATASETS = 50
+MAX_SUITE_DATASETS = 100
 # A suite's view lists at most this many studies, the newest.
 MAX_SUITE_STUDIES = 100
 DatasetOrigin = Literal["csv", "history", "benchmark"]
@@ -44,8 +46,28 @@ BenchmarkVariant = Literal["original", "distorted", "noise"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 CsvLayout = Literal["wide", "long"]
 LabelOutcomeKind = Literal["detected", "missed", "unscored"]
-FaultKind = Literal["step", "drift", "freeze", "gap"]
-FAULT_KINDS: tuple[FaultKind, ...] = ("step", "drift", "freeze", "gap")
+FaultKind = Literal[
+    "step", "drift", "gain", "noise", "spike", "freeze", "gap", "out_of_range"
+]
+FAULT_KINDS: tuple[FaultKind, ...] = (
+    "step",
+    "drift",
+    "gain",
+    "noise",
+    "spike",
+    "freeze",
+    "gap",
+    "out_of_range",
+)
+# Kinds whose size moves the values: by `size`, or `sigmas` of the noise.
+SIZED_KINDS = ("step", "drift", "gain", "spike")
+# Kinds that come in and leave along an envelope.
+SHAPED_KINDS = ("step", "drift", "gain")
+FaultRecovery = Literal["sudden", "gradual", "none"]
+FaultProtocol = Literal["screening-v1", "full-v1"]
+FaultPurpose = Literal["practice", "test"]
+# Practice seeds lie below this; a test suite's seed is drawn above it.
+TEST_SEEDS = 1 << 31
 
 
 class DojoModel(BaseModel):
@@ -169,22 +191,71 @@ class DatasetFromHistory(DojoModel):
 
 
 class Fault(DojoModel):
-    """A problem written into a copy of a series between two times."""
+    """A problem written into a copy of a series between two times.
+
+    Level faults (step, drift, gain) follow one envelope: from `start_at` they
+    grow over `onset_seconds` to their full size, hold until `end_at`, and
+    then leave as `recovery` says. A step comes in at once, a drift over the
+    whole interval unless `onset_seconds` says otherwise.
+    """
 
     kind: FaultKind = Field(
-        description="'step' adds `size` to every value, 'drift' adds a share "
-        "of `size` that grows from 0 at start_at to all of it at end_at, "
-        "'freeze' repeats the last value before start_at, and 'gap' drops "
-        "the values."
+        description="'step' adds the size, 'drift' ramps up to it, 'gain' "
+        "scales the values so that a typical value moves by the size, 'noise' "
+        "multiplies the short-term noise by `noise_factor`, 'spike' moves the "
+        "first value only, 'freeze' holds the last value before start_at (or "
+        "`value`), 'gap' drops the values and 'out_of_range' writes a value "
+        "far outside anything recorded (or `value`)."
     )
     series_id: str
+    with_series: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_DATASET_SERIES,
+        description="More series that get the same fault at the same time, "
+        "under one label: a common-mode fault, such as every phase sagging.",
+    )
     start_at: datetime
-    end_at: datetime
+    end_at: datetime = Field(
+        description="The end of the hold; a gradual recovery follows it."
+    )
     size: float | None = Field(
         default=None,
-        description="For 'step' and 'drift', in the series' unit. Left out, "
-        "three standard deviations of the series.",
+        description="For step, drift, gain and spike, in the series' unit. "
+        "Left out, `sigmas` of the series' short-term noise.",
     )
+    sigmas: float | None = Field(
+        default=None,
+        description="The size in short-term noise of the series, when `size` "
+        "is left out; 3 if both are.",
+    )
+    onset_seconds: float | None = Field(
+        default=None,
+        ge=0,
+        description="How long a level fault takes to reach full size: 0 for "
+        "a step, the whole interval for a drift by default.",
+    )
+    recovery: FaultRecovery = Field(
+        default="sudden",
+        description="How a level fault leaves after end_at: at once, "
+        "gradually over `recovery_seconds`, or never, to the end of the copy.",
+    )
+    recovery_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description="For a gradual recovery; left out, as long as the onset, "
+        "or the interval when the onset is sudden.",
+    )
+    noise_factor: float | None = Field(
+        default=None,
+        gt=1,
+        description="For 'noise': how many times the noise grows; 3 if left out.",
+    )
+    value: float | None = Field(
+        default=None,
+        description="For 'freeze', the value it is stuck at, such as 0; for "
+        "'out_of_range', the value written.",
+    )
+    seed: int = Field(default=0, ge=0, description="For 'noise': its draws.")
 
     @model_validator(mode="after")
     def interval(self):
@@ -192,8 +263,30 @@ class Fault(DojoModel):
         _aware(self.end_at, "end_at")
         if self.end_at <= self.start_at:
             raise ValueError("end_at must be after start_at")
-        if self.size is not None and self.kind not in ("step", "drift"):
+        if (self.size is not None or self.sigmas is not None) and (
+            self.kind not in SIZED_KINDS
+        ):
             raise ValueError(f"A {self.kind} takes no size")
+        shaped = (
+            self.onset_seconds is not None
+            or self.recovery != "sudden"
+            or self.recovery_seconds is not None
+        )
+        if shaped and self.kind not in SHAPED_KINDS:
+            raise ValueError(f"A {self.kind} has no onset or recovery")
+        if (
+            self.onset_seconds is not None
+            and self.onset_seconds > (self.end_at - self.start_at).total_seconds()
+        ):
+            raise ValueError("onset_seconds must fit between start_at and end_at")
+        if self.noise_factor is not None and self.kind != "noise":
+            raise ValueError("Only a noise fault takes noise_factor")
+        if self.value is not None and self.kind not in ("freeze", "out_of_range"):
+            raise ValueError(f"A {self.kind} takes no value")
+        if self.series_id in self.with_series or len(set(self.with_series)) != len(
+            self.with_series
+        ):
+            raise ValueError("Name each series of a fault once")
         return self
 
 
@@ -202,7 +295,17 @@ class DatasetWithFaults(DojoModel):
 
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
-    faults: list[Fault] = Field(min_length=1, max_length=MAX_FAULTS)
+    faults: list[Fault] = Field(default_factory=list, max_length=MAX_FAULTS)
+    end_at: datetime | None = Field(
+        default=None,
+        description="Drop the values after this time from the copy, so it "
+        "ends a while after its faults.",
+    )
+
+    @model_validator(mode="after")
+    def ending(self):
+        _aware(self.end_at, "end_at")
+        return self
 
 
 class BenchmarkCollectionView(DojoModel):
@@ -870,6 +973,12 @@ class LabelOutcome(DojoModel):
     delay_seconds: float | None = Field(
         description="From the start of the label to the first alarm inside it."
     )
+    results: int = Field(default=0, description="Scored results inside the label.")
+    chance: float | None = Field(
+        default=None,
+        description="How likely the run's alarms outside labels, scattered at "
+        "random, would hit the label: 1 - (1 - alarm_share) ^ results.",
+    )
 
 
 class ScoreMetrics(DojoModel):
@@ -1018,6 +1127,23 @@ class RunMetrics(DojoModel):
         description="false_alarms per 24 hours of evaluated time; null when "
         "no time outside the labels was scored."
     )
+    alarm_share: float | None = Field(
+        default=None,
+        description="Share of scored results outside every label that "
+        "alarmed: time in alarm, which an alarm that never stops shows as 1 "
+        "where false_alarms shows 1 onset.",
+    )
+    chance_detections: float | None = Field(
+        default=None,
+        description="Scored labels an alarm this frequent would hit by chance.",
+    )
+    adjusted_detection_rate: float | None = Field(
+        default=None,
+        description="Detections beyond chance: (labels_detected - "
+        "chance_detections) / (labels_scored - chance_detections). 0 for "
+        "chance and for an alarm that never stops, 1 for every label; null "
+        "when chance alone would detect them all.",
+    )
     scores: ScoreMetrics | None = Field(
         default=None,
         description="Threshold-free metrics of the scores; null when the run "
@@ -1139,6 +1265,13 @@ class FaultSuiteCreate(DojoModel):
     Recorded history rarely has labels. Copies with known faults let designs
     be tested on the real background of a setup: the same ``seed`` and
     settings always write the same faults.
+
+    With ``protocol`` the suite follows the fault-injection protocol instead:
+    one fault per copy from a fixed grid of shapes, sizes in short-term noise
+    and lengths in observations, plus one clean copy without faults, so a
+    study reports a detection profile per fault type against a false-alarm
+    budget. ``copies``, ``faults_per_copy``, ``kinds`` and ``clean_share``
+    are then not used.
     """
 
     dataset_id: str = Field(
@@ -1146,10 +1279,35 @@ class FaultSuiteCreate(DojoModel):
     )
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
+    protocol: FaultProtocol | None = Field(
+        default=None,
+        description="'screening-v1' (48 faulted copies, for every proposal) or "
+        "'full-v1' (about 80, for studies); left out, faults are drawn freely.",
+    )
+    purpose: FaultPurpose = Field(
+        default="practice",
+        description="With a protocol: 'practice' to tune on, with your own "
+        "seed; 'test' to report on, with a seed the server draws and fault "
+        "places kept from keys until a member reviews the suite.",
+    )
+    warmup_values: int | None = Field(
+        default=None,
+        ge=1,
+        description="With a protocol: observations the design needs before it "
+        "scores (its training plus calibration window). Left out, 30% of the "
+        "values.",
+    )
+    window_values: int | None = Field(
+        default=None,
+        ge=4,
+        description="With a protocol: the design's calibration window in "
+        "observations, which sets the fault lengths and margins. Left out, 5% "
+        "of the values.",
+    )
     copies: int = Field(default=8, ge=1, le=MAX_FAULT_COPIES)
     faults_per_copy: int = Field(default=2, ge=1, le=5)
     kinds: list[FaultKind] = Field(
-        default_factory=lambda: list(FAULT_KINDS),
+        default_factory=lambda: list(FAULT_KINDS[:2] + FAULT_KINDS[5:7]),
         min_length=1,
         description="The kinds to draw from.",
     )
@@ -1165,13 +1323,19 @@ class FaultSuiteCreate(DojoModel):
         "faults, for a design's warm-up.",
     )
     seed: int = Field(
-        default=0, ge=0, description="The same seed writes the same faults."
+        default=0,
+        ge=0,
+        lt=TEST_SEEDS,
+        description="The same seed writes the same faults. A test suite "
+        "ignores it and draws its own.",
     )
 
     @model_validator(mode="after")
     def distinct(self):
         if len(set(self.kinds)) != len(self.kinds):
             raise ValueError("Each kind may appear only once")
+        if self.purpose == "test" and self.protocol is None:
+            raise ValueError("A test suite follows a protocol")
         return self
 
 
@@ -1328,6 +1492,106 @@ class StudyItem(DojoModel):
     )
 
 
+class ProtocolLevel(DojoModel):
+    """The faults of one family at one size."""
+
+    level: float | None = Field(
+        description="The size in short-term noise, the noise factor, or null "
+        "for a family without sizes."
+    )
+    faults: int
+    scored: int = Field(
+        description="Faults the design scored, leaving out confounded ones."
+    )
+    caught: int
+    confounded: int = Field(
+        description="Faults over a span where the clean copy alarmed too: "
+        "something in the history, not the fault, may have caused the alarm."
+    )
+    rate: float | None
+    low: float | None = Field(description="Lower end of the 95% Wilson interval.")
+    high: float | None = Field(description="Upper end of the 95% Wilson interval.")
+    simple_rules: int = Field(description="Faults the simple rules catch.")
+
+
+class ProtocolFamily(DojoModel):
+    """How a design does on one family of planted faults."""
+
+    family: str
+    title: str
+    measure: Literal["sigmas", "factor", "values", "none"]
+    sanity: bool = Field(
+        description="Impossible values every design should catch; a miss is "
+        "a bug in the design."
+    )
+    faults: int
+    scored: int
+    caught: int
+    chance_detections: float | None
+    adjusted_detection_rate: float | None = Field(
+        description="Catches beyond chance at the clean copy's alarm share: 0 "
+        "for chance or an alarm that never stops, 1 for every fault."
+    )
+    half: float | None = Field(
+        description="The size at which half the faults are caught, from a "
+        "monotone fit along log size; null if never."
+    )
+    ninety: float | None = Field(
+        description="The size at which nine in ten are caught; null if never."
+    )
+    median_delay_seconds: float | None
+    median_sigmas_at_detection: float | None = Field(
+        description="For faults that grow: how big they had grown, in "
+        "short-term noise, when first caught."
+    )
+    simple_rules_caught: int
+    levels: list[ProtocolLevel]
+
+
+class ProtocolReport(DojoModel):
+    """A study on a protocol suite: the false-alarm budget on the clean copy,
+    then a detection profile per fault family, catches counted only where the
+    clean copy stayed quiet."""
+
+    protocol: str
+    version: int
+    purpose: Literal["practice", "test"]
+    seed: int | None = Field(
+        description="Hidden from keys on a test suite until a member reviews it."
+    )
+    warmup_values: int | None
+    window_values: int | None
+    clean_run_id: str | None
+    false_alarms_per_day: float | None = Field(
+        description="Alarm onsets per day on the clean copy."
+    )
+    alarm_share: float | None = Field(
+        description="Share of the clean copy's scored results in alarm."
+    )
+    budget_per_day: float
+    budget_share: float
+    within_budget: bool | None = Field(
+        description="Both clean-copy numbers within the budget; null until "
+        "the clean run is scored. Catches of a design over budget say little."
+    )
+    adjusted_detection_rate: float | None = Field(
+        description="Mean of the families' chance-adjusted catch rates, each "
+        "family weighted equally, sanity faults left out."
+    )
+    faults: int
+    caught: int
+    simple_rules_caught: int = Field(
+        description="Faults that trivial rules catch: a value 4σ from the "
+        "recent median, 10 identical values, or a long silence."
+    )
+    sanity_missed: int
+    untestable: list[str] = Field(
+        description="Grid cells that did not fit the history, by cell id."
+    )
+    families: list[ProtocolFamily]
+    headline: str = Field(description="One sentence for a proposal.")
+
+
 class StudyView(StudySummary):
     definition: dict[str, Any] = Field(description="The compiled design.")
     bindings: dict[str, str] = Field(
@@ -1335,6 +1599,11 @@ class StudyView(StudySummary):
     )
     alignment: RunAlignment
     items: list[StudyItem] = Field(max_length=MAX_SUITE_DATASETS)
+    protocol: ProtocolReport | None = Field(
+        default=None,
+        description="On a protocol suite: the detection profile, once the "
+        "clean run and the faulted runs are scored.",
+    )
 
 
 StudyMetric = Literal["vus_pr", "pr_auc", "auroc", "detection_rate"]

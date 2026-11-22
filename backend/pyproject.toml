@@ -108,6 +108,8 @@ select = [
     "UP",    # Python upgrade and deprecated typing syntax
 ]
 ignore = []
+# Fault notes and reports name sizes in short-term noise (σ) and factors (×).
+allowed-confusables = ["σ", "×"]
 fixable = ["ALL"]
 unfixable = []
 

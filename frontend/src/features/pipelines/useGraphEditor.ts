@@ -6,7 +6,7 @@ import type {
   PipelineValidation,
 } from "./contracts";
 import { arrangeGraph } from "./layout";
-import { addComponent, type GraphDocument } from "./model";
+import { addComponent, lastNode, type GraphDocument } from "./model";
 import type { HistoryMode, PlacementRequest } from "./types";
 
 type GraphHistory = { undo: GraphDocument[]; redo: GraphDocument[] };
@@ -102,7 +102,7 @@ export function useGraphEditor({
     // A palette click places the card beside the selected component; connections stay explicit.
     const placed = addComponent(current.current, component, position, present);
     if (placed === current.current) return;
-    place({ document: placed, id: placed.definition.nodes[placed.definition.nodes.length - 1]!.id });
+    place({ document: placed, id: lastNode(placed) });
   };
   /** Take a change that added steps, select the first of them and bring it into view. */
   const place = ({ document: next, id }: { document: GraphDocument; id: string }) => {

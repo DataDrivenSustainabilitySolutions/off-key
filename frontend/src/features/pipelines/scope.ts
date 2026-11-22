@@ -197,6 +197,9 @@ export function parseLags(text: string, limit = 3600, most = 24): { lags: number
   return { lags: [...lags].sort((a, b) => a - b) };
 }
 
+/** "1 step", "2 steps". */
+export const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
 /** "a", "a and b", "a, b and c", or the first few and a count of the rest. */
 export const listed = (names: string[], limit = 3) =>
   names.length <= limit

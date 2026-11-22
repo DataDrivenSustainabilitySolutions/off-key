@@ -3,7 +3,7 @@ import {
   addBlocker, addComponent, collides, connectionIssue, connectNodes, lastNode, PLACEMENT_GAP, setNodeLabel, snap, stepTitle,
   type GraphDocument,
 } from "./model";
-import { combinedName, formulaName } from "./scope";
+import { combinedName, formulaName, plural } from "./scope";
 import { NODE_SIZE, nodePosition, switchedOff } from "./semantics";
 import { switchOff } from "./stepSwitch";
 
@@ -197,6 +197,6 @@ export function holdSteps(fragment: StepFragment) {
 /** "Pasted 2 steps." with what was left out and why. */
 export function pastedNote(verb: string, result: Pick<Pasted, "ids" | "skipped">) {
   const count = result.ids.length;
-  const done = count ? `${verb} ${count} step${count === 1 ? "" : "s"}.` : "Nothing was added.";
+  const done = count ? `${verb} ${plural(count, "step")}.` : "Nothing was added.";
   return result.skipped.length ? `${done} Left out: ${result.skipped.join(" ")}` : done;
 }

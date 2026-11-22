@@ -13,6 +13,7 @@ import { PipelineFeatures } from "./PipelineFeatures";
 import { PipelineInspector } from "./PipelineInspector";
 import { PipelineToolbox } from "./PipelineToolbox";
 import { openSummary, showIssues } from "./issues";
+import { plural } from "./scope";
 import { startupSentence, startupSummary, type Startup } from "./startup";
 import type { CoveredEdges } from "./viewport";
 import { useUndoShortcuts } from "./useGraphEditor";
@@ -113,7 +114,8 @@ export function PipelineWorkbench({
   if (validation && validation !== lastValidation) setLastValidation(validation);
   const failed = !validation && !!validationError;
   const checking = !validation && !failed && !!lastValidation;
-  const status = failed ? undefined : validation ?? lastValidation;
+  const latest = validation ?? lastValidation;
+  const status = failed ? undefined : latest;
   const estimate = startup && startupSummary(startup);
   // Errors block applying the design and warnings do not. Steps still to choose or
   // connect block it too, and read as the work that is left rather than as faults.
@@ -123,7 +125,7 @@ export function PipelineWorkbench({
   const open = shown.filter((issue) => issue.tone === "open");
   const warnings = shown.filter((issue) => issue.tone === "warning").length;
   const issueCount = status && `${errors}${status.issues_truncated ? "+" : ""}`;
-  const warningCount = warnings ? `${warnings} ${warnings === 1 ? "warning" : "warnings"}` : "";
+  const warningCount = warnings ? plural(warnings, "warning") : "";
   const openText = open.length ? openSummary(open) : "";
   const statusLabel = failed ? "Design not checked" : errors
     ? `${issueCount} design ${errors === 1 ? "issue" : "issues"}`
@@ -186,6 +188,7 @@ export function PipelineWorkbench({
     if (panel && panel !== shownPanel.current) heading.current?.focus({ preventScroll: true });
     shownPanel.current = panel;
   }, [panel]);
+  const toggle = (which: Exclude<InspectorPanel, null>) => panel === which ? close() : setPanel(which);
   const close = () => {
     setPanel(null);
     (panel === "brief" ? briefButton : panel === "service" ? serviceButton : panel === "test" ? testButton : componentButton).current?.focus();
@@ -238,22 +241,22 @@ export function PipelineWorkbench({
     if (filled.notice) toast(filled.notice, { id: "pipeline-detector" });
     return true;
   };
-  const add: Props["onAdd"] = (componentId, position) => {
+  // A new step is placed and wired on the graph, with its settings open.
+  const openAdded = () => {
     addedFromMenu.current = adding;
     setMenu(false);
     setPanel("component");
-    // A new step is placed and wired on the graph.
     setView("graph");
+  };
+  const add: Props["onAdd"] = (componentId, position) => {
+    openAdded();
     // A detector picked from the menu goes to its place; one dropped on the canvas stays where it was dropped.
     const component = position ? undefined : catalog.components.find((item) => item.id === componentId);
     if (component?.kind === "detector" && placeDetector(component)) return;
     props.onAdd(componentId, position);
   };
   const place = (placed: { document: GraphDocument; id: string }) => {
-    addedFromMenu.current = adding;
-    setMenu(false);
-    setPanel("component");
-    setView("graph");
+    openAdded();
     if (onPlace) return onPlace(placed);
     props.onChange(placed.document);
     props.onSelect(placed.id);
@@ -349,16 +352,16 @@ export function PipelineWorkbench({
       </Popover.Root>}
       {brief && <button type="button" ref={briefButton} className="pl-brief-button"
         aria-expanded={panel === "brief"} aria-controls={panelId}
-        onClick={() => panel === "brief" ? close() : setPanel("brief")}>{brief.label}</button>}
+        onClick={() => toggle("brief")}>{brief.label}</button>}
       {settings && <button type="button" ref={serviceButton} aria-label="Service settings"
         aria-expanded={panel === "service"} aria-controls={panelId}
-        onClick={() => panel === "service" ? close() : setPanel("service")}>Service</button>}
+        onClick={() => toggle("service")}>Service</button>}
       <button type="button" ref={componentButton} aria-label="Step settings"
         aria-expanded={panel === "component"} aria-controls={panelId}
-        onClick={() => panel === "component" ? close() : setPanel("component")}>Step</button>
+        onClick={() => toggle("component")}>Step</button>
       {test && <button type="button" ref={testButton} className="pl-test-button"
         aria-expanded={panel === "test"} aria-controls={panelId}
-        onClick={() => panel === "test" ? close() : setPanel("test")}>{testLabel ?? "Test"}</button>}
+        onClick={() => toggle("test")}>{testLabel ?? "Test"}</button>}
     </div>
   </div>;
   // On a phone the brief and the design take turns on the screen, so two tabs say which one shows.
@@ -370,11 +373,11 @@ export function PipelineWorkbench({
       onClick={() => { if (panel === "brief") setPanel(null); }}>Design</button>
   </div>;
   const canvas = view === "features"
-    ? <PipelineFeatures document={props.document} components={catalog.components} report={validation ?? lastValidation}
+    ? <PipelineFeatures document={props.document} components={catalog.components} report={latest}
       stale={checking || failed} selected={props.selected} readOnly={props.readOnly} onSelect={select}
       onChange={(document) => props.onChange(document)} />
     : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
-      features={(validation ?? lastValidation)?.features} featuresStale={checking || failed}
+      features={latest?.features} featuresStale={checking || failed}
       selection={selection} onSelect={selectOnCanvas} onSelectionChange={choose} onAdd={add} insets={insets}
       onConfigure={select} onChooseDetector={chooseDetector}
       blocks={library.blocks} onSaveBlock={props.readOnly ? undefined : library.save} />;

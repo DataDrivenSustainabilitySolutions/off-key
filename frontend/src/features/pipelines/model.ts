@@ -24,6 +24,11 @@ import {
 
 export { PIPELINE_LIMITS };
 
+/** Why a design cannot take another step or connection. */
+export const NODE_LIMIT_REACHED = `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
+export const EDGE_LIMIT_REACHED = `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
+const DETECTOR_LIMIT_REACHED = `A design combines at most ${PIPELINE_LIMITS.detectors} detectors.`;
+
 /** Transforms and merges may repeat; a design combines up to four detectors through
  * Add another detector; every other kind appears once per design. */
 export const isMultiInstanceKind = (kind: string) => kind === "transform" || kind === "merge";
@@ -35,7 +40,7 @@ export const incomingEdges = (definition: PipelineDefinition, nodeId: string) =>
 /** The detectors in the order RADAR combines and reports them: by node id. */
 export const detectorIds = (definition: PipelineDefinition) =>
   definition.nodes.filter((node) => node.kind === "detector").map((node) => node.id)
-    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+    .sort();
 
 /** Nodes that take several inputs: a merge in order, the calibration step one per detector. */
 const takesSeveral = (definition: PipelineDefinition, nodeId: string) => {
@@ -192,10 +197,10 @@ export function addBlocker(
 ): string | undefined {
   if (component.unavailable) return component.unavailable;
   if (definition.nodes.length >= PIPELINE_LIMITS.nodes)
-    return `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
+    return NODE_LIMIT_REACHED;
   if (component.kind === "detector" && detectorIds(definition).length)
     return detectorIds(definition).length >= PIPELINE_LIMITS.detectors
-      ? `A design combines at most ${PIPELINE_LIMITS.detectors} detectors.`
+      ? DETECTOR_LIMIT_REACHED
       : "Add another detector from a detector's settings.";
   if (
     !isMultiInstanceKind(component.kind) &&
@@ -207,11 +212,11 @@ export function addBlocker(
 /** Why Add another detector is unavailable; undefined when it can add one. */
 export function detectorBlocker(definition: PipelineDefinition): string | undefined {
   if (detectorIds(definition).length >= PIPELINE_LIMITS.detectors)
-    return `A design combines at most ${PIPELINE_LIMITS.detectors} detectors.`;
+    return DETECTOR_LIMIT_REACHED;
   if (definition.nodes.length >= PIPELINE_LIMITS.nodes)
-    return `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
+    return NODE_LIMIT_REACHED;
   if (definition.edges.length + 2 > PIPELINE_LIMITS.edges)
-    return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
+    return EDGE_LIMIT_REACHED;
 }
 
 /** Another detector like this one: the same model and settings, reading the same
@@ -401,7 +406,7 @@ export function connectionIssue(
     return "This connection is already present.";
   const replaced = replace ? occupiedInput(definition, target) : undefined;
   if (definition.edges.length - (replaced ? 1 : 0) >= PIPELINE_LIMITS.edges)
-    return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
+    return EDGE_LIMIT_REACHED;
   const fromComponent = componentFor(from, components);
   const toComponent = componentFor(to, components);
   if (!fromComponent || !toComponent)
@@ -461,7 +466,7 @@ export function insertBlocker(
   if (blocker) return blocker;
   // The link is replaced by two, so the design needs room for one more.
   if (definition.edges.length >= PIPELINE_LIMITS.edges)
-    return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
+    return EDGE_LIMIT_REACHED;
   const from = definition.nodes.find((node) => node.id === link.source);
   const to = definition.nodes.find((node) => node.id === link.target);
   const fromComponent = componentFor(from, components);
@@ -519,7 +524,7 @@ export function insertOnEdge(
   if (!existing || insertBlocker(definition, link, component, components)) return;
   const room = roomOnLink(document, link);
   const added = addComponent({ definition, layout: room.layout }, component, room.position, undefined, settings, true);
-  const id = added.definition.nodes[added.definition.nodes.length - 1]!.id;
+  const id = lastNode(added);
   return {
     id,
     document: {

@@ -218,7 +218,6 @@ export function PipelineInspector({
   const nodeIssues = node && showIssues(document, catalog.components, validation?.issues
     .filter((issue) => issue.node_id === node.id
       && (isWarning(issue) || !hasParameterControl(component?.fields ?? [], issue.parameter_path))))
-    .filter((issue) => issue.node_id === node.id)
     .map((issue, index) => issue.tone === "warning"
       ? <p key={index} className="pl-warning" role="status">{issue.message}</p>
       : issue.tone === "open" ? <p key={index} className="pl-open" role="status">{issue.message}</p>

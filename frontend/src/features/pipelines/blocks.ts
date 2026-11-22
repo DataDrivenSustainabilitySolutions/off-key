@@ -4,8 +4,8 @@ import type { BlockStep, PipelineBlock, PipelineComponent, PipelineDefinition, P
 import { pipelinesApi } from "./api";
 import { counterpartBefore } from "./learning";
 import {
-  addBlocker, addComponent, connectNodes, connectionIssue, insertBlocker, insertOnEdge, nodeLabel, PIPELINE_LIMITS,
-  setNodeLabel, stepTitle, type GraphDocument, type Link,
+  addBlocker, addComponent, connectNodes, connectionIssue, EDGE_LIMIT_REACHED, insertBlocker, insertOnEdge, lastNode,
+  NODE_LIMIT_REACHED, nodeLabel, PIPELINE_LIMITS, setNodeLabel, stepTitle, type GraphDocument, type Link,
 } from "./model";
 
 /** The steps a block can hold from a step on: the step and those that follow it one
@@ -69,12 +69,11 @@ function roomBlocker(definition: PipelineDefinition, block: PipelineBlock, conne
   const room = PIPELINE_LIMITS.nodes - definition.nodes.length;
   if (block.steps.length > room) return room > 0
     ? `Has ${block.steps.length} steps, and the design has room for ${room}.`
-    : `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
+    : NODE_LIMIT_REACHED;
   if (definition.edges.length + connections > PIPELINE_LIMITS.edges)
-    return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
+    return EDGE_LIMIT_REACHED;
 }
 
-const lastNode = (document: GraphDocument) => document.definition.nodes[document.definition.nodes.length - 1]!.id;
 const titled = (document: GraphDocument, id: string, step: BlockStep) =>
   step.label ? setNodeLabel(document, id, step.label) : document;
 

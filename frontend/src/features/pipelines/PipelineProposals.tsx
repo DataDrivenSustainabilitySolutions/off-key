@@ -232,9 +232,9 @@ function ProposalItem({ proposal, selected, stated, onSelect }: {
       <span className="pl-desk-item-meta">
         {stated && <span className={`mn-state mn-state--${proposalTone(proposal)}`}>{proposalOutcome(proposal) || "Waiting"}</span>}
         {proposal.test
-          ? <>{proposal.test && <FaultDots test={proposal.test} />}
+          ? <><FaultDots test={proposal.test} />
             <span>{faults ? `${faults.caught} of ${faults.total} caught` : "No faults planted"}</span>
-            {proposal.test.alarm_share != null && <span>{proposal.test.alarm_share === 0 ? "never in alarm" : `${inAlarm(proposal.test.alarm_share)} in alarm`}</span>}</>
+            {proposal.test.alarm_share != null && <span>{`${inAlarm(proposal.test.alarm_share)} in alarm`}</span>}</>
           : <span>{proposal.test_run_id ? "Tested" : "Not tested"}</span>}
         {!!proposal.missing_readings?.length && <span className="pl-desk-item-warn"><TriangleAlert size={12} aria-hidden="true" />Readings gone</span>}
       </span>
@@ -360,7 +360,7 @@ export function PipelineProposalList({ onReview, onBack, onStarted, canDecide = 
     {error && <p role="alert" className="pl-error">{error}
       <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry</button>
     </p>}
-    {!items ? !error && <p className="mn-loading" role="status">Loading proposals…</p> : !items.length || !selected
+    {!items ? !error && <p className="mn-loading" role="status">Loading proposals…</p> : !selected
       ? <div className="mn-empty"><h2>{decided ? "No proposals yet" : "Nothing to decide"}</h2>
         <p>{decided ? "Proposals appear here when an agent or a member hands in a design."
           : "No proposal waits for a decision."}</p></div>

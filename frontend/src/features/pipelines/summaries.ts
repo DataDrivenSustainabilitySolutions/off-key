@@ -1,7 +1,7 @@
 import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
-import { detectorIds } from "./model";
+import { detectorIds, incomingEdges } from "./model";
 import { writtenNames } from "./formula";
 import {
   addedNames, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope, timeFeatures, lagsOf, lagText, lagUnit,
@@ -75,7 +75,6 @@ const STATISTICS: Record<string, string> = {
   zscore: "Z-score", robust_zscore: "Robust z-score", rank: "Rank", rms: "Root mean square",
   skewness: "Skewness", kurtosis: "Excess kurtosis",
 };
-const AGGREGATES: Record<string, string> = { ...STATISTICS, sum: "Sum" };
 const ACCUMULATIONS: Record<string, string> = { sum: "total", min: "minimum", max: "maximum", count: "count" };
 const RELATIONS: Record<string, string> = {
   correlation: "Correlation with", covariance: "Covariance with", slope: "Slope against", residual: "Residual against",
@@ -184,7 +183,7 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
     }
     case "prepare.aggregate": {
       const used = strings(value("apply_to"));
-      return `${AGGREGATES[String(value("function"))] ?? "Mean"} of ${used.length ? count(used.length, "feature") : "every feature"}`;
+      return `${STATISTICS[String(value("function"))] ?? "Mean"} of ${used.length ? count(used.length, "feature") : "every feature"}`;
     }
     case "prepare.formula": {
       const formula = written(value("expression"));
@@ -247,12 +246,11 @@ function settingsSummary(
       return features.length ? { chips: features.map((name) => labels.get(name) ?? name) } : { text: "No features chosen" };
     }
     case "features.rename": {
-      const renamed = params.mapping && typeof params.mapping === "object" && !Array.isArray(params.mapping)
-        ? Object.keys(params.mapping).length : 0;
+      const renamed = isRecord(params.mapping) ? Object.keys(params.mapping).length : 0;
       return { text: renamed ? `Renames ${count(renamed, "feature")}` : "No names changed" };
     }
     case "features.merge":
-      return { text: `${count(definition.edges.filter((edge) => edge.target === node.id).length, "input")}, in order` };
+      return { text: `${count(incomingEdges(definition, node.id).length, "input")}, in order` };
     case "static.min_max_scaler":
     case "adaptive.min_max_scaler": {
       const range = Array.isArray(params.feature_range) ? params.feature_range : [0, 1];

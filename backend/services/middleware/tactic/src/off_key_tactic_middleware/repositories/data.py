@@ -407,22 +407,7 @@ class AnomalyRepository:
                 AnomalyIdentity.service_id == anomaly.service_id,
             )
         )
-        anomaly_id = identity_result.scalar_one_or_none()
-        if anomaly_id is not None:
-            return str(anomaly_id)
-
-        # Backward-compatible fallback for environments where the
-        # anomaly_identity insert trigger has not been installed yet.
-        identity = AnomalyIdentity(
-            charger_id=anomaly.charger_id,
-            timestamp=anomaly.timestamp,
-            telemetry_type=anomaly.telemetry_type,
-            service_id=anomaly.service_id,
-        )
-        self._session.add(identity)
-        await self._session.flush()
-        await self._session.refresh(identity)
-        return str(identity.anomaly_id)
+        return str(identity_result.scalar_one())
 
     async def get_by_anomaly_id(
         self,

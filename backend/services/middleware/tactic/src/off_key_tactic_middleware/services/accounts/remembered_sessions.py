@@ -11,6 +11,7 @@ from off_key_core.auth.tokens import (
 from off_key_core.config.logs import log_security_event
 from off_key_core.db.models import RememberedSession, RevokedAccessToken, User
 from off_key_core.schemas.sessions import session_lifetime_seconds
+from off_key_core.utils.timestamps import as_utc
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,10 +25,6 @@ ROTATION_GRACE = timedelta(seconds=30)
 # stays usable for at most about a day before its reuse is detected. Rotating
 # less often than every refresh keeps restored browser profiles working.
 ROTATION_INTERVAL = timedelta(days=1)
-
-
-def _utc(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 class RememberedSessionService:
@@ -129,7 +126,7 @@ class RememberedSessionService:
             or user.session_version != remembered.session_version
         ):
             raise AuthenticationError("This remembered session is no longer valid")
-        expires_at = _utc(remembered.expires_at)
+        expires_at = as_utc(remembered.expires_at)
         identity = {
             "id": user.id,
             "email": user.email,
@@ -140,7 +137,7 @@ class RememberedSessionService:
             "persistent": remembered.persistent,
         }
         if remembered.replaced_at is not None:
-            if now - _utc(remembered.replaced_at) <= ROTATION_GRACE:
+            if now - as_utc(remembered.replaced_at) <= ROTATION_GRACE:
                 # A concurrent refresh already set the replacement cookie.
                 await self.session.commit()
                 return identity
@@ -154,7 +151,7 @@ class RememberedSessionService:
                 "remembered_session_reuse", user.email, {"member_id": user.id}
             )
             raise AuthenticationError("This remembered session is no longer valid")
-        if now - _utc(remembered.issued_at) < ROTATION_INTERVAL:
+        if now - as_utc(remembered.issued_at) < ROTATION_INTERVAL:
             await self.session.commit()
             return identity
         remembered.replaced_at = now

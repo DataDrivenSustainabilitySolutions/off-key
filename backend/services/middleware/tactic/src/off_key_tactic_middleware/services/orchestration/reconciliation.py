@@ -56,19 +56,19 @@ class _ServiceSnapshot:
             service.id,
             service.container_id,
             service.container_name,
-            getattr(service, "desired_state", "running"),
-            getattr(service, "lifecycle_version", 1),
+            service.desired_state,
+            service.lifecycle_version,
             service.stop_requested_at,
-            getattr(service, "config_fingerprint", None),
+            service.config_fingerprint,
             service.operational_updated_at,
-            getattr(service, "operational_stage", None),
+            service.operational_stage,
         )
 
     def matches(self, service: MonitoringService) -> bool:
         return (
             service.container_id == self.container_id
-            and getattr(service, "lifecycle_version", 1) == self.lifecycle_version
-            and getattr(service, "desired_state", "running") == self.desired_state
+            and service.lifecycle_version == self.lifecycle_version
+            and service.desired_state == self.desired_state
             and service.stop_requested_at == self.stop_requested_at
         )
 
@@ -370,7 +370,7 @@ class RadarStatusReconciliationService:
     async def _apply_stopped(
         self, session: AsyncSession, service: MonitoringService
     ) -> None:
-        if getattr(service, "desired_state", None) == "deleted":
+        if service.desired_state == "deleted":
             await purge_service_rows(session, [service.id])
         elif service.stop_requested_at is not None or service.status:
             complete_stop(service)

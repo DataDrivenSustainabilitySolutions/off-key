@@ -100,6 +100,8 @@ def _db_row(**overrides):
         **{
             "stop_requested_at": None,
             "desired_state": "running",
+            "lifecycle_version": 1,
+            "config_fingerprint": None,
             "id": "svc-1",
             "container_id": "ctr-1",
             "container_name": "radar-static",

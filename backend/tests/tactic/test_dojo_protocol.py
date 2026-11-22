@@ -266,3 +266,21 @@ def test_simple_rules_see_large_jumps_repeats_and_silences():
     assert protocol.simple_rules(stuck, 40, 52, None, 20)
     silent = [(t, v) for t, v in calm if not 40 <= t < 50]
     assert protocol.simple_rules(silent, 40, 50, None, 20)
+
+
+@pytest.mark.asyncio
+async def test_the_sizes_of_a_family_share_direction_and_noise(sessions):
+    creator, view = await history(sessions)
+    suite = await screening(sessions, view, creator, seed=5)
+    group = {cell.id: cell.group for cell in protocol.cells("screening-v1", 1)}
+    signs: dict = {}
+    seeds: dict = {}
+    for item in (await sources(sessions, suite))[1:]:
+        (fault,) = item["faults"]
+        key = group[item["protocol"]["cell"]]
+        if fault["sigmas"] is not None:
+            signs.setdefault(key, set()).add(math.copysign(1, fault["sigmas"]))
+        if fault["kind"] == "noise":
+            seeds.setdefault(key, set()).add(fault["seed"])
+    assert signs and all(len(found) == 1 for found in signs.values())
+    assert seeds and all(len(found) == 1 for found in seeds.values())

@@ -313,7 +313,9 @@ def place(
     draw = random.Random(seed)
     order = list(timelines)
     grid = cells(protocol, len(order))
-    places: dict[tuple[str, str, int], tuple[str, int] | None] = {}
+    # One place, sign and noise seed per group: the sizes of a family differ
+    # only in size, so a rate that rises with size is the size's doing.
+    places: dict[tuple[str, str, int], tuple[str, int, float, int] | None] = {}
     stratum = 0
     placements: list[Placement] = []
     untestable: list[str] = []
@@ -337,14 +339,21 @@ def place(
                 low = stratum * size // STRATA
                 high = max(low + 1, (stratum + 1) * size // STRATA)
                 stratum = (stratum + 1) % STRATA
-                places[cell.group] = (series_id, candidates[draw.randrange(low, high)])
+                places[cell.group] = (
+                    series_id,
+                    candidates[draw.randrange(low, high)],
+                    draw.choice((-1.0, 1.0)),
+                    draw.randrange(1 << 30),
+                )
         found = places[cell.group]
         if found is None:
             untestable.append(cell.id)
             continue
-        series_id, start = found
+        series_id, start, sign, noise_seed = found
         placements.append(
-            _placement(cell, timelines[series_id], order, start, window, draw)
+            _placement(
+                cell, timelines[series_id], order, start, window, sign, noise_seed
+            )
         )
     return placements, sorted(set(untestable))
 
@@ -355,7 +364,8 @@ def _placement(
     order: Sequence[str],
     start: int,
     window: int,
-    draw: random.Random,
+    sign: float,
+    noise_seed: int,
 ) -> Placement:
     family = cell.family
     times = timeline.times
@@ -370,10 +380,10 @@ def _placement(
         end_at = start_at + timedelta(microseconds=1)
     fields: dict = {}
     if family.measure == "sigmas":
-        fields["sigmas"] = (cell.level or 1.0) * draw.choice((-1.0, 1.0))
+        fields["sigmas"] = (cell.level or 1.0) * sign
     if family.kind == "noise":
         fields["noise_factor"] = cell.level
-        fields["seed"] = draw.randrange(1 << 30)
+        fields["seed"] = noise_seed
     if family.stuck is not None:
         fields["value"] = family.stuck
     if family.kind in ("step", "drift", "gain"):
@@ -596,10 +606,15 @@ def _family(items: Sequence[Planted], share: float | None) -> ProtocolFamily:
         and not item.confounded
     ]
     caught = sum(1 for item in scored if _caught(item))
-    chance = sum(
-        item.outcome.chance or 0.0
-        for item in scored
-        if item.outcome is not None and share is not None
+    # What alarming as often as the clean copy would catch by chance alone.
+    chance = (
+        sum(
+            1 - (1 - share) ** item.outcome.results
+            for item in scored
+            if item.outcome is not None
+        )
+        if share is not None
+        else 0.0
     )
     adjusted = None
     if share is not None and len(scored) - chance > 1e-9:

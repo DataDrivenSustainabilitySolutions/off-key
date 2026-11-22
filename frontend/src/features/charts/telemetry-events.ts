@@ -47,6 +47,22 @@ const getContextualSampleEdge = (
   return undefined;
 };
 
+const numberFormatters = new Map<string, Intl.NumberFormat>();
+
+/** A telemetry value with up to six decimals, one formatter per locale. */
+export const getNumberFormatter = (locale?: string): Intl.NumberFormat => {
+  const key = locale ?? "default";
+  let formatter = numberFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 6 });
+    numberFormatters.set(key, formatter);
+  }
+  return formatter;
+};
+
+const eventCount = (group: TelemetryEventGroup) =>
+  `${group.events.length} anomaly event${group.events.length === 1 ? "" : "s"}`;
+
 const eventTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
 export const formatTelemetryEventTime = (timeMs: number, timeZone: string, locale?: string): string => {
@@ -79,7 +95,7 @@ export const formatTelemetryEventTooltip = (
 ): string => {
   const formatTime = (time: number) => formatTelemetryEventTime(time, timeZone, locale);
   const lines = [
-    `${group.events.length} anomaly event${group.events.length === 1 ? "" : "s"}`,
+    eventCount(group),
     `Anomaly recorded at: ${formatTime(group.timeMs)}`,
   ];
   group.events.forEach(({ anomaly }) => {
@@ -90,10 +106,9 @@ export const formatTelemetryEventTooltip = (
     );
   });
   if (group.sample) {
-    const numberFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 6 });
     lines.push(
       `Nearest telemetry sample at: ${formatTime(group.sample.time)}`,
-      `Telemetry value: ${numberFormatter.format(group.sample.value)}${unit ? ` ${unit}` : ""}`,
+      `Telemetry value: ${getNumberFormatter(locale).format(group.sample.value)}${unit ? ` ${unit}` : ""}`,
       `Sample offset: ${formatEventSampleOffset(group.sample.time - group.timeMs)}`,
     );
     const sampleEdge = getContextualSampleEdge(group, telemetryValueExtent);
@@ -131,7 +146,7 @@ export const buildTelemetryEventMarkPoints = (
     const sampleEdge = getContextualSampleEdge(group, options.telemetryValueExtent);
     const edge = matched ? sampleEdge : "upper";
     return {
-      name: `${group.events.length} anomaly event${group.events.length === 1 ? "" : "s"}`,
+      name: eventCount(group),
       coord: [group.timeMs, group.sample?.value ?? 0],
       symbol: matched ? "circle" : "triangle",
       symbolSize: Math.max(style.radius * 2, 9),

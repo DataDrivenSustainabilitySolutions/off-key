@@ -1,4 +1,3 @@
-import { epochMilliseconds } from "@/lib/timestamps";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
@@ -6,6 +5,7 @@ import {
   DEFAULT_CHART_NAVIGATION,
   type ChartNavigationState,
 } from "./telemetry-chart";
+import { getTelemetryExtent } from "./telemetry-data";
 import type { TelemetryTypeData } from "@/types/charger";
 
 const CHART_LINK_PREFERENCE_KEY = "off-key:details:chart-navigation";
@@ -31,24 +31,6 @@ const writeChartLinkPreference = (linked: boolean): void => {
   }
 };
 
-const getTimelineExtent = (
-  telemetryData: TelemetryTypeData[],
-): readonly [number, number] | undefined => {
-  let startMs = Number.POSITIVE_INFINITY;
-  let endMs = Number.NEGATIVE_INFINITY;
-  telemetryData.forEach((series) => {
-    series.data.forEach((point) => {
-      const time = epochMilliseconds(point.timestamp);
-      if (!Number.isFinite(time)) return;
-      startMs = Math.min(startMs, time);
-      endMs = Math.max(endMs, time);
-    });
-  });
-
-  return Number.isFinite(startMs) && Number.isFinite(endMs)
-    ? [startMs, endMs]
-    : undefined;
-};
 
 const applyTimeRangeToExtent = (
   extent: readonly [number, number] | undefined,
@@ -89,7 +71,7 @@ export const useLinkedChartNavigation = (
   );
 
   const fullTimelineExtent = useMemo(
-    () => getTimelineExtent(telemetryData),
+    () => getTelemetryExtent(telemetryData),
     [telemetryData],
   );
   const linkedTimelineExtent = useMemo(

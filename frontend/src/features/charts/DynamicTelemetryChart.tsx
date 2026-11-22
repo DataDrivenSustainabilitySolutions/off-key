@@ -1,4 +1,3 @@
-import { epochMilliseconds } from "@/lib/timestamps";
 import React, {
   useCallback,
   useEffect,
@@ -27,7 +26,7 @@ import {
   filterAnomalies,
 } from "@/lib/anomaly-utils";
 import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
-import { normalizeTelemetry } from "./telemetry-data";
+import { getTelemetryExtent, normalizeTelemetry } from "./telemetry-data";
 import { getChartDomain } from "./telemetry-thresholds";
 import { useChartColors } from "./use-chart-colors";
 import { useDetectorPanes } from "./use-detector-panes";
@@ -68,12 +67,6 @@ const formatDisplayName = (value: string): string =>
 const formatOperationalStage = (stage: string): string =>
   stage.replace(/_/gu, " ");
 
-const getLatestFiniteTime = (telemetryData: TelemetryTypeData): number | undefined => {
-  const times = telemetryData.data
-    .map(({ timestamp }) => epochMilliseconds(timestamp))
-    .filter(Number.isFinite);
-  return times.length > 0 ? Math.max(...times) : undefined;
-};
 
 export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   telemetryData,
@@ -170,7 +163,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
   const applyRelativeRange = useCallback(
     (hours: number) => {
-      const maxTime = getLatestFiniteTime(telemetryData);
+      const maxTime = getTelemetryExtent([telemetryData])?.[1];
       if (maxTime === undefined) return;
       commitNavigationState({
         range: {
@@ -577,7 +570,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 Clear range
               </Button>
             </div>
-          ) : chartOption && chartModel ? (
+          ) : chartOption ? (
             <>
               <DetectorNotices controlCatalog={controlCatalog} selectedDetectorIds={selectedDetectorIds}
                 unavailableIds={unavailableIds} secondarySeries={chartModel.secondarySeries} className="mb-3 text-sm text-muted-foreground" />
@@ -607,10 +600,9 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 className={`${chartHeightClass} w-full min-w-0 touch-none`}
               />
               <TelemetryChartSummary model={chartModel} timeZone={timeZone} historical={historical} />
-              <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
             </>
           ) : null}
-          {isChartVisible && filteredData.length === 0 && (
+          {isChartVisible && (
             <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
           )}
         </CardContent>

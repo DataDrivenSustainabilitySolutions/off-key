@@ -1,5 +1,5 @@
-import type { TelemetryDataPoint } from "@/types/charger";
-import { epochMicroseconds } from "@/lib/timestamps";
+import type { TelemetryDataPoint, TelemetryTypeData } from "@/types/charger";
+import { epochMicroseconds, epochMilliseconds } from "@/lib/timestamps";
 
 export type TimeValue = [epochMilliseconds: number, value: number];
 
@@ -14,6 +14,23 @@ export const normalizeTelemetry = (points: readonly TelemetryDataPoint[]): TimeV
   return [...valuesByTime.entries()]
     .sort(([left], [right]) => left === right ? 0 : left < right ? -1 : 1)
     .map(([time, value]) => [Number(time) / 1000, value]);
+};
+
+/** The earliest and latest valid sample time across the series, or undefined without one. */
+export const getTelemetryExtent = (
+  telemetryData: readonly TelemetryTypeData[],
+): readonly [number, number] | undefined => {
+  let startMs = Number.POSITIVE_INFINITY;
+  let endMs = Number.NEGATIVE_INFINITY;
+  for (const series of telemetryData) {
+    for (const point of series.data) {
+      const time = epochMilliseconds(point.timestamp);
+      if (!Number.isFinite(time)) continue;
+      if (time < startMs) startMs = time;
+      if (time > endMs) endMs = time;
+    }
+  }
+  return Number.isFinite(startMs) ? [startMs, endMs] : undefined;
 };
 
 /** A pause this many times the usual spacing, such as one a Gate holds back, breaks a line. */

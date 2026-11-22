@@ -37,6 +37,7 @@ import type {
 import { buildSensorClaims } from "@/lib/monitoring-services";
 import { monitoringTargetId } from "@/domain/monitoring/serviceModel";
 import { useLinkedChartNavigation } from "@/features/charts/use-linked-chart-navigation";
+import { getTelemetryExtent } from "@/features/charts/telemetry-data";
 import {
   getMonitoringEvidenceCursor,
   mergeMonitoringChartEvidence,
@@ -63,20 +64,6 @@ const sameAnomalyWindow = (left: Alarm[], right: Alarm[]): boolean =>
 
 // A loop instead of Math.max(...all points): spreading every point of every
 // reading as arguments can exceed the engine's argument limit.
-const getLatestTelemetryTimestamp = (
-  telemetryData: TelemetryTypeData[]
-): number | undefined => {
-  let latest: number | undefined;
-  for (const telemetry of telemetryData) {
-    for (const point of telemetry.data) {
-      const timestamp = epochMilliseconds(point.timestamp);
-      if (Number.isFinite(timestamp) && (latest === undefined || timestamp > latest)) {
-        latest = timestamp;
-      }
-    }
-  }
-  return latest;
-};
 
 const LiveTelemetryIndicator: React.FC<{
   hasRecentTelemetry: boolean;
@@ -110,14 +97,13 @@ const LiveTelemetryIndicator: React.FC<{
 };
 
 type DetailsCursors = {
-  sourceKey: string;
   evidenceCursor?: MonitoringEvidenceCursor;
   evidenceLoaded: boolean;
   telemetryLoaded: boolean;
   telemetryCursors: Map<string, TelemetryCursor>;
 };
-const freshCursors = (sourceKey: string): DetailsCursors =>
-  ({ sourceKey, evidenceLoaded: false, telemetryLoaded: false, telemetryCursors: new Map() });
+const freshCursors = (): DetailsCursors =>
+  ({ evidenceLoaded: false, telemetryLoaded: false, telemetryCursors: new Map() });
 
 /** The readings of one device, or of one broker's readings without a device. */
 const Details: React.FC = () => {
@@ -150,10 +136,9 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
     snapshotRef.current = snapshot;
   }, [snapshot]);
 
-  // Cursors for the incremental reads; a different source starts over.
-  const cursorRef = useRef(freshCursors(sourceKey));
+  // Cursors for the incremental reads; a different source mounts afresh.
+  const cursorRef = useRef(freshCursors());
   const refresh = useCallback(async (signal: AbortSignal) => {
-    if (cursorRef.current.sourceKey !== sourceKey) cursorRef.current = freshCursors(sourceKey);
     const cursors = cursorRef.current;
     const first = !cursors.telemetryLoaded && !cursors.evidenceLoaded;
     if (first) setIsLoadingTelemetry(true);
@@ -196,6 +181,8 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
       ]);
 
     if (!signal.aborted) {
+      const logFailure = (event: string, message: string, error: unknown) =>
+        clientLogger.error({ event, message, error, context: { source: sourceKey } });
       if (telemetryResult.status === "fulfilled") {
         setTelemetryUnavailable(false);
         setAllTelemetryData((current) =>
@@ -209,12 +196,7 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
         });
       } else {
         setTelemetryUnavailable(true);
-        clientLogger.error({
-          event: "details.telemetry_load_failed",
-          message: "Error loading device readings",
-          error: telemetryResult.reason,
-          context: { source: sourceKey },
-        });
+        logFailure("details.telemetry_load_failed", "Error loading device readings", telemetryResult.reason);
       }
 
       if (anomaliesResult.status === "fulfilled") {
@@ -224,16 +206,11 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
             : anomaliesResult.value
         );
       } else {
-        clientLogger.error({
-          event: "details.anomalies_load_failed",
-          message: "Error loading device alarms",
-          error: anomaliesResult.reason,
-          context: { source: sourceKey },
-        });
+        logFailure("details.anomalies_load_failed", "Error loading device alarms", anomaliesResult.reason);
       }
 
       if (evidenceResult.status === "fulfilled") {
-        const incomingEvidence = evidenceResult.value ?? [];
+        const incomingEvidence = evidenceResult.value;
         setMonitoringEvidence((current) =>
           cursors.evidenceLoaded
             ? mergeMonitoringChartEvidence(current, incomingEvidence)
@@ -243,23 +220,13 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
         cursors.evidenceCursor =
           getMonitoringEvidenceCursor(incomingEvidence) ?? cursors.evidenceCursor;
       } else {
-        clientLogger.error({
-          event: "details.monitoring_evidence_load_failed",
-          message: "Error loading monitoring evidence",
-          error: evidenceResult.reason,
-          context: { source: sourceKey },
-        });
+        logFailure("details.monitoring_evidence_load_failed", "Error loading monitoring evidence", evidenceResult.reason);
       }
 
       if (servicesResult.status === "fulfilled") {
         setMonitoringServices(servicesResult.value ?? []);
       } else {
-        clientLogger.error({
-          event: "details.monitoring_services_load_failed",
-          message: "Error loading monitoring service status",
-          error: servicesResult.reason,
-          context: { source: sourceKey },
-        });
+        logFailure("details.monitoring_services_load_failed", "Error loading monitoring service status", servicesResult.reason);
       }
 
       setNow(Date.now());
@@ -271,12 +238,12 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
   const { reload } = usePollingLoop(refresh, { intervalMs: INTERVALS.DETAILS_UPDATE, overlap: "skip",
     pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
   const retry = () => {
-    cursorRef.current = freshCursors(sourceKey);
+    cursorRef.current = freshCursors();
     void reload();
   };
 
   const latestTelemetryTimestamp = useMemo(
-    () => getLatestTelemetryTimestamp(allTelemetryData),
+    () => getTelemetryExtent(allTelemetryData)?.[1],
     [allTelemetryData]
   );
   const latestTelemetryAgeMs =

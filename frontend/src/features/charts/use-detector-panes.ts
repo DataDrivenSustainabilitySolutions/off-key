@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { collectTelemetryChartDetectors } from "./telemetry-detectors";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
+import { isScoring } from "@/lib/monitoring-services";
 import { useDetectorSelection } from "./use-detector-selection";
 
 type Options = {
@@ -28,8 +29,7 @@ export function useDetectorPanes({ telemetryType, evidence, telemetryTimes, pend
     const time = getEvidenceTimeForSensor(item, telemetryType);
     return time === undefined ? latest : Math.max(latest ?? -Infinity, time);
   }, undefined), [evidence, telemetryType]);
-  const operational = Boolean(service?.active
-    && service.operational_status.stage === "operational" && !service.operational_status.is_stale);
+  const operational = !!service && isScoring(service);
   const pending = useMemo(() => operational && lastScoreTime !== undefined
     ? pendingCandidateTimes.filter((time) => time > lastScoreTime) : [],
   [operational, lastScoreTime, pendingCandidateTimes]);

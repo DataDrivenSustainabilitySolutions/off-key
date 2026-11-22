@@ -9,6 +9,7 @@ import { dojoApi } from "./api";
 import { datasetChartOption } from "./dojo-chart";
 import { useRunAlarms, useSeriesPoints } from "./hooks";
 import { MethodsPanel } from "./MethodsPanel";
+import { formatScore } from "./suites";
 import { formatDuration, formatInstant, formatPerDay, formatRate, runName } from "./model";
 
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -79,7 +80,6 @@ function bestOf(row: Row, runs: RunMetrics[]) {
   return values.filter(value => value === target).length === 1 ? target : undefined;
 }
 
-const formatScore = (value: number | null | undefined) => value == null ? "–" : value.toFixed(3);
 
 const OUTCOME = { detected: "Detected", missed: "Missed", unscored: "Not scored" } as const;
 

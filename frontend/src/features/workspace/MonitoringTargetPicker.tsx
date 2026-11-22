@@ -1,13 +1,12 @@
 import { useNow } from "@/hooks/use-now";
-import { useDeferredValue, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, Search } from "lucide-react";
 import { readingActivity } from "@/domain/system/readingActivity";
 import { useCatalogue } from "./catalogue-context";
+import { useLiveStatus } from "./use-live-status";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
-
-const subscribeNothing = () => () => {};
 
 export function MonitoringTargetPicker({ targets, value, disabled, onChange, receivingOnly = true }: { targets: MonitoringTarget[]; value?: string; disabled?: boolean; onChange: (id: string) => void; receivingOnly?: boolean }) {
   const { system, telemetry, previewStreamIds } = useCatalogue();
@@ -17,7 +16,7 @@ export function MonitoringTargetPicker({ targets, value, disabled, onChange, rec
   const deferred = useDeferredValue(query);
   const [focus, setFocus] = useState(-1);
   const scroll = useRef<HTMLDivElement>(null);
-  const liveStatus = useSyncExternalStore(open ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
+  const liveStatus = useLiveStatus(telemetry, open);
   const activity = useMemo(() => ({ telemetry, liveStreamIds: previewStreamIds, runtime: system.snapshot?.runtime }), [telemetry, previewStreamIds, system.snapshot?.runtime]);
   const searchRows = useMemo(() => targets.map(target => ({ target, search: `${target.label} ${target.inputs.map(input => input.stream.label).join(" ")}`.toLocaleLowerCase() })), [targets]);
   const filtered = useMemo(() => searchRows.filter(row => row.search.includes(deferred.toLocaleLowerCase())

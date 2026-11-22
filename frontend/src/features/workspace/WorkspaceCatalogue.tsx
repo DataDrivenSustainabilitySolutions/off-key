@@ -1,12 +1,11 @@
 import { useNow } from "@/hooks/use-now";
-import { useDeferredValue, useMemo, useSyncExternalStore, type Ref } from "react";
+import { useDeferredValue, useMemo, type Ref } from "react";
 import { onlineNavigationIndex } from "@/domain/system/onlineNavigation";
 import { useSettingsNavigation } from "@/lib/settings-navigation";
 import { CatalogueBrowser } from "./CatalogueBrowser";
 import { catalogueRoots, catalogueSearchRows, catalogueTreeRows } from "./catalogue-tree";
 import { useCatalogue } from "./catalogue-context";
-
-const subscribeNothing = () => () => {};
+import { useLiveStatus } from "./use-live-status";
 
 /** The catalogue category of the sidebar, bound to the shared catalogue state. */
 export function WorkspaceCatalogue({ onDismiss, searchRef }: { onDismiss?: () => void; searchRef?: Ref<HTMLInputElement> }) {
@@ -15,7 +14,7 @@ export function WorkspaceCatalogue({ onDismiss, searchRef }: { onDismiss?: () =>
   const settings = useSettingsNavigation();
   const onlineOnly = preferences.onlineOnly ?? false;
   const now = useNow(1000, onlineOnly);
-  const liveStatus = useSyncExternalStore(onlineOnly ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
+  const liveStatus = useLiveStatus(telemetry, onlineOnly);
   const activity = useMemo(() => ({ telemetry, liveStreamIds: previewStreamIds, runtime: system.snapshot?.runtime }), [telemetry, previewStreamIds, system.snapshot?.runtime]);
   const visibleIndex = useMemo(() => onlineOnly ? onlineNavigationIndex(index, activity, liveStatus, now) : index,
     [onlineOnly, index, activity, liveStatus, now]);

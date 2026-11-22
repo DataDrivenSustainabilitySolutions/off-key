@@ -1,22 +1,12 @@
 """Bounded, backwards-compatible JSON for issued forecast evidence."""
 
-import math
 from typing import Any
 
 from off_key_core.schemas.forecast import MAX_HORIZON
+from off_key_core.utils.numbers import finite_float
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
 MAX_ISSUED_POINTS = 64
-
-
-def _finite(value):
-    return (
-        float(value)
-        if isinstance(value, int | float)
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-        else None
-    )
 
 
 def _time(value):
@@ -39,7 +29,7 @@ def normalize_issued_forecast(value: Any, calibrated_lead: int | None) -> dict |
     ):
         return None
     origin_time = _time(value.get("origin_time"))
-    step = _finite(value.get("step_seconds"))
+    step = finite_float(value.get("step_seconds"))
     timed = (
         value.get("time_basis") == "estimated_cadence"
         and origin_time is not None
@@ -51,7 +41,7 @@ def normalize_issued_forecast(value: Any, calibrated_lead: int | None) -> dict |
     for point in value["points"][:MAX_ISSUED_POINTS]:
         if not isinstance(point, dict):
             continue
-        lead, expected = point.get("lead"), _finite(point.get("expected"))
+        lead, expected = point.get("lead"), finite_float(point.get("expected"))
         if (
             not isinstance(lead, int)
             or isinstance(lead, bool)
@@ -60,7 +50,10 @@ def normalize_issued_forecast(value: Any, calibrated_lead: int | None) -> dict |
         ):
             continue
         previous = lead
-        lower, upper = _finite(point.get("lower")), _finite(point.get("upper"))
+        lower, upper = (
+            finite_float(point.get("lower")),
+            finite_float(point.get("upper")),
+        )
         banded = (
             lead == calibrated_lead
             and lower is not None

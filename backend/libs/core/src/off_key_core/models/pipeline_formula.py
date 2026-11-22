@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .pipeline_formula_guards import assume
-from .pipeline_prepare import Bounds, PrepareFailure
+from .pipeline_prepare import Bounds, PrepareFailure, finite_result
 
 MAX_EXPRESSION_LENGTH = 512
 MAX_DEPTH = 32
@@ -449,21 +449,15 @@ Row = Mapping[str, float]
 Evaluate = Callable[[Row], Any]
 
 
-def _finite(value: float) -> float:
-    if not math.isfinite(value):
-        raise PrepareFailure("non_finite", "The result is not a finite number")
-    return value
-
-
 def _divide(dividend: float, divisor: float) -> float:
     if divisor == 0:
         raise PrepareFailure("out_of_domain", "Division by 0")
-    return _finite(dividend / divisor)
+    return finite_result(dividend / divisor)
 
 
 def _power(base: float, exponent: float) -> float:
     try:
-        return _finite(math.pow(base, exponent))
+        return finite_result(math.pow(base, exponent))
     except OverflowError:
         raise PrepareFailure(
             "non_finite", "The result is not a finite number"
@@ -531,7 +525,7 @@ def _mod(value: float, divisor: float) -> float:
 
 def _sum(values: list[float]) -> float:
     try:
-        return _finite(math.fsum(values))
+        return finite_result(math.fsum(values))
     except OverflowError:
         raise PrepareFailure(
             "non_finite", "The result is not a finite number"
@@ -543,13 +537,13 @@ def _mean(values: list[float]) -> float:
 
 
 def _hypot(values: list[float]) -> float:
-    return _finite(math.hypot(*values))
+    return finite_result(math.hypot(*values))
 
 
 _ARITHMETIC: dict[str, Callable[[float, float], float]] = {
-    "+": lambda left, right: _finite(left + right),
-    "-": lambda left, right: _finite(left - right),
-    "*": lambda left, right: _finite(left * right),
+    "+": lambda left, right: finite_result(left + right),
+    "-": lambda left, right: finite_result(left - right),
+    "*": lambda left, right: finite_result(left * right),
     "/": _divide,
     "^": _power,
 }

@@ -42,7 +42,13 @@ from .pipeline_formula import (
     interval,
     parse,
 )
-from .pipeline_prepare import PREPARE_MODELS, Bounds, PrepareFailure, reads_time
+from .pipeline_prepare import (
+    PREPARE_MODELS,
+    Bounds,
+    PrepareFailure,
+    finite_result,
+    reads_time,
+)
 from .pipeline_scope import MAX_FEATURE_NAME_LENGTH, ScopeError, adds, step_scope
 from .pipeline_time import Clock, TimeFeatures, time_columns
 
@@ -309,12 +315,6 @@ def calculated_names(params: Mapping[str, Any]) -> list[str]:
     return [item.name for item in _assignments(params["formulas"])]
 
 
-def _finite(value: float) -> float:
-    if not math.isfinite(value):
-        raise PrepareFailure("non_finite", "The result is not a finite number")
-    return value
-
-
 def _combined(row: Row, removed: Sequence[str], name: str, value: float):
     """Kept features in their order, then the computed one."""
     gone = set(removed)
@@ -327,19 +327,19 @@ def _aggregate(function: str, values: list[float]) -> float:
     try:
         match function:
             case "mean":
-                return _finite(math.fsum(values) / len(values))
+                return finite_result(math.fsum(values) / len(values))
             case "sum":
-                return _finite(math.fsum(values))
+                return finite_result(math.fsum(values))
             case "min":
                 return min(values)
             case "max":
                 return max(values)
             case "range":
-                return _finite(max(values) - min(values))
+                return finite_result(max(values) - min(values))
         mean = math.fsum(values) / len(values)
         deviations = [value - mean for value in values]
         spread = math.sumprod(deviations, deviations) / (len(values) - 1)
-        return _finite(math.sqrt(spread))
+        return finite_result(math.sqrt(spread))
     except OverflowError:
         raise PrepareFailure(
             "non_finite", "The result is not a finite number"
@@ -424,7 +424,7 @@ class NamedValue:
     evaluate: Callable[[Row], Any]
 
     def apply(self, row: Row) -> dict[str, float]:
-        return {**row, self.name: _finite(float(self.evaluate(row)))}
+        return {**row, self.name: finite_result(float(self.evaluate(row)))}
 
 
 @dataclass(frozen=True)
@@ -437,7 +437,7 @@ class Calculation:
         output = dict(row)
         for name, evaluate in self.steps:
             try:
-                output[name] = _finite(float(evaluate(output)))
+                output[name] = finite_result(float(evaluate(output)))
             except PrepareFailure as failure:
                 raise PrepareFailure(failure.reason, f"{name}: {failure}") from None
         return output

@@ -1,11 +1,12 @@
 import { useNow } from "@/hooks/use-now";
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRight } from "lucide-react";
 import { SourceIcon } from "@/components/source-icons/SourceIcon";
 import type { ExplorerNode } from "@/domain/system/navigationIndex";
 import { isReadingLeaf, readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
 import type { CatalogueRow } from "./catalogue-tree";
+import { useLiveStatus } from "./use-live-status";
 
 export type ListPosition = { offset: number };
 type Props = {
@@ -25,8 +26,6 @@ type Props = {
 
 const TREE_ROW = 32;
 const SEARCH_ROW = 48;
-const subscribeNothing = () => () => {};
-const noStatus = () => undefined;
 
 /**
  * The sidebar's catalogue rows, virtualized for large catalogues. Rows are a
@@ -36,7 +35,7 @@ const noStatus = () => undefined;
 export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onToggle, activity, emptyMessage = "No items here.", emptyAction }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
   const activityId = useId();
-  const liveStatus = useSyncExternalStore(activity?.telemetry.subscribeUpdates ?? subscribeNothing, activity?.telemetry.getStatus ?? noStatus);
+  const liveStatus = useLiveStatus(activity?.telemetry);
   const search = viewKey.startsWith("search:");
   const [activeKey, setActiveKey] = useState<string | null>(null);
   // Keep this imperative viewport adapter outside React Compiler memoization.

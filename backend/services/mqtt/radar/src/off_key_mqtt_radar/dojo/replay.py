@@ -11,7 +11,6 @@ values that went in and came out, as the live diagnostics preview them.
 """
 
 import json
-import math
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,6 +19,7 @@ from typing import Any
 from off_key_core.models.dojo_runs import DOJO_SENSOR_KEY_STRATEGY
 from off_key_core.schemas.dojo import MAX_STEP_SAMPLES, RunAlignment
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
+from off_key_core.utils.numbers import finite_float
 
 from ..adaptive_detector import AdaptiveStreamDetectionService
 from ..calibration_comparison import CalibrationComparison
@@ -60,12 +60,6 @@ class _ReplayClock:
 
     def __call__(self) -> float:
         return self.now
-
-
-def _finite(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    return float(value) if math.isfinite(value) else None
 
 
 def detection_config(
@@ -198,7 +192,7 @@ class Replay:
         scored = inference_key(result.context) is not None
         score = None
         if scored:
-            score = _finite(
+            score = finite_float(
                 context.get("p_value")
                 if key == "static_conformal"
                 else context.get("anomaly_score", result.anomaly_score)
@@ -213,7 +207,7 @@ class Replay:
             # A static baseline alarms on a martingale over its p-values, so
             # only an adaptive score has a threshold of its own.
             threshold=(
-                _finite(context.get("threshold"))
+                finite_float(context.get("threshold"))
                 if scored and key == "adaptive_stream"
                 else None
             ),

@@ -370,11 +370,9 @@ def _placement(
     family = cell.family
     times = timeline.times
     if family.kind == "spike":
-        hold = 1
         end_at = _moment(times[start] + (times[start + 1] - times[start]) / 2)
     else:
-        hold = hold_values(cell.length, window)
-        end_at = _moment(times[start + hold - 1])
+        end_at = _moment(times[start + hold_values(cell.length, window) - 1])
     start_at = _moment(times[start])
     if end_at <= start_at:
         end_at = start_at + timedelta(microseconds=1)
@@ -394,8 +392,7 @@ def _placement(
         fields["recovery"] = family.recovery
         if family.recovery == "gradual":
             fields["recovery_seconds"] = max((end_at - start_at).total_seconds(), 1e-3)
-    recovery = hold if family.recovery == "gradual" else 0
-    cut_index = min(start + hold + recovery + 2 * window, len(times) - 1)
+    cut_index = min(start + span_values(cell, window), len(times) - 1)
     fault = Fault(
         kind=family.kind,
         series_id=timeline.series_id,
@@ -568,6 +565,17 @@ def _caught(item: Planted) -> bool:
     )
 
 
+def _scored(items: Sequence[Planted]) -> list[Planted]:
+    """The faults whose outcome counts: scored, and not confounded."""
+    return [
+        item
+        for item in items
+        if item.outcome is not None
+        and item.outcome.outcome != "unscored"
+        and not item.confounded
+    ]
+
+
 def _family(items: Sequence[Planted], share: float | None) -> ProtocolFamily:
     first = items[0]
     by_level: dict[float | None, list[Planted]] = {}
@@ -576,13 +584,7 @@ def _family(items: Sequence[Planted], share: float | None) -> ProtocolFamily:
     levels = []
     for level in sorted(by_level, key=lambda value: -1 if value is None else value):
         group = by_level[level]
-        scored = [
-            item
-            for item in group
-            if item.outcome is not None
-            and item.outcome.outcome != "unscored"
-            and not item.confounded
-        ]
+        scored = _scored(group)
         caught = sum(1 for item in scored if _caught(item))
         interval = wilson(caught, len(scored))
         levels.append(
@@ -598,13 +600,7 @@ def _family(items: Sequence[Planted], share: float | None) -> ProtocolFamily:
                 simple_rules=sum(1 for item in group if item.simple_rules),
             )
         )
-    scored = [
-        item
-        for item in items
-        if item.outcome is not None
-        and item.outcome.outcome != "unscored"
-        and not item.confounded
-    ]
+    scored = _scored(items)
     caught = sum(1 for item in scored if _caught(item))
     # What alarming as often as the clean copy would catch by chance alone.
     chance = (

@@ -19,13 +19,11 @@ from off_key_core.db.models import (
     DojoLabel,
     DojoPendingLabel,
     DojoPoint,
-    DojoSeries,
     User,
 )
 from off_key_core.models.pipeline_formula import FormulaError, evaluator, parse
 from off_key_core.models.pipeline_prepare import PrepareFailure
 from off_key_core.schemas.dojo import (
-    MAX_DATASET_LABELS,
     MAX_LABEL_SUGGESTIONS,
     MAX_PENDING_LABELS,
     LabelRule,
@@ -40,7 +38,16 @@ from off_key_core.schemas.dojo import (
 from sqlalchemy import delete, func, select
 
 from ...domain import ConflictError, NotFoundError, ValidationError
-from .labels import LONE_ALARM, DojoLabels, label_view
+from .labels import (
+    LONE_ALARM,
+    DojoLabels,
+    dataset_row,
+    dataset_series,
+    label_view,
+    require_inside,
+    require_label_room,
+    require_ordered,
+)
 from .owners import made_by
 
 Interval = tuple[datetime, datetime]
@@ -132,7 +139,7 @@ class DojoPendingLabels:
         self.labels = DojoLabels(session)
 
     async def list(self, dataset_id: str) -> PendingLabelList:
-        await self.labels.dataset_row(dataset_id)
+        await dataset_row(self.session, dataset_id)
         rows = (
             await self.session.scalars(
                 select(DojoPendingLabel)
@@ -147,9 +154,9 @@ class DojoPendingLabels:
     ) -> PendingLabelsMade:
         """Store intervals as pending labels, leaving out those on a label."""
         await require_application_writes(self.session)
-        dataset = await self.labels.dataset_row(dataset_id, lock=True)
+        dataset = await dataset_row(self.session, dataset_id, lock=True)
         for item in proposal.labels:
-            self._inside(dataset, item.start_at, item.end_at)
+            require_inside(dataset, item.start_at, item.end_at)
         return await self._store(
             dataset,
             [
@@ -166,16 +173,9 @@ class DojoPendingLabels:
     ) -> PendingLabelsMade:
         """Propose a label for every interval where the condition holds."""
         await require_application_writes(self.session)
-        dataset = await self.labels.dataset_row(dataset_id, lock=True)
+        dataset = await dataset_row(self.session, dataset_id, lock=True)
         series = {
-            row.name: row.id
-            for row in (
-                await self.session.scalars(
-                    select(DojoSeries)
-                    .where(DojoSeries.dataset_id == dataset.id)
-                    .order_by(DojoSeries.position)
-                )
-            ).all()
+            row.name: row.id for row in await dataset_series(self.session, dataset.id)
         }
         try:
             expression = parse(rule.condition, condition=True)
@@ -214,20 +214,15 @@ class DojoPendingLabels:
     ) -> builtins.list[LabelView]:
         """Add pending labels as labels, all of them or none."""
         await require_application_writes(self.session)
-        dataset = await self.labels.dataset_row(dataset_id, lock=True)
+        dataset = await dataset_row(self.session, dataset_id, lock=True)
         rows = await self._rows(dataset.id, [item.id for item in choice.items])
-        count = await self.session.scalar(
-            select(func.count()).where(DojoLabel.dataset_id == dataset.id)
-        )
-        if count + len(rows) > MAX_DATASET_LABELS:
-            raise ConflictError(f"A dataset holds at most {MAX_DATASET_LABELS} labels")
+        await require_label_room(self.session, dataset.id, len(rows))
         added = []
         for item in choice.items:
             pending = rows[item.id]
             start_at = item.start_at or pending.start_at
             end_at = item.end_at or pending.end_at
-            if end_at <= start_at:
-                raise ValidationError("end_at must be after start_at")
+            require_ordered(start_at, end_at)
             # Earlier labels of this batch are flushed before the check.
             await self.labels.check_free(dataset, start_at, end_at, None)
             label = DojoLabel(
@@ -253,7 +248,7 @@ class DojoPendingLabels:
 
     async def dismiss(self, dataset_id: str, dismissal: PendingLabelDismiss) -> None:
         await require_application_writes(self.session)
-        dataset = await self.labels.dataset_row(dataset_id, lock=True)
+        dataset = await dataset_row(self.session, dataset_id, lock=True)
         rows = await self._rows(dataset.id, dismissal.ids)
         for row in rows.values():
             await self.session.delete(row)
@@ -352,15 +347,3 @@ class DojoPendingLabels:
                 "Pending label not found; it may have been added or dismissed"
             )
         return rows
-
-    @staticmethod
-    def _inside(dataset: DojoDataset, start_at: datetime, end_at: datetime) -> None:
-        if (
-            dataset.start_at is not None
-            and dataset.end_at is not None
-            and (end_at < dataset.start_at or start_at > dataset.end_at)
-        ):
-            raise ValidationError(
-                "The label lies outside the dataset, which spans "
-                f"{dataset.start_at.isoformat()} to {dataset.end_at.isoformat()}"
-            )

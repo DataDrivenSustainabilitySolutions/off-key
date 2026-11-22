@@ -44,9 +44,13 @@ from .score_metrics import score_metrics
 
 DAY_SECONDS = 86_400.0
 METRICS_TIMEOUT_SECONDS = 30.0
-# Of the 25 seconds a metrics transaction may run its statements, the score
-# metrics take at most this long.
+# How long a metrics transaction may run its statements, and of that the score
+# metrics at most.
+STATEMENT_TIMEOUT = "25s"
 SCORES_TIMEOUT = "12s"
+TIMED_OUT = "Dojo metrics exceeded the calculation time limit"
+# PostgreSQL's query_canceled, which statement_timeout raises.
+QUERY_CANCELED = "57014"
 
 
 @dataclass(frozen=True)
@@ -202,6 +206,32 @@ def _cache_key(run: DojoRun, labels: Sequence[DojoLabel], kind: str) -> str:
     ).hexdigest()
 
 
+def _from_cache(run: DojoRun, kind: str, key: str) -> dict | None:
+    """The cached value of one metrics product, if it was stored under ``key``."""
+    cache = (run.metrics_cache or {}).get(kind, {})
+    return cache["value"] if cache.get("key") == key else None
+
+
+async def _statement_timeout(session, limit: str) -> None:
+    await session.execute(text(f"SET LOCAL statement_timeout = '{limit}'"))
+
+
+def _timed_out(exc: DBAPIError) -> bool:
+    return getattr(exc.orig, "sqlstate", None) == QUERY_CANCELED
+
+
+def _intervals(labels: Sequence[DojoLabel]) -> list[Interval]:
+    return [Interval(label.id, label.start_at, label.end_at) for label in labels]
+
+
+def _delays(evaluation: Evaluation) -> list[float]:
+    return [
+        item.delay_seconds
+        for item in evaluation.labels
+        if item.delay_seconds is not None
+    ]
+
+
 def _overlap(label: Interval, start: datetime | None, end: datetime | None) -> float:
     if start is None or end is None:
         return 0.0
@@ -245,9 +275,7 @@ class DojoMetrics:
                 yield
         except TimeoutError:
             await self.session.rollback()
-            raise ConflictError(
-                "Dojo metrics exceeded the calculation time limit"
-            ) from None
+            raise ConflictError(TIMED_OUT) from None
 
     async def run(self, run_id: str) -> RunMetrics:
         async with self._budget():
@@ -291,12 +319,10 @@ class DojoMetrics:
     @staticmethod
     def cached(run: DojoRun, labels: list[DojoLabel]) -> RunMetrics | None:
         """The run's metrics if they were calculated against these labels."""
-        cache = (run.metrics_cache or {}).get("run", {})
-        if run.status != "succeeded" or cache.get("key") != _cache_key(
-            run, labels, "run"
-        ):
+        if run.status != "succeeded":
             return None
-        return RunMetrics.model_validate(cache["value"])
+        value = _from_cache(run, "run", _cache_key(run, labels, "run"))
+        return None if value is None else RunMetrics.model_validate(value)
 
     async def calculate(
         self, run: DojoRun, labels: list[DojoLabel]
@@ -331,22 +357,20 @@ class DojoMetrics:
         calculate: Callable[[DojoRun, list[DojoLabel]], Awaitable[T]],
     ) -> T:
         key = _cache_key(run, labels, kind)
-        cache = (run.metrics_cache or {}).get(kind, {})
-        if cache.get("key") == key:
-            return model.model_validate(cache["value"])
+        if (value := _from_cache(run, kind, key)) is not None:
+            return model.model_validate(value)
         # One uncached scan across all replicas; readers never queue for a slot.
         if not await self.session.scalar(
             text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": DOJO_METRICS_LOCK}
         ):
             raise ConflictError("Dojo metrics are being calculated; retry shortly")
         try:
-            await self.session.execute(text("SET LOCAL statement_timeout = '25s'"))
+            await _statement_timeout(self.session, STATEMENT_TIMEOUT)
             # Another request may have committed after our initial read. Preserve
             # its other metrics product and reuse its result if the key matches.
             await self.session.refresh(run, attribute_names=["metrics_cache"])
-            cache = (run.metrics_cache or {}).get(kind, {})
-            if cache.get("key") == key:
-                result = model.model_validate(cache["value"])
+            if (value := _from_cache(run, kind, key)) is not None:
+                result = model.model_validate(value)
             else:
                 result = await calculate(run, labels)
                 run.metrics_cache = (run.metrics_cache or {}) | {
@@ -356,26 +380,17 @@ class DojoMetrics:
             return result
         except DBAPIError as exc:
             await self.session.rollback()
-            if getattr(exc.orig, "sqlstate", None) == "57014":
-                raise ConflictError(
-                    "Dojo metrics exceeded the calculation time limit"
-                ) from None
+            if _timed_out(exc):
+                raise ConflictError(TIMED_OUT) from None
             raise
         except BaseException:
             await self.session.rollback()
             raise
 
     async def _calculate(self, run: DojoRun, labels: list[DojoLabel]) -> RunMetrics:
-        scan = await self._scan(
-            run.id,
-            [Interval(label.id, label.start_at, label.end_at) for label in labels],
-        )
+        scan = await self._scan(run.id, _intervals(labels))
         evaluation, _ = scan.evaluations[0]
-        delays = [
-            item.delay_seconds
-            for item in evaluation.labels
-            if item.delay_seconds is not None
-        ]
+        delays = _delays(evaluation)
         return RunMetrics(
             run_id=run.id,
             run_name=run.name,
@@ -426,14 +441,12 @@ class DojoMetrics:
         """A calculation within SCORES_TIMEOUT, or None past it."""
         try:
             async with self.session.begin_nested():
-                await self.session.execute(
-                    text(f"SET LOCAL statement_timeout = '{SCORES_TIMEOUT}'")
-                )
+                await _statement_timeout(self.session, SCORES_TIMEOUT)
                 result = await calculation
-                await self.session.execute(text("SET LOCAL statement_timeout = '25s'"))
+                await _statement_timeout(self.session, STATEMENT_TIMEOUT)
                 return result
         except DBAPIError as exc:
-            if getattr(exc.orig, "sqlstate", None) != "57014":
+            if not _timed_out(exc):
                 raise
             # Rolling back to the savepoint restored the transaction's limit.
             return None
@@ -443,9 +456,7 @@ class DojoMetrics:
     ) -> MethodComparison:
         plan = run.config["calibration_comparison"]
         scan = await self._scan(
-            run.id,
-            [Interval(label.id, label.start_at, label.end_at) for label in labels],
-            method_count=len(plan["methods"]),
+            run.id, _intervals(labels), method_count=len(plan["methods"])
         )
         failed = plan.get("failed", {})
         methods = []
@@ -453,24 +464,17 @@ class DojoMetrics:
             evaluation, alarm_count = scan.evaluations[position]
             # A method that stopped retains its counts, but has no full-run rate.
             stopped = method in failed
-            delays = [
-                item.delay_seconds
-                for item in evaluation.labels
-                if item.delay_seconds is not None
-            ]
+            delays = _delays(evaluation)
+            name, family = (
+                ("Fixed split", "fixed")
+                if method == FIXED_METHOD
+                else (CALIBRATORS[method]["name"], CALIBRATORS[method]["family"])
+            )
             methods.append(
                 MethodMetrics(
                     method=method,
-                    name=(
-                        "Fixed split"
-                        if method == FIXED_METHOD
-                        else CALIBRATORS[method]["name"]
-                    ),
-                    family=(
-                        "fixed"
-                        if method == FIXED_METHOD
-                        else CALIBRATORS[method]["family"]
-                    ),
+                    name=name,
+                    family=family,
                     own=position == 0,
                     failed=failed.get(method),
                     alarm_count=alarm_count,
@@ -570,6 +574,10 @@ class DojoMetrics:
         rows = (await self.session.execute(statement)).all()
         scored_from = min((row[1] for row in rows if row[1] is not None), default=None)
         scored_to = max((row[2] for row in rows if row[2] is not None), default=None)
+        scored = {row[0]: row[-1] for row in rows}
+        outside = [row for row in rows if row[0] == 0]
+        inside = [scored.get(index, 0) for index in range(1, len(labels) + 1)]
+        outside_scored = sum(row[-1] for row in outside)
         evaluations = []
         for position in range(len(alarm_columns)):
             offset = 4 + position * 3
@@ -581,13 +589,10 @@ class DojoMetrics:
                 ],
                 key=lambda alarm: alarm.timestamp,
             )
-            evaluation = evaluate(labels, first, scored_from, scored_to)
-            scored = {row[0]: row[-1] for row in rows}
-            outside = [row for row in rows if row[0] == 0]
             evaluation = by_chance(
-                evaluation,
-                [scored.get(index, 0) for index in range(1, len(labels) + 1)],
-                sum(row[-1] for row in outside),
+                evaluate(labels, first, scored_from, scored_to),
+                inside,
+                outside_scored,
                 sum(row[offset + 1] for row in outside),
             )
             evaluations.append(

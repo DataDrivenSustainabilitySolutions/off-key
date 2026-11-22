@@ -23,6 +23,7 @@ from off_key_core.schemas.dojo import (
     BenchmarkListPage,
     BenchmarkListQuery,
     BenchmarkSeriesView,
+    DatasetSummary,
 )
 from sqlalchemy import select
 
@@ -151,7 +152,7 @@ class DojoBenchmarks:
             items.append(item)
         datasets = DojoDatasets(self.session)
         imported = await self._imported(request.series_ids)
-        summaries = []
+        views = []
         new = 0
         for item in items:
             if item.id in imported:
@@ -159,11 +160,13 @@ class DojoBenchmarks:
             else:
                 view = await self._import(datasets, item, created_by, created_by_agent)
                 new += 1
-            summaries.append(view)
+            views.append(view)
         return BenchmarkImportResult(
             items=[
-                datasets._summary(await datasets._row(view.id), len(view.series))
-                for view in summaries
+                DatasetSummary.model_validate(
+                    view.model_dump(include=set(DatasetSummary.model_fields))
+                )
+                for view in views
             ],
             imported=new,
         )

@@ -255,15 +255,10 @@ def read_points(
     decimal_comma = delimiter != ","
 
     def points() -> Iterator[tuple[str, datetime, float]]:
-        try:
-            for line, row in enumerate(rows, start=2):
-                if any(cell.strip() for cell in row):
-                    yield from _row_points(line, row, layout, decimal_comma, labels)
-            if labels is not None:
-                labels.close()
-        except UnicodeDecodeError:
-            raise ValidationError("The CSV must be UTF-8 text") from None
-        except csv.Error as exc:
-            raise ValidationError(f"The CSV could not be read: {exc}") from None
+        for line, row in enumerate(rows, start=2):
+            if any(cell.strip() for cell in row):
+                yield from _row_points(line, row, layout, decimal_comma, labels)
+        if labels is not None:
+            labels.close()
 
     return [name for name, _ in layout.value_columns], points()

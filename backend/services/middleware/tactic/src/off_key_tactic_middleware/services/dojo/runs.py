@@ -55,6 +55,7 @@ from sqlalchemy import Integer, delete, func, literal, select, text
 
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from ..pipelines.library import PipelineLibrary
+from .labels import dataset_series
 from .owners import made_by, require_no_evidence
 
 ACTIVE = ("queued", "running")
@@ -86,7 +87,9 @@ class DojoRuns:
                     "martingale, which has none; give it a detector that learns "
                     "continuously or a calibration method that adapts"
                 )
-        series = await dataset_series(self.session, dataset.id)
+        series = {
+            item.id: item for item in await dataset_series(self.session, dataset.id)
+        }
         unknown = sorted(set(request.bindings.values()) - series.keys())
         if unknown:
             raise ValidationError(
@@ -249,13 +252,9 @@ class DojoRuns:
         row = await self._row(run_id, lock=True)
         if isinstance(caller, Agent):
             _require_queued_by(row, caller)
-        if row.status == "queued":
-            row.status = "cancelled"
-            row.finished_at = datetime.now(UTC)
-        elif row.status == "running":
-            row.cancel_requested = True
-        else:
+        if row.status not in ACTIVE:
             raise ConflictError(f"The run has already {row.status}")
+        request_cancel(row, datetime.now(UTC))
         await self.session.commit()
         return await self.get(run_id)
 
@@ -481,17 +480,13 @@ def compile_design(definition: PipelineDefinition):
         raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
 
 
-async def dataset_series(session, dataset_id: str) -> dict[str, DojoSeries]:
-    return {
-        item.id: item
-        for item in (
-            await session.scalars(
-                select(DojoSeries)
-                .where(DojoSeries.dataset_id == dataset_id)
-                .order_by(DojoSeries.position)
-            )
-        ).all()
-    }
+def request_cancel(row: DojoRun, now: datetime) -> None:
+    """End a waiting run now; a running one ends at the worker's next beat."""
+    if row.status == "queued":
+        row.status = "cancelled"
+        row.finished_at = now
+    else:
+        row.cancel_requested = True
 
 
 def _require_queued_by(row: DojoRun, agent: Agent) -> None:

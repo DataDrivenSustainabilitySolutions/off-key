@@ -9,6 +9,7 @@ import { getErrorMessage } from "@/lib/errors";
 import type { StudyComparison, StudySummary, StudyView, SuiteView } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
 import { formatInstant, formatPerDay, formatRate } from "./model";
+import { ProtocolPanel } from "./ProtocolPanel";
 import { StudyCreateDialog } from "./SuiteDialogs";
 import { STUDY_METRICS, describePValue, formatScore, scoredOf, studyProgress, type StudyMetric } from "./suites";
 
@@ -220,6 +221,7 @@ function StudyDetail({ id, datasetHref }: { id: string; datasetHref: (id: string
     <p className="dj-help">{studyProgress(study)}. Top-1 hits: {study.totals.top1_hits} of {study.totals.top1_runs} datasets
       with one label.</p>
     {error && <p className="dj-error" role="alert">{error}</p>}
+    {study.protocol && <ProtocolPanel report={study.protocol} />}
     <div className="dj-table-scroll"><table className="dj-table" aria-label="Study runs">
       <thead><tr><th>Dataset</th><th>Run</th><th>VUS-PR</th><th>PR-AUC</th><th>AUROC</th><th>Detected</th><th>False alarms per day</th></tr></thead>
       <tbody>{study.items.map(item => {

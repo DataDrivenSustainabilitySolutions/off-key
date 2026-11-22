@@ -70,6 +70,44 @@ class Evaluation:
     labels_detected: int
     false_alarms: int
     evaluated_seconds: float
+    alarm_share: float | None = None
+    chance_detections: float | None = None
+    adjusted_detection_rate: float | None = None
+
+
+def by_chance(
+    evaluation: Evaluation,
+    inside: Sequence[int],
+    outside_scored: int,
+    outside_alarms: int,
+) -> Evaluation:
+    """The evaluation with what its alarm rate would detect by chance.
+
+    An alarm share a outside the labels, scattered at random, hits a label of
+    n scored results with probability 1 - (1 - a)^n. Detections beyond that
+    sum are the run's own (Kim et al., AAAI 2022, on how event credit lets
+    random scores look good).
+    """
+    share = _rate(outside_alarms, outside_scored)
+    labels = []
+    chance = 0.0
+    for outcome, results in zip(evaluation.labels, inside, strict=True):
+        hit = None if share is None else 1 - (1 - share) ** results
+        if hit is not None and outcome.outcome != "unscored":
+            chance += hit
+        labels.append(outcome.model_copy(update={"results": results, "chance": hit}))
+    adjusted = None
+    if share is not None and evaluation.labels_scored - chance > 1e-9:
+        adjusted = (evaluation.labels_detected - chance) / (
+            evaluation.labels_scored - chance
+        )
+    return replace(
+        evaluation,
+        labels=labels,
+        alarm_share=share,
+        chance_detections=None if share is None else chance,
+        adjusted_detection_rate=adjusted,
+    )
 
 
 def evaluate(
@@ -147,7 +185,7 @@ def _cache_key(run: DojoRun, labels: Sequence[DojoLabel], kind: str) -> str:
     return hashlib.sha256(
         json.dumps(
             [
-                5,
+                6,
                 run.result_count,
                 run.alarm_count,
                 run.config.get("calibration_comparison")
@@ -354,6 +392,9 @@ class DojoMetrics:
             false_alarms=evaluation.false_alarms,
             evaluated_seconds=evaluation.evaluated_seconds,
             false_alarms_per_day=_per_day(evaluation),
+            alarm_share=evaluation.alarm_share,
+            chance_detections=evaluation.chance_detections,
+            adjusted_detection_rate=evaluation.adjusted_detection_rate,
             scores=await self._scores(run, labels),
             diagnostics=await self._limited(
                 run_diagnostics(
@@ -522,6 +563,7 @@ class DojoMetrics:
             func.max(c.timestamp),
             func.count(),
             *aggregates,
+            func.count().filter(c.score.is_not(None)),
         ).group_by(group)
         if method_count is not None:
             statement = statement.where(c.method_alarms.is_not(None))
@@ -540,13 +582,19 @@ class DojoMetrics:
                 key=lambda alarm: alarm.timestamp,
             )
             evaluation = evaluate(labels, first, scored_from, scored_to)
+            scored = {row[0]: row[-1] for row in rows}
+            outside = [row for row in rows if row[0] == 0]
+            evaluation = by_chance(
+                evaluation,
+                [scored.get(index, 0) for index in range(1, len(labels) + 1)],
+                sum(row[-1] for row in outside),
+                sum(row[offset + 1] for row in outside),
+            )
             evaluations.append(
                 (
                     replace(
                         evaluation,
-                        false_alarms=sum(
-                            row[offset + 2] for row in rows if row[0] == 0
-                        ),
+                        false_alarms=sum(row[offset + 2] for row in outside),
                     ),
                     sum(row[offset + 1] for row in rows),
                 )

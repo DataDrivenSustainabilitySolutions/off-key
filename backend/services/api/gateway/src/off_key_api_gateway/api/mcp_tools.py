@@ -47,15 +47,32 @@ what its report lists before you go on.
 get_test says how many alarms it would have raised, with the scores around \
 the first ones. Compare variants on the same `dataset_id`, so they replay the \
 same values; profile_series on it shows every series at once. To show that \
-a design catches a problem the history lacks, pass \
-`faults`: a step, drift, freeze or gap written into a copy, which get_test \
-scores as caught or missed, with the delay. Without labels, \
-`metrics.diagnostics` in get_test still judges the run: alarms right after \
-gaps, scores that trend over time or follow an input's level, in `findings`.
+a design catches a specific problem the history lacks, pass `faults` to \
+test_design: written into a copy, which get_test scores as caught or missed, \
+with the delay. Without labels, `metrics.diagnostics` in get_test still \
+judges the run: alarms right after gaps, scores that trend over time or \
+follow an input's level, in `findings`.
+Before you propose, test with the fault-injection protocol: create_suite with \
+`faults_of` and `protocol` 'screening-v1' plants one fault per copy from a \
+fixed grid (steps, slow drifts, gain errors, rising noise, spikes, freezes, \
+gaps, impossible values) sized in the reading's own short-term noise, plus a \
+clean copy. Pass the design's warm-up (`warmup_values`) and calibration \
+window (`window_values`) in observations. Tune on `purpose` 'practice' \
+suites with seeds of your choice; report on a 'test' suite, whose seed the \
+server draws and whose fault places you do not see. run_study, then \
+get_study gives `protocol`: the false-alarm budget on the clean copy first, \
+then per fault family the size it catches from, chance-adjusted catches \
+(an alarm that never stops scores 0) and what simple rules catch. A design \
+over budget has no result. Missing a family is a fine result; say so. Rules \
+alone are the baseline: a design worth proposing beats them somewhere, such \
+as slow drifts, gain errors or rising noise, so try more than one detector \
+family (forecaster, density, distance, rules) on the same suite before \
+choosing, and compare them with get_study `compare_with`. Put the \
+protocol's `headline` in your evidence.
 To choose between candidates, put labelled datasets in a suite with \
-create_suite, or with `faults_of` labelled copies of a setup's history, \
-run_study each candidate over it, and get_study with `compare_with` pairs two \
-complete ones. Their paired result is stronger evidence than one test.
+create_suite, run_study each candidate over it, and get_study with \
+`compare_with` pairs two complete ones. Their paired result is stronger \
+evidence than one test.
 5. propose_design hands the design to a member with your reason and the test. \
 A member decides, and list_proposals shows the decision with their note. A key \
 that may start monitors also has start_monitor. In shadow, a monitor records \
@@ -585,13 +602,24 @@ async def validate_design(api: Api, args: Check):
 
 
 class InjectedFault(Args):
-    kind: Literal["step", "drift", "freeze", "gap"]
+    kind: Literal[
+        "step", "drift", "gain", "noise", "spike", "freeze", "gap", "out_of_range"
+    ]
     reading: str
+    also: list[str] = Field(
+        default_factory=list, description="Readings with the same fault at once."
+    )
     start: datetime
     end: datetime
-    size: float | None = Field(
-        default=None, description="In the reading's unit; default 3 sigma."
+    size: float | None = Field(default=None, description="In the reading's unit.")
+    sigmas: float | None = Field(
+        default=None, description="Or: in short-term noise; default 3."
     )
+    onset_seconds: float | None = Field(default=None, ge=0)
+    recovery: Literal["sudden", "gradual", "none"] = "sudden"
+    recovery_seconds: float | None = Field(default=None, gt=0)
+    noise_factor: float | None = Field(default=None, gt=1)
+    value: float | None = Field(default=None, description="Freeze, out_of_range.")
 
 
 class Test(Args):
@@ -622,11 +650,7 @@ class Test(Args):
     faults: list[InjectedFault] = Field(
         default_factory=list,
         max_length=20,
-        description=(
-            "Written into a labelled copy after warm-up, not overlapping: "
-            "step adds size, drift ramps to it, freeze holds a value, "
-            "gap drops values."
-        ),
+        description=("Written into a labelled copy after warm-up, not overlapping."),
     )
 
 
@@ -713,7 +737,8 @@ def _bound(dataset: Mapping[str, Any]) -> dict[str, str]:
 
 async def _with_faults(api: Api, dataset: dict, series: dict, args: Test) -> dict:
     """A copy of the dataset with the faults written in and labelled."""
-    unknown = sorted({item.reading for item in args.faults} - series.keys())
+    named = {name for item in args.faults for name in (item.reading, *item.also)}
+    unknown = sorted(named - series.keys())
     if unknown:
         raise ApiRefusal(
             422, f"Faults name readings the test does not bind: {', '.join(unknown)}"
@@ -723,18 +748,30 @@ async def _with_faults(api: Api, dataset: dict, series: dict, args: Test) -> dic
         {
             "name": f"{args.name} · {len(args.faults)} injected "
             + ("fault" if len(args.faults) == 1 else "faults"),
-            "faults": [
-                {
-                    "kind": item.kind,
-                    "series_id": series[item.reading],
-                    "start_at": item.start.isoformat(),
-                    "end_at": item.end.isoformat(),
-                    **({} if item.size is None else {"size": item.size}),
-                }
-                for item in args.faults
-            ],
+            "faults": [_fault(item, series) for item in args.faults],
         },
     )
+
+
+def _fault(item: InjectedFault, series: dict) -> dict[str, Any]:
+    shape = item.model_dump(
+        exclude={"reading", "also", "start", "end"}, exclude_none=True
+    )
+    if shape.get("recovery") == "sudden":
+        del shape["recovery"]
+    return {
+        **shape,
+        "series_id": series[item.reading],
+        "with_series": [series[name] for name in item.also],
+        "start_at": item.start.isoformat(),
+        "end_at": item.end.isoformat(),
+    }
+
+
+def _hidden(dataset: Mapping[str, Any]) -> bool:
+    """A test suite's copy: where its faults lie is kept from keys."""
+    plan = (dataset.get("source") or {}).get("protocol") or {}
+    return plan.get("purpose") == "test"
 
 
 def _warm_up(definition: Design, dataset: dict, points: int, inputs: int) -> str:
@@ -838,6 +875,16 @@ async def get_test(api: Api, args: TestRef):
         answer["stats_meaning"] = meanings
     if run["status"] == "succeeded":
         metrics = await api.get(f"{path}/metrics")
+        hidden = _hidden(
+            await api.get(f"/v1/dojo/datasets/{_segment(run['dataset_id'])}")
+        )
+        if hidden:
+            metrics = {**metrics, "labels": []}
+            answer["note_on_labels"] = (
+                "This copy belongs to a test suite: where its faults lie is "
+                "kept from keys, so its labels and which alarms were false "
+                "are left out. get_study reports the suite as a whole."
+            )
         metrics = answer["metrics"] = _results_are(
             _renamed(metrics, {"alarm_count": ALARMING})
         )
@@ -1206,6 +1253,13 @@ async def get_dataset(api: Api, args: DatasetRef):
     path = f"/v1/dojo/datasets/{_segment(args.dataset_id)}"
     dataset = await api.get(path)
     keys = ("id", "start_at", "end_at", "note", "rule")
+    labels = (await api.get(f"{path}/labels"))["items"]
+    if _hidden(dataset):
+        labels = [
+            item
+            for item in labels
+            if not (item.get("note") or "").startswith("Injected")
+        ]
     return {
         "id": dataset["id"],
         "name": dataset["name"],
@@ -1215,7 +1269,7 @@ async def get_dataset(api: Api, args: DatasetRef):
         ],
         "labels": [
             {key: item.get(key) for key in (*keys, "suggested_by_agent")}
-            for item in (await api.get(f"{path}/labels"))["items"]
+            for item in labels
         ],
         "pending_labels": [
             {key: item.get(key) for key in (*keys, "created_by_agent")}
@@ -1374,10 +1428,14 @@ class SuiteMade(Args):
     dataset_ids: list[str] = Field(default_factory=list, max_length=50)
     faults_of: str | None = Field(
         default=None,
-        description="Instead: a dataset to copy `copies` times with drawn faults.",
+        description="Instead: a dataset to copy with planted faults.",
     )
+    protocol: Literal["screening-v1", "full-v1"] | None = None
+    purpose: Literal["practice", "test"] = "practice"
+    warmup_values: int | None = Field(default=None, ge=1)
+    window_values: int | None = Field(default=None, ge=4)
     copies: int = Field(default=8, ge=1, le=20)
-    seed: int = Field(default=0, ge=0)
+    seed: int = Field(default=0, ge=0, lt=1 << 31)
 
 
 @tool(SuiteMade, changes=True)
@@ -1397,6 +1455,13 @@ async def create_suite(api: Api, args: SuiteMade):
             "copies": args.copies,
             "seed": args.seed,
         }
+        if args.protocol is not None:
+            body |= {
+                "protocol": args.protocol,
+                "purpose": args.purpose,
+                **({"warmup_values": args.warmup_values} if args.warmup_values else {}),
+                **({"window_values": args.window_values} if args.window_values else {}),
+            }
         suite = await api.post("/v1/dojo/suites/faults", body)
     return {"suite_id": suite["id"], "datasets": len(suite["items"])}
 
@@ -1465,6 +1530,10 @@ async def get_study(api: Api, args: StudyRef):
             }
         )
     answer = {**_study(study), "datasets": items}
+    if report := study.get("protocol"):
+        answer["protocol"] = _protocol(report)
+        # Every copy has one fault: the profile says more than the list.
+        answer["datasets"] = [item for item in items if item["status"] != "succeeded"]
     if args.compare_with is not None:
         answer["comparison"] = await api.get(
             f"/v1/dojo/suites/{_segment(study['suite_id'])}/comparison",
@@ -1475,6 +1544,46 @@ async def get_study(api: Api, args: StudyRef):
             },
         )
     return answer
+
+
+def _protocol(report: Mapping[str, Any]) -> dict[str, Any]:
+    """A protocol study as an agent reads it: the budget, then each family."""
+    keys = ("caught", "scored", "half", "ninety", "adjusted_detection_rate")
+    return {
+        "headline": report["headline"],
+        "within_budget": report["within_budget"],
+        "false_alarms_per_day": report["false_alarms_per_day"],
+        "alarm_share": report["alarm_share"],
+        "budget": {
+            "per_day": report["budget_per_day"],
+            "share": report["budget_share"],
+        },
+        "adjusted_detection_rate": report["adjusted_detection_rate"],
+        "simple_rules_caught": f"{report['simple_rules_caught']} of {report['faults']}",
+        "families": [
+            {
+                "family": item["title"],
+                **{key: item[key] for key in keys},
+                "measure": item["measure"],
+                "simple_rules": item["simple_rules_caught"],
+                "median_delay_seconds": item["median_delay_seconds"],
+                **(
+                    {"sigmas_at_detection": item["median_sigmas_at_detection"]}
+                    if item["median_sigmas_at_detection"] is not None
+                    else {}
+                ),
+                "by_level": [
+                    [level["level"], level["caught"], level["scored"]]
+                    for level in item["levels"]
+                ],
+            }
+            for item in report["families"]
+        ],
+        **({"untestable": report["untestable"]} if report["untestable"] else {}),
+        "note": "by_level lists [size, caught, scored]; half and ninety are "
+        "the sizes caught half and nine in ten of the time, in sigmas or as a "
+        "noise factor. Catches count only where the clean copy stayed quiet.",
+    }
 
 
 async def _ended(api: Api, run: dict[str, Any]) -> None:

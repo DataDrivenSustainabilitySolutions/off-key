@@ -202,7 +202,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     config = form_launch(
         container_name="first",
         mqtt_topics=["telemetry/charger-1/sine"],
-        model_type="pyod_iforest",
+        monitoring={"strategy": "static_baseline", "model_type": "pyod_iforest"},
     )
     config2 = config.model_copy(update={"container_name": "stopping"})
     stopped = []

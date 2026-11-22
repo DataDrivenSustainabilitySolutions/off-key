@@ -54,14 +54,13 @@ def _static_config():
     return form_launch(
         container_name="radar-static",
         mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
-        strategy="static_baseline",
-        model_type="pyod_iforest",
-        model_params={"n_estimators": 100},
         performance_config={
             "sensor_key_strategy": "leaf",
             "minimum_hold_seconds": 20.0,
         },
-        static_baseline_config={
+        monitoring={
+            "strategy": "static_baseline",
+            "model_type": "pyod_iforest",
             "model_params": {"n_estimators": 100},
             "training_window_size": 120,
             "calibration_window_size": 30,
@@ -74,10 +73,9 @@ def _adaptive_config():
     return form_launch(
         container_name="radar-adaptive",
         mqtt_topics=["telemetry/charger-1/L1"],
-        strategy="adaptive_stream",
-        model_type="aberrant_online_isolation_forest",
-        model_params={"num_trees": 2},
-        adaptive_stream_config={
+        monitoring={
+            "strategy": "adaptive_stream",
+            "model_type": "aberrant_online_isolation_forest",
             "model_params": {"num_trees": 2},
             "training_window_size": 1200,
             "calibration_window_size": 360,

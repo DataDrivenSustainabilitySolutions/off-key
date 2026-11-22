@@ -20,10 +20,9 @@ pytestmark = pytest.mark.radar_integration
 def test_saved_launch_normalization_preserves_history_and_execution():
     launch = form_launch(
         container_name="reviewed-migration",
-        strategy="adaptive_stream",
         mqtt_topics=["telemetry/entity/x"],
-        model_type="aberrant_moving_average",
-        adaptive_stream_config={
+        monitoring={
+            "strategy": "adaptive_stream",
             "model_type": "aberrant_moving_average",
             "model_params": {"window_size": 8},
             "training_window_size": 2,

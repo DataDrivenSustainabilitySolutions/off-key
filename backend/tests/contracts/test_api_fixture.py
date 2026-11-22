@@ -6,7 +6,7 @@ from threading import Thread
 
 import pytest
 from off_key_core.schemas.system import SystemConnection, SystemStream
-from off_key_core.utils.payload_decode import decode_value
+from off_key_core.utils.payload_decode import PayloadDecoder
 from off_key_tactic_middleware.services.catalogue.system_live_http import HttpSession
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -67,7 +67,7 @@ def test_a_reading_decodes_from_the_reply_at_its_path(
     )
     status, body, _ = api.get(path)
     assert status == 200
-    assert type(decode_value(body, reading)) is kind
+    assert type(PayloadDecoder(body).value(reading)) is kind
 
 
 def test_other_paths_are_not_found(api):

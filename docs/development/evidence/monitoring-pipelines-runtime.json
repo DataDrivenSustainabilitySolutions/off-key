@@ -1,9 +1,7 @@
 {
   "environment": {
     "python": "3.14.8 (main, Oct  6 2026, 02:01:53) [GCC 12.2.0]",
-    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.36",
     "aberrant": "1.3.0",
-    "cpu_model": "AMD Ryzen 5 7530U with Radeon Graphics",
     "logical_cpus_visible": 12,
     "cgroup_cpu_max": "100000 100000",
     "cgroup_memory_max_bytes": "1073741824",

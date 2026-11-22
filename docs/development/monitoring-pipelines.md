@@ -1647,7 +1647,7 @@ ten observations balance execution order and slow host/VM speed changes within
 each trial. Whole-run blocks initially showed large speed drift inside identical
 forest kernels; their timings are not used to infer observation overhead.
 
-The 2026-10-16 paired probe used an AMD Ryzen 5 7530U, WSL2 Linux x86-64,
+The 2026-10-16 paired probe used a laptop running Linux x86-64,
 Python 3.14.8 and Aberrant 1.3.0. Docker limited the process to one CPU
 (`cpu.max=100000 100000`) and 1 GiB; twelve logical CPUs were visible.
 `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`, `MKL_NUM_THREADS` and

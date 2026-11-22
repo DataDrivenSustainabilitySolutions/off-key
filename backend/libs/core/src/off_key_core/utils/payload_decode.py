@@ -83,7 +83,3 @@ def _scalar(value, value_type: str) -> float | bool | str:
     ):
         raise ValueError("Expected bounded text")
     return value
-
-
-def decode_value(payload: bytes, stream: SystemStream) -> float | bool | str:
-    return PayloadDecoder(payload).value(stream)

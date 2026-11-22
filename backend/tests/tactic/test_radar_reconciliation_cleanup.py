@@ -33,6 +33,8 @@ def _service(
         container_name=f"radar-{service_id}",
         status=status,
         desired_state=desired_state or ("running" if status else "stopped"),
+        lifecycle_version=1,
+        config_fingerprint=None,
         operational_stage=stage,
         operational_status={"stage": stage, "is_stale": False},
         operational_updated_at=updated_at,

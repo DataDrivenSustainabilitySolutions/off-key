@@ -130,10 +130,7 @@ class RadarOrchestrationService:
         existing_service = result.scalars().first()
 
         if existing_service:
-            if (
-                getattr(existing_service, "config_fingerprint", None)
-                and existing_service.status
-            ):
+            if existing_service.config_fingerprint and existing_service.status:
                 return await self._resume_managed_service(
                     existing_service, config_fingerprint
                 )
@@ -316,7 +313,7 @@ class RadarOrchestrationService:
                 "Wait for it to stop before restarting."
             )
         service_id, workload_id = existing_service.id, existing_service.container_id
-        version = getattr(existing_service, "lifecycle_version", 1)
+        version = existing_service.lifecycle_version
         await self.session.commit()
         workload_status, labels = await self.workloads.get_status_and_labels(
             workload_id or ""
@@ -331,7 +328,7 @@ class RadarOrchestrationService:
         if (
             current is None
             or current.container_id != workload_id
-            or getattr(current, "lifecycle_version", 1) != version
+            or current.lifecycle_version != version
             or current.stop_requested_at is not None
         ):
             raise ValueError(
@@ -363,7 +360,7 @@ class RadarOrchestrationService:
             )
             return None
 
-        if getattr(existing_service, "desired_state", "running") != "running":
+        if existing_service.desired_state != "running":
             # Reconciliation is still stopping this workload; adopting it would
             # report a monitor that is about to stop as started.
             raise ValueError(
@@ -481,7 +478,7 @@ class RadarOrchestrationService:
                 self.workloads,
                 service_id,
                 workload_id,
-                getattr(service, "config_fingerprint", None),
+                service.config_fingerprint,
             )
             await lock_execution_records(self.session, [service_id])
             current = await self.session.get(

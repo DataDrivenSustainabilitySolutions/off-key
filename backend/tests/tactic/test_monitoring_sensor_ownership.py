@@ -134,6 +134,8 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(workload_statu
     monitor = SimpleNamespace(
         id="existing-id",
         stop_requested_at=None,
+        desired_state="running",
+        lifecycle_version=1,
         status=True,
         container_name="existing",
         container_id="ctr-1",
@@ -173,6 +175,7 @@ async def test_a_running_workload_being_stopped_is_not_reused(desired_state):
         id="existing-id",
         stop_requested_at=None,
         desired_state=desired_state,
+        lifecycle_version=1,
         status=False,
         container_name="existing",
         container_id="ctr-1",

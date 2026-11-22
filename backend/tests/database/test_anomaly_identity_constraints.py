@@ -221,9 +221,8 @@ async def test_list_alarms_includes_value_type_and_monitor(service_id):
 async def test_repository_add_reuses_trigger_created_identity():
     session = MagicMock()
     session.flush = AsyncMock()
-    session.refresh = AsyncMock()
     identity_result = MagicMock()
-    identity_result.scalar_one_or_none.return_value = "existing-id"
+    identity_result.scalar_one.return_value = "existing-id"
     session.execute = AsyncMock(return_value=identity_result)
 
     repository = AnomalyRepository(session)
@@ -238,33 +237,3 @@ async def test_repository_add_reuses_trigger_created_identity():
 
     assert anomaly_id == "existing-id"
     assert session.add.call_count == 1
-    session.refresh.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_repository_add_falls_back_when_identity_missing():
-    session = MagicMock()
-    session.flush = AsyncMock()
-
-    async def _refresh(identity):
-        identity.anomaly_id = "generated-id"
-
-    session.refresh = AsyncMock(side_effect=_refresh)
-    identity_result = MagicMock()
-    identity_result.scalar_one_or_none.return_value = None
-    session.execute = AsyncMock(return_value=identity_result)
-
-    repository = AnomalyRepository(session)
-    anomaly = SimpleNamespace(
-        charger_id="charger-1",
-        timestamp=datetime.now(UTC),
-        telemetry_type="voltage",
-        service_id="monitor-1",
-    )
-
-    anomaly_id = await repository.add(anomaly)
-
-    assert anomaly_id == "generated-id"
-    assert session.add.call_count == 2
-    assert session.add.call_args.args[0].service_id == "monitor-1"
-    session.refresh.assert_awaited_once()

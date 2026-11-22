@@ -69,7 +69,6 @@ export const API_CONFIG = {
         else scope.readingIds.forEach((id) => params.append('reading_id', id));
         return `/v1/alarms?${params}`;
       },
-      DELETE: (alarmId: string) => `/v1/alarms/${encodeURIComponent(alarmId)}`,
     },
 
     // The signed-in member's favourites

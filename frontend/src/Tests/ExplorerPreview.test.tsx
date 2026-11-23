@@ -231,6 +231,19 @@ describe("workspace chart navigation and monitoring", () => {
     vi.mocked(useStoredRange).mockReturnValue({ history: undefined, overview: undefined, loading: false, error: "" });
   });
 
+  it("keeps the chosen range when another reading is opened, but not its zoom", () => {
+    const historyCache = new ReadingHistoryCache("range-user");
+    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { readingId: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
+      telemetry: [{ timestamp: new Date(NOW).toISOString(), value: 1 }] });
+    const chart = (reading: number) => <ExplorerHistoryChart key={reading} stream={system.readings[reading]!} connection={system.brokers[0]} historyCache={historyCache} />;
+    const view = render(chart(0));
+    fireEvent.click(screen.getByRole("button", { name: "7d" }));
+    act(() => lastChartProps().onViewportChange?.(NOW - 2 * 86_400_000, NOW - 86_400_000));
+    view.rerender(chart(1));
+    expect(screen.getByRole("button", { name: "7d" }).getAttribute("aria-pressed")).toBe("true");
+    expect(useStoredRange).toHaveBeenLastCalledWith({ readingId: "temperature" }, 7 * 86_400_000, undefined, { mode: "raw" }, 100);
+  });
+
   it("keeps collected values of a reading that went quiet before the range, and extends the live end past the overview", () => {
     const empty = { representation: "raw" as const, points: [], interval_ms: 0, sample_count: 0, extent: null };
     vi.mocked(useStoredRange).mockReturnValue({ history: empty, overview: empty, loading: false, error: "" });

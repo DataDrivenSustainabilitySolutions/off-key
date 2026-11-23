@@ -84,6 +84,7 @@ export function PipelineStepHeader({ document, components, node, title, readOnly
       {node && <span className={`pl-step-kind${off ? " is-off" : ""}`}>
         {familyLabel(stepFamily(node, component))}{off && <small>Switched off</small>}
       </span>}
+      <div className="pl-step-controls">
       {order.length > 0 && <div className="pl-step-nav" role="group" aria-label="Steps">
         {node && <button type="button" aria-label="Previous step" title="Previous step" disabled={at <= 0}
           onClick={() => onSelect(order[at - 1])}><ChevronLeft size={16} aria-hidden="true" /></button>}
@@ -112,6 +113,7 @@ export function PipelineStepHeader({ document, components, node, title, readOnly
       {onClose && <button type="button" onClick={onClose} aria-label="Close settings" title="Collapse settings">
         <X size={16} aria-hidden="true" />
       </button>}
+      </div>
     </div>
     <div className="pl-step-title">
       {node && renaming === node.id
@@ -130,7 +132,7 @@ export function PipelineStepHeader({ document, components, node, title, readOnly
         </>}
     </div>
     {node && label !== operation && <p className="pl-step-operation">{operation}</p>}
-    {component?.description && <p className="pl-step-lede">{component.description}</p>}
+    {component?.description && <p className="pl-step-lede" title={component.description}>{component.description}</p>}
     {shownMenu && node && <PipelineContextMenu x={shownMenu.x} y={shownMenu.y} menu={stepMenu(node)}
       onClose={(restore) => {
         setMenu(undefined);

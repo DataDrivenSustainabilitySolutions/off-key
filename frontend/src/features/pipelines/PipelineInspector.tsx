@@ -74,6 +74,9 @@ type Props = {
   onClose?: () => void;
   /** Asks to keep the steps from one step on as a block. */
   onSaveBlock?: (from: string) => void;
+  /** A column beside the canvas shows one part at a time; a drawer under it shows what arrives and
+   * what leaves on either side of the settings. */
+  layout?: "side" | "drawer";
   /** Shown for the input instead of its generic settings: the readings it monitors. */
   input?: ReactNode;
   /** What the forecast service holds, for the steps whose model lives there. */
@@ -97,6 +100,7 @@ export function PipelineInspector({
   headingRef,
   onClose,
   onSaveBlock,
+  layout = "side",
   input: inputContent,
   forecast,
   values,
@@ -114,7 +118,11 @@ export function PipelineInspector({
   const several = selection && selection.length > 1
     ? document.definition.nodes.filter((item) => selection.includes(item.id)) : [];
   const node = several.length ? undefined : document.definition.nodes.find((item) => item.id === selected);
-  const tab = node && part.step === node.id ? part.tab : "settings";
+  const drawer = layout === "drawer";
+  // A drawer shows what flows through beside the settings, so it has no part for it.
+  const tabs = drawer ? TABS.filter((item) => item.id !== "data") : TABS;
+  const chosen = node && part.step === node.id ? part.tab : "settings";
+  const tab = tabs.some((item) => item.id === chosen) ? chosen : "settings";
   const setTab = (next: StepTab) => setPart({ tab: next, step: node?.id });
   const browse = (id?: string) => {
     setPart({ tab, step: id });
@@ -283,7 +291,7 @@ export function PipelineInspector({
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
-    const next = TABS[(TABS.findIndex((item) => item.id === tab) + step + TABS.length) % TABS.length]!;
+    const next = tabs[(tabs.findIndex((item) => item.id === tab) + step + tabs.length) % tabs.length]!;
     setTab(next.id);
     event.currentTarget.querySelector<HTMLElement>(`[data-tab="${next.id}"]`)?.focus();
   };
@@ -542,7 +550,7 @@ export function PipelineInspector({
       })()}
     </>
   );
-  const dataTab = (
+  const arrives = (
     <>
       <h4>
         Arrives
@@ -667,6 +675,10 @@ export function PipelineInspector({
         {features.slice(0, MAX_ARRIVING).map((feature) => <li key={feature}>{featureLabels[feature] ?? feature}</li>)}
         {features.length > MAX_ARRIVING && <li className="is-more">+ {features.length - MAX_ARRIVING} more</li>}
       </ul>}
+    </>
+  );
+  const leaves = (
+    <>
       <h4>Leaves</h4>
       <p className="pl-help pl-inspector-signature">
         {givesFeatures && leaving ? plural(leaving.length, "feature")
@@ -693,20 +705,28 @@ export function PipelineInspector({
       {!about && <p className="pl-help">This deployment does not describe this step.</p>}
     </>
   );
-  return (
-    <aside className="pl-inspector pl-inspector--step" aria-label="Step settings" data-kind={node.kind}>
-      {head("Step settings")}
-      <div className="pl-step-tabs" role="tablist" aria-label="Step settings" onKeyDown={moveTab}>
-        {TABS.map((item) => <button type="button" role="tab" key={item.id} id={`${tabsId}-${item.id}`} data-tab={item.id}
+  const parts = <>
+    <div className="pl-step-tabs" role="tablist" aria-label="Step settings" onKeyDown={moveTab}>
+      {tabs.map((item) => <button type="button" role="tab" key={item.id} id={`${tabsId}-${item.id}`} data-tab={item.id}
           aria-selected={tab === item.id} aria-controls={`${tabsId}-panel`} tabIndex={tab === item.id ? 0 : -1}
           onClick={() => setTab(item.id)}>
           {item.label}
           {item.id === "data" && flow && <small>{flow}</small>}
         </button>)}
-      </div>
-      <div className="pl-step-body" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
-        {tab === "settings" ? settingsTab : tab === "data" ? dataTab : aboutTab}
-      </div>
+    </div>
+    <div className="pl-step-body" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
+      {tab === "settings" ? settingsTab : tab === "data" ? <>{arrives}{leaves}</> : aboutTab}
+    </div>
+  </>;
+  return (
+    <aside className={`pl-inspector pl-inspector--step${drawer ? " pl-inspector--drawer" : ""}`} aria-label="Step settings"
+      data-kind={node.kind}>
+      {head("Step settings")}
+      {drawer ? <div className="pl-step-columns">
+        <section className="pl-step-flow" aria-label="Arrives">{arrives}</section>
+        <div className="pl-step-main">{parts}</div>
+        <section className="pl-step-flow" aria-label="Leaves">{leaves}</section>
+      </div> : parts}
     </aside>
   );
 }

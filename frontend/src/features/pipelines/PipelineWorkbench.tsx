@@ -1,4 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties,
+  type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import toast from "react-hot-toast";
 import { CircleCheck, CircleDashed, Plus, TriangleAlert, X } from "lucide-react";
@@ -59,6 +60,44 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>,
   /** Sits above the toolbar on a stage, such as the service name and its actions. */
   header?: ReactNode;
 };
+
+/** A phone holds a step's settings in a sheet, one part at a time; anything wider, in a drawer under the canvas. */
+const PHONE = "(max-width: 680px)";
+const onPhone = () => typeof window !== "undefined" && window.matchMedia(PHONE).matches;
+const watchPhone = (listener: () => void) => {
+  const media = window.matchMedia(PHONE);
+  media.addEventListener("change", listener);
+  return () => media.removeEventListener("change", listener);
+};
+/** How tall the drawer opens, and how far it can be pulled, in pixels. */
+const DRAWER = { initial: 340, min: 200, max: 720, step: 24 } as const;
+
+/** The step settings' height under the canvas, which the grip at their top changes by pointer or keyboard. */
+function useDrawerHeight() {
+  const [height, setHeight] = useState<number>(DRAWER.initial);
+  const pull = useRef<{ y: number; height: number }>(undefined);
+  const set = (next: number) => setHeight(Math.round(Math.min(DRAWER.max, Math.max(DRAWER.min, next))));
+  const grip = {
+    role: "separator", "aria-orientation": "horizontal", "aria-label": "Resize step settings", tabIndex: 0,
+    "aria-valuemin": DRAWER.min, "aria-valuemax": DRAWER.max, "aria-valuenow": height,
+    onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pull.current = { y: event.clientY, height: event.currentTarget.parentElement?.offsetHeight || height };
+    },
+    onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
+      if (pull.current) set(pull.current.height + pull.current.y - event.clientY);
+    },
+    onPointerUp: () => { pull.current = undefined; },
+    onPointerCancel: () => { pull.current = undefined; },
+    onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+      const next = { ArrowUp: height + DRAWER.step, ArrowDown: height - DRAWER.step, Home: DRAWER.min, End: DRAWER.max }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      set(next);
+    },
+  } as const;
+  return { height, grip };
+}
 
 /** How far a stage's header and settings reach over its canvas, in pixels. */
 function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, top: RefObject<HTMLElement | null>,
@@ -162,6 +201,9 @@ export function PipelineWorkbench({
   const settingsPanel = useRef<HTMLDivElement>(null);
   const stageCanvas = useRef<HTMLDivElement>(null);
   const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel);
+  const phone = useSyncExternalStore(watchPhone, onPhone, () => false);
+  const drawer = panel === "component" && !phone;
+  const { height: drawerHeight, grip } = useDrawerHeight();
   // The stage's own actions sit at the top right, where toasts would cover them.
   usePlaceToasts(stage ? "bottom-center" : undefined);
   useEffect(() => () => { if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current); }, []);
@@ -388,16 +430,18 @@ export function PipelineWorkbench({
   // What a panel is called, in its heading and on the button that closes it. A step's settings are headed by the step.
   const panelTitle = panel === "brief" ? brief?.label ?? "" : panel === "service" ? "Service settings" : "Test on history";
   const panelName = panel === "brief" ? panelTitle.toLowerCase() : panel === "test" ? "test" : "settings";
-  const settingsContent = panel && <div className={`pl-settings-panel${panel === "brief" ? " pl-settings-panel--brief" : ""}`}
-    id={panelId} ref={settingsPanel} onKeyDown={(event) => {
+  const settingsContent = panel && <div className={`pl-settings-panel${panel === "brief" ? " pl-settings-panel--brief" : ""}${
+    drawer ? " pl-settings-panel--drawer" : ""}`}
+    id={panelId} ref={settingsPanel} style={drawer ? { height: drawerHeight } : undefined} onKeyDown={(event) => {
     if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
       event.stopPropagation(); close();
     }
   }}>
+    {drawer && <div className="pl-drawer-grip" {...grip} />}
     <PipelineInspector document={props.document} catalog={catalog} selected={props.selected} selection={selection}
       validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
       onChange={props.onChange} input={input} forecast={forecast} values={stepValues}
-      headingRef={heading} onClose={close} onSaveBlock={saveBlock}
+      headingRef={heading} onClose={close} onSaveBlock={saveBlock} layout={drawer ? "drawer" : "side"}
       header={panel !== "component" && <div className="pl-inspector-heading">
         <h3 ref={heading} tabIndex={-1}>{panelTitle}</h3>
         <button type="button" onClick={close} aria-label={`Close ${panelName}`} title={`Collapse ${panelName}`}>
@@ -416,8 +460,9 @@ export function PipelineWorkbench({
       if (restore && choice.from instanceof HTMLElement) choice.from.focus({ preventScroll: true });
     }} />;
   // The header comes first in the page, as it does on screen, so Tab reaches it before the canvas.
-  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}${panel === "brief" ? " pl-stage--reading" : ""}`}
-    style={{ "--pl-covered-right": `${insets?.right ?? 0}px` } as CSSProperties}>
+  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}${panel === "brief" ? " pl-stage--reading" : ""}${
+    drawer ? " pl-stage--drawer" : ""}`}
+    style={{ "--pl-covered-right": `${insets?.right ?? 0}px`, "--pl-covered-bottom": `${insets?.bottom ?? 0}px` } as CSSProperties}>
     <div className="pl-stage-top" ref={top}>{header}{tabs}{toolbar}</div>
     <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-body">{settingsContent}</div>
@@ -426,7 +471,7 @@ export function PipelineWorkbench({
   </div>;
   return <div className="pl-workbench">
     {toolbar}
-    <div className={`pl-editor-grid${panel ? " pl-editor-grid--settings" : ""}`}>
+    <div className={`pl-editor-grid${drawer ? " pl-editor-grid--drawer" : panel ? " pl-editor-grid--settings" : ""}`}>
       {canvas}
       {settingsContent}
     </div>

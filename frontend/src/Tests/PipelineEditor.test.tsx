@@ -294,10 +294,9 @@ describe("simple monitoring setup", () => {
     expect(started.definition.nodes?.some((node) => node.kind === "detector")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Close test" }));
     expect(await screen.findByRole("button", { name: "Test on history, waiting…" })).toBeTruthy();
-    // A step's settings hold the values it had in the last test, folded until asked for.
+    // A step's settings hold the values it had in the last test under what leaves it, folded until asked for.
     fireEvent.click(screen.getByRole("button", { name: "Step settings" }));
-    fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
-    const values = screen.getByText("Values in the last test").closest("details")!;
+    const values = within(screen.getByRole("region", { name: "Leaves" })).getByText("Values in the last test").closest("details")!;
     expect(values.open).toBe(false);
     values.open = true;
     fireEvent(values, new Event("toggle"));

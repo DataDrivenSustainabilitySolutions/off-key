@@ -12,9 +12,13 @@ export const pipelineStep = (scope: Page | Locator) => scope.getByRole("compleme
 /** The name the settings are headed by: the step's title, or the name of what it does. */
 export const pipelineStepTitle = (scope: Page | Locator) => pipelineStep(scope).getByRole("heading", { level: 3 });
 
-/** Show one part of a step's settings. Its connections and the features that pass through it are under Data. */
+/** Show one part of a step's settings. Its connections and the features that pass through it are under Data
+ * on a phone; the drawer of a wider screen shows them beside the settings, as Arrives and Leaves. */
 export async function openStepPart(scope: Page | Locator, part: "Settings" | "Data" | "About") {
-  const tab = pipelineStep(scope).getByRole("tab", { name: new RegExp(`^${part}`) });
+  const step = pipelineStep(scope);
+  await expect(step).toBeVisible();
+  if (part === "Data" && await step.getByRole("region", { name: "Arrives", exact: true }).count()) return;
+  const tab = step.getByRole("tab", { name: new RegExp(`^${part}`) });
   if (await tab.getAttribute("aria-selected") !== "true") await tab.click();
   await expect(tab).toHaveAttribute("aria-selected", "true");
 }

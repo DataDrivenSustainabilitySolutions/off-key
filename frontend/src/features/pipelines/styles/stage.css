@@ -272,6 +272,31 @@
   max-width: min(560px, calc(100% - 2 * var(--pl-stage-gap) - var(--pl-covered-right, 0px)));
 }
 
+/* A step's settings open as a drawer across the bottom of the canvas; the controls stand on it. */
+.pl-stage--drawer .pl-stage-body {
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.pl-stage .pl-settings-panel.pl-settings-panel--drawer {
+  width: 100%;
+  max-height: calc(100% - 96px);
+  border-left: 0;
+  border-top: 1px solid hsl(var(--border));
+  box-shadow: 0 -10px 30px hsl(var(--shadow-ink) / 0.07);
+}
+.pl-stage--drawer .react-flow__controls {
+  margin-bottom: calc(var(--pl-covered-bottom, 0px) + var(--pl-stage-gap));
+}
+.pl-stage--drawer .react-flow__attribution {
+  bottom: var(--pl-covered-bottom, 0px);
+}
+.pl-stage--drawer .pl-canvas-feedback {
+  bottom: calc(var(--pl-covered-bottom, 0px) + 64px);
+}
+.pl-stage--drawer.pl-stage--features .pl-stage-canvas {
+  padding-bottom: calc(var(--pl-covered-bottom, 0px) + var(--pl-stage-gap));
+}
+
 @media (max-width: 1050px) {
   .pl-stage { --pl-stage-gap: 12px; }
   .pl-stage .pl-settings-panel { width: 300px; }

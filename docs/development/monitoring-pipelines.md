@@ -345,7 +345,15 @@ select behind the count), the title with `StepTitleEditor`, which the card uses
 as well, and a menu of the card's actions. `retitle()` is the one place that
 decides what a typed title becomes. Below the header, the Settings, Data and
 About parts are tabs; the inspector keeps the open part while the header moves
-from step to step and returns to Settings for a step chosen anywhere else. The
+from step to step and returns to Settings for a step chosen anywhere else.
+The workbench lays the inspector out as a drawer under the canvas wherever the
+screen is wider than a phone (`layout="drawer"`): the header on one line, then
+Arrives, the Settings and About tabs, and Leaves in three columns, which a
+container query stacks when the drawer is narrow. Data has no tab there. The
+drawer's grip is a separator that sets its height (`useDrawerHeight`), and the
+stage passes the height it covers to the canvas as its bottom inset, so
+`revealNode()` keeps the chosen step above it. A phone keeps the sheet with
+three tabs. The
 canvas reveals a step chosen away from it (`revealNode()`), never while a
 pointer is pressed on the canvas, so a drag is not moved under the hand.
 
@@ -561,7 +569,7 @@ run that has not ended.
 
 In the composer, `DesignTest.Values` is the third part of the contract in
 `designTest.ts`. `PipelineCreate` hands it to the workbench as `stepValues`,
-and `PipelineInspector` renders it in the Data part, under what leaves the step.
+and `PipelineInspector` renders it under what leaves the step.
 `HistoryTestValues` is a `details` element whose fold (`watching`) and chosen
 observation (`observation`) live in the history test store, so both hold from
 step to step. The store's `sample()` reads the samples once per test, and only

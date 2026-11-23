@@ -29,7 +29,7 @@
     "@radix-ui/react-tooltip": "^1.4.1",
     "@tanstack/react-virtual": "3.14.26",
     "@tisoap/react-flow-smart-edge": "5.0.1",
-    "@xyflow/react": "^12.12.1",
+    "@xyflow/react": "^13.0.2",
     "axios": "^1.21.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

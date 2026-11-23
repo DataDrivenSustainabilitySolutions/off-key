@@ -36,7 +36,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
   const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding)}` : undefined;
-  const [rangeId, setRangeId] = useNavigationDraft<RangePresetId>(viewKey && `${viewKey}:range`, "1h");
+  const [rangeId, setRangeId] = useNavigationDraft<RangePresetId>(historyCache && `chart:${historyCache.owner}:range`, "1h");
   const range = rangePreset(rangeId);
   const now = useNow(5000);
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(viewKey && `${viewKey}:inspection`, undefined);

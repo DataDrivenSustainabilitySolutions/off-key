@@ -42,7 +42,7 @@ lint = [
     "pre-commit",
 ]
 typing = [
-    "ty==0.0.102",
+    "ty==0.0.107",
 ]
 
 [tool.uv.workspace]

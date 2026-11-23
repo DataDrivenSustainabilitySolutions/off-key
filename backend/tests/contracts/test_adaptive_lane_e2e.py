@@ -40,6 +40,13 @@ def _publication_snapshots(
     return snapshots
 
 
+def _publish(publisher: Client, topics: dict[str, str], values: dict[str, float]):
+    for key, value in values.items():
+        message = publisher.publish(topics[key], str(value), qos=1)
+        message.wait_for_publish(timeout=5)
+        assert message.is_published()
+
+
 # Warm-up (4) and calibration (2) use the first observations. Arrivals that reach
 # the worker in a burst can share one observation, so publish well past that
 # and space the cycles so each usually forms its own.
@@ -96,11 +103,14 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                     "L2": 50.0 if index == last else 2.0 + index / 100,
                 }
                 published_values.append(values)
-                for key, value in values.items():
-                    message = publisher.publish(entity.topics[key], str(value), qos=1)
-                    message.wait_for_publish(timeout=5)
-                    assert message.is_published()
+                _publish(publisher, entity.topics, values)
                 time.sleep(CYCLE_SPACING_SECONDS)
+            # RADAR waits for a reading that is due before it forms an
+            # observation. If jitter let the final L1 pair with the previous
+            # L2, the final L2 waits for the next L1: publish one.
+            trailing = {"L1": 1.0 + CYCLES / 100}
+            published_values.append(trailing)
+            _publish(publisher, entity.topics, trailing)
             # Compare evidence with persisted observations from the real upstream
             # path, including each input's individual ingestion timestamp.
             observations = {}
@@ -114,7 +124,11 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                         for row in response.json()
                     }
                 if all(
-                    all(values[key] in observations[key] for values in published_values)
+                    all(
+                        values[key] in observations[key]
+                        for values in published_values
+                        if key in values
+                    )
                     for key in entity.readings
                 ):
                     break
@@ -126,6 +140,11 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             cycles = _publication_snapshots(
                 entity.readings, published_values, observations
             )
+            # The anomalous final value of each reading must be scored.
+            final = {
+                reading_id: observations[key][published_values[last][key]]
+                for key, reading_id in entity.readings.items()
+            }
             seen = []
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
@@ -156,13 +175,16 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                         inputs.values()
                     )
                     seen.append(inputs)
-                if cycles[-1] in seen:
+                if all(
+                    any(inputs[reading_id] == final[reading_id] for inputs in seen)
+                    for reading_id in entity.reading_ids
+                ):
                     break
                 time.sleep(2)
             else:
                 status = client.get(f"/v1/monitors/{monitor_id}")
                 pytest.fail(
-                    "Final adaptive input cycle did not reach PostgreSQL evidence: "
+                    "The final adaptive values did not reach PostgreSQL evidence: "
                     f"{len(seen)} of {len(cycles)} input cycles scored; "
                     f"monitor {status.status_code}: {status.text[:2000]}"
                 )

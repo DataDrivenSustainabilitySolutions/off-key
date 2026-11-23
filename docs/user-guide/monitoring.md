@@ -276,7 +276,7 @@ way; the check names a step that does not. A design has one
 input, calibration step, detection rule and output, so the menu does not offer
 them again; it links to the existing steps instead. A detector's settings offer
 **Add another detector**: it adds a detector with the same model that reads the
-same features and connects it to the calibration step, up to four detectors. Change its model or its input afterwards like any step's. **Service settings** and **Step settings** open the side panel.
+same features and connects it to the calibration step, up to four detectors. Change its model or its input afterwards like any step's. **Service settings** opens the side panel and **Step settings** the drawer under the canvas.
 
 **Step settings** name the step they belong to: its family in the card's
 color, its title and one line on what it does. The arrows beside the count,
@@ -285,18 +285,27 @@ count itself opens the list of all steps, and the canvas brings the step into
 view. The pencil renames the step, as does a double click on its title; a step
 with a title of its own keeps its operation's name underneath. **Step actions**
 duplicates the step, switches it off, saves it as a block, disconnects it or
-removes it. Below, three parts divide what there is to know about a step:
+removes it.
 
-- **Settings** holds what you can change: the model, method or rule and their
-  values. A setting offers **Use default** only once it differs from its
-  default.
-- **Data** shows what **Arrives** and what **Leaves**: the connections and the
-  features on each side, and the values of the last test. Its tab counts both,
-  such as **3 features → 12 features**. It provides the same connection editing
-  as the canvas on keyboards and narrow screens, listing compatible, cycle-free
-  upstream choices.
-- **About** explains the step: what it does in more words, what it takes and
-  gives, and how it learns.
+On a wider screen, step settings open in a drawer along the bottom of the
+canvas, with the step's head on one line and three columns below it:
+
+- **Arrives** on the left: the connections into the step and the features
+  that come in. It provides the same connection editing as the canvas on
+  keyboards, listing compatible, cycle-free upstream choices.
+- **Settings** in the middle: the model, method or rule and their values,
+  side by side as far as the width allows. A setting offers **Use default**
+  only once it differs from its default. **About** next to it explains the
+  step: what it does in more words, what it takes and gives, and how it learns.
+- **Leaves** on the right: where the output goes, the features that leave and
+  the values of the last test.
+
+Drag the handle at the top of the drawer to make it taller or shorter, or
+focus it and use the arrow keys. The canvas keeps the chosen step in view
+above the drawer, and the zoom controls stand on it. On a phone, step settings
+open as a sheet with **Settings**, **Data** and **About** as tabs; **Data**
+holds what arrives and what leaves, and its tab counts both, such as
+**3 features → 12 features**.
 
 A step chosen on the canvas opens at **Settings**. Going from step to step with
 the arrows keeps the part that is open, so the data can be followed through the
@@ -423,7 +432,7 @@ the Dojo** to its comparison once it has labels.
 
 A test also keeps what 12 to 23 of its observations looked like at every step,
 spread from the first result to the last. **Values in the last test**, folded
-under **Data** in **Step settings**, shows one of them: the features
+under what leaves the step in **Step settings**, shows one of them: the features
 that went into the step under **In** and the features that came out under
 **Out**, at most the first eight of each. A detector gives one value, and the
 detection rule says whether it alarmed; the calibration step shows the rule's

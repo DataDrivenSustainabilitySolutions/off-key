@@ -149,15 +149,15 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await page.screenshot({ path: testInfo.outputPath(`readable-${strategy}-laptop.png`), fullPage: true });
       await node("input").click();
       await expect(editor.getByRole("button", { name: "Step settings", exact: true })).toHaveAttribute("aria-expanded", "true");
-      // Settings dock at the right edge of the full-page canvas instead of narrowing it, and leave the step in view.
+      // Settings open in a drawer across the bottom of the full-page canvas instead of narrowing it, and leave the step in view.
       await expect(pipelineStep(editor)).toBeVisible();
       await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
       await expect.poll(async () => {
         const panel = (await page.locator(".pl-settings-panel").boundingBox())!;
         const canvas = (await graph.boundingBox())!;
         const card = (await node("input").boundingBox())!;
-        return Math.abs(panel.x + panel.width - canvas.x - canvas.width) < 1 && Math.abs(panel.y - canvas.y) < 1
-          && Math.abs(panel.height - canvas.height) < 1 && card.x + card.width <= panel.x;
+        return Math.abs(panel.x - canvas.x) < 1 && Math.abs(panel.width - canvas.width) < 1
+          && Math.abs(panel.y + panel.height - canvas.y - canvas.height) < 1 && card.y + card.height <= panel.y;
       }).toBe(true);
       await editor.getByRole("button", { name: "Close settings", exact: true }).click();
       await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);

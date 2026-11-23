@@ -414,6 +414,11 @@
   letter-spacing: 0;
   text-transform: none;
 }
+.pl-step-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
 .pl-step-nav {
   display: inline-flex;
   align-items: center;
@@ -577,7 +582,7 @@
 }
 .pl-step-body > :last-child { margin-bottom: 0; }
 /* What arrives and what leaves, each under its own small heading. */
-.pl-inspector .pl-step-body > h4 {
+.pl-inspector :is(.pl-step-body, .pl-step-flow) > h4 {
   margin: 22px 0 8px;
   color: hsl(var(--muted-foreground));
   font-size: 11px;
@@ -585,9 +590,9 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.pl-inspector .pl-step-body > h4:first-child { margin-top: 0; }
-.pl-step-body > .pl-connections { margin: 0; padding: 0; list-style: none; font-size: var(--text-body); }
-.pl-step-body > .pl-connections li { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
+.pl-inspector :is(.pl-step-body, .pl-step-flow) > h4:first-child { margin-top: 0; }
+:is(.pl-step-body, .pl-step-flow) > .pl-connections { margin: 0; padding: 0; list-style: none; font-size: var(--text-body); }
+:is(.pl-step-body, .pl-step-flow) > .pl-connections li { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
 /* What a step can do besides its settings stands apart below them. */
 .pl-step-more {
   margin-top: 20px;
@@ -821,4 +826,114 @@
   margin-right: 4px;
   color: hsl(var(--foreground));
   font-weight: 500;
+}
+
+/* Under the canvas: the step's head on one line, then what arrives, the settings and what leaves side by side. */
+.pl-settings-panel--drawer {
+  display: flex;
+  flex-direction: column;
+}
+.pl-drawer-grip {
+  position: relative;
+  flex: none;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.pl-drawer-grip::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: hsl(var(--border));
+}
+.pl-drawer-grip:hover::before { background: hsl(var(--muted-foreground) / 0.6); }
+.pl-drawer-grip:focus-visible { outline: none; }
+.pl-drawer-grip:focus-visible::before {
+  left: calc(50% - 28px);
+  width: 56px;
+  background: hsl(var(--ring));
+}
+.pl-settings-panel--drawer .pl-inspector {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  border-left: 0;
+}
+.pl-inspector--drawer { container: pl-drawer / inline-size; }
+.pl-inspector--drawer .pl-step-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 12px 8px 20px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.pl-inspector--drawer .pl-step-bar { display: contents; }
+.pl-inspector--drawer .pl-step-kind { order: 0; margin-right: 0; }
+.pl-inspector--drawer .pl-step-title { order: 1; flex: 0 1 auto; min-width: 0; max-width: 40%; padding-right: 0; }
+.pl-inspector--drawer .pl-step-title:has(input) { flex: 1 1 auto; }
+.pl-inspector--drawer .pl-step-title h3 {
+  overflow: hidden;
+  font-size: var(--text-title3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-inspector--drawer .pl-step-operation { order: 2; flex: none; padding: 0; white-space: nowrap; }
+.pl-inspector--drawer .pl-step-lede {
+  order: 3;
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-inspector--drawer .pl-step-controls { order: 4; flex: none; margin-left: auto; }
+.pl-step-columns {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(200px, 292px) minmax(0, 1fr) minmax(200px, 292px);
+  min-height: 0;
+}
+.pl-step-flow {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 20px 16px;
+  background: color-mix(in srgb, hsl(var(--muted)) 45%, transparent);
+  scrollbar-width: thin;
+}
+.pl-step-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-inline: 1px solid hsl(var(--border));
+}
+.pl-inspector--drawer .pl-step-tabs { padding: 0 20px; }
+.pl-inspector--drawer .pl-step-body { padding: 14px 20px 16px; }
+/* The settings stand side by side as far as the width allows; what is folded spans the row. */
+.pl-inspector--drawer .pl-step-body .parameter-editor {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: start;
+  column-gap: 20px;
+}
+.pl-inspector--drawer .pl-step-body .parameter-more { grid-column: 1 / -1; }
+.pl-inspector--drawer .pl-step-body > .pl-field { max-width: 640px; }
+/* Too narrow for three columns: the settings come first and what flows through follows, in one scroll. */
+@container pl-drawer (max-width: 780px) {
+  .pl-step-columns {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+  .pl-step-columns > * { flex: none; overflow: visible; }
+  .pl-step-main { order: -1; border-inline: 0; border-bottom: 1px solid hsl(var(--border)); }
+  .pl-step-flow + .pl-step-flow { border-top: 1px solid hsl(var(--border)); }
+  .pl-inspector--drawer .pl-step-lede { display: none; }
 }

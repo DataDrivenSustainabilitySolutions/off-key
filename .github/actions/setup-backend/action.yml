@@ -25,7 +25,7 @@ runs:
       uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       with:
         # Keep equal to backend/Dockerfile and deploy-production.yml (infra/tests/test_toolchain.py).
-        version: "0.13.8"
+        version: "0.13.9"
         enable-cache: ${{ inputs.cache }}
 
     - name: Sync the locked backend workspace

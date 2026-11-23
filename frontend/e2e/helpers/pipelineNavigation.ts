@@ -6,10 +6,33 @@ export async function openPipelineSettings(scope: Page | Locator, panel: "Servic
   if (await button.getAttribute("aria-expanded") !== "true") await button.click();
 }
 
+/** A step's settings: headed by the step they are for, in the parts Settings, Data and About. */
+export const pipelineStep = (scope: Page | Locator) => scope.getByRole("complementary", { name: "Step settings", exact: true });
+
+/** The name the settings are headed by: the step's title, or the name of what it does. */
+export const pipelineStepTitle = (scope: Page | Locator) => pipelineStep(scope).getByRole("heading", { level: 3 });
+
+/** Show one part of a step's settings. Its connections and the features that pass through it are under Data. */
+export async function openStepPart(scope: Page | Locator, part: "Settings" | "Data" | "About") {
+  const tab = pipelineStep(scope).getByRole("tab", { name: new RegExp(`^${part}`) });
+  if (await tab.getAttribute("aria-selected") !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+
+/** Title the step whose settings show, where its name stands. */
+export async function titlePipelineStep(scope: Page | Locator, title: string) {
+  const step = pipelineStep(scope);
+  await step.getByRole("button", { name: "Rename step", exact: true }).click();
+  const field = step.getByRole("textbox", { name: "Step title", exact: true });
+  await field.fill(title);
+  await field.press("Enter");
+  await expect(pipelineStepTitle(scope)).toHaveText(title);
+}
+
 /** The readings live in the Input step; a saved design opens at its graph. */
 export async function openPipelineInput(scope: Page | Locator) {
   await scope.getByRole("button", { name: /^Input: / }).click();
-  await expect(scope.getByRole("heading", { name: "Input", exact: true })).toBeVisible();
+  await expect(pipelineStep(scope).locator(".pl-step-kind")).toHaveText("Input");
 }
 
 /** The status chip reports the compiler's check of the latest edit; it replaced the Validate button. */

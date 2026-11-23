@@ -375,6 +375,25 @@ export function setNodeLabel(document: GraphDocument, nodeId: string, label: str
   });
 }
 
+/**
+ * Give a step the title typed for it. A title equal to the step's own name, or none, shows that
+ * name again. Undefined when the step has that title already.
+ */
+export function retitle(document: GraphDocument, components: PipelineComponent[], nodeId: string, title: string) {
+  const node = document.definition.nodes.find((item) => item.id === nodeId);
+  if (!node) return undefined;
+  const operation = components.find((item) => item.id === node.component)?.label;
+  const next = title.trim() === operation ? "" : title.trim();
+  return next === stepTitle(node) ? undefined : setNodeLabel(document, nodeId, next);
+}
+
+/** Steps in the order the canvas reads: left to right, and top to bottom where they share a column. */
+export const stepOrder = (document: GraphDocument): string[] =>
+  document.definition.nodes
+    .map((node, index) => ({ id: node.id, ...nodePosition(document.layout, node.id, index) }))
+    .sort((left, right) => left.x - right.x || left.y - right.y)
+    .map((node) => node.id);
+
 /** `replace` lets a new connection take over a single input that is already connected. */
 type ConnectOptions = { replace?: boolean };
 

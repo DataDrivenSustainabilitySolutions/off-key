@@ -4,7 +4,9 @@ import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineDesignFile, PipelineView } from "../src/types/pipelines.generated";
 import { addTestCharger, fixtureTarget, removeTestCharger } from "./helpers/collection";
 import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
-import { openPipelineInput, openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
+import {
+  openPipelineInput, openPipelineSettings, openStepPart, pipelineStep, pipelineStepTitle, savePipelineTemplate, titlePipelineStep,
+} from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 import { setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
@@ -111,6 +113,7 @@ test("keeps an unnamed graph dirty and undoable across template browsing", async
   await expect(workbench.getByRole("heading", { name: "Test on history", exact: true })).toBeHidden();
   // A step's settings keep the values it had in the last test folded away, and lead to the test until there is one.
   await workbench.getByRole("button", { name: "Step settings", exact: true }).click();
+  await openStepPart(workbench, "Data");
   await workbench.getByText("Values in the last test", { exact: true }).click();
   await workbench.getByRole("button", { name: "Open the test", exact: true }).click();
   await expect(workbench.getByRole("heading", { name: "Test on history", exact: true })).toBeVisible();
@@ -127,7 +130,7 @@ test("chooses several steps and copies, moves and removes them together", async 
   const chosen = graph.locator(".react-flow__node.selected");
   const card = (name: string) => graph.locator(`.react-flow__node[aria-label="${name}"]`);
   const said = graph.getByRole("status");
-  const settings = workbench.getByRole("heading", { name: "Step settings", exact: true });
+  const settings = pipelineStep(workbench);
   const closeSettings = () => workbench.getByRole("button", { name: "Close settings", exact: true }).click();
   /** New steps are brought into view; wait until the view has come to rest around one. */
   const atRest = async (name: string) => {
@@ -396,7 +399,7 @@ test("downloads a design as a file and opens the file again", async ({ page }, t
   const name = workbench.getByRole("textbox", { name: "Service name", exact: true });
   await workbench.getByRole("button", { name: "Add step", exact: true }).click();
   await page.getByRole("button", { name: "Add Smooth", exact: true }).click();
-  await workbench.getByRole("textbox", { name: "Step title", exact: true }).fill("Calm it down");
+  await titlePipelineStep(workbench, "Calm it down");
   await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
   const titled = graph.locator('.react-flow__node[aria-label="Calm it down"]');
   await expect(titled).toBeVisible();
@@ -484,8 +487,8 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Service ${deviceId}`);
       await openPipelineSettings(workbench, "Component");
       await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
-      const title = workbench.getByRole("textbox", { name: "Step title", exact: true });
-      await title.fill("Submitted title");
+      const title = pipelineStepTitle(workbench);
+      await titlePipelineStep(workbench, "Submitted title");
       await page.route(`**${endpoint}`, async (route) => {
         if (route.request().method() !== "POST") { await route.continue(); return; }
         // Commit to the real database; delay only delivery of its acknowledgement.
@@ -497,7 +500,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await saveDialog.getByRole("textbox", { name: "Template name", exact: true }).fill(`Template ${deviceId}`);
       await saveDialog.getByRole("button", { name: "Save template", exact: true }).click(); await saving;
       await saveDialog.getByRole("button", { name: "Close save template", exact: true }).click();
-      await title.fill("Edited after submission");
+      await titlePipelineStep(workbench, "Edited after submission");
       await workbench.getByRole("link", { name: "Turn on recording in Sources", exact: true }).click();
       const sources = page.getByRole("main", { name: "Sources workspace", exact: true }); await expect(sources).toBeVisible();
       if (acknowledgement === "after returning") {
@@ -505,7 +508,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
         await expect(workbench.getByRole("button", { name: "Save template", exact: true })).toBeDisabled();
         await openPipelineSettings(workbench, "Component");
         await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
-        await expect(title).toHaveValue("Edited after submission"); await title.fill("Edited after returning");
+        await expect(title).toHaveText("Edited after submission"); await titlePipelineStep(workbench, "Edited after returning");
       }
       const delivered = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === endpoint);
       release(); expect((await delivered).ok()).toBe(true);
@@ -517,7 +520,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await openPipelineSettings(workbench, "Component");
       await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
       const finalTitle = acknowledgement === "after returning" ? "Edited after returning" : "Edited after submission";
-      await expect(title).toHaveValue(finalTitle);
+      await expect(title).toHaveText(finalTitle);
       const id = [...createdIds][0]!;
       const first = await page.request.get(`${endpoint}/${id}`, { headers });
       expect((await first.json() as PipelineView).draft.nodes?.find((node) => node.id === "input")?.label).toBe("Submitted title");
@@ -525,7 +528,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       expect(creates).toBe(1);
       await page.reload(); await openPipelineSettings(workbench, "Component");
       await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
-      await expect(title).toHaveValue(finalTitle);
+      await expect(title).toHaveText(finalTitle);
       await expect(workbench.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue(`Service ${deviceId}`);
     } finally {
       release(); await page.unrouteAll({ behavior: "wait" });

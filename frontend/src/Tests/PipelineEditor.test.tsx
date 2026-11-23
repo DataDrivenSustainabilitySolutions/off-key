@@ -179,6 +179,9 @@ beforeEach(() => {
   vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "requested", monitor_id: "service", run_id: "run", predecessor_monitor_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
   vi.mocked(pipelinesApi.save).mockImplementation(async (_id, body) => ({ ...pipeline(), name: body.name!, description: body.description!, version: 2, draft: normalizeDefinition(body.definition), layout: normalizeLayout(body.layout) }));
 });
+/** A step's settings, which the kind of the step heads. */
+const stepSettings = () => screen.getByRole("complementary", { name: "Step settings" });
+
 function mount(overrides: Partial<ReturnType<typeof props>> = {}) {
   const callbacks = { ...props(), ...overrides };
   const result = render(<MemoryRouter><PipelineEditor {...callbacks} /></MemoryRouter>);
@@ -218,13 +221,13 @@ describe("simple monitoring setup", () => {
   it("opens a new service at its readings and reaches each panel from the header", async () => {
     render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>);
     expect(screen.getByRole("heading", { name: "Create monitoring service" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Input" })).toBeTruthy();
+    expect(within(stepSettings()).getByText("Input")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Validate" })).toBeNull();
     // A new service leaves the detector to choose; the place kept for it offers the starter's own first.
     fireEvent.click(await screen.findByRole("button", { name: "Choose a detector" }));
     fireEvent.click(within(screen.getByRole("menu", { name: "Choose a detector" })).getByRole("menuitem", { name: /Suggested$/ }));
     expect(screen.queryByRole("button", { name: "Choose a detector" })).toBeNull();
-    expect(screen.getByRole("heading", { name: "Step settings" })).toBeTruthy();
+    expect(within(stepSettings()).getByRole("combobox", { name: "Detector model" })).toBeTruthy();
     // A design has no strategy to switch; the service's settings say how its detectors learn.
     fireEvent.click(screen.getByRole("button", { name: "Service settings" }));
     expect(screen.getByRole("heading", { name: "Service settings" })).toBeTruthy();
@@ -293,6 +296,7 @@ describe("simple monitoring setup", () => {
     expect(await screen.findByRole("button", { name: "Test on history, waiting…" })).toBeTruthy();
     // A step's settings hold the values it had in the last test, folded until asked for.
     fireEvent.click(screen.getByRole("button", { name: "Step settings" }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
     const values = screen.getByText("Values in the last test").closest("details")!;
     expect(values.open).toBe(false);
     values.open = true;
@@ -442,7 +446,7 @@ describe("simple monitoring setup", () => {
   it("opens the Input step when Apply finds a reading missing", async () => {
     mount({ targets: [{ ...target, inputs: [] }] });
     fireEvent.click(await screen.findByRole("button", { name: "Start monitoring" }));
-    expect(screen.getByRole("heading", { name: "Input" })).toBeTruthy();
+    expect(within(stepSettings()).getByText("Input")).toBeTruthy();
     expect(screen.getByText(/Choose a different, collected reading for each input/)).toBeTruthy();
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });

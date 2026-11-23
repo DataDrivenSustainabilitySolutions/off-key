@@ -44,6 +44,10 @@ describe("bounded pipeline parameter controls", () => {
     expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({ seed: 0 });
     fireEvent.click(screen.getByRole("checkbox", { name: "Seed automatic" }));
     expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({ seed: null });
+    // A value equal to the default has nothing to go back to.
+    expect(screen.queryByRole("button", { name: "Use default" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Seed automatic" }));
+    expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({ seed: 0 });
     fireEvent.click(screen.getByRole("button", { name: "Use default" }));
     expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({});
   });

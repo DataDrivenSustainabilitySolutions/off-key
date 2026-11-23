@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { normalizeCatalog, normalizeDefinition, normalizeLayout } from "@/features/pipelines/contracts";
@@ -179,11 +179,16 @@ describe("a step that is switched off, in its settings", () => {
   it("says so in place of its settings, and switches on with them", () => {
     render(<Composer />);
     act(() => canvas.onSelect("scale"));
-    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Selected step" }).selectedOptions[0]!.textContent).toContain("Scale");
+    // It is headed by the name of what it was, and says that it is off.
+    const settings = within(screen.getByRole("complementary", { name: "Step settings" }));
+    expect(settings.getByRole("heading", { level: 3 }).textContent).toBe("Scale");
+    expect(settings.getByText("Switched off")).toBeTruthy();
     expect(said()).not.toBeNull();
     expect(screen.queryByLabelText("Factor")).toBeNull();
     // Its title is its own, and the name of what it was stands where a title would.
+    fireEvent.click(settings.getByRole("button", { name: "Rename step" }));
     expect(screen.getByLabelText<HTMLInputElement>("Step title").placeholder).toBe("Scale");
+    fireEvent.keyDown(screen.getByLabelText("Step title"), { key: "Escape" });
 
     fireEvent.click(screen.getByRole("button", { name: "Switch on" }));
     expect(said()).toBeNull();

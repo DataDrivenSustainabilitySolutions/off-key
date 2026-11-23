@@ -25,6 +25,11 @@ const current = (fields: FieldDescriptor[], values: Parameters, name: string): J
   return field && hasDefault(field) ? field.default ?? null : undefined;
 };
 
+/** Whether a setting was given a value other than its default. A new step writes every default out,
+ * so being written is not being changed. */
+const changed = (field: FieldDescriptor, values: Parameters) => Object.prototype.hasOwnProperty.call(values, field.name)
+  && !(hasDefault(field) && JSON.stringify(values[field.name]) === JSON.stringify(field.default ?? null));
+
 export function ParameterFields({ fields, values, onChange, features = [], featureLabels = {}, featureHint,
   prefix = "parameter", path = [], issues = [], readOnly }: Props) {
   const shown = fields.filter(field => fieldApplies(field, current(fields, values, field.shown_when?.field ?? "")));
@@ -32,10 +37,8 @@ export function ParameterFields({ fields, values, onChange, features = [], featu
   // A step's key settings come first; the others wait under More settings.
   const folded = advanced.length >= FOLD_FROM && advanced.length < shown.length ? advanced : [];
   const main = shown.filter(field => !folded.includes(field));
-  // Open from the start where a folded setting was changed, and as soon as one is at fault, so neither
-  // hides. A new step writes every default out, so being written is not being changed.
-  const [more, setMore] = useState(() => folded.some(field => Object.prototype.hasOwnProperty.call(values, field.name)
-    && !(hasDefault(field) && JSON.stringify(values[field.name]) === JSON.stringify(field.default ?? null))));
+  // Open from the start where a folded setting was changed, and as soon as one is at fault, so neither hides.
+  const [more, setMore] = useState(() => folded.some(field => changed(field, values)));
   const atFault = folded.some(field => issues.some(issue => String(issue.path[path.length]) === field.name
     && JSON.stringify(issue.path.slice(0, path.length).map(String)) === JSON.stringify(path.map(String))));
   const render = (field: FieldDescriptor) => {
@@ -79,7 +82,7 @@ export function ParameterFields({ fields, values, onChange, features = [], featu
           checked={value === null} onChange={event => update(event.target.checked ? null : initialValue(field))} />
         Automatic / none
       </label>}
-      {explicit && (hasDefault(field) || !field.required) && <button type="button" className="parameter-reset" disabled={readOnly} onClick={() => {
+      {changed(field, values) && (hasDefault(field) || !field.required) && <button type="button" className="parameter-reset" disabled={readOnly} onClick={() => {
         const next = { ...values }; delete next[field.name]; onChange(next);
       }}>{hasDefault(field) ? "Use default" : "Leave unset"}</button>}
       <div id={`${id}-errors`}>{messages.map((issue, index) => <p role="alert" key={index} className="parameter-error">{issue.message}</p>)}</div>

@@ -159,7 +159,7 @@ describe("revealNode", () => {
     if (pan) {
       expect(flow.setViewport).toHaveBeenCalledExactlyOnceWith(
         { ...pan, zoom: 2 },
-        { duration: 200 },
+        { duration: 200, interpolate: "linear" },
       );
     } else {
       expect(flow.setViewport).not.toHaveBeenCalled();
@@ -173,7 +173,8 @@ describe("revealNode", () => {
     await revealNode(instance, surface(400, 600), "model", VIEW_MARGIN, { bottom: 348 });
 
     // 252 px stay uncovered, so the card ends a margin above the sheet.
-    expect(flow.setViewport).toHaveBeenCalledExactlyOnceWith({ x: 0, y: 252 - VIEW_MARGIN - 480, zoom: 1 }, { duration: 200 });
+    expect(flow.setViewport).toHaveBeenCalledExactlyOnceWith({ x: 0, y: 252 - VIEW_MARGIN - 480, zoom: 1 },
+      { duration: 200, interpolate: "linear" });
   });
 
   it.each([

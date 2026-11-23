@@ -16,8 +16,12 @@ import {
   fitPipelineOverview,
   openPipelineInput,
   openPipelineSettings,
+  openStepPart,
+  pipelineStep,
+  pipelineStepTitle,
   locatePipelineSelection,
   savePipelineTemplate,
+  titlePipelineStep,
 } from "./helpers/pipelineNavigation";
 import { publishPipelineSamples as publishSamples } from "./helpers/pipelineSamples";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
@@ -39,10 +43,14 @@ import { expectNoHorizontalScroll } from "./helpers/layout";
 
 const selected = (page: Page) =>
   page.getByRole("combobox", { name: "Selected step", exact: true });
-const connect = (page: Page, source: string) =>
-  page
+/** A step's connections are under Data; what follows sets the step, so its settings show again. */
+const connect = async (page: Page, source: string) => {
+  await openStepPart(page, "Data");
+  await page
     .getByRole("combobox", { name: "Connect input from", exact: true })
     .selectOption(source);
+  await openStepPart(page, "Settings");
+};
 const add = async (page: Page, name: string) => {
   await page.getByRole("button", { name: "Add step", exact: true }).click();
   await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
@@ -82,6 +90,7 @@ async function buildBranchedGraph(
   await connect(page, "features_select_2");
   await selected(page).selectOption("detector");
   if (adaptive) await page.getByRole("combobox", { name: "Detector model", exact: true }).selectOption("detector:aberrant_online_isolation_forest");
+  await openStepPart(page, "Data");
   await page
     .getByRole("button", {
       name: "Disconnect input from detector",
@@ -181,7 +190,8 @@ test.describe("visual pipeline real infrastructure", () => {
         await page.reload();
         await openPipelineSettings(page, "Component");
         await selected(page).selectOption("features_merge_1");
-        await expect(page.getByRole("heading", { name: "Incoming connections · output order", exact: true })).toBeVisible();
+        await openStepPart(page, "Data");
+        await expect(page.getByRole("heading", { name: "Arrives · output order", exact: true })).toBeVisible();
         await openPipelineInput(page);
         await page.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
         await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
@@ -672,7 +682,7 @@ test.describe("visual pipeline real infrastructure", () => {
       await page.keyboard.press("End");
       await page.keyboard.press("Enter");
       await expect(
-        page.getByRole("textbox", { name: "Step title", exact: true }),
+        pipelineStep(page).getByRole("button", { name: "Rename step", exact: true }),
       ).toBeVisible();
       await page
         .locator(`.react-flow__node[data-id="${processingId(60)}"]`)
@@ -684,15 +694,18 @@ test.describe("visual pipeline real infrastructure", () => {
         .getByRole("button", { name: "Undo graph change", exact: true })
         .click();
       await expect(page.locator(".react-flow__node")).toHaveCount(65);
-      await expect(
-        page.getByRole("heading", { name: "Output features", exact: true }),
-      ).toBeVisible();
+      await openStepPart(page, "Settings");
       await expect(
         page.locator('.pl-inspector input[type="checkbox"]'),
       ).toHaveCount(100);
       await expect(
         page.getByRole("checkbox", { name: outputNames[99]!, exact: true }),
       ).toBeChecked();
+      // The features that leave the step are listed with what passes through it.
+      await openStepPart(page, "Data");
+      await expect(
+        page.getByRole("list", { name: "Output features", exact: true }),
+      ).toBeVisible();
       await expect(page.locator(".pl-lineage > li")).toHaveCount(100);
       await expect(
         page.getByText(/Some source provenance is omitted/),
@@ -778,12 +791,11 @@ test.describe("visual pipeline real infrastructure", () => {
       await page.setViewportSize({ width: 390, height: 844 });
       await openPipelineSettings(page, "Component");
       await selected(page).selectOption(processingId(60));
+      await openStepPart(page, "Settings");
       await expect(
         page.locator('.pl-inspector input[type="checkbox"]'),
       ).toHaveCount(100);
-      await page
-        .getByRole("textbox", { name: "Step title", exact: true })
-        .fill("Keyboard and mobile inspection");
+      await titlePipelineStep(page, "Keyboard and mobile inspection");
       await savePipelineTemplate(page);
       await expectNoHorizontalScroll(page);
       await selected(page).scrollIntoViewIfNeeded();
@@ -809,9 +821,7 @@ test.describe("visual pipeline real infrastructure", () => {
         },
       );
       expect(collaborator.ok(), await collaborator.text()).toBeTruthy();
-      await page
-        .getByRole("textbox", { name: "Step title", exact: true })
-        .fill("Preserved conflicted edit");
+      await titlePipelineStep(page, "Preserved conflicted edit");
       await page.getByRole("button", { name: "Save template", exact: true }).click();
       const saveDialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });
       await saveDialog.getByRole("button", { name: "Update template", exact: true }).click();
@@ -820,7 +830,7 @@ test.describe("visual pipeline real infrastructure", () => {
       await saveDialog.getByRole("button", { name: "Save as new template", exact: true }).click();
       copyId = ((await (await copied).json()) as PipelineView).id;
       await expect(saveDialog).toBeHidden();
-      await expect(page.getByRole("textbox", { name: "Step title", exact: true })).toHaveValue("Preserved conflicted edit");
+      await expect(pipelineStepTitle(page)).toHaveText("Preserved conflicted edit");
       const copyResponse = await api.get(
         `/api/v1/pipelines/${copyId}`,
         { headers },

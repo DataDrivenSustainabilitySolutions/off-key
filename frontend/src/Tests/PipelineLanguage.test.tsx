@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   normalizeDefinition,
@@ -227,6 +227,7 @@ describe("monitoring graph visual language", () => {
         onChange={() => {}}
       />,
     );
+    fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
     const select = screen.getByRole("combobox", { name: "Connect input from" });
     expect(
       [...select.querySelectorAll("option")].map((option) => option.value),

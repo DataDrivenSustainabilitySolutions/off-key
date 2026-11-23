@@ -1,8 +1,9 @@
-import { useContext, useRef } from "react";
+import { useContext } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CheckCircle2, Clock3, TriangleAlert } from "lucide-react";
-import { CardActionsContext, type CardActions } from "./cardActions";
+import { CardActionsContext } from "./cardActions";
 import { dataKinds, sampledState, type DataKind } from "./semantics";
+import { StepTitleEditor } from "./StepTitleEditor";
 import type { CanvasNode } from "./types";
 
 /** Chips beyond these collapse into a count; the inspector lists every feature. */
@@ -46,38 +47,6 @@ function ConnectionDot({ direction, kind, connectable, issue, replaces, count, f
   />;
 }
 
-/** The step title typed on the card: Enter or leaving keeps it, Escape keeps the old one. */
-function TitleEditor({ id, title, operation, finish }: {
-  id: string;
-  title: string;
-  operation: string;
-  finish: CardActions["finishRename"];
-}) {
-  const done = useRef(false);
-  const end = (value?: string) => {
-    if (done.current) return;
-    done.current = true;
-    finish(id, value);
-  };
-  return <input
-    className="pl-node-rename nodrag nopan"
-    aria-label="Step title"
-    maxLength={120}
-    defaultValue={title}
-    placeholder={operation}
-    ref={(element) => { if (element && document.activeElement !== element) { element.focus({ preventScroll: true }); element.select(); } }}
-    onKeyDown={(event) => {
-      // Keys belong to the title: Backspace must not delete the card, nor Ctrl+Z undo the graph.
-      event.stopPropagation();
-      if (event.key === "Enter") { event.preventDefault(); end(event.currentTarget.value); }
-      else if (event.key === "Escape") { event.preventDefault(); end(); }
-    }}
-    onBlur={(event) => end(event.currentTarget.value)}
-    onClick={(event) => event.stopPropagation()}
-    onDoubleClick={(event) => event.stopPropagation()}
-  />;
-}
-
 export function PipelineNodeCard({
   id,
   data,
@@ -107,7 +76,8 @@ export function PipelineNodeCard({
       </span>
       <div className="pl-node-title">
         {data.renaming && actions
-          ? <TitleEditor id={id} title={data.label} operation={data.operation} finish={actions.finishRename} />
+          ? <StepTitleEditor className="pl-node-rename nodrag nopan" title={data.label} operation={data.operation}
+            onFinish={(title) => actions.finishRename(id, title)} />
           : <strong title={data.label}>{data.label}</strong>}
         {data.label !== data.operation && (
           <small className="pl-node-operation" title={data.operation}>

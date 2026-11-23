@@ -14,6 +14,9 @@ import {
   locatePipelineSelection,
   savePipelineTemplate,
   openPipelineSettings,
+  openStepPart,
+  pipelineStep,
+  pipelineStepTitle,
   expectReadablePipeline,
   expectValidPipeline,
 } from "./helpers/pipelineNavigation";
@@ -46,7 +49,7 @@ test("drags from the compact component menu without covering the drop area", asy
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/?create=monitoring");
   await dropPipelineComponent(page, "Pass through", "features_passthrough_1");
-  await expect(page.getByRole("textbox", { name: "Step title", exact: true })).toHaveAttribute("placeholder", "Pass through");
+  await expect(pipelineStepTitle(page)).toHaveText("Pass through");
   await expect(page.getByRole("combobox", { name: "Selected step", exact: true })).toHaveValue("features_passthrough_1");
 });
 
@@ -148,7 +151,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await node("input").click();
       await expect(editor.getByRole("button", { name: "Step settings", exact: true })).toHaveAttribute("aria-expanded", "true");
       // Settings dock at the right edge of the full-page canvas instead of narrowing it, and leave the step in view.
-      await expect(editor.getByRole("heading", { name: "Step settings", exact: true })).toBeVisible();
+      await expect(pipelineStep(editor)).toBeVisible();
       await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
       await expect.poll(async () => {
         const panel = (await page.locator(".pl-settings-panel").boundingBox())!;
@@ -187,6 +190,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await expect(graph.locator(".react-flow__edge-text")).toHaveCount(0);
       await expect(graph.locator(".react-flow__edge path.react-flow__edge-path")).toHaveCount(definition.edges.length);
       await selector.selectOption("merge");
+      await openStepPart(editor, "Data");
       await expect(
         editor.getByText(
           "Combine feature columns from the same aligned observation, in the order below.",
@@ -231,6 +235,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await expect(graph.locator(".react-flow__edge")).toHaveCount(wireCount + 1);
       await expect(graph.locator(".is-compatible, .is-incompatible")).toHaveCount(0);
       await openPipelineSettings(editor, "Component");
+      await openStepPart(editor, "Data");
       await editor.getByRole("button", { name: "Disconnect raw from merge", exact: true }).click();
       // The inspector remains an equivalent keyboard authoring route.
       await upstream.selectOption("raw");
@@ -272,9 +277,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await page.screenshot({ path: testInfo.outputPath(`readable-${strategy}-mobile-canvas.png`), fullPage: true });
       await openPipelineSettings(editor, "Component");
       await selector.selectOption("raw");
-      await expect(
-        editor.getByRole("textbox", { name: "Step title", exact: true }),
-      ).toHaveValue("Raw reference");
+      await expect(pipelineStepTitle(editor)).toHaveText("Raw reference");
       await expectNoHorizontalScroll(page);
       await page.screenshot({
         path: testInfo.outputPath(`visual-language-${strategy}-mobile.png`),
@@ -412,6 +415,7 @@ test("lists the features the detector receives and adds a step for one of them",
     await menu.getByRole("button", { name: "Add Despike", exact: true }).click();
     await expect(menu).toBeHidden();
     await expect(chips).toHaveText(["Despike"]);
+    await openStepPart(editor, "Data");
     await expect(editor.getByText("Ready after 11 observations", { exact: true })).toBeVisible();
     await editor.getByRole("button", { name: "Close settings", exact: true }).click();
     // A learned step from the row goes in just before the detector.
@@ -519,6 +523,7 @@ test.describe("touch connection dots", () => {
     await choosePipelineDetector(page);
     await openPipelineSettings(page, "Component");
     await page.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("detector");
+    await openStepPart(page, "Data");
     await page.getByRole("button", { name: "Disconnect input from detector", exact: true }).click();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
     await expect(graph.getByRole("button", { name: "Readable size", exact: true })).toHaveText("100%");

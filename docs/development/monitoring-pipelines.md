@@ -338,6 +338,17 @@ inspector instead of narrowing the graph. Cards use larger titles, stage colors
 and typed ports; descriptions appear in component settings. Opening and arranging
 retain readable text size, while Fit entire graph explicitly requests an overview.
 
+`PipelineInspector` shows the step in focus under a `PipelineStepHeader`: the
+step's family, its place in `stepOrder()` (the cards from left to right, then
+down) with the step before and after, a list of all steps (the `Selected step`
+select behind the count), the title with `StepTitleEditor`, which the card uses
+as well, and a menu of the card's actions. `retitle()` is the one place that
+decides what a typed title becomes. Below the header, the Settings, Data and
+About parts are tabs; the inspector keeps the open part while the header moves
+from step to step and returns to Settings for a step chosen anywhere else. The
+canvas reveals a step chosen away from it (`revealNode()`), never while a
+pointer is pressed on the canvas, so a drag is not moved under the hand.
+
 A screen holds one step in focus (`selected`), which its metadata requests and
 the inspector follow. The steps chosen together are view state of
 `PipelineWorkbench`: its group stands while the step in focus is one of its
@@ -550,7 +561,7 @@ run that has not ended.
 
 In the composer, `DesignTest.Values` is the third part of the contract in
 `designTest.ts`. `PipelineCreate` hands it to the workbench as `stepValues`,
-and `PipelineInspector` renders it between what a step does and its settings.
+and `PipelineInspector` renders it in the Data part, under what leaves the step.
 `HistoryTestValues` is a `details` element whose fold (`watching`) and chosen
 observation (`observation`) live in the history test store, so both hold from
 step to step. The store's `sample()` reads the samples once per test, and only

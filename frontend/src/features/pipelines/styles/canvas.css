@@ -20,13 +20,17 @@
   background: hsl(var(--card));
 }
 
-.pl-canvas-wrap {
+/* What flows between steps has a colour each; a step's card and its settings take the colour of what the step gives. */
+.pl-canvas-wrap,
+.pl-inspector {
   --pl-features: #0f766e;
   --pl-scores: #6d28d9;
   --pl-forecasts: #a21caf;
   --pl-p_values: #1d4ed8;
   --pl-decisions: #b45309;
   --pl-evidence: #475569;
+}
+.pl-canvas-wrap {
   display: flex;
   flex-direction: column;
   position: relative;
@@ -47,7 +51,8 @@
 .pl-canvas-wrap .react-flow {
   min-height: 480px;
 }
-.dark .pl-canvas-wrap {
+.dark .pl-canvas-wrap,
+.dark .pl-inspector {
   --pl-features: #5eead4;
   --pl-scores: #c4b5fd;
   --pl-forecasts: #f0abfc;

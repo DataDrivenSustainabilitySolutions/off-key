@@ -52,8 +52,9 @@ function Composer() {
     onChange={editor.commit} onAdd={editor.add} />;
 }
 
-const panel = () => screen.queryByRole("heading", { name: "Step settings" });
-const picker = () => screen.getByRole<HTMLSelectElement>("combobox", { name: "Selected step" });
+const panel = () => screen.queryByRole("complementary", { name: "Step settings" });
+/** What the settings are headed by: the step they are for. */
+const heading = () => within(panel()!).getByRole("heading", { level: 3 }).textContent;
 
 describe("choosing several steps", () => {
   beforeEach(() => { render(<Composer />); });
@@ -61,7 +62,7 @@ describe("choosing several steps", () => {
   it("opens the settings for one step and none for steps gathered together", () => {
     act(() => canvas.onSelect("pass"));
     expect(canvas.selection).toEqual(["pass"]);
-    expect(picker().value).toBe("pass");
+    expect(heading()).toBe("Pass through");
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
 
     act(() => canvas.onSelectionChange(["pass", "detector"]));
@@ -75,15 +76,14 @@ describe("choosing several steps", () => {
     act(() => canvas.onSelectionChange(["input", "detector"]));
     expect(canvas.selected).toBe("detector");
     fireEvent.click(screen.getByRole("button", { name: "Step settings" }));
-    expect(picker().value).toBe("");
-    expect(picker().selectedOptions[0]!.textContent).toBe("2 steps");
+    expect(heading()).toBe("2 steps");
     const chosen = screen.getByRole("list", { name: "Chosen steps" });
     expect(within(chosen).getAllByRole("button").map((button) => button.textContent)).toEqual(["Aligned inputs", "Detector A"]);
     expect(screen.getByText("They move, copy and delete together. Choose one for its settings.")).toBeTruthy();
 
     fireEvent.click(within(chosen).getByRole("button", { name: "Aligned inputs" }));
     expect(canvas.selection).toEqual(["input"]);
-    expect(picker().value).toBe("input");
+    expect(heading()).toBe("Aligned inputs");
   });
 
   it("puts the last gathered step in focus when the one that was has left, and lets go of all at once", () => {

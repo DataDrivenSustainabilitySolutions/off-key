@@ -16,7 +16,6 @@ import {
   Trash2, Unlink,
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
-import type { PipelineBlockCreate } from "@/types/pipelines.generated";
 import type { StepChange } from "./comparison";
 import type { PipelineBlock, PipelineComponent, PipelineValidation } from "./contracts";
 import { plural } from "./scope";
@@ -26,7 +25,7 @@ import {
 } from "./clipboard";
 import {
   addAfter, addBlocker, afterBlocker, connectNodes, connectionIssue, disconnectEdge, disconnectNode, duplicateBlocker,
-  insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel, snap, stepTitle,
+  insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, retitle, snap,
   type GraphDocument, type Link,
 } from "./model";
 import { PipelineContextMenu } from "./PipelineContextMenu";
@@ -34,7 +33,6 @@ import { PipelineDetectorSlot } from "./PipelineDetectorSlot";
 import { PipelineShortcuts } from "./PipelineShortcuts";
 import { detectorSlot } from "./detectorSlot";
 import { stepMenu, type Menu, type MenuItem } from "./contextMenu";
-import { PipelineSaveBlock } from "./PipelineSaveBlock";
 import { SHORTCUTS } from "./shortcuts";
 import { useStepShortcuts } from "./useStepShortcuts";
 import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID, switchedOff } from "./semantics";
@@ -113,8 +111,8 @@ type Props = {
   onOpenFile?: (file: File) => void;
   /** Saved chains of steps, offered beside the steps wherever a step can be added. */
   blocks?: PipelineBlock[];
-  /** Keeps a chain of steps as a block; a card's menu offers it where this is given. */
-  onSaveBlock?: (request: PipelineBlockCreate) => Promise<void>;
+  /** Asks to keep the steps from one step on as a block; a card's menu offers it where this is given. */
+  onSaveBlock?: (from: string) => void;
 };
 
 /** What a right-click, long-press or the menu key was aimed at. */
@@ -256,6 +254,27 @@ export default function PipelineCanvas({
   const additive = useRef(false);
   const boxing = useRef(false);
   const moving = useRef(false);
+  // A step chosen away from the canvas, such as with the settings' previous and next, comes into view.
+  // The view stays put under a pressed pointer: a step chosen there is in view, and may be on its way somewhere.
+  const pressed = useRef(false);
+  useEffect(() => {
+    const release = () => { pressed.current = false; };
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    return () => {
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+    };
+  }, []);
+  // A new step's place in the view is known once its card has been measured.
+  const selectedMeasured = !!selected && !!measurements[selected];
+  useEffect(() => {
+    if (!flow || !selected || !selectedMeasured || pressed.current) return;
+    const frame = requestAnimationFrame(() => {
+      if (surface.current) void revealNode(flow, surface.current, selected, VIEW_MARGIN, covered.current);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, selected, selectedMeasured]);
   const [dragged, setDragged] = useState<{ previous: Map<string, ConnectionRoute>; changed: Set<string> }>();
   const graph = useMemo(
     () => presentGraph(document, components, states, issues, changes),
@@ -377,12 +396,8 @@ export default function PipelineCanvas({
       setRenaming(undefined);
       // Back on the card, so the keyboard carries on where the rename started.
       requestAnimationFrame(() => cardElement(id)?.focus({ preventScroll: true }));
-      if (title === undefined) return;
-      const node = document.definition.nodes.find((item) => item.id === id);
-      const operation = node && components.find((item) => item.id === node.component)?.label;
-      // A title equal to the step's own name, or none, shows that name again.
-      const next = title.trim() === operation ? "" : title.trim();
-      if (next !== stepTitle(node)) onChange(setNodeLabel(document, id, next), true);
+      const titled = title === undefined ? undefined : retitle(document, components, id, title);
+      if (titled) onChange(titled, true);
     },
   };
   const wireActions: WireActions = {
@@ -518,8 +533,6 @@ export default function PipelineCanvas({
     onSelect(result.id);
     setInserted([result.id]);
   };
-  // The card whose steps are being saved as a block.
-  const [savingFrom, setSavingFrom] = useState<string>();
   /** Every block as a menu entry; one that cannot be added here stays listed and says why. */
   const blockItems = (add: (block: PipelineBlock) => BlockOutcome): MenuItem[] =>
     blockChoices(blocks, components, add).map(({ block, detail, outcome }) => ({
@@ -599,7 +612,7 @@ export default function PipelineCanvas({
         run: () => { switchChosen([id]); } }] : []),
       ...(onSaveBlock ? [{ key: "block", label: "Save as block", icon: Save,
         blocked: blockChain(document.definition, id).length ? undefined : "A block holds steps between the input and a detector.",
-        run: () => setSavingFrom(id) }] : []),
+        run: () => onSaveBlock(id) }] : []),
       { key: "disconnect", label: "Disconnect", icon: Unlink, blocked: connected ? undefined : "This step has no connections.",
         run: () => onChange(disconnectNode(document, id)) },
       { key: "delete", label: "Delete", icon: Trash2, keys: SHORTCUTS.remove, destructive: true, separated: true,
@@ -696,7 +709,7 @@ export default function PipelineCanvas({
           openMenu(x, y, aimed);
         }, LONG_PRESS_MS) };
       }}
-      onPointerDownCapture={(event) => { additive.current = additiveKeys(event); }}
+      onPointerDownCapture={(event) => { additive.current = additiveKeys(event); pressed.current = true; }}
       onKeyDownCapture={(event) => { additive.current = additiveKeys(event); }}
       onPointerLeave={() => { pointer.current = undefined; }}
       onPointerMove={(event) => {
@@ -936,9 +949,6 @@ export default function PipelineCanvas({
         }} />}
       {/* The rings on the cards show a group; this says it to those who cannot see them. */}
       <span className="ex-sr-only" aria-live="polite">{selection.length > 1 ? `${plural(selection.length, "step")} chosen` : ""}</span>
-      {onSaveBlock && savingFrom && blockChain(document.definition, savingFrom).length > 0
-        && <PipelineSaveBlock document={document} components={components} from={savingFrom} onSave={onSaveBlock}
-          onClose={() => setSavingFrom(undefined)} />}
       {(feedback || blocked) && (
         <p className="pl-canvas-feedback" role="status">
           {feedback || "Space components apart to show blocked connections."}

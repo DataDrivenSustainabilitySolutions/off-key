@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import type { PipelineCatalog, PipelineComponent, PipelineNode, PipelineValidation } from "./contracts";
 import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
 import { hasParameterControl } from "@/components/parameter-editor/types";
@@ -12,11 +12,9 @@ import {
   incomingEdges,
   moveMergeInput,
   nodeOptionLabeler,
-  removeNode,
   replaceComponent,
-  setNodeLabel,
-  stepTitle,
   setNodeParams,
+  stepOrder,
   type GraphDocument,
 } from "./model";
 import { afterGate, featureBlocker, rangeText, readyText } from "./features";
@@ -30,8 +28,9 @@ import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
 import { PipelineApart, PipelineScope } from "./PipelineScope";
 import { PipelineLags } from "./PipelineLags";
+import { PipelineStepHeader } from "./PipelineStepHeader";
 import { PipelineTime } from "./PipelineTime";
-import { apartField, combinedName, hasScope, isWarning } from "./scope";
+import { apartField, combinedName, hasScope, isWarning, plural } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind, shownComponent, switchedOff } from "./semantics";
 import { switchOn } from "./stepSwitch";
 import { Power } from "lucide-react";
@@ -46,6 +45,17 @@ const LEARNING_GROUPS: { mode: Learning; label: string }[] = [
   { mode: "none", label: UNTRAINED },
 ];
 
+/** The parts of a step's settings: what to set, what flows through, and what the step is. */
+const TABS = [
+  { id: "settings", label: "Settings" },
+  { id: "data", label: "Data" },
+  { id: "about", label: "About" },
+] as const;
+type StepTab = (typeof TABS)[number]["id"];
+
+/** Arriving features named before the rest are counted; the step before lists every one. */
+const MAX_ARRIVING = 12;
+
 type Props = {
   document: GraphDocument;
   catalog: PipelineCatalog;
@@ -56,8 +66,14 @@ type Props = {
   /** The latest report while an edit is being checked; its features stay listed meanwhile. */
   lastValidation?: PipelineValidation;
   readOnly?: boolean;
+  /** Another panel in the step settings' place, such as the service's settings, under its own heading. */
   header?: ReactNode;
   content?: ReactNode;
+  /** The step's name takes focus when its settings open. */
+  headingRef?: Ref<HTMLHeadingElement>;
+  onClose?: () => void;
+  /** Asks to keep the steps from one step on as a block. */
+  onSaveBlock?: (from: string) => void;
   /** Shown for the input instead of its generic settings: the readings it monitors. */
   input?: ReactNode;
   /** What the forecast service holds, for the steps whose model lives there. */
@@ -78,6 +94,9 @@ export function PipelineInspector({
   readOnly,
   header,
   content,
+  headingRef,
+  onClose,
+  onSaveBlock,
   input: inputContent,
   forecast,
   values,
@@ -85,12 +104,22 @@ export function PipelineInspector({
   onChange,
 }: Props) {
   const connectionHelpId = useId();
+  const tabsId = useId();
+  // The part that shows, and the step it was chosen for. A step chosen on the canvas opens at its settings;
+  // going from step to step in the settings keeps the part, so one part can be followed through the design.
+  const [part, setPart] = useState<{ tab: StepTab; step?: string }>({ tab: "settings" });
   const [modelQuery, setModelQuery] = useState("");
   // What a change of model or method did besides the step itself, until the next change.
   const [notice, setNotice] = useState<{ node: string; component: string; text: string }>();
   const several = selection && selection.length > 1
     ? document.definition.nodes.filter((item) => selection.includes(item.id)) : [];
   const node = several.length ? undefined : document.definition.nodes.find((item) => item.id === selected);
+  const tab = node && part.step === node.id ? part.tab : "settings";
+  const setTab = (next: StepTab) => setPart({ tab: next, step: node?.id });
+  const browse = (id?: string) => {
+    setPart({ tab, step: id });
+    onSelect(id);
+  };
   const component = componentFor(node, catalog.components);
   // A step that is switched off shows what it was, and no settings until it is on again.
   const was = switchedOff(document.layout, node);
@@ -157,23 +186,22 @@ export function PipelineInspector({
       slot.label === slot.id ? slot.id : `${slot.label} · ${slot.id}`,
     ]),
   );
-  const lineage = node && report?.features[node.id] && (
+  const leaving = node ? report?.features[node.id] : undefined;
+  // A step that gives features lists them; any other lists the features its result rests on.
+  const givesFeatures = !!node && (component?.output_type === "features" || ["source", "transform", "merge"].includes(node.kind));
+  // A step that takes features and gives something else rests on the features that arrive, which are named as they arrive.
+  const lineage = leaving && (givesFeatures || input !== "features") && (
     <>
-      <h4>
-        {component?.output_type === "features" ||
-        ["source", "transform", "merge"].includes(node.kind)
-          ? "Output features"
-          : "Contributing feature lineage"}
-      </h4>
-      {report.provenance_complete === false && (
+      {!givesFeatures && <p className="pl-help">Rests on {plural(leaving.length, "feature")}:</p>}
+      {report?.provenance_complete === false && (
         <p className="pl-help">
           Some source provenance is omitted to keep this inspection
           bounded. Feature names and order remain complete for this
           step.
         </p>
       )}
-      <ul className="pl-lineage">
-        {report.features[node.id]?.map((feature) => {
+      <ul className="pl-lineage" aria-label={givesFeatures ? "Output features" : "Contributing features"}>
+        {leaving.map((feature) => {
           const range = rangeText(feature.minimum, feature.maximum);
           return <li key={feature.name}>
             <strong>
@@ -187,7 +215,7 @@ export function PipelineInspector({
                     .map((slot) => featureLabels[slot] ?? slot)
                     .join(", ")}
                 </>
-              ) : report.provenance_complete === false ? (
+              ) : report?.provenance_complete === false ? (
                 "Source provenance omitted"
               ) : (
                 "From no reading"
@@ -198,20 +226,6 @@ export function PipelineInspector({
         })}
       </ul>
     </>
-  );
-  const titleField = node && (
-    <label className="pl-field">
-      <span>Step title</span>
-      <input
-        maxLength={120}
-        value={stepTitle(node)}
-        placeholder={was ? standsFor?.label ?? was.component : component?.label ?? node.component}
-        disabled={readOnly}
-        onChange={(event) =>
-          onChange(setNodeLabel(document, node.id, event.target.value), `title:${node.id}`)
-        }
-      />
-    </label>
   );
   // Errors on a setting appear beside it; warnings never block and are listed here, as is
   // what the step still needs before the design is complete.
@@ -250,439 +264,449 @@ export function PipelineInspector({
   const swapNotice = node && notice?.node === node.id && notice.component === node.component
     ? <p className="pl-notice" role="status">{notice.text}</p> : null;
   const fitting = fittingPolicy(document.definition, catalog.components);
-  return (
-    <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
+  const outgoing = node ? document.definition.edges.filter((edge) => edge.source === node.id)
+    .map((edge) => optionLabel(document.definition.nodes.find((item) => item.id === edge.target))) : [];
+  // What arrives and what leaves in a few words, such as "3 features → 12 features", on the tab that shows both.
+  const arrivingText = input === "features" && features.length ? plural(features.length, "feature")
+    : input ? dataKinds[input].label.toLocaleLowerCase() : undefined;
+  const leavingText = givesFeatures && leaving ? plural(leaving.length, "feature")
+    : output ? dataKinds[output].label.toLocaleLowerCase() : "evidence";
+  const flow = node && component ? [arrivingText, leavingText].filter(Boolean).join(" → ") : undefined;
+  // What the step is: for one that is switched off, the step it was.
+  const about = standsFor ?? component;
+  const facts = [about?.library, learningLabel(about)].filter(Boolean);
+  const hasSettings = !!node && !!component && (["detector", "calibration", "policy"].includes(node.kind) || !!apart || scoped
+    || node.component === "prepare.time" || node.component === "prepare.lags" || FORMULA_STEPS.has(node.component)
+    || CONDITION_STEPS.has(node.component) || (!!forecast && usesForecastService(node.component))
+    || stepFields(node, component).length > 0 || (node.kind === "source" && !!inputContent));
+  const moveTab = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = TABS[(TABS.findIndex((item) => item.id === tab) + step + TABS.length) % TABS.length]!;
+    setTab(next.id);
+    event.currentTarget.querySelector<HTMLElement>(`[data-tab="${next.id}"]`)?.focus();
+  };
+  if (content !== undefined && content !== null) return (
+    <aside className="pl-inspector" aria-label="Monitoring inspector">
       {header}
-      {content ?? <>
-      <label className="pl-field pl-step-picker">
-        <span className="ex-sr-only">Selected step</span>
-        <select
-          value={node ? selected : ""}
-          onChange={(event) => onSelect(event.target.value || undefined)}
-        >
-          <option value="">{several.length ? `${several.length} steps` : "Choose a step"}</option>
-          {document.definition.nodes.map((item) => (
-            <option key={item.id} value={item.id}>
-              {optionLabel(item)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {several.length ? (
-        <>
-          <ul className="pl-chosen-steps" aria-label="Chosen steps">
-            {several.map((item) => <li key={item.id}>
-              <button type="button" onClick={() => onSelect(item.id)}>{optionLabel(item)}</button>
-            </li>)}
-          </ul>
-          <p className="pl-help">{readOnly ? "They are copied together." : "They move, copy and delete together."} Choose one for its settings.</p>
-        </>
-      ) : node && node.kind === "source" && inputContent ? (
-        <>
-          <h3>Input</h3>
-          {values?.(node.id)}
-          {inputContent}
-          {component?.details && <p className="pl-help">{component.details}</p>}
-          {component && (
-            <ParameterFields
-              key={`${node.id}:${node.component}`}
-              fields={stepFields(node, component)}
-              issues={fieldIssues}
-              values={node.params}
-              features={features}
-              featureLabels={featureLabels}
-              featureHint={featureHint}
-              prefix={node.id}
-              readOnly={readOnly}
-              onChange={(params) => changeParams(params, "hold")}
-            />
-          )}
-          {titleField}
-          {lineage}
-          {nodeIssues}
-        </>
-      ) : node && was ? (
-        <>
-          {stepTitle(node) && <h3>{standsFor?.label ?? was.component}</h3>}
-          <p className="pl-help">
-            This step is switched off. Features pass through it unchanged, and its settings are kept.
-            {!standsFor && " This deployment no longer offers the step, so it cannot run when it is switched on."}
-          </p>
-          {!readOnly && <button type="button" onClick={() => onChange(switchOn(document, [node.id]))}>
-            <Power size={15} aria-hidden="true" />Switch on</button>}
-          {titleField}
-          {lineage}
-          {nodeIssues}
-        </>
-      ) : node ? (
-        <>
-          {/* The step picker above names the step; its kind is named again only under a title of its own. */}
-          {!["detector", "calibration", "policy"].includes(node.kind) && stepTitle(node)
-            && <h3>{component?.label ?? node.component}</h3>}
-          {component?.description && (
-            <p className="pl-help">{component.description}</p>
-          )}
-          {/* A calibration method's formula waits with its reference, below what it promises. */}
-          {component?.details && node.kind !== "calibration" && (
-            <p className="pl-help">{component.details}</p>
-          )}
-          {component && (
-            <p className="pl-help pl-inspector-signature">
-              {input ? `${dataKinds[input].label} → ` : ""}
-              {output ? dataKinds[output].label : "Stored evidence and alarms"}
-            </p>
-          )}
-          {ready ? <p className="pl-help pl-ready">{readyText(ready, afterGate(document.definition, node.id))}</p> : null}
-          {values?.(node.id)}
-          {node.kind === "detector" && (() => {
-            const query = modelQuery.trim().toLocaleLowerCase();
-            const models = catalog.components
-              .filter(
-                (item) =>
-                  item.kind === "detector" &&
-                  (item.id === node.component ||
-                    `${item.label} ${item.description} ${item.library ?? ""} ${learningLabel(item) ?? ""}`.toLocaleLowerCase().includes(query)),
-              )
-              .sort((left, right) => left.label.localeCompare(right.label));
-            return (
-              <div className="pl-field">
-                <label htmlFor={`${node.id}-detector-model`}>Detector model</label>
-                {!readOnly && (
-                  <input
-                    type="search"
-                    aria-label="Filter detector models"
-                    placeholder="Filter models…"
-                    value={modelQuery}
-                    onChange={(event) => setModelQuery(event.target.value)}
-                  />
-                )}
-                <select
-                  id={`${node.id}-detector-model`}
-                  aria-label="Detector model"
-                  value={node.component}
-                  disabled={readOnly}
-                  onChange={(event) => {
-                    const replacement = catalog.components.find(
-                      (item) => item.id === event.target.value,
-                    );
-                    if (replacement) swap(replacement);
-                  }}
-                >
-                  {LEARNING_GROUPS.map((group) => {
-                    const items = models.filter((item) => (item.learning ?? "none") === group.mode);
-                    return items.length ? <optgroup key={group.mode} label={group.label}>
-                      {items.map((item) => <option key={item.id} value={item.id}
-                        disabled={!!item.unavailable && item.id !== node.component}>
-                        {item.label}{item.unavailable ? " (no forecast service)" : ""}
-                      </option>)}
-                    </optgroup> : null;
-                  })}
-                </select>
-                <small className="pl-help">
-                  {query && models.length <= 1
-                    ? "No other model matches this filter. "
-                    : ""}
-                  {[component?.library, learningLabel(component)].filter(Boolean).map((fact) => `${fact}. `).join("")}
-                  Changing the model resets its settings and keeps its connections.
-                </small>
-                {swapNotice}
-              </div>
-            );
-          })()}
-          {node.kind === "calibration" && (() => {
-            const methods = catalog.components.filter((item) => item.kind === "calibration");
-            const groups = [...new Set(methods.map(calibrationFamily))];
-            const promise = coverage(component);
-            return (
-              <div className="pl-field">
-                <label htmlFor={`${node.id}-calibration-method`}>Calibration method</label>
-                <select
-                  id={`${node.id}-calibration-method`}
-                  aria-label="Calibration method"
-                  value={node.component}
-                  disabled={readOnly}
-                  onChange={(event) => {
-                    const replacement = methods.find((item) => item.id === event.target.value);
-                    if (replacement) swap(replacement);
-                  }}
-                >
-                  {groups.map((group) => <optgroup key={group} label={group}>
-                    {methods.filter((item) => calibrationFamily(item) === group)
-                      .map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                  </optgroup>)}
-                </select>
-                {promise && <small className={`pl-help pl-coverage is-${component!.coverage}`}>
-                  <strong>{promise.label}.</strong> {promise.help}
-                </small>}
-                {(component?.details || component?.reference) && <details className="pl-method-details">
-                  <summary>Details</summary>
-                  {component.details && <p className="pl-help">{component.details}</p>}
-                  {component.reference && <p className="pl-help">{component.reference}</p>}
-                </details>}
-                <small className="pl-help">
-                  {node.component === FIXED_SPLIT
-                    ? "The calibration window stays as it is. Methods that adapt keep moving their boundary and alarm by the exceedance rule."
-                    : "The boundary keeps adapting. The fixed split freezes the calibration window instead."}
-                  {" "}The detection rule follows the method.
-                </small>
-                {swapNotice}
-              </div>
-            );
-          })()}
-          {node.kind === "policy" && (() => {
-            const rules = catalog.components.filter((item) => item.kind === "policy");
-            return (
-              <div className="pl-field">
-                <label htmlFor={`${node.id}-detection-rule`}>Detection rule</label>
-                <select
-                  id={`${node.id}-detection-rule`}
-                  aria-label="Detection rule"
-                  value={node.component}
-                  disabled={readOnly}
-                  onChange={(event) => {
-                    const replacement = rules.find((item) => item.id === event.target.value);
-                    if (replacement) swap(replacement);
-                  }}
-                >
-                  {rules.map((item) => <option key={item.id} value={item.id}>
-                    {item.label}{fitting && item.id !== fitting ? " (does not fit this design)" : ""}
-                  </option>)}
-                </select>
-                <small className="pl-help">
-                  The calibration step and how the detectors learn decide which rule fits.
-                  {fitting && node.component !== fitting
-                    ? ` This design needs ${rules.find((item) => item.id === fitting)?.label ?? "another rule"}.` : ""}
-                </small>
-              </div>
-            );
-          })()}
-          {node.kind === "detector" && !readOnly && (() => {
-            const blocked = detectorBlocker(document.definition);
-            return (
-              <div className="pl-field">
-                <button
-                  type="button"
-                  disabled={!!blocked}
-                  onClick={() => {
-                    const added = addDetector(document, node.id);
-                    if (!added) return;
-                    onChange(added.document);
-                    onSelect(added.id);
-                  }}
-                >
-                  Add another detector
-                </button>
-                <small className="pl-help">
-                  {blocked ?? "Adds a detector like this one on the same features. The calibration step combines them."}
-                </small>
-              </div>
-            );
-          })()}
-          {node.kind === "calibration" && detectors.length > 1 && (
-            <div className="pl-field">
-              <span id={`${node.id}-fusion`}>Combine detectors</span>
-              <div className="pl-segmented" role="group" aria-labelledby={`${node.id}-fusion`}>
-                {FUSION_CHOICES.map((choice) => (
-                  <button
-                    key={choice.value}
-                    type="button"
-                    disabled={readOnly}
-                    aria-pressed={fusionChoice(node).value === choice.value}
-                    onClick={() => changeParams({ ...node.params, fusion: choice.value }, "fusion")}
-                  >
-                    {choice.label}
-                  </button>
-                ))}
-              </div>
-              <small className="pl-help">
-                {fusionChoice(node).help} Each score counts by its rank against that
-                detector's own calibration scores.
-              </small>
-            </div>
-          )}
-          {titleField}
-          {component && apart && (
-            <PipelineApart field={apart} node={node} features={features} featureLabels={featureLabels}
-              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
-          )}
-          {component && node.component === "prepare.time" && (
-            <PipelineTime node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
-          )}
-          {component && scoped && (
-            // The feature a step sets apart is never among the ones it uses.
-            <PipelineScope node={node} component={component}
-              features={features.filter((feature) => !apart || feature !== node.params[apart])}
-              featureLabels={featureLabels}
-              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
-          )}
-          {component && node.component === "prepare.lags" && (
-            <PipelineLags key={node.id} node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
-          )}
-          {component && FORMULA_STEPS.has(node.component) && (
-            <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
-              readings={readings} featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
-              range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />
-          )}
-          {component && (
-            <ParameterFields
-              key={`${node.id}:${node.component}`}
-              fields={stepFields(node, component)}
-              issues={fieldIssues}
-              values={node.params}
-              features={features}
-              featureLabels={featureLabels}
-              featureHint={featureHint}
-              prefix={node.id}
-              readOnly={readOnly}
-              onChange={(params) => changeParams(params, Object.keys(params)
-                .filter((key) => params[key] !== node.params[key])
-                .sort()
-                .join(","))}
-            />
-          )}
-          {component && CONDITION_STEPS.has(node.component) && (
-            <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
-              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
-          )}
-          {component && forecast && usesForecastService(node.component) && (
-            <PipelineForecastModels node={node} component={component} forecast={forecast} />
-          )}
-          <h4>
-            {node.kind === "calibration" && detectors.length > 1
-              ? "Detectors"
-              : `Incoming connections${node.kind === "merge" ? " · output order" : ""}`}
-          </h4>
-          {node.kind === "merge" && (
-            <p className="pl-help">
-              Combine feature columns from the same aligned observation, in the
-              order below.
-            </p>
-          )}
-          <ol className="pl-connections">
-            {incoming.map((edge, index) => (
-              <li key={edge.source}>
-                <span>
-                  {node.kind === "merge" && <small>Input {index + 1} · </small>}
-                  {optionLabel(
-                    document.definition.nodes.find(
-                      (item) => item.id === edge.source,
-                    ),
-                  )}
-                </span>
-                {!readOnly && (
-                  <div>
-                    {node.kind === "merge" && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={index === 0}
-                          aria-label={`Move input ${index + 1} earlier`}
-                          onClick={() =>
-                            onChange({
-                              ...document,
-                              definition: moveMergeInput(
-                                document.definition,
-                                node.id,
-                                index,
-                                -1,
-                              ),
-                            })
-                          }
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          disabled={index === incoming.length - 1}
-                          aria-label={`Move input ${index + 1} later`}
-                          onClick={() =>
-                            onChange({
-                              ...document,
-                              definition: moveMergeInput(
-                                document.definition,
-                                node.id,
-                                index,
-                                1,
-                              ),
-                            })
-                          }
-                        >
-                          ↓
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      aria-label={`Disconnect ${edge.source} from ${node.id}`}
-                      onClick={() =>
-                        onChange({ ...document, definition: disconnectEdge(document.definition, edge) })
-                      }
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
-          {!incoming.length && (
-            <p className="pl-help">
-              {node.kind === "source"
-                ? "Aligned catalogue readings enter here."
-                : "No input connected."}
-            </p>
-          )}
-          {!readOnly &&
-            node.kind !== "source" &&
-            (node.kind === "merge" || !incoming.length || (node.kind === "calibration" && candidates.length > 0)) && (
-              <label className="pl-field">
-                <span>Connect input from</span>
-                <select
-                  aria-label="Connect input from"
-                  aria-describedby={connectionHelpId}
-                  value=""
-                  onChange={(event) => {
-                    onChange({
-                      ...document,
-                      definition: connectNodes(
-                        document.definition,
-                        event.target.value,
-                        node.id,
-                        catalog.components,
-                      ),
-                    });
-                  }}
-                >
-                  <option value="">Choose upstream step</option>
-                  {candidates.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {optionLabel(item)}
-                    </option>
-                  ))}
-                </select>
-                <small className="pl-help" id={connectionHelpId}>
-                  {candidates.length
-                    ? "Only compatible, cycle-free connections are listed."
-                    : "No compatible upstream output is available. Add a step or disconnect an occupied input."}
-                </small>
-              </label>
+      {content}
+    </aside>
+  );
+  const head = (title: string) => <PipelineStepHeader document={document} components={catalog.components} node={node} title={title}
+    readOnly={readOnly} headingRef={headingRef} onSelect={browse} onChange={onChange} onClose={onClose} onSaveBlock={onSaveBlock} />;
+  const steps = (items: PipelineNode[], label: string) => <ul className="pl-chosen-steps" aria-label={label}>
+    {items.map((item) => <li key={item.id}>
+      <button type="button" onClick={() => onSelect(item.id)}>{optionLabel(item)}</button>
+    </li>)}
+  </ul>;
+  if (!node) {
+    const order = stepOrder(document);
+    const inOrder = [...document.definition.nodes].sort((left, right) => order.indexOf(left.id) - order.indexOf(right.id));
+    return (
+      <aside className="pl-inspector pl-inspector--step" aria-label="Step settings">
+        {head(several.length ? `${several.length} steps` : "Step settings")}
+        <div className="pl-step-body">
+          {several.length ? <>
+            {steps(several, "Chosen steps")}
+            <p className="pl-help">{readOnly ? "They are copied together." : "They move, copy and delete together."} Choose one for its settings.</p>
+          </> : inOrder.length ? <>
+            <p className="pl-help">Choose a step for its settings.</p>
+            {steps(inOrder, "Steps")}
+          </> : <p className="pl-help">This design has no steps yet.</p>}
+        </div>
+      </aside>
+    );
+  }
+  const settingsTab = was ? (
+    <>
+      <p className="pl-help">
+        This step is switched off. Features pass through it unchanged, and its settings are kept.
+        {!standsFor && " This deployment no longer offers the step, so it cannot run when it is switched on."}
+      </p>
+      {!readOnly && <button type="button" onClick={() => onChange(switchOn(document, [node.id]))}>
+        <Power size={15} aria-hidden="true" />Switch on</button>}
+      {nodeIssues}
+    </>
+  ) : (
+    <>
+      {nodeIssues}
+      {node.kind === "source" && inputContent}
+      {node.kind === "detector" && (() => {
+        const query = modelQuery.trim().toLocaleLowerCase();
+        const models = catalog.components
+          .filter(
+            (item) =>
+              item.kind === "detector" &&
+              (item.id === node.component ||
+                `${item.label} ${item.description} ${item.library ?? ""} ${learningLabel(item) ?? ""}`.toLocaleLowerCase().includes(query)),
+          )
+          .sort((left, right) => left.label.localeCompare(right.label));
+        return (
+          <div className="pl-field">
+            <label htmlFor={`${node.id}-detector-model`}>Detector model</label>
+            {!readOnly && (
+              <input
+                type="search"
+                aria-label="Filter detector models"
+                placeholder="Filter models…"
+                value={modelQuery}
+                onChange={(event) => setModelQuery(event.target.value)}
+              />
             )}
-          {lineage}
-          {nodeIssues}
-          {!readOnly && (
+            <select
+              id={`${node.id}-detector-model`}
+              aria-label="Detector model"
+              value={node.component}
+              disabled={readOnly}
+              onChange={(event) => {
+                const replacement = catalog.components.find(
+                  (item) => item.id === event.target.value,
+                );
+                if (replacement) swap(replacement);
+              }}
+            >
+              {LEARNING_GROUPS.map((group) => {
+                const items = models.filter((item) => (item.learning ?? "none") === group.mode);
+                return items.length ? <optgroup key={group.mode} label={group.label}>
+                  {items.map((item) => <option key={item.id} value={item.id}
+                    disabled={!!item.unavailable && item.id !== node.component}>
+                    {item.label}{item.unavailable ? " (no forecast service)" : ""}
+                  </option>)}
+                </optgroup> : null;
+              })}
+            </select>
+            <small className="pl-help">
+              {query && models.length <= 1
+                ? "No other model matches this filter. "
+                : ""}
+              {facts.map((fact) => `${fact}. `).join("")}
+              Changing the model resets its settings and keeps its connections.
+            </small>
+            {swapNotice}
+          </div>
+        );
+      })()}
+      {node.kind === "calibration" && (() => {
+        const methods = catalog.components.filter((item) => item.kind === "calibration");
+        const groups = [...new Set(methods.map(calibrationFamily))];
+        const promise = coverage(component);
+        return (
+          <div className="pl-field">
+            <label htmlFor={`${node.id}-calibration-method`}>Calibration method</label>
+            <select
+              id={`${node.id}-calibration-method`}
+              aria-label="Calibration method"
+              value={node.component}
+              disabled={readOnly}
+              onChange={(event) => {
+                const replacement = methods.find((item) => item.id === event.target.value);
+                if (replacement) swap(replacement);
+              }}
+            >
+              {groups.map((group) => <optgroup key={group} label={group}>
+                {methods.filter((item) => calibrationFamily(item) === group)
+                  .map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </optgroup>)}
+            </select>
+            {promise && <small className={`pl-help pl-coverage is-${component!.coverage}`}>
+              <strong>{promise.label}.</strong> {promise.help}
+            </small>}
+            <small className="pl-help">
+              {node.component === FIXED_SPLIT
+                ? "The calibration window stays as it is. Methods that adapt keep moving their boundary and alarm by the exceedance rule."
+                : "The boundary keeps adapting. The fixed split freezes the calibration window instead."}
+              {" "}The detection rule follows the method.
+            </small>
+            {swapNotice}
+          </div>
+        );
+      })()}
+      {node.kind === "policy" && (() => {
+        const rules = catalog.components.filter((item) => item.kind === "policy");
+        return (
+          <div className="pl-field">
+            <label htmlFor={`${node.id}-detection-rule`}>Detection rule</label>
+            <select
+              id={`${node.id}-detection-rule`}
+              aria-label="Detection rule"
+              value={node.component}
+              disabled={readOnly}
+              onChange={(event) => {
+                const replacement = rules.find((item) => item.id === event.target.value);
+                if (replacement) swap(replacement);
+              }}
+            >
+              {rules.map((item) => <option key={item.id} value={item.id}>
+                {item.label}{fitting && item.id !== fitting ? " (does not fit this design)" : ""}
+              </option>)}
+            </select>
+            <small className="pl-help">
+              The calibration step and how the detectors learn decide which rule fits.
+              {fitting && node.component !== fitting
+                ? ` This design needs ${rules.find((item) => item.id === fitting)?.label ?? "another rule"}.` : ""}
+            </small>
+          </div>
+        );
+      })()}
+      {node.kind === "calibration" && detectors.length > 1 && (
+        <div className="pl-field">
+          <span id={`${node.id}-fusion`}>Combine detectors</span>
+          <div className="pl-segmented" role="group" aria-labelledby={`${node.id}-fusion`}>
+            {FUSION_CHOICES.map((choice) => (
+              <button
+                key={choice.value}
+                type="button"
+                disabled={readOnly}
+                aria-pressed={fusionChoice(node).value === choice.value}
+                onClick={() => changeParams({ ...node.params, fusion: choice.value }, "fusion")}
+              >
+                {choice.label}
+              </button>
+            ))}
+          </div>
+          <small className="pl-help">
+            {fusionChoice(node).help} Each score counts by its rank against that
+            detector's own calibration scores.
+          </small>
+        </div>
+      )}
+      {component && apart && (
+        <PipelineApart field={apart} node={node} features={features} featureLabels={featureLabels}
+          featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+      )}
+      {component && node.component === "prepare.time" && (
+        <PipelineTime node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+      )}
+      {component && scoped && (
+        // The feature a step sets apart is never among the ones it uses.
+        <PipelineScope node={node} component={component}
+          features={features.filter((feature) => !apart || feature !== node.params[apart])}
+          featureLabels={featureLabels}
+          featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+      )}
+      {component && node.component === "prepare.lags" && (
+        <PipelineLags key={node.id} node={node} component={component} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+      )}
+      {component && FORMULA_STEPS.has(node.component) && (
+        <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
+          readings={readings} featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
+          range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />
+      )}
+      {component && (
+        <ParameterFields
+          key={`${node.id}:${node.component}`}
+          fields={stepFields(node, component)}
+          issues={fieldIssues}
+          values={node.params}
+          features={features}
+          featureLabels={featureLabels}
+          featureHint={featureHint}
+          prefix={node.id}
+          readOnly={readOnly}
+          onChange={(params) => changeParams(params, Object.keys(params)
+            .filter((key) => params[key] !== node.params[key])
+            .sort()
+            .join(","))}
+        />
+      )}
+      {component && CONDITION_STEPS.has(node.component) && (
+        <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
+          featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+      )}
+      {component && forecast && usesForecastService(node.component) && (
+        <PipelineForecastModels node={node} component={component} forecast={forecast} />
+      )}
+      {!hasSettings && <p className="pl-help">This step has nothing to set.</p>}
+      {node.kind === "detector" && !readOnly && (() => {
+        const blocked = detectorBlocker(document.definition);
+        return (
+          <div className="pl-field pl-step-more">
             <button
               type="button"
-              className="pl-danger"
-              onClick={() => onChange(removeNode(document, node.id))}
+              disabled={!!blocked}
+              onClick={() => {
+                const added = addDetector(document, node.id);
+                if (!added) return;
+                onChange(added.document);
+                onSelect(added.id);
+              }}
             >
-              Remove step
+              Add another detector
             </button>
-          )}
-        </>
-      ) : (
-        <p className="pl-help">Select a step.</p>
+            <small className="pl-help">
+              {blocked ?? "Adds a detector like this one on the same features. The calibration step combines them."}
+            </small>
+          </div>
+        );
+      })()}
+    </>
+  );
+  const dataTab = (
+    <>
+      <h4>
+        Arrives
+        {node.kind === "calibration" && detectors.length > 1 ? " · detectors" : node.kind === "merge" ? " · output order" : ""}
+      </h4>
+      {node.kind === "merge" && (
+        <p className="pl-help">
+          Combine feature columns from the same aligned observation, in the
+          order below.
+        </p>
       )}
-      </>}
+      <ol className="pl-connections" aria-label="Incoming connections">
+        {incoming.map((edge, index) => (
+          <li key={edge.source}>
+            <span>
+              {node.kind === "merge" && <small>Input {index + 1} · </small>}
+              {optionLabel(
+                document.definition.nodes.find(
+                  (item) => item.id === edge.source,
+                ),
+              )}
+            </span>
+            {!readOnly && (
+              <div>
+                {node.kind === "merge" && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      aria-label={`Move input ${index + 1} earlier`}
+                      onClick={() =>
+                        onChange({
+                          ...document,
+                          definition: moveMergeInput(
+                            document.definition,
+                            node.id,
+                            index,
+                            -1,
+                          ),
+                        })
+                      }
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === incoming.length - 1}
+                      aria-label={`Move input ${index + 1} later`}
+                      onClick={() =>
+                        onChange({
+                          ...document,
+                          definition: moveMergeInput(
+                            document.definition,
+                            node.id,
+                            index,
+                            1,
+                          ),
+                        })
+                      }
+                    >
+                      ↓
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Disconnect ${edge.source} from ${node.id}`}
+                  onClick={() =>
+                    onChange({ ...document, definition: disconnectEdge(document.definition, edge) })
+                  }
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
+      {!incoming.length && (
+        <p className="pl-help">
+          {node.kind === "source"
+            ? "Aligned catalogue readings enter here."
+            : "No input connected."}
+        </p>
+      )}
+      {!readOnly &&
+        node.kind !== "source" &&
+        (node.kind === "merge" || !incoming.length || (node.kind === "calibration" && candidates.length > 0)) && (
+          <label className="pl-field">
+            <span>Connect input from</span>
+            <select
+              aria-label="Connect input from"
+              aria-describedby={connectionHelpId}
+              value=""
+              onChange={(event) => {
+                onChange({
+                  ...document,
+                  definition: connectNodes(
+                    document.definition,
+                    event.target.value,
+                    node.id,
+                    catalog.components,
+                  ),
+                });
+              }}
+            >
+              <option value="">Choose upstream step</option>
+              {candidates.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {optionLabel(item)}
+                </option>
+              ))}
+            </select>
+            <small className="pl-help" id={connectionHelpId}>
+              {candidates.length
+                ? "Only compatible, cycle-free connections are listed."
+                : "No compatible upstream output is available. Add a step or disconnect an occupied input."}
+            </small>
+          </label>
+        )}
+      {input === "features" && features.length > 0 && <ul className="pl-feature-chips" aria-label="Arriving features">
+        {features.slice(0, MAX_ARRIVING).map((feature) => <li key={feature}>{featureLabels[feature] ?? feature}</li>)}
+        {features.length > MAX_ARRIVING && <li className="is-more">+ {features.length - MAX_ARRIVING} more</li>}
+      </ul>}
+      <h4>Leaves</h4>
+      <p className="pl-help pl-inspector-signature">
+        {givesFeatures && leaving ? plural(leaving.length, "feature")
+          : output ? dataKinds[output].label : "Stored evidence and alarms"}
+        {outgoing.length ? ` to ${outgoing.join(", ")}` : ""}
+      </p>
+      {ready ? <p className="pl-help pl-ready">{readyText(ready, afterGate(document.definition, node.id))}</p> : null}
+      {lineage}
+      {values?.(node.id)}
+    </>
+  );
+  const aboutTab = (
+    <>
+      {about?.details && <p className="pl-help">{about.details}</p>}
+      {component && (
+        <p className="pl-help pl-inspector-signature">
+          {input ? `Takes ${dataKinds[input].label.toLocaleLowerCase()} and ` : ""}
+          {`${output ? `${input ? "gives" : "Gives"} ${dataKinds[output].label.toLocaleLowerCase()}`
+            : `${input ? "stores" : "Stores"} evidence and alarms`}.`}
+        </p>
+      )}
+      {facts.length > 0 && <p className="pl-help">{facts.map((fact) => `${fact}.`).join(" ")}</p>}
+      {about?.reference && <p className="pl-help">{about.reference}</p>}
+      {!about && <p className="pl-help">This deployment does not describe this step.</p>}
+    </>
+  );
+  return (
+    <aside className="pl-inspector pl-inspector--step" aria-label="Step settings" data-kind={node.kind}>
+      {head("Step settings")}
+      <div className="pl-step-tabs" role="tablist" aria-label="Step settings" onKeyDown={moveTab}>
+        {TABS.map((item) => <button type="button" role="tab" key={item.id} id={`${tabsId}-${item.id}`} data-tab={item.id}
+          aria-selected={tab === item.id} aria-controls={`${tabsId}-panel`} tabIndex={tab === item.id ? 0 : -1}
+          onClick={() => setTab(item.id)}>
+          {item.label}
+          {item.id === "data" && flow && <small>{flow}</small>}
+        </button>)}
+      </div>
+      <div className="pl-step-body" role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
+        {tab === "settings" ? settingsTab : tab === "data" ? dataTab : aboutTab}
+      </div>
     </aside>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { datasetChartOption } from "@/features/dojo/dojo-chart";
-import { formatDuration, injectedFaults, readPages, runState, suggestBindings } from "@/features/dojo/model";
+import { formatDuration, formatShortDate, formatShortSpan, injectedFaults, readPages, runState, suggestBindings } from "@/features/dojo/model";
 import type { DatasetSeriesView } from "@/types/dojo.generated";
 
 const series = (id: string, name: string, unit: string | null = null): DatasetSeriesView => ({
@@ -37,6 +37,18 @@ describe("Dojo model", () => {
   it("names durations in the largest readable unit", () => {
     expect([12, 90, 5400, 200_000].map(formatDuration)).toEqual(["12 s", "1.5 min", "1.5 h", "2.3 d"]);
     expect(formatDuration(null)).toBe("–");
+  });
+
+  it("keeps dataset spans and creation dates short enough for a table cell", () => {
+    const at = (...parts: [number, number, number, number?, number?]) => new Date(...parts).toISOString();
+    const now = new Date(2026, 10, 23, 17, 0).getTime();
+    expect(formatShortSpan(at(2026, 10, 16, 15, 1), at(2026, 10, 23, 14, 29), now, "en-US")).toMatch(/^Nov 16\s–\s23$/u);
+    expect(formatShortSpan(at(2013, 11, 2), at(2014, 1, 19), now, "en-US")).toMatch(/^Dec 2, 2013\s–\sFeb 19, 2014$/u);
+    expect(formatShortSpan(at(2026, 10, 23, 8), at(2026, 10, 23, 12), now, "en-US")).toMatch(/^Nov 23, 8:00\sAM\s–\s12:00\sPM$/u);
+    expect(formatShortSpan(null, at(2026, 10, 23), now)).toBe("–");
+    expect(formatShortDate(at(2026, 10, 23, 14, 30), now, "en-US")).toBe("2 hours ago");
+    expect(formatShortDate(at(2026, 9, 2, 9), now, "en-US")).toBe("Oct 2");
+    expect(formatShortDate(at(2025, 9, 2, 9), now, "en-US")).toBe("Oct 2, 2025");
   });
 
   it("shows a running run's progress", () => {

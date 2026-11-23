@@ -8,7 +8,7 @@ import type { DatasetSummary, DatasetView, SuiteSummary } from "@/types/dojo.gen
 import type { SystemStream } from "@/types/system";
 import { dojoApi } from "./api";
 import { BenchmarkImportDialog, CsvImportDialog, HistoryImportDialog } from "./DatasetImport";
-import { formatInstant, formatSpan } from "./model";
+import { formatInstant, formatShortDate, formatShortSpan, formatSpan } from "./model";
 import { SuiteCreateDialog } from "./SuiteDialogs";
 
 const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Benchmark" } as const;
@@ -55,14 +55,16 @@ export function DatasetList({ datasetHref, suiteHref, onCreated, scope, readings
     {datasets === null && !error ? <p className="dj-loading" role="status">Loading datasets…</p>
       : datasets?.length === 0 ? <div className="dj-empty"><h2>No datasets yet</h2>
         <p>{editable ? "Upload a CSV file, add series of a public anomaly benchmark, or select a device or reading in the catalogue and copy its recorded readings for a time window." : "Datasets will appear here when the demo administrator adds them."}</p></div>
-      : datasets && <div className="dj-table-scroll"><table className="dj-table" aria-label="Datasets">
-        <thead><tr><th>Dataset</th><th>Origin</th><th>Values</th><th>Time span</th><th>Created</th></tr></thead>
+      : datasets && <div className="dj-table-scroll"><table className="dj-table dj-table--stack" aria-label="Datasets">
+        <thead><tr><th>Dataset</th><th className="dj-fit dj-wide-only">Origin</th><th className="dj-fit">Values</th>
+          <th className="dj-fit">Time span</th><th className="dj-fit dj-wide-only">Created</th></tr></thead>
         <tbody>{datasets.map(item => <tr key={item.id}>
-          <td><Link to={datasetHref(item.id)}>{item.name}</Link>{item.description && <small>{item.description}</small>}</td>
-          <td>{ORIGIN[item.origin]}</td>
-          <td>{item.point_count.toLocaleString()}<small>{item.series_count} series</small></td>
-          <td>{formatSpan(item.start_at, item.end_at)}</td>
-          <td>{formatInstant(item.created_at)}</td>
+          <td><Link to={datasetHref(item.id)}>{item.name}</Link>{item.description && <small>{item.description}</small>}
+            <small className="dj-narrow-only">{ORIGIN[item.origin]} · created {formatShortDate(item.created_at)}</small></td>
+          <td className="dj-fit dj-wide-only">{ORIGIN[item.origin]}</td>
+          <td className="dj-fit">{item.point_count.toLocaleString()}<span className="dj-narrow-unit"> values</span><small>{item.series_count} series</small></td>
+          <td className="dj-fit"><span title={formatSpan(item.start_at, item.end_at)}>{formatShortSpan(item.start_at, item.end_at)}</span></td>
+          <td className="dj-fit dj-wide-only"><time dateTime={item.created_at} title={formatInstant(item.created_at)}>{formatShortDate(item.created_at)}</time></td>
         </tr>)}</tbody>
       </table></div>}
     {suites.length > 0 && <>

@@ -130,6 +130,34 @@ export function formatSpan(start: string | null | undefined, end: string | null 
   return `${formatInstant(start)} – ${formatInstant(end)}`;
 }
 
+const DAY_MS = 86_400_000;
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+
+/** "Nov 16 – 23", "Dec 2, 2013 – Feb 19, 2014" or "Nov 23, 8:00 AM – 12:00 PM": a span that fits a table cell. */
+export function formatShortSpan(start: string | null | undefined, end: string | null | undefined, now = Date.now(), locale?: string) {
+  if (!start || !end) return "–";
+  const from = new Date(start), to = new Date(end), year = new Date(now).getFullYear();
+  const withYear = from.getFullYear() !== year || to.getFullYear() !== year;
+  return new Intl.DateTimeFormat(locale, {
+    month: "short", day: "numeric", ...(withYear && { year: "numeric" }),
+    ...(sameDay(from, to) && { hour: "numeric", minute: "2-digit" }),
+  }).formatRange(from, to);
+}
+
+/** "2 hours ago" within a day, then "Nov 16", with the year once it is not this year's. */
+export function formatShortDate(value: string, now = Date.now(), locale?: string) {
+  const date = new Date(value);
+  const elapsed = now - date.getTime();
+  if (elapsed >= 0 && elapsed < DAY_MS) {
+    const relative = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    const minutes = Math.floor(elapsed / 60_000);
+    return minutes < 1 ? "just now" : minutes < 60 ? relative.format(-minutes, "minute") : relative.format(-Math.floor(minutes / 60), "hour");
+  }
+  return new Intl.DateTimeFormat(locale, {
+    month: "short", day: "numeric", ...(date.getFullYear() !== new Date(now).getFullYear() && { year: "numeric" }),
+  }).format(date);
+}
+
 export const runName = (run: Pick<RunSummary, "name" | "created_at">) => run.name || `Run of ${formatInstant(run.created_at)}`;
 
 export const DATASET_TABS = [

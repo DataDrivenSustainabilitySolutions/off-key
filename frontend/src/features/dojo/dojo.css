@@ -15,6 +15,9 @@
 .dj-table a { color: var(--ex-ink); font-weight: 500; text-decoration: none; overflow-wrap: anywhere; }
 .dj-table a:hover { color: var(--ex-accent); }
 .dj-table-scroll { overflow-x: auto; }
+.dj-table :is(th, td).dj-fit { width: 1%; white-space: nowrap; }
+.dj-table td.dj-fit:last-child, .dj-table th.dj-fit:last-child { padding-right: 0; }
+.dj-table td small.dj-narrow-only, .dj-table td .dj-narrow-unit { display: none; }
 /* The run a link pointed to, such as a proposal's test: a bar on its first cell, so the columns stay put. */
 .dj-table tr.dj-row-current td { background: var(--ex-hover); }
 .dj-table tr.dj-row-current td:first-child { box-shadow: inset 3px 0 0 var(--ex-accent); padding-left: 10px; }
@@ -73,6 +76,16 @@
   .ex-shell .dj-action,.ex-shell .dj-primary,.dj-back { min-height: 44px; }
   .dj-field :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea) { min-height: 44px; }
   .dj-labels li { grid-template-columns: 1fr; gap: 4px; }
+  .dj-table .dj-wide-only { display: none; }
+  .dj-table td small.dj-narrow-only { display: block; }
+  .dj-table--stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .dj-table--stack tr { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--ex-line); }
+  .dj-table--stack td { padding: 0; border: 0; }
+  .dj-table--stack td:first-child { flex-basis: 100%; }
+  .dj-table--stack td.dj-fit { width: auto; color: var(--ex-muted); font-size: var(--text-caption); }
+  .dj-table--stack td.dj-fit small { display: inline; margin: 0; }
+  .dj-table--stack td.dj-fit small::before { content: " · "; }
+  .dj-table td .dj-narrow-unit { display: inline; }
   .dj-chart { height: 340px; }
   .dj-chart--alarms { height: calc(300px + var(--dj-alarm-rows, 3) * 22px); }
 }

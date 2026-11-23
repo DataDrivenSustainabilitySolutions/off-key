@@ -30,7 +30,7 @@ RUN npm run build
 
 # alpine-slim runs the same nginx build as alpine, without the optional modules
 # (njs, xslt, image-filter, geoip, acme) and curl that this config never loads.
-FROM nginx:1.31.8-alpine-slim AS production
+FROM nginx:1.31.9-alpine-slim AS production
 
 LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
       org.opencontainers.image.description="Production image for the Off-Key frontend" \

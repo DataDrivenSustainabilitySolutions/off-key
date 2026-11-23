@@ -42,7 +42,6 @@ function wiring(page: Page) {
 }
 
 test("drags from the compact component menu without covering the drop area", async ({ page }) => {
-  test.setTimeout(30_000);
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/?create=monitoring");
   await dropPipelineComponent(page, "Pass through", "features_passthrough_1");

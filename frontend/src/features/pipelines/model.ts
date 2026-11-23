@@ -387,12 +387,28 @@ export function retitle(document: GraphDocument, components: PipelineComponent[]
   return next === stepTitle(node) ? undefined : setNodeLabel(document, nodeId, next);
 }
 
-/** Steps in the order the canvas reads: left to right, and top to bottom where they share a column. */
-export const stepOrder = (document: GraphDocument): string[] =>
-  document.definition.nodes
-    .map((node, index) => ({ id: node.id, ...nodePosition(document.layout, node.id, index) }))
-    .sort((left, right) => left.x - right.x || left.y - right.y)
-    .map((node) => node.id);
+/** Steps in the order the data flows: a step comes after the steps that feed it. Where several could
+ * come next, as on branches side by side, the leftmost does, and the upper one of two in a column. */
+export function stepOrder(document: GraphDocument): string[] {
+  const { nodes, edges } = document.definition;
+  const places = new Map(nodes.map((node, index) => [node.id, nodePosition(document.layout, node.id, index)]));
+  const feeding = new Map(nodes.map((node) => [node.id, 0]));
+  for (const edge of edges)
+    if (places.has(edge.source) && feeding.has(edge.target)) feeding.set(edge.target, feeding.get(edge.target)! + 1);
+  const left = new Set(nodes.map((node) => node.id));
+  const order: string[] = [];
+  while (left.size) {
+    const fed = [...left].filter((id) => !feeding.get(id));
+    // Steps drawn in a circle feed each other; they keep their places on the canvas.
+    const [next] = (fed.length ? fed : [...left]).sort((one, other) =>
+      places.get(one)!.x - places.get(other)!.x || places.get(one)!.y - places.get(other)!.y);
+    left.delete(next!);
+    order.push(next!);
+    for (const edge of edges)
+      if (edge.source === next && feeding.has(edge.target)) feeding.set(edge.target, feeding.get(edge.target)! - 1);
+  }
+  return order;
+}
 
 /** `replace` lets a new connection take over a single input that is already connected. */
 type ConnectOptions = { replace?: boolean };

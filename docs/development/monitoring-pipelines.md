@@ -339,8 +339,8 @@ and typed ports; descriptions appear in component settings. Opening and arrangin
 retain readable text size, while Fit entire graph explicitly requests an overview.
 
 `PipelineInspector` shows the step in focus under a `PipelineStepHeader`: the
-step's family, its place in `stepOrder()` (the cards from left to right, then
-down) with the step before and after, a list of all steps (the `Selected step`
+step's family, its place in `stepOrder()` (the order the data flows in, the
+leftmost first where steps stand side by side) with the step before and after, a list of all steps (the `Selected step`
 select behind the count), the title with `StepTitleEditor`, which the card uses
 as well, and a menu of the card's actions. `retitle()` is the one place that
 decides what a typed title becomes. Below the header, the Settings, Data and

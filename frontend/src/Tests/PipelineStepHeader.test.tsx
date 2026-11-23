@@ -17,7 +17,7 @@ const catalog = normalizeCatalog({
   ]),
 });
 
-/** The detector is listed first and stands last, so the order shown is the order on the canvas. */
+/** The detector is listed first and comes last, so the order shown is the order the data flows in. */
 const design = (): GraphDocument => ({
   definition: normalizeDefinition({
     input_slots: [{ id: "value", label: "Value" }],
@@ -51,11 +51,29 @@ const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${nam
 const title = (id: string) => shown.definition.nodes.find((node) => node.id === id)!.label;
 
 describe("the order of steps", () => {
-  it("reads the canvas from left to right, and down where steps share a column", () => {
+  it("follows the data, wherever the cards stand", () => {
     expect(stepOrder(design())).toEqual(["input", "pass", "detector"]);
-    const stacked = design();
-    stacked.layout.nodes.detector = { x: 0, y: 200 };
-    expect(stepOrder(stacked)).toEqual(["input", "detector", "pass"]);
+    const wrapped = design();
+    wrapped.layout.nodes.detector = { x: 0, y: 200 };
+    expect(stepOrder(wrapped)).toEqual(["input", "pass", "detector"]);
+  });
+
+  it("takes the leftmost of the steps that could come next, and the upper one of two in a column", () => {
+    const branched = design();
+    branched.definition.nodes.push({ ...branched.definition.nodes.find((node) => node.id === "pass")!, id: "other" },
+      { ...branched.definition.nodes.find((node) => node.id === "pass")!, id: "loose" });
+    branched.definition.edges.push({ source: "input", target: "other", order: 0 });
+    branched.layout.nodes.other = { x: 288, y: 200 };
+    branched.layout.nodes.loose = { x: 900, y: 0 };
+    expect(stepOrder(branched)).toEqual(["input", "pass", "other", "detector", "loose"]);
+    branched.layout.nodes.other = { x: 100, y: 200 };
+    expect(stepOrder(branched)).toEqual(["input", "other", "pass", "detector", "loose"]);
+  });
+
+  it("keeps steps that feed each other in their places", () => {
+    const circle = design();
+    circle.definition.edges.push({ source: "detector", target: "pass", order: 1 });
+    expect(stepOrder(circle)).toEqual(["input", "pass", "detector"]);
   });
 });
 

@@ -280,7 +280,7 @@ same features and connects it to the calibration step, up to four detectors. Cha
 
 **Step settings** name the step they belong to: its family in the card's
 color, its title and one line on what it does. The arrows beside the count,
-such as **2 of 6**, go to the step before and after from left to right, the
+such as **2 of 6**, go to the step before and after in the order the data flows, the
 count itself opens the list of all steps, and the canvas brings the step into
 view. The pencil renames the step, as does a double click on its title; a step
 with a title of its own keeps its operation's name underneath. **Step actions**

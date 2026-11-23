@@ -678,9 +678,8 @@ test.describe("visual pipeline real infrastructure", () => {
       await openPipelineSettings(page, "Component");
       await expect(selected(page)).toBeVisible();
       await expectClearPipelineRouting(page);
-      await selected(page).focus();
-      await page.keyboard.press("End");
-      await page.keyboard.press("Enter");
+      // The list of steps follows the data, so its last entry is the output; the step that selects features is named.
+      await selected(page).selectOption(processingId(60));
       await expect(
         pipelineStep(page).getByRole("button", { name: "Rename step", exact: true }),
       ).toBeVisible();

@@ -3,7 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import toast from "react-hot-toast";
 import { CircleCheck, CircleDashed, Plus, TriangleAlert, X } from "lucide-react";
 import type { PipelineCatalog, PipelineComponent } from "./contracts";
-import { blockChoices, placeBlock, useBlocks } from "./blocks";
+import { blockChain, blockChoices, placeBlock, useBlocks } from "./blocks";
 import { detectorMenu, fillDetectorSlot, suggestedDetector } from "./detectorSlot";
 import { useForecastModels, usesForecastService, withForecastService } from "./forecastModels";
 import type { GraphDocument } from "./model";
@@ -11,6 +11,7 @@ import PipelineCanvas from "./PipelineCanvas";
 import { PipelineContextMenu } from "./PipelineContextMenu";
 import { PipelineFeatures } from "./PipelineFeatures";
 import { PipelineInspector } from "./PipelineInspector";
+import { PipelineSaveBlock } from "./PipelineSaveBlock";
 import { PipelineToolbox } from "./PipelineToolbox";
 import { openSummary, showIssues } from "./issues";
 import { plural } from "./scope";
@@ -107,6 +108,9 @@ export function PipelineWorkbench({
   );
   // Saved blocks are offered wherever a step can be added, and a card's menu saves one more.
   const library = useBlocks(!props.readOnly);
+  // The step whose chain is being saved as a block, asked for from a card's menu or a step's settings.
+  const [savingFrom, setSavingFrom] = useState<string>();
+  const saveBlock = props.readOnly ? undefined : setSavingFrom;
   useUndoShortcuts(!props.readOnly && !!onUndo && !!onRedo, () => onUndo?.(), () => onRedo?.());
   const [issuesOpen, setIssuesOpen] = useState(false);
   // Keep the last result on screen while an edit is re-checked, instead of flickering away.
@@ -380,10 +384,9 @@ export function PipelineWorkbench({
       features={latest?.features} featuresStale={checking || failed}
       selection={selection} onSelect={selectOnCanvas} onSelectionChange={choose} onAdd={add} insets={insets}
       onConfigure={select} onChooseDetector={chooseDetector}
-      blocks={library.blocks} onSaveBlock={props.readOnly ? undefined : library.save} />;
-  // What a panel is called, in its heading and on the button that closes it.
-  const panelTitle = panel === "brief" ? brief?.label ?? "" : panel === "service" ? "Service settings"
-    : panel === "test" ? "Test on history" : "Step settings";
+      blocks={library.blocks} onSaveBlock={saveBlock} />;
+  // What a panel is called, in its heading and on the button that closes it. A step's settings are headed by the step.
+  const panelTitle = panel === "brief" ? brief?.label ?? "" : panel === "service" ? "Service settings" : "Test on history";
   const panelName = panel === "brief" ? panelTitle.toLowerCase() : panel === "test" ? "test" : "settings";
   const settingsContent = panel && <div className={`pl-settings-panel${panel === "brief" ? " pl-settings-panel--brief" : ""}`}
     id={panelId} ref={settingsPanel} onKeyDown={(event) => {
@@ -394,7 +397,8 @@ export function PipelineWorkbench({
     <PipelineInspector document={props.document} catalog={catalog} selected={props.selected} selection={selection}
       validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
       onChange={props.onChange} input={input} forecast={forecast} values={stepValues}
-      header={<div className="pl-inspector-heading">
+      headingRef={heading} onClose={close} onSaveBlock={saveBlock}
+      header={panel !== "component" && <div className="pl-inspector-heading">
         <h3 ref={heading} tabIndex={-1}>{panelTitle}</h3>
         <button type="button" onClick={close} aria-label={`Close ${panelName}`} title={`Collapse ${panelName}`}>
           <X size={16} aria-hidden="true" />
@@ -402,6 +406,9 @@ export function PipelineWorkbench({
       </div>}
       content={panel === "brief" ? brief?.content : panel === "service" ? settings : panel === "test" ? test : undefined} />
   </div>;
+  const blockDialog = savingFrom && blockChain(props.document.definition, savingFrom).length > 0
+    && <PipelineSaveBlock document={props.document} components={catalog.components} from={savingFrom} onSave={library.save}
+      onClose={() => setSavingFrom(undefined)} />;
   const detectorChoice = choice && <PipelineContextMenu x={choice.x} y={choice.y}
     menu={detectorMenu(catalog.components, suggestedDetector(catalog), placeDetector)}
     onClose={(restore) => {
@@ -415,6 +422,7 @@ export function PipelineWorkbench({
     <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-body">{settingsContent}</div>
     {detectorChoice}
+    {blockDialog}
   </div>;
   return <div className="pl-workbench">
     {toolbar}
@@ -423,5 +431,6 @@ export function PipelineWorkbench({
       {settingsContent}
     </div>
     {detectorChoice}
+    {blockDialog}
   </div>;
 }

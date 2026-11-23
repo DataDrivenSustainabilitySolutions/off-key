@@ -276,6 +276,7 @@ describe("the inspector of a Prepare step", () => {
   it("says when the step first has output and the range of each feature it gives", () => {
     render(<PipelineInspector document={chain} catalog={catalog} selected="clip" validation={checked}
       onSelect={() => {}} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
     expect(screen.getByText("Ready after 11 observations")).toBeTruthy();
     expect(screen.getByText(/From Reading C · c · 0 to 5/)).toBeTruthy();
   });
@@ -283,6 +284,7 @@ describe("the inspector of a Prepare step", () => {
   it("says nothing about warm-up for a step the Prepare stage does not run", () => {
     render(<PipelineInspector document={chain} catalog={catalog} selected="scale" validation={checked}
       onSelect={() => {}} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
     expect(screen.queryByText(/^Ready /)).toBeNull();
   });
 });

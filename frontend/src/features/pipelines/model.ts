@@ -375,6 +375,41 @@ export function setNodeLabel(document: GraphDocument, nodeId: string, label: str
   });
 }
 
+/**
+ * Give a step the title typed for it. A title equal to the step's own name, or none, shows that
+ * name again. Undefined when the step has that title already.
+ */
+export function retitle(document: GraphDocument, components: PipelineComponent[], nodeId: string, title: string) {
+  const node = document.definition.nodes.find((item) => item.id === nodeId);
+  if (!node) return undefined;
+  const operation = components.find((item) => item.id === node.component)?.label;
+  const next = title.trim() === operation ? "" : title.trim();
+  return next === stepTitle(node) ? undefined : setNodeLabel(document, nodeId, next);
+}
+
+/** Steps in the order the data flows: a step comes after the steps that feed it. Where several could
+ * come next, as on branches side by side, the leftmost does, and the upper one of two in a column. */
+export function stepOrder(document: GraphDocument): string[] {
+  const { nodes, edges } = document.definition;
+  const places = new Map(nodes.map((node, index) => [node.id, nodePosition(document.layout, node.id, index)]));
+  const feeding = new Map(nodes.map((node) => [node.id, 0]));
+  for (const edge of edges)
+    if (places.has(edge.source) && feeding.has(edge.target)) feeding.set(edge.target, feeding.get(edge.target)! + 1);
+  const left = new Set(nodes.map((node) => node.id));
+  const order: string[] = [];
+  while (left.size) {
+    const fed = [...left].filter((id) => !feeding.get(id));
+    // Steps drawn in a circle feed each other; they keep their places on the canvas.
+    const [next] = (fed.length ? fed : [...left]).sort((one, other) =>
+      places.get(one)!.x - places.get(other)!.x || places.get(one)!.y - places.get(other)!.y);
+    left.delete(next!);
+    order.push(next!);
+    for (const edge of edges)
+      if (edge.source === next && feeding.has(edge.target)) feeding.set(edge.target, feeding.get(edge.target)! - 1);
+  }
+  return order;
+}
+
 /** `replace` lets a new connection take over a single input that is already connected. */
 type ConnectOptions = { replace?: boolean };
 

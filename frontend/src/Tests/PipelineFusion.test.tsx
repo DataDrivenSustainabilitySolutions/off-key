@@ -232,12 +232,14 @@ describe("the inspector", () => {
     const group = screen.getByRole("group", { name: "Combine detectors" });
     expect(within(group).getByRole("button", { name: "Strongest" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText(/The most surprised detector decides/)).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Detectors" })).toBeTruthy();
 
     fireEvent.click(within(group).getByRole("button", { name: "Average" }));
     const changed = (onChange.mock.calls[0]![0] as GraphDocument).definition;
     expect(changed.nodes.find((node) => node.id === "calibrate")!.params.fusion).toBe("mean");
     expect(changed.nodes.find((node) => node.id === "policy")!.params.fusion).toBeUndefined();
+    // What arrives at the step is named for what it is: one connection per detector.
+    fireEvent.click(screen.getByRole("tab", { name: /^Data/ }));
+    expect(screen.getByRole("heading", { name: "Arrives · detectors" })).toBeTruthy();
   });
 
   it("changes the calibration method, says what it promises and moves the detection rule along", () => {

@@ -113,5 +113,6 @@ export async function revealNode(
       : start < margin ? margin - start : end > size - margin ? size - margin - end : 0;
   const dx = shift(left, right, width);
   const dy = shift(top, bottom, height);
-  if (dx || dy) await flow.setViewport({ x: x + dx, y: y + dy, zoom }, { duration: 200 });
+  // A straight pan holds the zoom all the way, so a second pan that starts during the first keeps it too.
+  if (dx || dy) await flow.setViewport({ x: x + dx, y: y + dy, zoom }, { duration: 200, interpolate: "linear" });
 }

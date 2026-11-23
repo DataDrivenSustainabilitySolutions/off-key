@@ -277,8 +277,31 @@ input, calibration step, detection rule and output, so the menu does not offer
 them again; it links to the existing steps instead. A detector's settings offer
 **Add another detector**: it adds a detector with the same model that reads the
 same features and connects it to the calibration step, up to four detectors. Change its model or its input afterwards like any step's. **Service settings** and **Step settings** open the side panel.
-Step settings provide the same connection editing on keyboards and narrow
-screens, listing compatible, cycle-free upstream choices.
+
+**Step settings** name the step they belong to: its family in the card's
+color, its title and one line on what it does. The arrows beside the count,
+such as **2 of 6**, go to the step before and after in the order the data flows, the
+count itself opens the list of all steps, and the canvas brings the step into
+view. The pencil renames the step, as does a double click on its title; a step
+with a title of its own keeps its operation's name underneath. **Step actions**
+duplicates the step, switches it off, saves it as a block, disconnects it or
+removes it. Below, three parts divide what there is to know about a step:
+
+- **Settings** holds what you can change: the model, method or rule and their
+  values. A setting offers **Use default** only once it differs from its
+  default.
+- **Data** shows what **Arrives** and what **Leaves**: the connections and the
+  features on each side, and the values of the last test. Its tab counts both,
+  such as **3 features → 12 features**. It provides the same connection editing
+  as the canvas on keyboards and narrow screens, listing compatible, cycle-free
+  upstream choices.
+- **About** explains the step: what it does in more words, what it takes and
+  gives, and how it learns.
+
+A step chosen on the canvas opens at **Settings**. Going from step to step with
+the arrows keeps the part that is open, so the data can be followed through the
+design.
+
 **Locate selected component** brings its card into a readable view and **Fit
 entire graph** shows the whole graph. **Arrange** lays out the graph while
 preserving processing order; the magnet button (**Snap to grid**) toggles grid
@@ -400,7 +423,7 @@ the Dojo** to its comparison once it has labels.
 
 A test also keeps what 12 to 23 of its observations looked like at every step,
 spread from the first result to the last. **Values in the last test**, folded
-under what a step does in **Step settings**, shows one of them: the features
+under **Data** in **Step settings**, shows one of them: the features
 that went into the step under **In** and the features that came out under
 **Out**, at most the first eight of each. A detector gives one value, and the
 detection rule says whether it alarmed; the calibration step shows the rule's

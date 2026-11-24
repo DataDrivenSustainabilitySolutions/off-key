@@ -110,6 +110,12 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 .ex-confirm-description { margin: 0; color: var(--ex-muted); font-size: var(--text-body); overflow-wrap: anywhere; }
 .ex-confirm .ex-preview-error { margin: 12px 0 0; }
 .ex-confirm-description strong { color: var(--ex-ink); font-weight: 500; }
+.ex-form-dialog > header { margin-bottom: 6px; }
+.ex-form-dialog-description { margin: 0 0 18px; color: var(--ex-muted); font-size: var(--text-body); line-height: 1.55; overflow-wrap: anywhere; }
+.ex-form-dialog form { display: grid; gap: 16px; min-width: 0; margin: 0; }
+.ex-form-dialog .ex-dialog-actions { margin-top: 8px; }
+.ex-form-dialog .ex-preview-error { margin: 0; }
+.ex-form-dialog .app-settings-select { width: 100%; min-height: 36px; }
 .ex-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 .mn-state { display: inline-flex; gap: 7px; align-items: center; font-size: var(--text-body); }
 .mn-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ex-muted); flex-shrink: 0; }

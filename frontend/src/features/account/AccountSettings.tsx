@@ -3,6 +3,7 @@ import { LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { SettingsGroup, SettingsRow } from "@/components/SettingsGroup";
+import { FormDialog } from "@/components/FormDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -113,27 +114,11 @@ export default function AccountSettings() {
       </SettingsGroup>
       {manageMembers && (
         <SettingsGroup title="Members" help="Members can view organization data; their role decides what they can change. Keep at least one active member who can manage members. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept."
-          actions={!inviting && <Button variant="outline" size="sm" onClick={() => { setError(""); setNotice(""); setInviting(true); }}>Invite member</Button>}
+          actions={<Button variant="outline" size="sm" onClick={() => { setError(""); setNotice(""); setInviting(true); }}>Invite member</Button>}
           footer={<>
-            {error && <p role="alert" className="text-destructive">{error}</p>}
+            {error && !inviting && <p role="alert" className="text-destructive">{error}</p>}
             {notice && <p role="status">{notice}</p>}
           </>}>
-          {inviting && <form className="app-settings-invite" aria-label="Invite member" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
-            <div className="grid min-w-0 flex-1 gap-1.5">
-              <Label htmlFor="member-email">Email</Label>
-              <Input id="member-email" type="email" required autoFocus autoComplete="off" placeholder="name@company.com" value={email} onChange={(event) => setEmail(event.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="member-role">Role</Label>
-              <select id="member-role" className={selectClass} value={role} onChange={(event) => setRole(event.target.value)}>
-                {roleOptions(role)}
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <Button disabled={busy} type="submit">Send invitation</Button>
-              <Button type="button" variant="ghost" disabled={busy} onClick={() => { setInviting(false); setEmail(""); }}>Cancel</Button>
-            </div>
-          </form>}
           <ul ref={memberList} aria-label="Members" tabIndex={-1} className="app-settings-list">
             {members.map((target) => (
               <li key={target.id}>
@@ -164,6 +149,20 @@ export default function AccountSettings() {
       )}
       {manageMembers && <RoleSettings roles={roles} onChanged={rolesChanged} />}
       {manageMembers && <AgentSettings />}
+      <FormDialog open={inviting} title="Invite member" description="We email them a link to join. The link expires in 48 hours."
+        submitLabel="Send invitation" busyLabel="Sending…" busy={busy} error={error}
+        onSubmit={() => void invite(email, role)} onClose={() => { setInviting(false); setEmail(""); setError(""); }}>
+        <div className="grid gap-1.5">
+          <Label htmlFor="member-email">Email</Label>
+          <Input id="member-email" type="email" required autoComplete="off" placeholder="name@company.com" value={email} onChange={(event) => setEmail(event.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="member-role">Role</Label>
+          <select id="member-role" className={selectClass} value={role} onChange={(event) => setRole(event.target.value)}>
+            {roleOptions(role)}
+          </select>
+        </div>
+      </FormDialog>
       {confirmation}
       {removalTarget && <RemoveMemberDialog member={removalTarget}
         onClose={() => setRemovalTarget(null)}

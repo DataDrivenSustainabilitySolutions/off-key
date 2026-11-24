@@ -80,14 +80,16 @@ it("shows member access without offering member management", async () => {
 it("invites colleagues and updates their role", async () => {
   render(<MemoryRouter><Account /></MemoryRouter>);
   await screen.findByText(member.email);
-  // The member list comes first; the invitation form opens on request.
+  // The member list comes first; the invitation opens in a dialog on request.
   expect(screen.queryByLabelText("Email")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Invite member" }));
-  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "colleague@example.com" } });
-  fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+  const dialog = screen.getByRole("dialog", { name: "Invite member" });
+  expect(document.activeElement).toBe(within(dialog).getByLabelText("Email"));
+  fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: "colleague@example.com" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Send invitation" }));
   await waitFor(() => expect(inviteMember).toHaveBeenCalledWith("colleague@example.com", "user"));
   await screen.findByRole("status");
-  expect(screen.queryByRole("form", { name: "Invite member" })).toBeNull();
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await within(screen.getByLabelText("Role for member@example.com")).findByRole("option", { name: "Operator" });
   fireEvent.change(screen.getByLabelText("Role for member@example.com"), { target: { value: "operator" } });
   await waitFor(() => expect(updateMember).toHaveBeenCalledWith(member, { role: "operator" }));
@@ -169,13 +171,13 @@ it("creates a role from chosen permissions", async () => {
   expect(await within(list).findByText("Every permission, always · 1 member")).toBeTruthy();
   expect(within(list).getByText("View only · 1 member")).toBeTruthy();
   fireEvent.click(within(group).getByRole("button", { name: "New role" }));
-  const form = within(group).getByRole("form", { name: "New role" });
+  const form = screen.getByRole("dialog", { name: "New role" });
   fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Auditor" } });
   fireEvent.click(await within(form).findByRole("checkbox", { name: /Manage alarms/ }));
   fireEvent.click(within(form).getByRole("button", { name: "Create role" }));
   await waitFor(() => expect(createRole).toHaveBeenCalledWith("Auditor", ["manage_alarms"]));
   expect((await within(group).findByRole("status")).textContent).toContain("Auditor created.");
-  expect(within(group).queryByRole("form")).toBeNull();
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(auth.retryAuthentication).not.toHaveBeenCalled();
 });
 
@@ -188,7 +190,7 @@ it("edits a role's permissions and refreshes your own access when it is your rol
   expect(within(administrator!).queryByRole("button", { name: "Edit" })).toBeNull();
   expect(within(memberRole!).queryByRole("button", { name: "Delete" })).toBeNull();
   fireEvent.click(within(memberRole!).getByRole("button", { name: "Edit" }));
-  const form = within(group).getByRole("form", { name: "Edit Member" });
+  const form = screen.getByRole("dialog", { name: "Edit Member" });
   fireEvent.click(await within(form).findByRole("checkbox", { name: /Manage sources/ }));
   fireEvent.click(within(form).getByRole("button", { name: "Save role" }));
   await waitFor(() => expect(updateRole).toHaveBeenCalledWith("user", { name: "Member", permissions: ["manage_sources"] }));
@@ -233,7 +235,7 @@ it("hands an agent its key once", async () => {
   expect(await within(agents).findByText("Night shift agent")).toBeTruthy();
   expect(within(agents).getByText("Key ending in q7Xk · Created by admin@example.com")).toBeTruthy();
   fireEvent.click(within(agents).getByRole("button", { name: "New key" }));
-  const form = within(agents).getByRole("form", { name: "New key" });
+  const form = screen.getByRole("dialog", { name: "New key" });
   // A key designs, tests and proposes unless it is allowed more.
   const starting = within(form).getByLabelText("Starting monitors") as HTMLSelectElement;
   expect(starting.value).toBe("nothing");
@@ -241,17 +243,18 @@ it("hands an agent its key once", async () => {
   fireEvent.change(within(form).getByLabelText("Name"), { target: { value: " Line 3 agent " } });
   fireEvent.click(within(form).getByRole("button", { name: "Create key" }));
   await waitFor(() => expect(createAgent).toHaveBeenCalledExactlyOnceWith("Line 3 agent", "nothing"));
-  const issued = await within(agents).findByRole("group", { name: "Key of Line 3 agent" });
-  expect((within(issued).getByLabelText("Key of Line 3 agent") as HTMLInputElement).value).toBe("offkey_secretZr4t");
+  const issued = await screen.findByRole("dialog", { name: "Key of Line 3 agent" });
+  const key = within(issued).getByLabelText("Key") as HTMLInputElement;
+  expect(key.value).toBe("offkey_secretZr4t");
+  await waitFor(() => expect(document.activeElement).toBe(key));
   expect(issued.textContent).toContain("It is not shown again.");
   // The address an MCP client needs stands beside the key it needs it with.
   expect(issued.textContent).toContain(`connects to ${window.location.origin}/api/v1/mcp with it`);
-  // While the key is on screen, no second one is started.
-  expect(within(agents).queryByRole("button", { name: "New key" })).toBeNull();
   fireEvent.click(within(issued).getByRole("button", { name: "Copy key" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith("offkey_secretZr4t"));
   expect(await within(issued).findByRole("button", { name: "Copied" })).toBeTruthy();
   fireEvent.click(within(issued).getByRole("button", { name: "Done" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   // The list keeps the agent and the end of its key, never the key.
   expect(agents.textContent).not.toContain("offkey_secretZr4t");
   expect(within(agents).getByText("Key ending in Zr4t · Created by admin@example.com")).toBeTruthy();

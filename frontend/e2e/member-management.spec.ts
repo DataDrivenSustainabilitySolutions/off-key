@@ -20,8 +20,10 @@ async function accountFixture(page: Page) {
   const row = page.getByRole("list", { name: "Members", exact: true }).getByRole("listitem").filter({ hasText: email });
   const invite = async () => {
     await page.getByRole("button", { name: "Invite member", exact: true }).click();
-    await page.getByLabel("Email", { exact: true }).fill(email);
-    await page.getByRole("button", { name: "Send invitation", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Invite member", exact: true });
+    await dialog.getByLabel("Email", { exact: true }).fill(email);
+    await dialog.getByRole("button", { name: "Send invitation", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("status")).toContainText("Invitation sent");
     await expect(row).toBeVisible();
     const member = (await read()).find(member => member.email === email);
@@ -211,7 +213,7 @@ test("a custom role grants its member exactly the permissions it bundles", async
   try {
     const roles = page.getByRole("region", { name: "Roles", exact: true });
     await roles.getByRole("button", { name: "New role", exact: true }).click();
-    const form = roles.getByRole("form", { name: "New role", exact: true });
+    const form = page.getByRole("dialog", { name: "New role", exact: true });
     await form.getByLabel("Name", { exact: true }).fill(name);
     await form.getByRole("checkbox", { name: /Manage monitors/ }).check();
     await form.getByRole("button", { name: "Create role", exact: true }).click();
@@ -220,9 +222,10 @@ test("a custom role grants its member exactly the permissions it bundles", async
 
     const members = page.getByRole("region", { name: "Members", exact: true });
     await members.getByRole("button", { name: "Invite member", exact: true }).click();
-    await members.getByLabel("Email", { exact: true }).fill(fixture.email);
-    await members.getByLabel("Role", { exact: true }).selectOption({ label: name });
-    await members.getByRole("button", { name: "Send invitation", exact: true }).click();
+    const invitation = page.getByRole("dialog", { name: "Invite member", exact: true });
+    await invitation.getByLabel("Email", { exact: true }).fill(fixture.email);
+    await invitation.getByLabel("Role", { exact: true }).selectOption({ label: name });
+    await invitation.getByRole("button", { name: "Send invitation", exact: true }).click();
     await expect(members.getByRole("status")).toContainText("Invitation sent");
     await acceptInvitation(memberPage, await invitationLink(page, fixture.email), fixture.email);
 

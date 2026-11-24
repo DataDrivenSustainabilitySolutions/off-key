@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SettingsGroup, SettingsRow } from "@/components/SettingsGroup";
+import { FormDialog } from "@/components/FormDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +38,7 @@ export function AgentSettings() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirm, confirmation] = useConfirm();
+  const keyField = useRef<HTMLInputElement>(null);
   const [activity, setActivity] = useState<{ proposals: PipelineProposalSummary[]; monitors: MonitorSummary[] }>();
 
   useEffect(() => {
@@ -55,6 +57,9 @@ export function AgentSettings() {
       .then(([proposals, monitors]) => { if (!controller.signal.aborted) setActivity({ proposals, monitors }); }, () => undefined);
     return () => controller.abort();
   }, []);
+
+  // The same dialog turns from the new key's settings into the key; focus follows.
+  useEffect(() => { if (issued) keyField.current?.focus(); }, [issued]);
 
   const run = async (work: () => Promise<string>) => {
     setBusy(true);
@@ -106,41 +111,12 @@ export function AgentSettings() {
 
   return <>
     <SettingsGroup title="Agents" help={HELP}
-      actions={!draft && !issued && <Button variant="outline" size="sm" disabled={busy}
+      actions={<Button variant="outline" size="sm" disabled={busy}
         onClick={() => { setError(""); setNotice(""); setDraft({ name: "", starts: "nothing" }); }}>New key</Button>}
       footer={<>
-        {error && <p role="alert" className="text-destructive">{error}</p>}
+        {error && !draft && !issued && <p role="alert" className="text-destructive">{error}</p>}
         {notice && <p role="status">{notice}</p>}
       </>}>
-      {draft && <form className="app-settings-invite" aria-label="New key"
-        onSubmit={(event) => { event.preventDefault(); void create(draft); }}>
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          <Label htmlFor="agent-name">Name</Label>
-          <Input id="agent-name" required autoFocus autoComplete="off" maxLength={60} placeholder="Night shift agent" value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="agent-starts">Starting monitors</Label>
-          <select id="agent-starts" className="app-settings-select" value={draft.starts}
-            onChange={(event) => setDraft({ ...draft, starts: event.target.value as AgentStarts })}>{levels}</select>
-        </div>
-        <div className="flex gap-2">
-          <Button disabled={busy} type="submit">Create key</Button>
-          <Button type="button" variant="ghost" disabled={busy} onClick={() => setDraft(null)}>Cancel</Button>
-        </div>
-      </form>}
-      {issued && <div className="app-settings-invite app-settings-role-form" role="group" aria-label={`Key of ${issued.name}`}>
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          <Label htmlFor="agent-key">Key of {issued.name}</Label>
-          <Input id="agent-key" readOnly className="font-mono" value={issued.key} onFocus={(event) => event.target.select()} />
-          <p className="app-settings-row-detail">Copy the key now. It is not shown again. An MCP client
-            connects to <span className="font-mono break-all">{MCP_ADDRESS}</span> with it as its bearer token.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button type="button" onClick={() => void copy(issued.key)}>{copied ? "Copied" : "Copy key"}</Button>
-          <Button type="button" variant="ghost" onClick={() => setIssued(null)}>Done</Button>
-        </div>
-      </div>}
       {agents.length ? <ul aria-label="Agents" className="app-settings-list">
         {agents.map(agent => <li key={agent.id}>
           <SettingsRow className="is-wrapping" label={agent.name}
@@ -152,8 +128,32 @@ export function AgentSettings() {
               onClick={() => void revoke(agent)}>Revoke</Button>
           </SettingsRow>
         </li>)}
-      </ul> : !draft && !issued && <SettingsRow label="No agent has a key yet" />}
+      </ul> : <SettingsRow label="No agent has a key yet" />}
     </SettingsGroup>
+    <FormDialog open={!!draft || !!issued} title={issued ? `Key of ${issued.name}` : "New key"}
+      description={issued ? <>Copy the key now. It is not shown again. An MCP client connects
+        to <span className="font-mono break-all">{MCP_ADDRESS}</span> with it as its bearer token.</>
+        : "The agent signs in with this key in place of a password."}
+      submitLabel={issued ? copied ? "Copied" : "Copy key" : "Create key"} busyLabel="Creating…" cancelLabel={issued ? "Done" : "Cancel"}
+      busy={busy} error={error}
+      onSubmit={() => { if (issued) void copy(issued.key); else if (draft) void create(draft); }}
+      onClose={() => { setDraft(null); setIssued(null); setError(""); }}>
+      {issued ? <div className="grid gap-1.5">
+        <Label htmlFor="agent-key">Key</Label>
+        <Input ref={keyField} id="agent-key" readOnly className="font-mono" value={issued.key} onFocus={(event) => event.target.select()} />
+      </div> : draft && <>
+        <div className="grid gap-1.5">
+          <Label htmlFor="agent-name">Name</Label>
+          <Input id="agent-name" required autoComplete="off" maxLength={60} placeholder="Night shift agent" value={draft.name}
+            onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="agent-starts">Starting monitors</Label>
+          <select id="agent-starts" className="app-settings-select" value={draft.starts}
+            onChange={(event) => setDraft({ ...draft, starts: event.target.value as AgentStarts })}>{levels}</select>
+        </div>
+      </>}
+    </FormDialog>
     {confirmation}
   </>;
 }

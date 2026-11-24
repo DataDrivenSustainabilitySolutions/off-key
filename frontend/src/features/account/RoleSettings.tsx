@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SettingsGroup, SettingsRow } from "@/components/SettingsGroup";
+import { FormDialog } from "@/components/FormDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,31 +68,11 @@ export function RoleSettings({ roles, onChanged }: { roles: Role[]; onChanged: (
 
   return <>
     <SettingsGroup title="Roles" help="Every member can view organization data. A role decides what its members can change. Administrator always holds every permission. Members holding a role get a change on their next request. Keep at least one active member who can manage members."
-      actions={!draft && <Button variant="outline" size="sm" disabled={busy} onClick={() => { setError(""); setNotice(""); setDraft({ name: "", permissions: [] }); }}>New role</Button>}
+      actions={<Button variant="outline" size="sm" disabled={busy} onClick={() => { setError(""); setNotice(""); setDraft({ name: "", permissions: [] }); }}>New role</Button>}
       footer={<>
-        {error && <p role="alert" className="text-destructive">{error}</p>}
+        {error && !draft && <p role="alert" className="text-destructive">{error}</p>}
         {notice && <p role="status">{notice}</p>}
       </>}>
-      {draft && <form className="app-settings-invite app-settings-role-form" aria-label={draft.role ? `Edit ${draft.role.name}` : "New role"}
-        onSubmit={(event) => { event.preventDefault(); void save(draft); }}>
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          <Label htmlFor="role-name">Name</Label>
-          <Input id="role-name" required autoFocus autoComplete="off" maxLength={60} placeholder="Operator" value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </div>
-        <fieldset className="app-settings-fieldset app-settings-permissions">
-          <legend>Can change</legend>
-          {permissions.map(permission => <label key={permission.id} className="app-settings-permission">
-            <input type="checkbox" checked={draft.permissions.includes(permission.id)} onChange={(event) => toggle(permission.id, event.target.checked)} />
-            <span><span className="app-settings-permission-name">{PERMISSION_LABELS[permission.id]}</span>
-              <span className="app-settings-row-detail">{permission.description}</span></span>
-          </label>)}
-        </fieldset>
-        <div className="flex gap-2">
-          <Button disabled={busy} type="submit">{draft.role ? "Save role" : "Create role"}</Button>
-          <Button type="button" variant="ghost" disabled={busy} onClick={() => setDraft(null)}>Cancel</Button>
-        </div>
-      </form>}
       <ul aria-label="Roles" className="app-settings-list">
         {roles.map(role => <li key={role.id}>
           <SettingsRow className="is-wrapping" label={role.name}
@@ -105,6 +86,26 @@ export function RoleSettings({ roles, onChanged }: { roles: Role[]; onChanged: (
         </li>)}
       </ul>
     </SettingsGroup>
+    <FormDialog open={!!draft} title={draft?.role ? `Edit ${draft.role.name}` : "New role"}
+      description={draft?.role ? "Members holding this role get the change on their next request." : "Every member can view organization data. Choose what members with this role can change."}
+      submitLabel={draft?.role ? "Save role" : "Create role"} busyLabel="Saving…" busy={busy} error={error}
+      onSubmit={() => { if (draft) void save(draft); }} onClose={() => { setDraft(null); setError(""); }}>
+      {draft && <>
+        <div className="grid gap-1.5">
+          <Label htmlFor="role-name">Name</Label>
+          <Input id="role-name" required autoComplete="off" maxLength={60} placeholder="Operator" value={draft.name}
+            onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </div>
+        <fieldset className="app-settings-fieldset app-settings-permissions">
+          <legend>Can change</legend>
+          {permissions.map(permission => <label key={permission.id} className="app-settings-permission">
+            <input type="checkbox" checked={draft.permissions.includes(permission.id)} onChange={(event) => toggle(permission.id, event.target.checked)} />
+            <span><span className="app-settings-permission-name">{PERMISSION_LABELS[permission.id]}</span>
+              <span className="app-settings-row-detail">{permission.description}</span></span>
+          </label>)}
+        </fieldset>
+      </>}
+    </FormDialog>
     {confirmation}
   </>;
 }

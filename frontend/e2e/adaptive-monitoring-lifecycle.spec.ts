@@ -173,7 +173,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(
         page.getByRole("heading", { name: "Configure adaptive monitoring", exact: true }),
       ).toBeVisible();
-      await page.getByLabel("Warm-up samples").fill("33");
+      await page.getByRole("spinbutton", { name: "Max Leaf Samples", exact: true }).fill("8");
+      await page.getByLabel("Warm-up samples").fill("32");
       await page.getByLabel("Calibration samples").fill("1");
 
       const startResponsePromise = page.waitForResponse(

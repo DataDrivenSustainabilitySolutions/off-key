@@ -1429,7 +1429,7 @@ the reason to `calibration_comparison.failed` when the run ends; such a method
 keeps the counts of what it found and gets no share or rate, which would be
 over results it never judged. TACTIC scores
 each method on read like a run of its own (`DojoMetrics.calibration`), so a
-moved label re-scores the methods too. All 15 adapting methods together cost
+moved label re-scores the methods too. All 17 adapting methods together cost
 about 2 ms per observation, mostly the Bayesian ones, which is why the
 comparison is asked for per run.
 

@@ -79,7 +79,7 @@ async function buildBranchedGraph(
   await add(page, adaptive ? "Online uncentered PCA" : "Centered PCA");
   await connect(page, `${adaptive ? "adaptive" : "static"}_standard_scaler_1`);
   if (adaptive)
-    await page.getByRole("spinbutton", { name: "N0", exact: true }).fill("4");
+    await page.getByRole("spinbutton", { name: "Warm Up", exact: true }).fill("4");
   await add(page, "Select features");
   await connect(page, "input");
   await page

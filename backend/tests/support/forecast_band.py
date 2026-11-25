@@ -6,7 +6,7 @@ TRAINING, CALIBRATION = 16, 12
 LEARNED = TRAINING + CALIBRATION
 CYCLE = [0.0, 10.0, 0.0, -10.0]
 FORECASTER = "detector:aberrant_seasonal_naive_forecaster"
-MAD = "detector:aberrant_moving_average_absolute_deviation"
+MAD = "detector:aberrant_moving_mad"
 
 
 def design(
@@ -90,7 +90,7 @@ def design(
                 "id": "mad",
                 "kind": "detector",
                 "component": MAD,
-                "params": {"window_size": 10},
+                "params": {"window_size": 10, "warm_up": 2},
             },
         ]
         edges += [

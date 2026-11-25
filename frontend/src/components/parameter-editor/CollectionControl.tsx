@@ -1,14 +1,11 @@
 import type { ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
-import { AdjacencyField } from "./AdjacencyField";
 import { objectValue, type ControlProps } from "./types";
 
 export function CollectionControl(props: ControlProps & {
   features: string[]; featureLabels: Record<string, string>; featureHint?: ReactNode;
 }) {
   const { field, value, id, disabled, onChange, features, featureLabels, featureHint } = props;
-  if (field.type === "integer_adjacency")
-    return <AdjacencyField label={field.label} value={value} disabled={disabled} onChange={onChange} />;
   if (field.type === "rename") {
     const mapping = objectValue(value);
     return <>{[...new Set([...features, ...Object.keys(mapping)])].map(feature =>

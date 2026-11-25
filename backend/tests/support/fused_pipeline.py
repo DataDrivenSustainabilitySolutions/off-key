@@ -26,8 +26,8 @@ STATIC_MODELS = (
     ("pyod_knn", {}),
 )
 ADAPTIVE_MODELS = (
-    ("aberrant_moving_average_absolute_deviation", {"window_size": 10}),
-    ("aberrant_moving_average_absolute_deviation", {"window_size": 10}),
+    ("aberrant_moving_mad", {"window_size": 10, "warm_up": 2}),
+    ("aberrant_moving_mad", {"window_size": 10, "warm_up": 2}),
 )
 
 
@@ -78,7 +78,7 @@ def fused_definition(
                 "id": "robust",
                 "kind": "transform",
                 "component": "adaptive.robust_scaler",
-                "params": {"window_size": 20, "min_samples": 6},
+                "params": {"window_size": 20, "warm_up": 6},
             }
         )
         edges.append({"source": "only_b", "target": "robust"})

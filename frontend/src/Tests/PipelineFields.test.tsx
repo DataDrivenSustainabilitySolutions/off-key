@@ -53,13 +53,13 @@ describe("bounded pipeline parameter controls", () => {
   });
 
   it("shows independent nested errors once beside the affected fields", () => {
-    render(<ParameterFields fields={[{ name: "engine", label: "Engine", type: "component",
+    render(<ParameterFields fields={[{ name: "engine", label: "Engine", type: "object",
       fields: [{ name: "k", label: "Neighbors", type: "integer" },
         { name: "window", label: "Window", type: "integer" }] }]}
-      values={{ engine: { id: "faiss", params: { k: 0, window: 0 } } }}
+      values={{ engine: { k: 0, window: 0 } }}
       onChange={() => undefined}
-      issues={[{ path: ["engine", "params", "k"], message: "Choose a positive count" },
-        { path: ["engine", "params", "window"], message: "Choose a window" }]} />);
+      issues={[{ path: ["engine", "k"], message: "Choose a positive count" },
+        { path: ["engine", "window"], message: "Choose a window" }]} />);
     expect(screen.getAllByText("Choose a positive count")).toHaveLength(1);
     expect(screen.getAllByRole("alert")).toHaveLength(2);
     expect(screen.getByRole("spinbutton", { name: "Neighbors" }).getAttribute("aria-invalid")).toBe("true");
@@ -180,32 +180,6 @@ describe("bounded pipeline parameter controls", () => {
     expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({
       seed: null,
     });
-  });
-
-  it("edits graph model adjacency using integer controls", () => {
-    render(
-      <Fields
-        fields={[
-          {
-            name: "graph",
-            label: "Graph",
-            type: "integer_adjacency",
-            default: null,
-          },
-        ]}
-      />,
-    );
-    fireEvent.click(screen.getByRole("checkbox", { name: "Automatic graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add feature" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add neighbor" }));
-    fireEvent.change(
-      screen.getByRole("spinbutton", { name: "Graph feature 0 neighbor 1" }),
-      { target: { value: "2" } },
-    );
-    expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({
-      graph: { "0": [2] },
-    });
-    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
 

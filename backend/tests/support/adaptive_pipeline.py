@@ -63,7 +63,7 @@ def adaptive_pipeline_config(
                     "id": "pca",
                     "kind": "transform",
                     "component": "adaptive.uncentered_pca",
-                    "params": {"n_components": 1, "n0": 3},
+                    "params": {"n_components": 1, "warm_up": 3},
                 }
             )
             edges.extend(

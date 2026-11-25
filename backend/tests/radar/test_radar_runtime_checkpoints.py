@@ -68,10 +68,7 @@ def _config(strategy="static_baseline"):
             model_type="aberrant_knn",
             model_params={
                 "k": 1,
-                "similarity_engine": {
-                    "id": "faiss",
-                    "params": {"window_size": 8, "warm_up": 1},
-                },
+                "window_size": 8,
             },
             training_window_size=2,
             calibration_window_size=3,

@@ -10,8 +10,7 @@ from datetime import UTC, datetime, timedelta
 from statistics import median
 from typing import Any
 
-from aberrant.base.forecast import Forecast
-from aberrant.forecast import ResidualDetector
+from aberrant.forecast import Forecast, ResidualDetector
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .forecast_band import forecast_bounds

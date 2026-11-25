@@ -119,7 +119,7 @@ def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
     else:
         raise ValueError(f"Unknown workload {name!r}")
     model = (
-        "aberrant_moving_average"
+        "aberrant_moving_zscore"
         if name == "light"
         else "aberrant_moving_mahalanobis_distance"
         if name == "prepare"
@@ -127,12 +127,12 @@ def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
     )
     params = (
         {"window_size": 128}
+        | ({"warm_up": 2} if model == "aberrant_moving_zscore" else {})
         if cheap
         else {
-            "num_trees": trees,
+            "n_trees": trees,
             "max_leaf_samples": 16,
             "window_size": 512,
-            "n_jobs": 1,
             "seed": 42,
         }
     )
@@ -154,7 +154,7 @@ def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
                 "nodes": nodes,
                 "edges": edges,
                 "settings": {
-                    "training_window_size": 32 if name == "prepare" else 2,
+                    "training_window_size": 32,
                     "calibration_window_size": 32,
                     "seed": 42,
                 },

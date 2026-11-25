@@ -16,44 +16,32 @@ from .parameter_validation import (
 ADAPTIVE_MODEL_FAMILY = "adaptive_aberrant"
 ADAPTIVE_MONITORING_STRATEGY = "adaptive_stream"
 
-# Keep deployed API identifiers stable; construction uses the catalog identifiers.
+# A detector's model type is its catalog identifier with an ``aberrant_`` prefix.
 MODEL_IDS = {
-    "aberrant_mondrian_forest": "mondrian_isolation_forest",
-    "aberrant_gadget_svm": "graph_gated_one_class_svm",
-    **{
-        f"aberrant_{name}": name
-        for name in (
-            "asd_isolation_forest",
-            "half_space_trees",
-            "online_isolation_forest",
-            "random_cut_forest",
-            "stream_random_histogram_forest",
-            "x_stream",
-            "knn",
-            "local_outlier_factor",
-            "incremental_one_class_svm_adaptive_kernel",
-            "moving_average",
-            "moving_average_absolute_deviation",
-            "moving_geometric_average",
-            "moving_harmonic_average",
-            "moving_interquartile_range",
-            "moving_kurtosis",
-            "moving_median",
-            "moving_quantile",
-            "moving_skewness",
-            "moving_variance",
-            "moving_correlation_coefficient",
-            "moving_covariance",
-            "moving_mahalanobis_distance",
-            "rolling_matrix_profile",
-            "multivariate_rolling_matrix_profile",
-            "seasonal_residual_detector",
-            "x_lag_damp",
-            "online_ecod",
-            "online_copod",
-            "streaming_loda",
-        )
-    },
+    f"aberrant_{name}": name
+    for name in (
+        "mondrian_isolation_forest",
+        "asd_isolation_forest",
+        "half_space_trees",
+        "online_isolation_forest",
+        "random_cut_forest",
+        "rhf",
+        "xstream",
+        "knn",
+        "local_outlier_factor",
+        "adaptive_one_class_svm",
+        "moving_zscore",
+        "moving_mad",
+        "moving_correlation_coefficient",
+        "moving_covariance",
+        "moving_mahalanobis_distance",
+        "rolling_matrix_profile",
+        "multivariate_rolling_matrix_profile",
+        "damp",
+        "online_ecod",
+        "online_copod",
+        "loda",
+    )
 }
 
 # A forecaster step scores one feature against the forecast made for it: each is
@@ -74,32 +62,23 @@ MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         for name in MODEL_IDS.values()
         if name.startswith("moving_")
     },
-    "random_cut_forest": {"normalize_score": True},
-    "stream_random_histogram_forest": {"max_depth": 10},
-    "knn": {
-        "k": 5,
-        "similarity_engine": {
-            "id": "faiss",
-            "params": {"window_size": 1000, "warm_up": 20},
-        },
-    },
+    "rhf": {"max_depth": 10},
+    "knn": {"k": 5},
     "rolling_matrix_profile": {"subsequence_length": 32, "window_size": 512},
-    "x_lag_damp": {"subsequence_length": 32},
+    "damp": {"subsequence_length": 32},
     "multivariate_rolling_matrix_profile": {
         "subsequence_length": 32,
         "window_size": 512,
     },
 }
 
-# Settings RADAR never passes: it times each observation itself, and it reads
-# scores, not a model's own yes or no.
-UNSUPPORTED_PARAMETERS = ("time_key", "predict_threshold")
+# Settings RADAR never passes: it times each observation itself, and KNN
+# searches its window with NumPy.
+UNSUPPORTED_PARAMETERS = ("time_key", "backend")
 
 # Resource and application limits augment, rather than replace, constructor schemas.
 PARAMETER_LIMITS = {
-    "n_estimators": {"minimum": 1, "maximum": 2000},
     "n_trees": {"minimum": 1, "maximum": 2000},
-    "num_trees": {"minimum": 1, "maximum": 2000},
     "window_size": {"minimum": 1, "maximum": 1_000_000},
     "max_samples": {"minimum": 2, "maximum": 1_000_000},
     "max_leaf_samples": {"minimum": 1, "maximum": 1_000_000},
@@ -107,26 +86,22 @@ PARAMETER_LIMITS = {
     "height": {"minimum": 1, "maximum": 20},
     "max_depth": {"minimum": 2, "maximum": 128},
     "branching_factor": {"minimum": 2, "maximum": 64},
-    "n_jobs": {"minimum": 1, "maximum": 64},
     "sample_size": {"minimum": 2, "maximum": 1_000_000},
     "shingle_size": {"minimum": 1, "maximum": 10_000},
-    "warmup_samples": {"minimum": 1, "maximum": 1_000_000},
     "warm_up": {"minimum": 1, "maximum": 1_000_000},
     "k": {"minimum": 1, "maximum": 10_000},
     "n_chains": {"minimum": 1, "maximum": 2000},
     "depth": {"minimum": 1, "maximum": 128},
-    "cms_width": {"minimum": 2, "maximum": 1_000_000},
-    "cms_num_hashes": {"minimum": 1, "maximum": 128},
-    "init_sample_size": {"minimum": 2, "maximum": 1_000_000},
+    "sketch_width": {"minimum": 2, "maximum": 1_000_000},
+    "n_hashes": {"minimum": 1, "maximum": 128},
     "max_feature_cache_size": {"minimum": 1, "maximum": 1_000_000},
     "buffer_size": {"minimum": 2, "maximum": 1_000_000},
     "sv_budget": {"minimum": 1, "maximum": 1_000_000},
     "subsequence_length": {"minimum": 2, "maximum": 10_000},
     "exclusion_zone": {"minimum": 0, "maximum": 1_000_000},
     "retrain_interval": {"minimum": 1, "maximum": 1_000_000},
-    "lambda_": {"exclusiveMinimum": 0},
+    "lifetime": {"exclusiveMinimum": 0},
     "subsample": {"exclusiveMinimum": 0, "maximum": 1},
-    "score_scale": {"exclusiveMinimum": 0},
     "density": {"exclusiveMinimum": 0, "maximum": 1},
     "learning_rate": {"exclusiveMinimum": 0},
     "nu": {"exclusiveMinimum": 0, "exclusiveMaximum": 1},
@@ -213,12 +188,10 @@ PRETRAINED_FORECASTERS: dict[str, dict[str, Any]] = {
             "event_kind": "univariate",
             "feature_count": {"minimum": 1, "maximum": 1},
             "feature_schema": "fixed",
-            "higher_is_more_anomalous": True,
             "requires_unit_interval": False,
-            "resettable": False,
             "score_kind": "non_negative",
             "state": "bounded",
-            "warmup": {"minimum": 32, "unit": "events"},
+            "warmup": {"required": 32, "unit": "events"},
         },
         "bound_parameters": ["target"],
     }
@@ -245,12 +218,10 @@ RULE_DETECTORS: dict[str, dict[str, Any]] = {
             "event_kind": "univariate",
             "feature_count": {"minimum": 1, "maximum": 1},
             "feature_schema": "fixed",
-            "higher_is_more_anomalous": True,
             "requires_unit_interval": False,
-            "resettable": True,
             "score_kind": "signed",
             "state": "stateless",
-            "warmup": {"minimum": 0, "unit": "events"},
+            "warmup": {"required": 0, "unit": "events"},
         },
         "bound_parameters": ["key"],
     }
@@ -269,16 +240,16 @@ ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = {
 # the first set of them names the observations it keeps before it scores.
 _WARMUP_SETTINGS: dict[str, tuple[str, ...]] = {
     "aberrant_half_space_trees": ("window_size",),
-    "aberrant_stream_random_histogram_forest": ("window_size",),
+    "aberrant_rhf": ("window_size",),
     "aberrant_asd_isolation_forest": ("window_size", "max_samples"),
-    "aberrant_random_cut_forest": ("warmup_samples", "sample_size"),
-    "aberrant_x_stream": ("init_sample_size", "window_size"),
-    "aberrant_online_ecod": ("min_samples",),
-    "aberrant_online_copod": ("min_samples",),
-    "aberrant_streaming_loda": ("warm_up_samples",),
+    "aberrant_random_cut_forest": ("warm_up", "sample_size"),
+    "aberrant_xstream": ("warm_up",),
+    "aberrant_moving_zscore": ("warm_up", "window_size"),
+    "aberrant_moving_mad": ("warm_up", "window_size"),
+    "aberrant_online_ecod": ("warm_up",),
+    "aberrant_online_copod": ("warm_up",),
+    "aberrant_loda": ("warm_up",),
 }
-# A seasonal model has seen a cycle twice before it scores.
-_WARMUP_SEASONS = {"aberrant_seasonal_residual_detector": 2}
 
 
 def detector_warmup(model_type: str, params: dict[str, Any]) -> int:
@@ -299,16 +270,12 @@ def detector_warmup(model_type: str, params: dict[str, Any]) -> int:
                 value = source.get(name)
                 if isinstance(value, int) and not isinstance(value, bool) and value > 0:
                     return value
-        return int(warmup.get("minimum") or 0)
+        return int(warmup.get("required") or 0)
     settings = definition.get("default_parameters", {}) | {
         key: value for key, value in params.items() if value is not None
     }
-    if model_type == "aberrant_x_lag_damp":
+    if model_type == "aberrant_damp":
         return _damp_warmup(settings)
-    seasons = _WARMUP_SEASONS.get(model_type)
-    season = settings.get("season_length")
-    if seasons and isinstance(season, int) and season > 0:
-        return seasons * season
     # Elsewhere the warm-up follows the settings in ways not mirrored here;
     # RADAR checks it when the run starts.
     return 0
@@ -331,19 +298,18 @@ def _damp_warmup(settings: Mapping[str, Any]) -> int:
 POINT_DETECTORS = frozenset(
     {
         "mondrian_isolation_forest",
-        "graph_gated_one_class_svm",
         "asd_isolation_forest",
         "half_space_trees",
         "online_isolation_forest",
         "random_cut_forest",
-        "stream_random_histogram_forest",
-        "x_stream",
+        "rhf",
+        "xstream",
         "knn",
         "local_outlier_factor",
-        "incremental_one_class_svm_adaptive_kernel",
+        "adaptive_one_class_svm",
         "online_ecod",
         "online_copod",
-        "streaming_loda",
+        "loda",
     }
 )
 
@@ -355,7 +321,7 @@ def detector_component(model_type: str) -> str:
 
 
 # Detector parameters bound from the feature schema, never from user input.
-BOUND_PARAMETER_NAMES = ("abs_diff", "key", "keys", "target")
+BOUND_PARAMETER_NAMES = ("features", "key", "target")
 
 
 def bind_detector_parameters(
@@ -366,9 +332,7 @@ def bind_detector_parameters(
     """Fill a detector's bound parameters from the features it receives."""
     result = dict(params)
     for name in bound_parameters:
-        if name == "abs_diff":
-            result[name] = True
-        elif name in ("key", "target"):
+        if name in ("key", "target"):
             result[name] = feature_names[0] if feature_names else None
         else:
             result[name] = feature_names
@@ -412,30 +376,18 @@ def validate_adaptive_model_params(
     validate_parameter_schema(
         f"Invalid parameters for '{model_type}'", definition["parameter_schema"], merged
     )
-    if model_type == "aberrant_knn":
-        engine_params = merged["similarity_engine"]["params"]
-        if not merged["k"] <= engine_params["warm_up"] <= engine_params["window_size"]:
-            raise parameter_error(
-                model_type,
-                [
-                    ParameterIssue(
-                        code="invalid_value",
-                        loc=("similarity_engine", "params", "warm_up"),
-                        message="KNN requires k <= warm_up <= window_size",
-                    )
-                ],
-            )
     if (
-        model_type == "aberrant_local_outlier_factor"
+        model_type in ("aberrant_knn", "aberrant_local_outlier_factor")
         and merged["k"] > merged["window_size"]
     ):
+        name = "KNN" if model_type == "aberrant_knn" else "LocalOutlierFactor"
         raise parameter_error(
             model_type,
             [
                 ParameterIssue(
                     code="invalid_value",
                     loc=("k",),
-                    message="LocalOutlierFactor requires k <= window_size",
+                    message=f"{name} requires k <= window_size",
                 )
             ],
         )
@@ -456,22 +408,16 @@ def validate_adaptive_model_params(
             ],
         )
     if (
-        model_type
-        in ("aberrant_seasonal_residual_detector", "aberrant_holt_winters_forecaster")
+        model_type == "aberrant_holt_winters_forecaster"
         and merged["gamma"] > 1 - merged["alpha"]
     ):
-        name = (
-            "Seasonal residual detector"
-            if model_type == "aberrant_seasonal_residual_detector"
-            else "Holt-Winters forecaster"
-        )
         raise parameter_error(
             model_type,
             [
                 ParameterIssue(
                     code="invalid_value",
                     loc=("gamma",),
-                    message=f"{name} requires gamma <= 1 - alpha",
+                    message="Holt-Winters forecaster requires gamma <= 1 - alpha",
                 )
             ],
         )

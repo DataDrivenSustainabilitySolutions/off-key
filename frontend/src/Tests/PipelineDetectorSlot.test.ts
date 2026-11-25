@@ -50,7 +50,7 @@ const catalog = normalizeCatalog({
       { label: "Standard scaling", group: "normalize", counterpart: "adaptive.standard_scaler" }),
     component("detector:pyod_iforest", "detector", "batch", { label: "Isolation forest", library: "PyOD" }),
     component("detector:aberrant_half_space", "detector", "online", { label: "Half-space trees", library: "Aberrant" }),
-    component("detector:aberrant_x_stream", "detector", "online", { label: "xStream", library: "Aberrant" }),
+    component("detector:aberrant_xstream", "detector", "online", { label: "xStream", library: "Aberrant" }),
     component("forecast.timestral", "detector", "pretrained", { label: "Timestral" }),
     component("calibrate.fixed_split", "calibration", "none"),
     component("policy.quantile", "policy", "none"),
@@ -60,7 +60,7 @@ const catalog = normalizeCatalog({
   templates: [
     { id: "static_baseline", name: "Static baseline", definition: flow("detector:pyod_iforest"),
       layout: row(["input", "detector", "calibrate", "policy", "output"]) },
-    { id: "adaptive_stream", name: "Adaptive stream", definition: flow("detector:aberrant_x_stream"),
+    { id: "adaptive_stream", name: "Adaptive stream", definition: flow("detector:aberrant_xstream"),
       layout: row(["input", "detector", "calibrate", "policy", "output"]) },
   ],
 });
@@ -83,7 +83,7 @@ const withStep = (document: GraphDocument, node: Wire.PipelineNode, at: { x: num
 describe("the flow a new service starts from", () => {
   it("is the one whose detector learns from the stream", () => {
     expect(starterTemplate(catalog)?.id).toBe("adaptive_stream");
-    expect(suggestedDetector(catalog)?.id).toBe("detector:aberrant_x_stream");
+    expect(suggestedDetector(catalog)?.id).toBe("detector:aberrant_xstream");
   });
 
   it("falls back to the first flow when every detector is fitted once", () => {
@@ -165,12 +165,12 @@ describe("fillDetectorSlot", () => {
   it("gives the detector a name no other step has", () => {
     const named = withStep(withoutDetector(starter()),
       { id: "detector", kind: "transform", component: "features.passthrough" }, { x: 288, y: 300 }, [["input", "detector"]]);
-    expect(fillDetectorSlot(named, find("detector:aberrant_x_stream"), components)!.id).toBe("detector_2");
+    expect(fillDetectorSlot(named, find("detector:aberrant_xstream"), components)!.id).toBe("detector_2");
   });
 
   it("does nothing without a slot, for another kind of step or for a detector this deployment lacks", () => {
     const open = withoutDetector(starter());
-    expect(fillDetectorSlot(starter(), find("detector:aberrant_x_stream"), components)).toBeUndefined();
+    expect(fillDetectorSlot(starter(), find("detector:aberrant_xstream"), components)).toBeUndefined();
     expect(fillDetectorSlot(open, find("features.passthrough"), components)).toBeUndefined();
     expect(fillDetectorSlot(open, { ...find("forecast.timestral"), unavailable: "No forecast service." }, components)).toBeUndefined();
   });
@@ -179,10 +179,10 @@ describe("fillDetectorSlot", () => {
 describe("detectorMenu", () => {
   it("offers the suggested detector first, then every detector by how it learns", () => {
     const pick = vi.fn();
-    const menu = detectorMenu(components, find("detector:aberrant_x_stream"), pick);
+    const menu = detectorMenu(components, find("detector:aberrant_xstream"), pick);
     expect(menu.label).toBe("Choose a detector");
     expect(menu.items.map((item) => [item.key, item.label, item.detail])).toEqual([
-      ["suggested:detector:aberrant_x_stream", "xStream", "Suggested"],
+      ["suggested:detector:aberrant_xstream", "xStream", "Suggested"],
       ["online", "Learns continuously", "2"],
       ["batch", "Fitted once", "1"],
       ["pretrained", "Pretrained", "1"],
@@ -196,7 +196,7 @@ describe("detectorMenu", () => {
     expect(menu.items[1]!.help).toMatch(/^Keep learning from every observation\./);
     expect(menu.items[2]!.help).toMatch(/^Learn from a training window/);
     menu.items[0]!.run!();
-    expect(pick).toHaveBeenCalledExactlyOnceWith(find("detector:aberrant_x_stream"));
+    expect(pick).toHaveBeenCalledExactlyOnceWith(find("detector:aberrant_xstream"));
   });
 
   it("finds detectors by name and by how they learn", () => {

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 from aberrant.catalog import ComponentSpec
+from aberrant.model.stat import MovingZScore
 from off_key_core.schemas.pipelines import PipelineRuntimeState
 from off_key_mqtt_radar import adaptive_detector as adaptive_module
 from off_key_mqtt_radar.adaptive_detector import (
@@ -65,16 +66,12 @@ def _point(index):
 @pytest.mark.parametrize(
     ("model", "params", "required"),
     [
-        ("aberrant_moving_geometric_average", {"window_size": 2}, 2),
-        (
-            "aberrant_moving_geometric_average",
-            {"window_size": 3, "absoluteValues": True},
-            3,
-        ),
-        ("aberrant_moving_harmonic_average", {"window_size": 1}, 1),
+        ("aberrant_moving_zscore", {"window_size": 2}, 2),
+        ("aberrant_moving_zscore", {"window_size": 3, "warm_up": 2}, 2),
+        ("aberrant_moving_mad", {"window_size": 2}, 2),
     ],
 )
-def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
+def test_smallest_admissible_windows_reach_real_runtime_readiness(
     model, params, required
 ):
     config = adaptive_pipeline_config(model=model, branched=False, model_params=params)
@@ -236,34 +233,12 @@ def test_raw_unit_interval_rejection_precedes_all_branch_learning():
     assert service.state == AdaptiveStreamState.CALIBRATING
 
 
-@pytest.mark.parametrize(
-    "model,ignored",
-    [
-        ("aberrant_moving_geometric_average", [0.0, -1.0]),
-        ("aberrant_moving_harmonic_average", [0.0, 0.0]),
-    ],
-)
-def test_retained_history_blocks_calibration_until_reference_exists(model, ignored):
-    service = AdaptiveStreamDetectionService(
-        adaptive_pipeline_config(model=model, branched=False)
-    )
-    for value in ignored:
-        service.process_data_point({"reading_a": value})
-    assert service.warmup_count == 2
-    assert service.state == AdaptiveStreamState.WARMUP
-    assert service.calibration_count == 0
-    service.process_data_point({"reading_a": 2.0})
-    if "geometric" in model:
-        assert service.state == AdaptiveStreamState.WARMUP
-        service.process_data_point({"reading_a": 3.0})
-    assert service.state == AdaptiveStreamState.CALIBRATING
-    assert service.calibration_count == 0
-
-
-def _geometric(values):
+def _zscore(values):
     service = AdaptiveStreamDetectionService(
         adaptive_pipeline_config(
-            model="aberrant_moving_geometric_average", branched=False
+            model="aberrant_moving_zscore",
+            branched=False,
+            model_params={"window_size": 3, "warm_up": 2},
         ),
     )
     for value in values:
@@ -271,11 +246,19 @@ def _geometric(values):
     return service
 
 
-def test_a_failed_score_skips_one_observation_and_keeps_the_run():
+def test_a_failed_score_skips_one_observation_and_keeps_the_run(monkeypatch):
     service, reference = (
-        _geometric((1.0, 2.0, 3.0, 4.0)),
-        _geometric((1.0, 2.0, 3.0, 4.0)),
+        _zscore((1.0, 2.0, 3.0, 4.0)),
+        _zscore((1.0, 2.0, 3.0, 4.0)),
     )
+    score = MovingZScore.score_one
+
+    def positive_only(model, x):
+        if min(x.values()) <= 0:
+            raise ValueError("reading_a must be positive")
+        return score(model, x)
+
+    monkeypatch.setattr(MovingZScore, "score_one", positive_only)
     assert service.state == AdaptiveStreamState.OPERATIONAL
     before = pickle.dumps(service.pipeline)
     # Scoring only reads the learned state, so a value the detector cannot
@@ -342,7 +325,7 @@ def test_a_step_failing_while_it_learns_rolls_back_and_skips_one_observation(
 def test_a_detector_failing_while_it_learns_stops_the_run_and_blocks_checkpoint(
     monkeypatch,
 ):
-    service = _geometric((1.0, 2.0))
+    service = _zscore((1.0, 2.0))
 
     def broken(self, x):
         raise RuntimeError("detector broke")

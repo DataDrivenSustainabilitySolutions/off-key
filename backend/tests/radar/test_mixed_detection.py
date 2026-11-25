@@ -21,7 +21,7 @@ from off_key_mqtt_radar.preflight import preflight
 from tests.support.fused_pipeline import bound, reading
 
 TRAINING, CALIBRATION = 30, 20
-MAD = "detector:aberrant_moving_average_absolute_deviation"
+MAD = "detector:aberrant_moving_mad"
 
 
 def mixed_definition(policy="policy.quantile", fusion="max"):
@@ -119,7 +119,7 @@ def test_detectors_that_learn_differently_compile_into_a_threshold_run():
 
     monitoring = derive_monitoring_config(definition)
     assert isinstance(monitoring, AdaptiveStreamConfig)
-    assert monitoring.model_type == "aberrant_moving_average_absolute_deviation"
+    assert monitoring.model_type == "aberrant_moving_mad"
     assert detector_service_class(bound(definition)) is MixedDetectionService
 
 

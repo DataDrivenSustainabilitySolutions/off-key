@@ -43,11 +43,9 @@ def resolved_detector_config(
         config = resolve_rule_detector(aberrant_model(definition, params))
     else:
         config = DetectorConfig.from_mapping(
-            {"version": 1, "model": aberrant_model(definition, params)}
+            {"version": 2, "model": aberrant_model(definition, params)}
         ).resolve()
     capabilities = config.capabilities
-    if capabilities.higher_is_more_anomalous is not True:
-        raise ValueError("Monitoring requires higher scores to mean more anomalous")
     if not capabilities.feature_count.accepts(len(features)):
         raise ValueError("Detector does not support the compiled feature count")
     return config
@@ -102,9 +100,7 @@ def adaptive_graph(
         config = resolved_detector_config(plan, detector_id)
     capabilities = config.capabilities
     minimum = (
-        capabilities.warmup.minimum or 0
-        if capabilities.warmup.unit.value == "events"
-        else 0
+        capabilities.warmup or 0 if capabilities.warmup_unit.value == "events" else 0
     )
     if minimum > plan.execution.definition.settings.training_window_size:
         raise ValueError(f"Detector warm-up must contain at least {minimum} updates")
@@ -113,6 +109,5 @@ def adaptive_graph(
         nodes,
         terminal,
         reference(plan.detector_inputs[detector_id]),
-        model_minimum_updates=minimum,
         observer=observer,
     ), config

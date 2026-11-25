@@ -958,10 +958,10 @@ compare shape independently of per-channel level and amplitude; disable
 normalization when those changes should contribute to the score, taking care
 that channels with larger units can dominate raw distances.
 
-KNN exposes its FAISS window and warm-up as nested similarity-engine settings.
-Existing saved model IDs and the legacy flat KNN parameters are translated on
-input. Legacy histogram `max_bins` becomes `max_depth`; conflicting old and new
-parameter values are rejected.
+KNN keeps the latest `window_size` values and scores a new value by its `k`
+nearest neighbors among them, so `k` can be at most `window_size`. Monitors
+saved before Aberrant 2.0 do not start again: their model IDs and settings
+changed, so create them again.
 
 ## Stop and cleanup workflow
 

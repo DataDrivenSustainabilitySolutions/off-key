@@ -7,7 +7,7 @@ import pickle
 from typing import Any
 
 import pytest
-from aberrant.catalog import get_model_spec
+from aberrant.catalog import get_model_spec, model_capabilities
 from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
@@ -33,52 +33,47 @@ from tests.support import forecast_service
 from tests.support.form_pipeline import form_radar_config
 
 FAST_PARAMS: dict[str, dict[str, Any]] = {
-    "aberrant_asd_isolation_forest": {"n_estimators": 2, "max_samples": 2, "seed": 1},
+    "aberrant_asd_isolation_forest": {"n_trees": 2, "max_samples": 2, "seed": 1},
     "aberrant_half_space_trees": {
         "n_trees": 2,
         "height": 2,
         "window_size": 2,
         "seed": 1,
     },
-    "aberrant_mondrian_forest": {"n_estimators": 2, "subspace_size": 2, "seed": 1},
+    "aberrant_mondrian_isolation_forest": {"n_trees": 2, "subspace_size": 2, "seed": 1},
     "aberrant_online_isolation_forest": {
-        "num_trees": 2,
+        "n_trees": 2,
         "max_leaf_samples": 2,
         "window_size": 8,
-        "n_jobs": 1,
     },
     "aberrant_random_cut_forest": {"n_trees": 2, "sample_size": 2, "seed": 1},
-    "aberrant_stream_random_histogram_forest": {
-        "n_estimators": 2,
+    "aberrant_rhf": {
+        "n_trees": 2,
         "max_depth": 2,
         "window_size": 2,
         "seed": 1,
     },
-    "aberrant_x_stream": {
+    "aberrant_xstream": {
         "k": 2,
         "n_chains": 2,
         "depth": 2,
-        "cms_width": 8,
-        "cms_num_hashes": 2,
+        "sketch_width": 8,
+        "n_hashes": 2,
         "window_size": 2,
-        "init_sample_size": 2,
+        "warm_up": 2,
         "seed": 1,
     },
     "aberrant_knn": {
         "k": 1,
-        "similarity_engine": {
-            "id": "faiss",
-            "params": {"window_size": 8, "warm_up": 1},
-        },
+        "window_size": 8,
     },
     "aberrant_local_outlier_factor": {"k": 1, "window_size": 8},
-    "aberrant_seasonal_residual_detector": {"season_length": 4},
     "aberrant_holt_winters_forecaster": {"season_length": 4, "lead": 2},
     "aberrant_seasonal_naive_forecaster": {"season_length": 4},
-    "aberrant_x_lag_damp": {"subsequence_length": 4},
-    "aberrant_online_ecod": {"min_samples": 2},
-    "aberrant_online_copod": {"min_samples": 2},
-    "aberrant_streaming_loda": {"n_projections": 4, "warm_up_samples": 2, "seed": 1},
+    "aberrant_damp": {"subsequence_length": 4},
+    "aberrant_online_ecod": {"warm_up": 2},
+    "aberrant_online_copod": {"warm_up": 2},
+    "aberrant_loda": {"n_projections": 4, "warm_up": 2, "seed": 1},
 }
 
 
@@ -88,10 +83,7 @@ def _params(model_type: str) -> dict[str, Any]:
     if model_type == "aberrant_moving_mahalanobis_distance":
         return {"window_size": 3}
     if model_type.startswith("aberrant_moving_"):
-        params: dict[str, Any] = {"window_size": 2}
-        if model_type == "aberrant_moving_quantile":
-            params["quantile"] = 0.5
-        return params
+        return {"window_size": 2}
     if "rolling_matrix_profile" in model_type:
         return {"subsequence_length": 4, "window_size": 16}
     return {}
@@ -117,15 +109,12 @@ def _runtime_config(
     if model_type in PRETRAINED_FORECASTERS:
         warmup = validated_params["minimum_context"] + validated_params["lead"] - 1
     else:
-        warmup = (
-            get_model_spec(ADAPTIVE_MODELS_BY_TYPE[model_type]["catalog_id"])
-            .capabilities(
-                aberrant_model(ADAPTIVE_MODELS_BY_TYPE[model_type], validated_params)[
-                    "params"
-                ]
-            )
-            .warmup.minimum
-        )
+        definition = ADAPTIVE_MODELS_BY_TYPE[model_type]
+        bound = {"target": "x0"} if "forecaster_id" in definition else {}
+        warmup = model_capabilities(
+            definition["catalog_id"],
+            aberrant_model(definition, validated_params)["params"] | bound,
+        ).warmup
     minimum = max(2, warmup or 0)
     if preprocessing_steps is None and model_type == "aberrant_half_space_trees":
         preprocessing_steps = [{"type": "min_max_scaler"}]
@@ -183,7 +172,7 @@ LEARNING_MODELS = [
 
 
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
-    assert len(ADAPTIVE_MODELS_BY_TYPE) == 35
+    assert len(ADAPTIVE_MODELS_BY_TYPE) == 25
     for model_type, definition in ADAPTIVE_MODELS_BY_TYPE.items():
         # A rule detector is RADAR's own, so Aberrant has no specification of it.
         if model_type not in RULE_DETECTORS:
@@ -221,7 +210,7 @@ def test_every_released_detector_runs_warmup_calibration_and_operational(
     [
         {"type": "standard_scaler"},
         {"type": "min_max_scaler"},
-        {"type": "incremental_pca", "n_components": 1, "n0": 2},
+        {"type": "incremental_pca", "n_components": 1, "warm_up": 2},
         {"type": "random_projection", "n_components": 1, "seed": 7},
     ],
     ids=["standard", "min-max", "incremental-pca", "random-projection"],
@@ -231,7 +220,7 @@ def test_all_released_transforms_feed_real_detector(
 ) -> None:
     config = _runtime_config(
         "aberrant_online_isolation_forest",
-        training=2,
+        training=3,
         preprocessing_steps=[step],
     )
     detector = AdaptiveStreamDetectionService(config)
@@ -245,7 +234,7 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _runtime_config(
-        "aberrant_moving_average", training=2, calibration=3, features=["x"]
+        "aberrant_moving_zscore", training=2, calibration=3, features=["x"]
     )
     detector = AdaptiveStreamDetectionService(config)
     learned = _record(detector, [1.0, 3.0, 2.0, 3.0])
@@ -266,7 +255,6 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
         "aberrant_half_space_trees",
         "aberrant_rolling_matrix_profile",
         "aberrant_multivariate_rolling_matrix_profile",
-        "aberrant_seasonal_residual_detector",
         "aberrant_holt_winters_forecaster",
         "aberrant_seasonal_naive_forecaster",
     ],
@@ -294,7 +282,7 @@ def test_native_pipeline_checkpoint_preserves_future_scores(model_type: str) -> 
     assert restored.detector_fingerprint == detector.detector_fingerprint
 
 
-def test_config_rejects_invalid_preprocessing_and_knn_warmup() -> None:
+def test_config_rejects_invalid_preprocessing_and_a_knn_window_below_k() -> None:
     with pytest.raises(ValidationError, match="scaler must precede"):
         AdaptiveStreamConfig(
             preprocessing_steps=[
@@ -302,16 +290,9 @@ def test_config_rejects_invalid_preprocessing_and_knn_warmup() -> None:
                 {"type": "standard_scaler"},
             ]
         )
-    with pytest.raises(ValidationError, match="k <= warm_up <= window_size"):
+    with pytest.raises(ValidationError, match="KNN requires k <= window_size"):
         AdaptiveStreamConfig(
-            model_type="aberrant_knn",
-            model_params={
-                "k": 5,
-                "similarity_engine": {
-                    "id": "faiss",
-                    "params": {"window_size": 10, "warm_up": 3},
-                },
-            },
+            model_type="aberrant_knn", model_params={"k": 5, "window_size": 3}
         )
 
 
@@ -327,38 +308,6 @@ def test_runtime_validates_parameter_dependent_warmup_before_learning():
                 _features(2),
             )
         )
-
-
-def test_seasonal_warmup_of_two_seasons_must_fit_the_training_window():
-    with pytest.raises(ValueError, match="at least 48 updates"):
-        AdaptiveStreamDetectionService(
-            _config(
-                AdaptiveStreamConfig(
-                    model_type="aberrant_seasonal_residual_detector",
-                    model_params={"season_length": 24},
-                    training_window_size=47,
-                ),
-                _features(1),
-            )
-        )
-
-
-def test_seasonal_residual_scores_a_break_in_the_cycle_above_the_cycle():
-    pattern = [0.0, 10.0, 0.0, -10.0]
-    config = _runtime_config(
-        "aberrant_seasonal_residual_detector", training=8, calibration=4
-    )
-    detector = AdaptiveStreamDetectionService(config)
-    scores = [
-        detector.process_data_point({"x0": 100.0 + pattern[index % 4]}).anomaly_score
-        for index in range(40)
-    ]
-    # The reading arrives where the cycle expects its trough.
-    spike = detector.process_data_point({"x0": 110.0})
-
-    assert detector.state is AdaptiveStreamState.OPERATIONAL
-    assert max(scores[12:]) < 0.5
-    assert spike.anomaly_score > 10 * max(scores[12:], default=0.0) + 1
 
 
 def test_forecaster_warmup_of_two_seasons_and_its_lead_must_fit_training():
@@ -405,27 +354,6 @@ def test_forecaster_scores_a_break_in_the_cycle_above_the_cycle(model_type, lead
     assert spike.anomaly_score > 10 * max(scores[16:], default=0.0) + 1
 
 
-def test_holt_winters_forecaster_at_lead_one_is_the_seasonal_residual_detector():
-    cycle = [0.0, 10.0, 0.0, -10.0]
-    values = [100.0 + cycle[index % 4] + index for index in range(40)]
-
-    def scores(model_type: str) -> list[float]:
-        adaptive = AdaptiveStreamConfig(
-            model_type=model_type,
-            model_params={"season_length": 4},
-            training_window_size=8,
-            calibration_window_size=4,
-        )
-        detector = AdaptiveStreamDetectionService(_config(adaptive, _features(1)))
-        return [
-            detector.process_data_point({"x0": value}).anomaly_score for value in values
-        ]
-
-    assert scores("aberrant_holt_winters_forecaster") == pytest.approx(
-        scores("aberrant_seasonal_residual_detector")
-    )
-
-
 def _timestral(lead: int = 1, training: int = 20, **params) -> AnomalyDetectionConfig:
     adaptive = AdaptiveStreamConfig(
         model_type="forecast.timestral",
@@ -460,7 +388,7 @@ def test_timestral_step_scores_a_break_in_the_cycle_through_the_service(
         *[("POST", "http://forecast/v1/forecast")] * 26,
     ]
     assert detector.model_capabilities["warmup"] == {
-        "minimum": 16 + lead - 1,
+        "required": 16 + lead - 1,
         "unit": "events",
     }
 
@@ -539,13 +467,13 @@ def test_pca_initialization_cannot_be_shortened_by_model_warmup():
         AdaptiveStreamConfig(
             training_window_size=5,
             preprocessing_steps=[
-                {"type": "incremental_pca", "n_components": 1, "n0": 20}
+                {"type": "incremental_pca", "n_components": 1, "warm_up": 20}
             ],
         )
 
 
 def test_runtime_executes_constructor_validation_at_startup():
-    from aberrant.base import ConfigurationError
+    from aberrant.exceptions import ConfigurationError
 
     adaptive = AdaptiveStreamConfig(
         model_type="aberrant_rolling_matrix_profile",
@@ -581,7 +509,7 @@ def test_half_space_trees_rejects_unscaled_out_of_domain_data():
 def test_severity_uses_excess_over_signed_threshold(monkeypatch):
     detector = AdaptiveStreamDetectionService(
         _runtime_config(
-            "aberrant_moving_average", training=2, calibration=2, features=["x"]
+            "aberrant_moving_zscore", training=2, calibration=2, features=["x"]
         )
     )
     _record(detector, [-4.0, -2.0, -1.9, 0.0])

@@ -19,9 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from aberrant.base import ConfigurationError, ConfigurationIssue
-from aberrant.base.forecast import Forecast
-from aberrant.base.protocols import FeatureMap
+from aberrant.base import FeatureMap, Readiness, ReadinessUnit
 from aberrant.catalog import (
     ComponentConfig,
     DetectorConfig,
@@ -31,10 +29,9 @@ from aberrant.catalog import (
     ModelCapabilities,
     ScoreKind,
     StateKind,
-    WarmupRequirement,
-    WarmupUnit,
 )
-from aberrant.forecast import ResidualDetector
+from aberrant.exceptions import ConfigurationError, ConfigurationIssue
+from aberrant.forecast import Forecast, ResidualDetector
 from off_key_core.schemas.forecast import (
     MAX_CONTEXT_LENGTH,
     MAX_HORIZON,
@@ -158,8 +155,12 @@ class ServiceForecaster:
         return self._horizon
 
     @property
-    def is_ready(self) -> bool:
-        return self.n_samples_seen >= self.minimum_context
+    def readiness(self) -> Readiness:
+        """Ready once ``minimum_context`` values have arrived."""
+        seen = min(self.n_samples_seen, self.minimum_context)
+        return Readiness(
+            self.n_samples_seen >= self.minimum_context, seen, self.minimum_context
+        )
 
     def reset(self) -> None:
         self.n_samples_seen = 0
@@ -302,14 +303,22 @@ class ServiceResidualDetector(ResidualDetector):
     def __init__(
         self,
         model: ServiceForecaster,
-        target: str,
         *,
+        target: str,
         lead: int = 1,
         score: str = "scaled",
     ):
         if not isinstance(model, ServiceForecaster):
             raise TypeError("model must be a forecaster in the forecast service")
-        super().__init__(model, target, lead=lead, score=score)  # type: ignore[arg-type]
+        super().__init__(model, target=target, lead=lead, score=score)  # type: ignore[arg-type]
+
+    @property
+    def readiness(self) -> Readiness:
+        """Ready once a forecast is due for the next value, even one the service
+        missed: scoring asks for a missed forecast again."""
+        required = self.model.minimum_context + self.lead - 1
+        seen = self.model.n_samples_seen
+        return Readiness(seen >= required, min(seen, required), required)
 
     def explain_one(self, x: FeatureMap) -> tuple[float, float | None, float | None]:
         issued = self._issued
@@ -349,7 +358,7 @@ class ResolvedServiceDetector:
         forecaster = dict(params["model"]["params"])
         return ServiceResidualDetector(
             ServiceForecaster(forecaster.pop("checkpoint"), **forecaster),
-            params["target"],
+            target=params["target"],
             lead=params["lead"],
             score=params["score"],
         )
@@ -365,13 +374,9 @@ def resolve_service_detector(model: Mapping[str, Any]) -> ResolvedServiceDetecto
         feature_count=FeatureCount(1, 1),
         feature_schema=FeatureSchemaKind.FIXED,
         score_kind=ScoreKind.NON_NEGATIVE,
-        higher_is_more_anomalous=True,
-        warmup=WarmupRequirement(
-            params["model"]["params"]["minimum_context"] + params["lead"] - 1,
-            WarmupUnit.EVENTS,
-        ),
+        warmup=params["model"]["params"]["minimum_context"] + params["lead"] - 1,
+        warmup_unit=ReadinessUnit.EVENTS,
         state=StateKind.BOUNDED,
-        resettable=False,
         requires_unit_interval=False,
     )
     serialized = json.dumps(config.as_dict(), sort_keys=True, separators=(",", ":"))

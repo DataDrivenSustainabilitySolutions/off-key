@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 
 import numpy as np
-from aberrant.base.readiness import Readiness
+from aberrant.base import Readiness
 from aberrant.forecast import RLSRegressor
 
 
@@ -53,7 +53,7 @@ class OnlineExpectedValue:
     @property
     def readiness(self) -> Readiness:
         seen = min(self.regressor.n_samples_seen, self.required)
-        return Readiness(self.regressor.is_ready, seen, self.required)
+        return Readiness(self.regressor.readiness.ready, seen, self.required)
 
     def _inputs(self, data: dict[str, float]) -> dict[str, float]:
         return {name: value for name, value in data.items() if name != self.target}

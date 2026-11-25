@@ -46,21 +46,21 @@ export function ParameterFields({ fields, values, onChange, features = [], featu
     const id = `${prefix}-${field.name}`;
     const explicit = Object.prototype.hasOwnProperty.call(values, field.name);
     const value = explicit ? values[field.name] : hasDefault(field) ? field.default : undefined;
-    const nested = field.type === "object" || field.type === "object_list" || field.type === "component";
+    const nested = field.type === "object" || field.type === "object_list";
     const messages = issues.filter(issue =>
       JSON.stringify((nested ? issue.path : issue.path.slice(0, fieldPath.length)).map(String)) === JSON.stringify(fieldPath.map(String)));
     const update = (next: JsonValue) => onChange({ ...values, [field.name]: next });
     const props = { field, value, id, disabled: readOnly || value === null, invalid: messages.length > 0, onChange: update };
     let control;
     switch (field.type) {
-      case "object": case "object_list": case "component":
+      case "object": case "object_list":
         control = <NestedControl {...props} path={fieldPath}
           render={(nested, next, nextPath, change, index) => <ParameterFields fields={nested} values={next}
             onChange={change} path={nextPath} issues={issues} features={features}
             featureLabels={featureLabels} featureHint={featureHint} readOnly={readOnly || value === null} prefix={`${id}-${index}`} />} />;
         break;
-      case "number_pair": case "number_list": case "features": case "rename": case "integer_adjacency":
-        control = <CollectionControl {...props} disabled={field.type === "integer_adjacency" ? readOnly : props.disabled} features={features} featureLabels={featureLabels} featureHint={featureHint} />;
+      case "number_pair": case "number_list": case "features": case "rename":
+        control = <CollectionControl {...props} features={features} featureLabels={featureLabels} featureHint={featureHint} />;
         break;
       case "number": case "integer": case "string": case "boolean": case "enum":
         control = <ScalarControl {...props} />;
@@ -77,7 +77,7 @@ export function ParameterFields({ fields, values, onChange, features = [], featu
           {field.exclusive_maximum != null ? `Less than ${field.exclusive_maximum}.` : ""}
         </p>}
       </div>
-      {field.nullable && field.type !== "integer_adjacency" && <label className="parameter-check">
+      {field.nullable && <label className="parameter-check">
         <input type="checkbox" aria-label={`${field.label} automatic`} disabled={readOnly}
           checked={value === null} onChange={event => update(event.target.checked ? null : initialValue(field))} />
         Automatic / none

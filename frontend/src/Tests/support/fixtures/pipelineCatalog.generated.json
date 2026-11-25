@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "catalog_id": "fd7c1178d380f664668e79ac75e38438284cb6f0a82323567ea14386b8931e10",
+ "catalog_id": "c8dea48f9e77446e21e1edf93ba1a6cc203e1bf25f5844a644016bb45a983a89",
  "authoring_enabled": true,
  "components": [
   {
@@ -1824,8 +1824,8 @@
      "description": "Recent observations per feature for the median and quartiles."
     },
     {
-     "name": "min_samples",
-     "label": "Min Samples",
+     "name": "warm_up",
+     "label": "Warm Up",
      "type": "integer",
      "default": 32,
      "has_default": true,
@@ -1880,8 +1880,8 @@
      "description": "Features that leave the step. No more than arrive."
     },
     {
-     "name": "n0",
-     "label": "N0",
+     "name": "warm_up",
+     "label": "Warm Up",
      "type": "integer",
      "default": 50,
      "has_default": true,
@@ -2300,15 +2300,6 @@
      "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
     },
     {
-     "name": "lr",
-     "label": "Learning rate",
-     "type": "number",
-     "default": 0.05,
-     "has_default": true,
-     "exclusive_minimum": 0.0,
-     "description": "How far the boundary moves after each observation. Larger follows change faster and wobbles more."
-    },
-    {
      "name": "ki",
      "label": "Integrator gain",
      "type": "number",
@@ -2316,6 +2307,15 @@
      "has_default": true,
      "minimum": 0.0,
      "description": "In units of the recent score range."
+    },
+    {
+     "name": "lr",
+     "label": "Learning rate",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "How far the boundary moves after each observation. Larger follows change faster and wobbles more."
     },
     {
      "name": "fusion",
@@ -2406,15 +2406,6 @@
      "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
     },
     {
-     "name": "lr",
-     "label": "Learning rate",
-     "type": "number",
-     "default": 0.05,
-     "has_default": true,
-     "exclusive_minimum": 0.0,
-     "description": "Step as a fraction of the recent score range."
-    },
-    {
      "name": "c",
      "label": "Sigmoid slope",
      "type": "number",
@@ -2431,6 +2422,15 @@
      "has_default": true,
      "minimum": 0.0,
      "description": "Apply the error term only beyond this share of the range."
+    },
+    {
+     "name": "lr",
+     "label": "Learning rate",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Step as a fraction of the recent score range."
     },
     {
      "name": "fusion",
@@ -2608,15 +2608,6 @@
      "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
     },
     {
-     "name": "lambda",
-     "label": "Run length",
-     "type": "number",
-     "default": 250.0,
-     "has_default": true,
-     "minimum": 1.0,
-     "description": "Expected steps between changepoints (hazard 1/lambda)."
-    },
-    {
      "name": "gamma",
      "label": "Step size",
      "type": "number",
@@ -2624,6 +2615,15 @@
      "has_default": true,
      "exclusive_minimum": 0.0,
      "description": "How far the level moves after each observation. Larger follows change faster and wobbles more."
+    },
+    {
+     "name": "lambda",
+     "label": "Run length",
+     "type": "number",
+     "default": 250.0,
+     "has_default": true,
+     "minimum": 1.0,
+     "description": "Expected steps between changepoints (hazard 1/lambda)."
     },
     {
      "name": "fusion",
@@ -3525,6 +3525,104 @@
    "output_type": "scores"
   },
   {
+   "id": "detector:aberrant_adaptive_one_class_svm",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Adaptive-kernel one-class SVM",
+   "description": "Keep a budget of support vectors and tune the kernel width to recent data. Follows curved shapes at a higher cost per observation. Experimental.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "adaptation_rate",
+     "label": "Adaptation Rate",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How far each adaptation moves the kernel width toward its estimate, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "buffer_size",
+     "label": "Buffer Size",
+     "type": "integer",
+     "default": 200,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations used to estimate the kernel width.",
+     "advanced": true
+    },
+    {
+     "name": "gamma_bounds",
+     "label": "Gamma Bounds",
+     "type": "number_pair",
+     "default": [
+      0.001,
+      100.0
+     ],
+     "has_default": true,
+     "description": "Smallest and largest kernel width the adaptation may reach.",
+     "advanced": true
+    },
+    {
+     "name": "initial_gamma",
+     "label": "Initial Gamma",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Kernel width the model starts from.",
+     "advanced": true
+    },
+    {
+     "name": "nu",
+     "label": "Nu",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Scale of the support-vector weights, above 0 up to 1."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "sv_budget",
+     "label": "Sv Budget",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Most support vectors kept. More follow finer shapes and cost more per observation."
+    },
+    {
+     "name": "tolerance",
+     "label": "Tolerance",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Margin within which an observation counts as inside the boundary.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
    "id": "detector:aberrant_asd_isolation_forest",
    "contract_version": 1,
    "kind": "detector",
@@ -3546,8 +3644,8 @@
      "advanced": true
     },
     {
-     "name": "n_estimators",
-     "label": "N Estimators",
+     "name": "n_trees",
+     "label": "N Trees",
      "type": "integer",
      "default": 100,
      "has_default": true,
@@ -3592,61 +3690,53 @@
    "output_type": "scores"
   },
   {
-   "id": "detector:aberrant_gadget_svm",
+   "id": "detector:aberrant_damp",
    "contract_version": 1,
    "kind": "detector",
    "group": "detector",
-   "label": "Graph-gated one-class SVM",
-   "description": "Pass each observation along a chain of small linear models, where the next is asked only when the one before is surprised. Experimental.",
+   "label": "DAMP discords",
+   "description": "Score how unlike the latest stretch of values is to its nearest match far back, fast. Finds odd shapes made of normal values in one feature.",
    "library": "Aberrant",
    "learning": "online",
    "fields": [
     {
-     "name": "graph",
-     "label": "Graph",
-     "type": "integer_adjacency",
+     "name": "min_std",
+     "label": "Min Std",
+     "type": "number",
+     "default": 1e-12,
+     "has_default": true,
+     "description": "Smallest spread a stretch may have; flatter ones are skipped.",
+     "advanced": true
+    },
+    {
+     "name": "start_index",
+     "label": "Start Index",
+     "type": "integer",
      "default": null,
      "has_default": true,
      "nullable": true,
-     "description": "Which model passes on to which, by number. Empty uses the chain 0, 1, 2."
-    },
-    {
-     "name": "lambda_reg",
-     "label": "Lambda Reg",
-     "type": "number",
-     "default": 0.01,
-     "has_default": true,
-     "minimum": 0.0,
-     "description": "Weight decay of every model. Larger values forget faster.",
+     "description": "Value at which scoring starts. Empty starts four subsequences in.",
      "advanced": true
     },
     {
-     "name": "learning_rate",
-     "label": "Learning Rate",
-     "type": "number",
-     "default": 0.01,
+     "name": "subsequence_length",
+     "label": "Subsequence Length",
+     "type": "integer",
+     "default": 32,
+     "required": true,
      "has_default": true,
-     "exclusive_minimum": 0.0,
-     "description": "Step size of every model's update."
+     "minimum": 2.0,
+     "maximum": 10000.0,
+     "description": "Values in one stretch: about one cycle, or the length of the shape an anomaly takes."
     },
     {
-     "name": "nu",
-     "label": "Nu",
-     "type": "number",
-     "default": 0.5,
+     "name": "x_lag",
+     "label": "X Lag",
+     "type": "integer",
+     "default": null,
      "has_default": true,
-     "exclusive_minimum": 0.0,
-     "exclusive_maximum": 1.0,
-     "description": "Weight of the bias update in every model.",
-     "advanced": true
-    },
-    {
-     "name": "threshold",
-     "label": "Threshold",
-     "type": "number",
-     "default": 0.0,
-     "has_default": true,
-     "description": "A model passes an observation on only when its own score is above this."
+     "nullable": true,
+     "description": "Values searched back for a match. Empty uses 16 times the subsequence length."
     }
    ],
    "input_type": "features",
@@ -3807,104 +3897,6 @@
    "output_type": "forecasts"
   },
   {
-   "id": "detector:aberrant_incremental_one_class_svm_adaptive_kernel",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Adaptive-kernel one-class SVM",
-   "description": "Keep a budget of support vectors and tune the kernel width to recent data. Follows curved shapes at a higher cost per observation. Experimental.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "adaptation_rate",
-     "label": "Adaptation Rate",
-     "type": "number",
-     "default": 0.1,
-     "has_default": true,
-     "maximum": 1.0,
-     "exclusive_minimum": 0.0,
-     "description": "How far each adaptation moves the kernel width toward its estimate, above 0 up to 1.",
-     "advanced": true
-    },
-    {
-     "name": "buffer_size",
-     "label": "Buffer Size",
-     "type": "integer",
-     "default": 200,
-     "has_default": true,
-     "minimum": 2.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations used to estimate the kernel width.",
-     "advanced": true
-    },
-    {
-     "name": "gamma_bounds",
-     "label": "Gamma Bounds",
-     "type": "number_pair",
-     "default": [
-      0.001,
-      100.0
-     ],
-     "has_default": true,
-     "description": "Smallest and largest kernel width the adaptation may reach.",
-     "advanced": true
-    },
-    {
-     "name": "initial_gamma",
-     "label": "Initial Gamma",
-     "type": "number",
-     "default": 1.0,
-     "has_default": true,
-     "exclusive_minimum": 0.0,
-     "description": "Kernel width the model starts from.",
-     "advanced": true
-    },
-    {
-     "name": "nu",
-     "label": "Nu",
-     "type": "number",
-     "default": 0.1,
-     "has_default": true,
-     "exclusive_minimum": 0.0,
-     "exclusive_maximum": 1.0,
-     "description": "Scale of the support-vector weights, above 0 up to 1."
-    },
-    {
-     "name": "seed",
-     "label": "Seed",
-     "type": "integer",
-     "default": null,
-     "has_default": true,
-     "nullable": true,
-     "description": "Seed for the random choices. Empty uses the design's seed.",
-     "advanced": true
-    },
-    {
-     "name": "sv_budget",
-     "label": "Sv Budget",
-     "type": "integer",
-     "default": 100,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Most support vectors kept. More follow finer shapes and cost more per observation."
-    },
-    {
-     "name": "tolerance",
-     "label": "Tolerance",
-     "type": "number",
-     "default": 1e-06,
-     "has_default": true,
-     "exclusive_minimum": 0.0,
-     "description": "Margin within which an observation counts as inside the boundary.",
-     "advanced": true
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
    "id": "detector:aberrant_knn",
    "contract_version": 1,
    "kind": "detector",
@@ -3919,46 +3911,20 @@
      "label": "K",
      "type": "integer",
      "default": 5,
-     "required": true,
      "has_default": true,
      "minimum": 1.0,
      "maximum": 10000.0,
      "description": "Neighbors the distance is averaged over."
     },
     {
-     "name": "similarity_engine",
-     "label": "Similarity Engine",
-     "type": "component",
-     "default": {
-      "id": "faiss",
-      "params": {
-       "warm_up": 20,
-       "window_size": 1000
-      }
-     },
-     "required": true,
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 1000,
      "has_default": true,
-     "description": "The index that holds the recent observations.",
-     "fields": [
-      {
-       "name": "warm_up",
-       "label": "Warm Up",
-       "type": "integer",
-       "required": true,
-       "minimum": 1.0,
-       "maximum": 1000000.0,
-       "description": "Observations before scoring starts."
-      },
-      {
-       "name": "window_size",
-       "label": "Window Size",
-       "type": "integer",
-       "required": true,
-       "minimum": 1.0,
-       "maximum": 1000000.0,
-       "description": "Recent observations kept to search in."
-      }
-     ]
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Recent observations kept to search in."
     }
    ],
    "input_type": "features",
@@ -4012,7 +3978,86 @@
    "output_type": "scores"
   },
   {
-   "id": "detector:aberrant_mondrian_forest",
+   "id": "detector:aberrant_loda",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "LODA",
+   "description": "Score how rare an observation is in many random one-dimensional views, each with its own histogram. Fast on many features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "decay",
+     "label": "Decay",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "description": "How much the histograms keep of the past at each observation; 1 keeps everything.",
+     "advanced": true
+    },
+    {
+     "name": "n_bins",
+     "label": "N Bins",
+     "type": "integer",
+     "default": 32,
+     "has_default": true,
+     "description": "Bins of each view's histogram.",
+     "advanced": true
+    },
+    {
+     "name": "n_projections",
+     "label": "N Projections",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "description": "Random views. More give steadier scores and cost time."
+    },
+    {
+     "name": "pseudocount",
+     "label": "Pseudocount",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "description": "Count every bin starts with, so no bin is impossible.",
+     "advanced": true
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "sparsity",
+     "label": "Sparsity",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Share of features each view leaves out. Empty uses the paper's choice for the number of features.",
+     "advanced": true
+    },
+    {
+     "name": "warm_up",
+     "label": "Warm Up",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations that fix the histograms' bins before scores start."
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_mondrian_isolation_forest",
    "contract_version": 1,
    "kind": "detector",
    "group": "detector",
@@ -4022,8 +4067,8 @@
    "learning": "online",
    "fields": [
     {
-     "name": "lambda_",
-     "label": "Lambda ",
+     "name": "lifetime",
+     "label": "Lifetime",
      "type": "number",
      "default": 1.0,
      "has_default": true,
@@ -4032,8 +4077,8 @@
      "advanced": true
     },
     {
-     "name": "n_estimators",
-     "label": "N Estimators",
+     "name": "n_trees",
+     "label": "N Trees",
      "type": "integer",
      "default": 100,
      "has_default": true,
@@ -4078,56 +4123,6 @@
    "output_type": "scores"
   },
   {
-   "id": "detector:aberrant_moving_average",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving average",
-   "description": "Score how much a new value changes the mean of a recent window. For one feature with a stable level.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_moving_average_absolute_deviation",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving absolute deviation",
-   "description": "Score how much a new value changes the mean absolute deviation of a recent window. For one feature whose spread should stay steady.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
    "id": "detector:aberrant_moving_correlation_coefficient",
    "contract_version": 1,
    "kind": "detector",
@@ -4151,7 +4146,6 @@
      "label": "Window Size",
      "type": "integer",
      "default": 100,
-     "required": true,
      "has_default": true,
      "minimum": 1.0,
      "maximum": 1000000.0,
@@ -4185,7 +4179,6 @@
      "label": "Window Size",
      "type": "integer",
      "default": 100,
-     "required": true,
      "has_default": true,
      "minimum": 1.0,
      "maximum": 1000000.0,
@@ -4196,105 +4189,40 @@
    "output_type": "scores"
   },
   {
-   "id": "detector:aberrant_moving_geometric_average",
+   "id": "detector:aberrant_moving_mad",
    "contract_version": 1,
    "kind": "detector",
    "group": "detector",
-   "label": "Moving geometric mean",
-   "description": "Score how much a new value changes the geometric mean of a recent window. For one feature above zero, such as a ratio or a growth factor.",
+   "label": "Moving median deviation",
+   "description": "Score how far a new value lies from the median of a recent window, measured in its median absolute deviation. For one feature; a few outliers barely move it.",
    "library": "Aberrant",
    "learning": "online",
    "fields": [
     {
-     "name": "absoluteValues",
-     "label": "Absolutevalues",
-     "type": "boolean",
-     "default": false,
+     "name": "min_mad",
+     "label": "Min Mad",
+     "type": "number",
+     "default": 1e-12,
      "has_default": true,
-     "description": "On reads the values as levels and follows the average growth between them. Off takes the geometric mean of the values.",
+     "description": "Smallest deviation a value is divided by. It keeps a flat signal from scoring every small change.",
      "advanced": true
+    },
+    {
+     "name": "warm_up",
+     "label": "Warm Up",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Values learned before scores start. Empty waits for a full window."
     },
     {
      "name": "window_size",
      "label": "Window Size",
      "type": "integer",
      "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 2.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_moving_harmonic_average",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving harmonic mean",
-   "description": "Score how much a new value changes the harmonic mean of a recent window. For one feature that is a rate; zeros are left out.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_moving_interquartile_range",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving interquartile range",
-   "description": "Score how much a new value changes the quartile range of a recent window. For one feature; single outliers barely move it.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_moving_kurtosis",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving kurtosis",
-   "description": "Score how much a new value changes the weight of the tails of a recent window. For one feature where rare extremes matter.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
      "has_default": true,
      "minimum": 1.0,
      "maximum": 1000000.0,
@@ -4328,7 +4256,6 @@
      "label": "Window Size",
      "type": "integer",
      "default": 100,
-     "required": true,
      "has_default": true,
      "minimum": 1.0,
      "maximum": 1000000.0,
@@ -4339,106 +4266,40 @@
    "output_type": "scores"
   },
   {
-   "id": "detector:aberrant_moving_median",
+   "id": "detector:aberrant_moving_zscore",
    "contract_version": 1,
    "kind": "detector",
    "group": "detector",
-   "label": "Moving median",
-   "description": "Score how much a new value changes the median of a recent window. For one feature; single outliers barely move it.",
+   "label": "Moving z-score",
+   "description": "Score how many standard deviations a new value lies from the mean of a recent window. For one feature with a stable level; very fast.",
    "library": "Aberrant",
    "learning": "online",
    "fields": [
     {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_moving_quantile",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving quantile",
-   "description": "Score how much a new value changes a chosen quantile of a recent window. For one feature where one tail matters.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "quantile",
-     "label": "Quantile",
+     "name": "min_std",
+     "label": "Min Std",
      "type": "number",
-     "default": 0.5,
+     "default": 1e-12,
      "has_default": true,
-     "minimum": 0.0,
-     "maximum": 1.0,
-     "description": "The quantile to follow, from 0 to 1. 0.5 is the median."
+     "description": "Smallest spread a value is divided by. It keeps a flat signal from scoring every small change.",
+     "advanced": true
+    },
+    {
+     "name": "warm_up",
+     "label": "Warm Up",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "nullable": true,
+     "description": "Values learned before scores start. Empty waits for a full window."
     },
     {
      "name": "window_size",
      "label": "Window Size",
      "type": "integer",
      "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_moving_skewness",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving skewness",
-   "description": "Score how much a new value changes the asymmetry of a recent window. For one feature that is normally balanced.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_moving_variance",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Moving variance",
-   "description": "Score how much a new value changes the variance of a recent window. For one feature whose spread should stay steady.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 100,
-     "required": true,
      "has_default": true,
      "minimum": 1.0,
      "maximum": 1000000.0,
@@ -4562,14 +4423,6 @@
      "description": "How each feature's distribution is kept: a sketch of everything seen, a window of recent values, or both."
     },
     {
-     "name": "min_samples",
-     "label": "Min Samples",
-     "type": "integer",
-     "default": 64,
-     "has_default": true,
-     "description": "Observations before scores start."
-    },
-    {
      "name": "tail",
      "label": "Tail",
      "type": "enum",
@@ -4591,6 +4444,16 @@
      "nullable": true,
      "description": "Where the fitted Pareto tail starts.",
      "advanced": true
+    },
+    {
+     "name": "warm_up",
+     "label": "Warm Up",
+     "type": "integer",
+     "default": 64,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations before scores start."
     },
     {
      "name": "window_size",
@@ -4665,14 +4528,6 @@
      "description": "How each feature's distribution is kept: a sketch of everything seen, a window of recent values, or both."
     },
     {
-     "name": "min_samples",
-     "label": "Min Samples",
-     "type": "integer",
-     "default": 64,
-     "has_default": true,
-     "description": "Observations before scores start."
-    },
-    {
      "name": "tail",
      "label": "Tail",
      "type": "enum",
@@ -4694,6 +4549,16 @@
      "nullable": true,
      "description": "Where the fitted Pareto tail starts.",
      "advanced": true
+    },
+    {
+     "name": "warm_up",
+     "label": "Warm Up",
+     "type": "integer",
+     "default": 64,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations before scores start."
     },
     {
      "name": "window_size",
@@ -4755,19 +4620,8 @@
      "advanced": true
     },
     {
-     "name": "n_jobs",
-     "label": "N Jobs",
-     "type": "integer",
-     "default": 1,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 64.0,
-     "description": "Worker threads for batches. Single observations always run on one.",
-     "advanced": true
-    },
-    {
-     "name": "num_trees",
-     "label": "Num Trees",
+     "name": "n_trees",
+     "label": "N Trees",
      "type": "integer",
      "default": 100,
      "has_default": true,
@@ -4844,15 +4698,6 @@
      "description": "Trees in the forest. More give steadier scores and cost time and memory."
     },
     {
-     "name": "normalize_score",
-     "label": "Normalize Score",
-     "type": "boolean",
-     "default": true,
-     "has_default": true,
-     "description": "Map the scores to 0 to 1.",
-     "advanced": true
-    },
-    {
      "name": "sample_size",
      "label": "Sample Size",
      "type": "integer",
@@ -4861,16 +4706,6 @@
      "minimum": 2.0,
      "maximum": 1000000.0,
      "description": "Most recent points each tree holds."
-    },
-    {
-     "name": "score_scale",
-     "label": "Score Scale",
-     "type": "number",
-     "default": 8.0,
-     "has_default": true,
-     "exclusive_minimum": 0.0,
-     "description": "Scale of that mapping. Larger values place typical scores lower.",
-     "advanced": true
     },
     {
      "name": "seed",
@@ -4893,8 +4728,8 @@
      "description": "Consecutive observations joined into one point, to score short patterns. 1 scores single observations."
     },
     {
-     "name": "warmup_samples",
-     "label": "Warmup Samples",
+     "name": "warm_up",
+     "label": "Warm Up",
      "type": "integer",
      "default": null,
      "has_default": true,
@@ -4903,6 +4738,61 @@
      "nullable": true,
      "description": "Points before scores start. Empty waits for a full sample.",
      "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_rhf",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "detector",
+   "label": "Random histogram forest",
+   "description": "Trees that split where the values are most heavy-tailed, replaced with each new window. Good at rare extremes across several features.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "max_depth",
+     "label": "Max Depth",
+     "type": "integer",
+     "default": 10,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 128.0,
+     "description": "Deepest level of each tree.",
+     "advanced": true
+    },
+    {
+     "name": "n_trees",
+     "label": "N Trees",
+     "type": "integer",
+     "default": 25,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 2000.0,
+     "description": "Trees in the forest. More give steadier scores and cost time and memory."
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "window_size",
+     "label": "Window Size",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations per window. Each completed window replaces what the detector compares against."
     }
    ],
    "input_type": "features",
@@ -5034,287 +4924,7 @@
    "output_type": "forecasts"
   },
   {
-   "id": "detector:aberrant_seasonal_residual_detector",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Seasonal residual",
-   "description": "Learn a level, a trend and a repeating cycle of one feature, and score how far each value misses the forecast one step ahead.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "alpha",
-     "label": "Alpha",
-     "type": "number",
-     "default": 0.2,
-     "has_default": true,
-     "minimum": 0.0,
-     "maximum": 1.0,
-     "description": "How fast the level follows new values, from 0 to 1.",
-     "advanced": true
-    },
-    {
-     "name": "beta",
-     "label": "Beta",
-     "type": "number",
-     "default": 0.05,
-     "has_default": true,
-     "minimum": 0.0,
-     "maximum": 1.0,
-     "description": "How fast the trend follows new values, from 0 to 1.",
-     "advanced": true
-    },
-    {
-     "name": "gamma",
-     "label": "Gamma",
-     "type": "number",
-     "default": 0.1,
-     "has_default": true,
-     "minimum": 0.0,
-     "maximum": 1.0,
-     "description": "How fast the cycle follows new values, from 0 to 1 minus the level weight.",
-     "advanced": true
-    },
-    {
-     "name": "min_scale",
-     "label": "Min Scale",
-     "type": "number",
-     "default": 1e-06,
-     "has_default": true,
-     "exclusive_minimum": 0.0,
-     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
-     "advanced": true
-    },
-    {
-     "name": "normalize",
-     "label": "Normalize",
-     "type": "boolean",
-     "default": true,
-     "has_default": true,
-     "description": "Divide the miss by the typical forecast error. Off reports it in the feature's units.",
-     "advanced": true
-    },
-    {
-     "name": "residual_alpha",
-     "label": "Residual Alpha",
-     "type": "number",
-     "default": 0.05,
-     "has_default": true,
-     "maximum": 1.0,
-     "exclusive_minimum": 0.0,
-     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
-     "advanced": true
-    },
-    {
-     "name": "season_length",
-     "label": "Season Length",
-     "type": "integer",
-     "required": true,
-     "minimum": 2.0,
-     "maximum": 500000.0,
-     "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_stream_random_histogram_forest",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "Random histogram forest",
-   "description": "Trees that split where the values are most heavy-tailed, replaced with each new window. Good at rare extremes across several features.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "max_depth",
-     "label": "Max Depth",
-     "type": "integer",
-     "default": 10,
-     "has_default": true,
-     "minimum": 2.0,
-     "maximum": 128.0,
-     "description": "Deepest level of each tree.",
-     "advanced": true
-    },
-    {
-     "name": "n_estimators",
-     "label": "N Estimators",
-     "type": "integer",
-     "default": 25,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 2000.0,
-     "description": "Trees in the forest. More give steadier scores and cost time and memory."
-    },
-    {
-     "name": "seed",
-     "label": "Seed",
-     "type": "integer",
-     "default": null,
-     "has_default": true,
-     "nullable": true,
-     "description": "Seed for the random choices. Empty uses the design's seed.",
-     "advanced": true
-    },
-    {
-     "name": "window_size",
-     "label": "Window Size",
-     "type": "integer",
-     "default": 256,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 1000000.0,
-     "description": "Observations per window. Each completed window replaces what the detector compares against."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_streaming_loda",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "LODA",
-   "description": "Score how rare an observation is in many random one-dimensional views, each with its own histogram. Fast on many features.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "decay",
-     "label": "Decay",
-     "type": "number",
-     "default": 1.0,
-     "has_default": true,
-     "description": "How much the histograms keep of the past at each observation; 1 keeps everything.",
-     "advanced": true
-    },
-    {
-     "name": "eps",
-     "label": "Eps",
-     "type": "number",
-     "default": 1e-12,
-     "has_default": true,
-     "description": "Smallest density a score is taken of.",
-     "advanced": true
-    },
-    {
-     "name": "n_bins",
-     "label": "N Bins",
-     "type": "integer",
-     "default": 32,
-     "has_default": true,
-     "description": "Bins of each view's histogram.",
-     "advanced": true
-    },
-    {
-     "name": "n_projections",
-     "label": "N Projections",
-     "type": "integer",
-     "default": 100,
-     "has_default": true,
-     "description": "Random views. More give steadier scores and cost time."
-    },
-    {
-     "name": "pseudocount",
-     "label": "Pseudocount",
-     "type": "number",
-     "default": 1.0,
-     "has_default": true,
-     "description": "Count every bin starts with, so no bin is impossible.",
-     "advanced": true
-    },
-    {
-     "name": "seed",
-     "label": "Seed",
-     "type": "integer",
-     "default": null,
-     "has_default": true,
-     "nullable": true,
-     "description": "Seed for the random choices. Empty uses the design's seed.",
-     "advanced": true
-    },
-    {
-     "name": "sparsity",
-     "label": "Sparsity",
-     "type": "number",
-     "default": null,
-     "has_default": true,
-     "nullable": true,
-     "description": "Share of features each view leaves out. Empty uses the paper's choice for the number of features.",
-     "advanced": true
-    },
-    {
-     "name": "warm_up_samples",
-     "label": "Warm Up Samples",
-     "type": "integer",
-     "default": 256,
-     "has_default": true,
-     "description": "Observations that fix the histograms' bins before scores start."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_x_lag_damp",
-   "contract_version": 1,
-   "kind": "detector",
-   "group": "detector",
-   "label": "DAMP discords",
-   "description": "Score how unlike the latest stretch of values is to its nearest match far back, fast. Finds odd shapes made of normal values in one feature.",
-   "library": "Aberrant",
-   "learning": "online",
-   "fields": [
-    {
-     "name": "eps",
-     "label": "Eps",
-     "type": "number",
-     "default": 1e-12,
-     "has_default": true,
-     "description": "Smallest spread a stretch may have; flatter ones are skipped.",
-     "advanced": true
-    },
-    {
-     "name": "start_index",
-     "label": "Start Index",
-     "type": "integer",
-     "default": null,
-     "has_default": true,
-     "nullable": true,
-     "description": "Value at which scoring starts. Empty starts four subsequences in.",
-     "advanced": true
-    },
-    {
-     "name": "subsequence_length",
-     "label": "Subsequence Length",
-     "type": "integer",
-     "default": 32,
-     "required": true,
-     "has_default": true,
-     "minimum": 2.0,
-     "maximum": 10000.0,
-     "description": "Values in one stretch: about one cycle, or the length of the shape an anomaly takes."
-    },
-    {
-     "name": "x_lag",
-     "label": "X Lag",
-     "type": "integer",
-     "default": null,
-     "has_default": true,
-     "nullable": true,
-     "description": "Values searched back for a match. Empty uses 16 times the subsequence length."
-    }
-   ],
-   "input_type": "features",
-   "output_type": "scores"
-  },
-  {
-   "id": "detector:aberrant_x_stream",
+   "id": "detector:aberrant_xstream",
    "contract_version": 1,
    "kind": "detector",
    "group": "detector",
@@ -5323,28 +4933,6 @@
    "library": "Aberrant",
    "learning": "online",
    "fields": [
-    {
-     "name": "cms_num_hashes",
-     "label": "Cms Num Hashes",
-     "type": "integer",
-     "default": 4,
-     "has_default": true,
-     "minimum": 1.0,
-     "maximum": 128.0,
-     "description": "Rows per count sketch.",
-     "advanced": true
-    },
-    {
-     "name": "cms_width",
-     "label": "Cms Width",
-     "type": "integer",
-     "default": 1024,
-     "has_default": true,
-     "minimum": 2.0,
-     "maximum": 1000000.0,
-     "description": "Counters per row of each count sketch. More reduce collisions.",
-     "advanced": true
-    },
     {
      "name": "density",
      "label": "Density",
@@ -5365,17 +4953,6 @@
      "minimum": 1.0,
      "maximum": 128.0,
      "description": "Levels in each chain."
-    },
-    {
-     "name": "init_sample_size",
-     "label": "Init Sample Size",
-     "type": "integer",
-     "default": 256,
-     "has_default": true,
-     "minimum": 2.0,
-     "maximum": 1000000.0,
-     "description": "Observations used to set the chains' scales before scoring starts.",
-     "advanced": true
     },
     {
      "name": "k",
@@ -5411,6 +4988,17 @@
      "description": "Chains in the ensemble. More give steadier scores."
     },
     {
+     "name": "n_hashes",
+     "label": "N Hashes",
+     "type": "integer",
+     "default": 4,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 128.0,
+     "description": "Rows per count sketch.",
+     "advanced": true
+    },
+    {
      "name": "seed",
      "label": "Seed",
      "type": "integer",
@@ -5418,6 +5006,28 @@
      "has_default": true,
      "nullable": true,
      "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "sketch_width",
+     "label": "Sketch Width",
+     "type": "integer",
+     "default": 1024,
+     "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1000000.0,
+     "description": "Counters per row of each count sketch. More reduce collisions.",
+     "advanced": true
+    },
+    {
+     "name": "warm_up",
+     "label": "Warm Up",
+     "type": "integer",
+     "default": 256,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations used to set the chains' scales before scoring starts.",
      "advanced": true
     },
     {
@@ -5707,8 +5317,7 @@
        "branching_factor": 2,
        "max_leaf_samples": 32,
        "metric": "axisparallel",
-       "n_jobs": 1,
-       "num_trees": 100,
+       "n_trees": 100,
        "seed": null,
        "subsample": 1.0,
        "tree_type": "adaptive",

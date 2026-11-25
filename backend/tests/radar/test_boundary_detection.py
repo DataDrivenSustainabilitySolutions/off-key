@@ -15,6 +15,7 @@ from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, series_topi
 from off_key_core.models.pipeline_calibration import CALIBRATORS
 from off_key_core.models.pipelines import compile_pipeline, derive_monitoring_config
 from off_key_core.schemas.dojo import RunAlignment
+from off_key_core.schemas.pipelines import PipelineDefinition
 from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamState
 from off_key_mqtt_radar.boundary import ScoreBoundary
@@ -63,9 +64,9 @@ def outcomes(results):
         (
             ("knn", "mad"),
             AdaptiveStreamConfig,
-            "aberrant_moving_average_absolute_deviation",
+            "aberrant_moving_mad",
         ),
-        (("mad",), AdaptiveStreamConfig, "aberrant_moving_average_absolute_deviation"),
+        (("mad",), AdaptiveStreamConfig, "aberrant_moving_mad"),
         (("knn",), StaticBaselineConfig, "pyod_knn"),
     ],
 )
@@ -267,13 +268,17 @@ def test_a_boundary_at_the_top_rank_still_sees_a_larger_spike():
     """ACI can push its boundary to the largest value seen; ranks alone stop at 1."""
     # The smallest window two detectors under max may have at this alarm rate.
     window = 39
-    service = BoundaryDetectionService(
-        bound(
-            boundary_definition(
-                ("forest", "mad"), params={"alpha": 0.1}, calibration_window=window
-            )
-        )
-    )
+    design = boundary_definition(
+        ("forest", "mad"), params={"alpha": 0.1}, calibration_window=window
+    ).model_dump(mode="json")
+    # MAD reads the raw values: online scaling would shrink each further spike.
+    design["nodes"] = [node for node in design["nodes"] if node["id"] != "scale_b"]
+    design["edges"] = [
+        {**edge, "target": "mad"} if edge["target"] == "scale_b" else edge
+        for edge in design["edges"]
+        if edge["source"] != "scale_b"
+    ]
+    service = BoundaryDetectionService(bound(PipelineDefinition.model_validate(design)))
     try:
         feed(service, 0, TRAINING + window + 20)
         boundary = service.boundary

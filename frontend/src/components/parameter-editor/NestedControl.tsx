@@ -14,17 +14,14 @@ export function NestedControl({ field, value, disabled, onChange, path, render }
     const entryPath = field.type === "object_list" ? [...path, index] : path;
     const selected = String(object[field.discriminator ?? ""] ?? Object.keys(field.variants ?? {})[0] ?? "");
     const fields = field.variants ? field.variants[selected] ?? [] : field.fields ?? [];
-    const params = field.type === "component" ? objectValue(object.params) : object;
     return <div key={index} className="parameter-nested">
-      {field.type === "component" && <p>{String(object.id ?? "")}</p>}
       {field.variants && field.discriminator && <label>{field.label} kind<select disabled={disabled}
         value={selected} onChange={event => changeEntry(index, {
           ...fieldDefaults(field.variants![event.target.value] ?? []),
           [field.discriminator!]: event.target.value,
         })}>{Object.keys(field.variants).map(kind => <option key={kind}>{kind}</option>)}</select></label>}
-      {render(fields.filter(item => item.name !== field.discriminator), params,
-        field.type === "component" ? [...entryPath, "params"] : entryPath,
-        next => changeEntry(index, field.type === "component" ? { ...object, params: next } : next), index)}
+      {render(fields.filter(item => item.name !== field.discriminator), object, entryPath,
+        next => changeEntry(index, next), index)}
       {field.type === "object_list" && <button type="button" disabled={disabled}
         onClick={() => onChange(entries.filter((_entry, at) => at !== index).map(entry => entry ?? null))}>Remove item</button>}
     </div>;

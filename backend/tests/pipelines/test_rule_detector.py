@@ -334,7 +334,9 @@ def test_a_checkpoint_continues_exactly_where_it_left_off(
 def test_a_detector_behind_a_prepare_step_reads_only_that_step():
     # Another detector reads the input itself, so the input crosses into the
     # learned stage; the detector behind the formula reads the formula alone.
-    definition = rule_definition(("mad",), rule=MAD, rule_params={"window_size": 10})
+    definition = rule_definition(
+        ("mad",), rule=MAD, rule_params={"window_size": 10, "warm_up": 2}
+    )
     service = AdaptiveStreamDetectionService(bound(definition))
 
     by_detector = dict(zip(service.online_ids, service.pipelines, strict=True))

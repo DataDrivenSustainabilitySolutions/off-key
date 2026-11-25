@@ -22,7 +22,7 @@ test("setup controls retain typed values and display real API field errors on de
     const model = page.getByRole("combobox", { name: "Model", exact: true });
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
-      await model.selectOption("aberrant_x_stream");
+      await model.selectOption("aberrant_xstream");
       // The settings that do not decide a detector's behavior wait under More settings.
       await page.getByText("More settings", { exact: true }).click();
       const cache = page.getByRole("spinbutton", { name: "Max Feature Cache Size", exact: true });
@@ -30,16 +30,11 @@ test("setup controls retain typed values and display real API field errors on de
       await expect(cache).toBeDisabled();
       await cache.locator("..").getByRole("button", { name: "Use default", exact: true }).click();
       await expect(cache).toBeEnabled();
-      await model.selectOption("aberrant_gadget_svm");
-      await page.getByRole("checkbox", { name: "Automatic graph", exact: true }).uncheck();
-      await page.getByRole("button", { name: "Add feature", exact: true }).click();
-      await page.getByRole("button", { name: "Add neighbor", exact: true }).click();
-      await page.getByRole("spinbutton", { name: "Graph feature 0 neighbor 1", exact: true }).fill("1");
       await model.selectOption("aberrant_knn");
-      await page.getByRole("spinbutton", { name: "K", exact: true }).fill("4");
+      // More neighbors than the window holds: only the API knows the two belong together.
+      const k = page.getByRole("spinbutton", { name: "K", exact: true });
+      await k.fill("10");
       await page.getByRole("spinbutton", { name: "Window Size", exact: true }).fill("8");
-      const warm = page.getByRole("spinbutton", { name: "Warm Up", exact: true });
-      await warm.fill("3");
       await page.getByLabel("Warm-up samples", { exact: true }).fill("8");
       await page.getByLabel("Calibration samples", { exact: true }).fill("2");
       const rejected = page.waitForResponse(response => response.request().method() === "POST"
@@ -48,21 +43,21 @@ test("setup controls retain typed values and display real API field errors on de
       const response = await rejected;
       expect(response.status(), await response.text()).toBe(422);
       const errors = await response.json() as { detail: { loc: (string | number)[] }[] };
-      expect(errors.detail.some(issue => issue.loc.slice(-3).join(".") === "similarity_engine.params.warm_up")).toBe(true);
-      await expect(warm).toHaveAttribute("aria-invalid", "true");
-      await expect(warm).toHaveCSS("border-top-width", "1px");
-      await warm.scrollIntoViewIfNeeded();
+      expect(errors.detail.some(issue => issue.loc.at(-1) === "k")).toBe(true);
+      await expect(k).toHaveAttribute("aria-invalid", "true");
+      await expect(k).toHaveCSS("border-top-width", "1px");
+      await k.scrollIntoViewIfNeeded();
       await expectNoHorizontalScroll(page);
       await page.screenshot({ path: testInfo.outputPath(`parameter-form-errors-${width}.png`) });
     }
-    await page.getByRole("spinbutton", { name: "Warm Up", exact: true }).fill("5");
+    await page.getByRole("spinbutton", { name: "K", exact: true }).fill("4");
     const accepted = page.waitForResponse(response => response.request().method() === "POST"
       && new URL(response.url()).pathname.endsWith("/v1/monitors"));
     await page.getByRole("button", { name: "Start adaptive monitoring", exact: true }).click();
     const response = await accepted;
     expect(response.ok(), await response.text()).toBe(true);
     const request = response.request().postDataJSON();
-    expect(request.monitoring.model_params.similarity_engine.params).toEqual({ window_size: 8, warm_up: 5 });
+    expect(request.monitoring.model_params).toMatchObject({ k: 4, window_size: 8 });
     serviceId = (await response.json() as { monitor_id: string }).monitor_id;
     await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible({ timeout: 240_000 });
   } finally {

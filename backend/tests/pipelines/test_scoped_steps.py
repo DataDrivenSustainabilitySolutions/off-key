@@ -168,13 +168,13 @@ PINNED = {
         "a7b976c0d7beb1cce6651a92fc8e1644abb9dba949979faebaa4ed87b23f59ad"
     ),
     ("template", "adaptive_stream"): (
-        "f426b2a42b030cae83e08b4934bf196fdcfa5676723af2228aca4596777de78b"
+        "a0e91b29fed300bf2a6326395227befcb56cd1ee830231e9c2d918776dcfe22f"
     ),
     ("branched", "static_baseline"): (
         "9b7ed493e229e4cd1f5e99ad4307031af96dd461238a0ebbe6f86331cd86caa0"
     ),
     ("branched", "adaptive_stream"): (
-        "2cefaedbf39a859de2f10463607956faf0109258a6211dbeb2443dc7dd330393"
+        "f78247a2a8df077e99515c28dce04dfac45627c33ac3230ad7fb732632f91cde"
     ),
 }
 
@@ -391,11 +391,11 @@ def _stream(plan):
     ("scaler", "params", "projection"),
     [
         ("adaptive.standard_scaler", {}, None),
-        ("adaptive.robust_scaler", {"min_samples": 3}, None),
+        ("adaptive.robust_scaler", {"warm_up": 3}, None),
         (
             "adaptive.standard_scaler",
             {},
-            ("adaptive.uncentered_pca", {"n_components": 1, "n0": 3}),
+            ("adaptive.uncentered_pca", {"n_components": 1, "warm_up": 3}),
         ),
     ],
 )
@@ -440,7 +440,7 @@ def test_both_strategies_scale_by_the_same_median_and_interquartile_range():
     batch.fit_transform(np.array([[row[name] for name in names] for row in training]))
     expected = batch.transform(np.array([[later[name] for name in names]]))[0]
     adaptive_plan = bound(
-        scoped("adaptive_stream", "adaptive.robust_scaler", min_samples=3)
+        scoped("adaptive_stream", "adaptive.robust_scaler", warm_up=3)
     )
     step = adaptive_graph(adaptive_plan)[0].nodes[0].transformer
     for row in training:
@@ -454,17 +454,17 @@ def test_resources_count_only_the_features_a_step_keeps_state_for():
     design = scoped(
         "adaptive_stream",
         "adaptive.robust_scaler",
-        ("adaptive.uncentered_pca", {"n_components": 1, "n0": 3}),
+        ("adaptive.uncentered_pca", {"n_components": 1, "warm_up": 3}),
         window_size=100,
-        min_samples=3,
+        warm_up=3,
     )
     report = estimate_resources(bound(design), 4096)
     wider = scoped(
         "adaptive_stream",
         "adaptive.robust_scaler",
-        ("adaptive.uncentered_pca", {"n_components": 1, "n0": 3}),
+        ("adaptive.uncentered_pca", {"n_components": 1, "warm_up": 3}),
         window_size=200,
-        min_samples=3,
+        warm_up=3,
     )
     larger = estimate_resources(bound(wider), 4096)
     # Two features with 100 retained floats each, then twice the window.

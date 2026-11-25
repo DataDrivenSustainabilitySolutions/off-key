@@ -38,7 +38,7 @@ LEARNED = TRAINING + CALIBRATION
 COMPANIONS = {
     "mad": (
         "adaptive.standard_scaler",
-        "detector:aberrant_moving_average_absolute_deviation",
+        "detector:aberrant_moving_mad",
         {"window_size": 10},
     ),
     "knn": ("static.standard_scaler", "detector:pyod_knn", {}),

@@ -648,7 +648,7 @@ started afterwards.
 
 ## Numerical ownership
 
-Aberrant 1.3 supplies the standalone `aberrant.compose.GraphPipeline` numerical
+Aberrant supplies the standalone `aberrant.compose.GraphPipeline` numerical
 API. OFF-KEY compiles into that API and owns bindings, lifecycle, calibration,
 alarm policy, persistence and presentation. Aberrant has no dependency on these
 application services or wire formats. Existing linear Aberrant pipelines retain

@@ -20,8 +20,8 @@ from off_key_forecast.providers.timestral import CHECKPOINTS
 from tests.support.pipelines import template
 
 IFOREST = "detector:pyod_iforest"
-MAD = "detector:aberrant_moving_average_absolute_deviation"
-PARAMS = {IFOREST: {"n_estimators": 10}, MAD: {"window_size": 10}}
+MAD = "detector:aberrant_moving_mad"
+PARAMS = {IFOREST: {"n_estimators": 10}, MAD: {"window_size": 10, "warm_up": 2}}
 
 
 def _design(

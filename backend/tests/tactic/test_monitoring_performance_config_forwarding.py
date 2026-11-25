@@ -125,7 +125,7 @@ def test_setup_rejects_incompatible_adaptive_feature_count():
         reading_ids=["L1", "L2"],
         monitoring={
             "strategy": "adaptive_stream",
-            "model_type": "aberrant_moving_average",
+            "model_type": "aberrant_moving_zscore",
         },
     )
     with pytest.raises(ValueError, match="exactly one feature"):
@@ -284,7 +284,7 @@ def test_production_monitor_environment_carries_no_broker_settings(monkeypatch):
 
 
 def test_tactic_builds_adaptive_environment(monkeypatch):
-    validator = _validator(monkeypatch, {"num_trees": 2})
+    validator = _validator(monkeypatch, {"n_trees": 2})
 
     env = build_radar_environment(
         service_id="svc-dynamic",
@@ -296,7 +296,7 @@ def test_tactic_builds_adaptive_environment(monkeypatch):
             monitoring={
                 "strategy": "adaptive_stream",
                 "model_type": "aberrant_online_isolation_forest",
-                "model_params": {"num_trees": 2},
+                "model_params": {"n_trees": 2},
                 "training_window_size": 1200,
                 "calibration_window_size": 360,
             },
@@ -314,7 +314,7 @@ def test_tactic_builds_adaptive_environment(monkeypatch):
 
 
 def test_tactic_resolves_minimal_adaptive_request(monkeypatch):
-    _validator(monkeypatch, {"num_trees": 100})
+    _validator(monkeypatch, {"n_trees": 100})
     env = build_radar_environment(
         service_id="svc-dynamic-default",
         validate_params=True,

@@ -125,9 +125,7 @@ def test_run_settings_hold_the_first_detector_and_the_policy_without_combine(
     monitoring = derive_monitoring_config(fused_definition(strategy, fusion="mean"))
 
     assert monitoring.model_type == (
-        "pyod_iforest"
-        if strategy == "static_baseline"
-        else "aberrant_moving_average_absolute_deviation"
+        "pyod_iforest" if strategy == "static_baseline" else "aberrant_moving_mad"
     )
     policy = (
         monitoring.martingale_config

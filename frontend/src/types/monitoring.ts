@@ -208,7 +208,7 @@ export type AdaptivePreprocessingStep =
   | {
       type: 'incremental_pca';
       n_components: number;
-      n0: number;
+      warm_up: number;
       tol: number;
       forgetting_factor: number | null;
     }

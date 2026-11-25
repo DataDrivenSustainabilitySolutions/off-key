@@ -417,7 +417,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(
         l1Card.getByRole("button", { name: "Return to live" }),
       ).toBeVisible();
-      const scoreLabel = /^Anomaly score:/u;
+      // The chart summary, not the alarm table under it, names the threshold.
+      const scoreLabel = /^Anomaly score: .+ · Threshold: /u;
       await expect(l1Card.getByText(scoreLabel)).toBeVisible({
         timeout: 30_000,
       });

@@ -89,7 +89,10 @@ async function buildBranchedGraph(
   await connect(page, adaptive ? "adaptive_uncentered_pca_1" : "static_pca_1");
   await connect(page, "features_select_2");
   await selected(page).selectOption("detector");
-  if (adaptive) await page.getByRole("combobox", { name: "Detector model", exact: true }).selectOption("detector:aberrant_online_isolation_forest");
+  if (adaptive) {
+    await page.getByRole("combobox", { name: "Detector model", exact: true }).selectOption("detector:aberrant_online_isolation_forest");
+    await page.getByRole("spinbutton", { name: "Max Leaf Samples", exact: true }).fill("8");
+  }
   await openStepPart(page, "Data");
   await page
     .getByRole("button", {

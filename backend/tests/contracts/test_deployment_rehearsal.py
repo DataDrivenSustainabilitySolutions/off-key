@@ -135,7 +135,7 @@ def graph_definition(catalog):
     ]
     definition["nodes"][1]["params"] = {
         "n_trees": 4,
-        "max_leaf_samples": 4,
+        "max_leaf_samples": 3,
         "window_size": 128,
         "seed": 42,
     }

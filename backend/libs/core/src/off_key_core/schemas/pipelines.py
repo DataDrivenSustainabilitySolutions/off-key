@@ -680,7 +680,7 @@ class PipelineComponent(PipelineModel):
     input_type: PortType | None = "features"
     output_type: PortType = "features"
     # A calibration step's method: its family, what it holds, and its paper.
-    family: Literal["conformal", "bayesian"] | None = None
+    family: Literal["conformal", "bayesian", "extreme_value"] | None = None
     coverage: Literal["exchangeable", "long_run", "none"] | None = None
     reference: str | None = None
 

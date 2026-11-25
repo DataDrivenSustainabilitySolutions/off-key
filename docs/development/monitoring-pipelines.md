@@ -1368,7 +1368,9 @@ taken while fitting.
 #### Calibration steps that adapt
 
 `calibrate.<method>` runs a method of `aberrant.calibration`: rolling split CP,
-ACI, DtACI, AgACI, the quantile tracker, conformal PID, NexCP and eight more.
+ACI, DtACI, AgACI, the quantile tracker, conformal PID, NexCP, eight more, and
+the extreme-value methods SPOT and DSPOT, whose boundary can sit above every
+score seen.
 `calibration_catalog.json` describes them (name, reference, family, coverage,
 parameters). RADAR generates it from the installed aberrant
 (`python -m off_key_mqtt_radar.catalog --write`, checked with `--check`), so the
@@ -1445,7 +1447,8 @@ what replaced it:
   detector reads to their counterparts (the catalog's `counterpart`) and fits the
   policy.
 - The calibration step has its own card between the detectors and the detection
-  rule. **Calibration method** lists the methods by family (conformal, Bayesian)
+  rule. **Calibration method** lists the methods by family (conformal, Bayesian,
+  extreme value)
   and says what the chosen one holds (`coverage`), with its reference.
   `changeCalibration()` keeps `fusion`, takes the new method's defaults and fits
   the policy.

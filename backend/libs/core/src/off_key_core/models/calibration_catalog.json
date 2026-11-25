@@ -119,6 +119,34 @@
       "reference": "Barber et al. 2023 weights from Adams & MacKay 2007",
       "summary": "Weighted split conformal; a past score's weight is the posterior probability it is in the current regime."
     },
+    "dspot": {
+      "coverage": "none",
+      "family": "extreme_value",
+      "name": "DSPOT",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "depth": {
+            "default": 10,
+            "description": "Scores in the moving mean.",
+            "minimum": 1,
+            "title": "Depth",
+            "type": "integer"
+          },
+          "level": {
+            "default": 0.98,
+            "description": "Quantile of the window above which scores count as peaks; lowered when that leaves fewer than ten.",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Initial threshold",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "reference": "Siffer, Fouque, Termier & Largouet, KDD 2017",
+      "summary": "SPOT on the deviation from the mean of the last d scores, so a drifting score level does not count as extreme."
+    },
     "dtaci": {
       "coverage": "long_run",
       "family": "conformal",
@@ -304,6 +332,27 @@
       },
       "reference": "Vovk et al. 2005; rolling calibration window",
       "summary": "Empirical (1-alpha)(1+1/n) quantile of the last W scores. Valid under exchangeability, slow to react to shifts."
+    },
+    "spot": {
+      "coverage": "none",
+      "family": "extreme_value",
+      "name": "SPOT",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "default": 0.98,
+            "description": "Quantile of the window above which scores count as peaks; lowered when that leaves fewer than ten.",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Initial threshold",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "reference": "Siffer, Fouque, Termier & Largouet, KDD 2017",
+      "summary": "Generalized Pareto tail fitted to the peaks of the last W scores; extrapolates thresholds for alpha below 1/W."
     }
   },
   "order": [
@@ -321,6 +370,8 @@
     "bocpd_aci",
     "cpcp",
     "bocpd",
-    "nig"
+    "nig",
+    "spot",
+    "dspot"
   ]
 }

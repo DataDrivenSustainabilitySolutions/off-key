@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "catalog_id": "c8dea48f9e77446e21e1edf93ba1a6cc203e1bf25f5844a644016bb45a983a89",
+ "catalog_id": "8cb6f467476464558e1e36caf3f826bab4c2d97c04c5870b5323b5c6cebaa604",
  "authoring_enabled": true,
  "components": [
   {
@@ -2788,6 +2788,113 @@
    "family": "bayesian",
    "coverage": "none",
    "reference": "West & Harrison 1997, discount variance learning"
+  },
+  {
+   "id": "calibrate.spot",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "SPOT",
+   "description": "Fit the tail of the recent scores and read the boundary off it, so it can sit above every score seen. For alarm rates rarer than one in the window.",
+   "details": "Generalized Pareto tail fitted to the peaks of the last W scores; extrapolates thresholds for alpha below 1/W.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "level",
+     "label": "Initial threshold",
+     "type": "number",
+     "default": 0.98,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Quantile of the window above which scores count as peaks; lowered when that leaves fewer than ten."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "extreme_value",
+   "coverage": "none",
+   "reference": "Siffer, Fouque, Termier & Largouet, KDD 2017"
+  },
+  {
+   "id": "calibrate.dspot",
+   "contract_version": 1,
+   "kind": "calibration",
+   "group": "calibration",
+   "label": "DSPOT",
+   "description": "SPOT on how far each score is from the recent average, for a score level that drifts.",
+   "details": "SPOT on the deviation from the mean of the last d scores, so a drifting score level does not count as extreme.",
+   "learning": "none",
+   "fields": [
+    {
+     "name": "alpha",
+     "label": "Target alarm rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "The share of scores above the boundary in the long run. It counts every score above the boundary, anomalies included, so it is not the false alarm rate."
+    },
+    {
+     "name": "depth",
+     "label": "Depth",
+     "type": "integer",
+     "default": 10,
+     "has_default": true,
+     "minimum": 1.0,
+     "description": "Scores in the moving mean."
+    },
+    {
+     "name": "level",
+     "label": "Initial threshold",
+     "type": "number",
+     "default": 0.98,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "exclusive_maximum": 1.0,
+     "description": "Quantile of the window above which scores count as peaks; lowered when that leaves fewer than ten."
+    },
+    {
+     "name": "fusion",
+     "label": "Combine detectors",
+     "type": "enum",
+     "default": "max",
+     "has_default": true,
+     "options": [
+      "max",
+      "mean"
+     ],
+     "description": "How several detectors raise one alarm. Each score becomes a surprise against that detector's calibration scores; max follows the strongest surprise, mean their average. With one detector this has no effect."
+    }
+   ],
+   "input_type": "scores",
+   "output_type": "p_values",
+   "family": "extreme_value",
+   "coverage": "none",
+   "reference": "Siffer, Fouque, Termier & Largouet, KDD 2017"
   },
   {
    "id": "policy.martingale",

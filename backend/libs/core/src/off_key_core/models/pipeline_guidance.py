@@ -534,6 +534,15 @@ CALIBRATIONS: dict[str, str] = {
         "Model the scores as a bell curve whose mean and spread follow the "
         "data, older scores counting less."
     ),
+    "spot": (
+        "Fit the tail of the recent scores and read the boundary off it, so "
+        "it can sit above every score seen. For alarm rates rarer than one "
+        "in the window."
+    ),
+    "dspot": (
+        "SPOT on how far each score is from the recent average, for a score "
+        "level that drifts."
+    ),
 }
 
 

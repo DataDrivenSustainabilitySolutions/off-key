@@ -177,11 +177,11 @@ def test_every_method_runs_on_the_scores_of_one_replay():
     rows, comparison, run = replayed(fixed(("mad",)), compare=True)
 
     assert run.comparison.failed == {}
-    assert len(comparison["methods"]) == 15
+    assert comparison["methods"] == list(CALIBRATORS)
     judged = [row.method_alarms for row in rows if row.phase == "operational"]
     assert len(judged) == 220
     # Each method alarms somewhere on the bursts.
-    for position in range(15):
+    for position in range(len(CALIBRATORS)):
         assert any(mask >> position & 1 for mask in judged), comparison["methods"][
             position
         ]

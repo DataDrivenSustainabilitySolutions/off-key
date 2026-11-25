@@ -429,7 +429,7 @@ export type PipelineComponent = {
   fields?: Array<ComponentField>;
   input_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence" | null;
   output_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence";
-  family?: "conformal" | "bayesian" | null;
+  family?: "conformal" | "bayesian" | "extreme_value" | null;
   coverage?: "exchangeable" | "long_run" | "none" | null;
   reference?: string | null;
 };

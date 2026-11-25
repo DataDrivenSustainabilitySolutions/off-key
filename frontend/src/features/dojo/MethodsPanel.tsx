@@ -4,7 +4,12 @@ import type { MethodComparison, MethodMetrics, RunSummary } from "@/types/dojo.g
 import { dojoApi } from "./api";
 import { formatDuration, formatInstant, formatPerDay, formatRate, formatShare, rankMethods, runName } from "./model";
 
-const FAMILY = { fixed: "Fixed", conformal: "Conformal", bayesian: "Bayesian" } as const;
+const FAMILY = {
+  fixed: "Fixed",
+  conformal: "Conformal",
+  bayesian: "Bayesian",
+  extreme_value: "Extreme value",
+} as const;
 
 type Column = { label: string; value: (item: MethodMetrics) => string;
   best?: { score: (item: MethodMetrics) => number | null; prefer: "high" | "low" } };

@@ -739,7 +739,13 @@ step alone, also when another detector reads the source. Designs without
 Prepare steps keep their runtime shape, so existing checkpoints load unchanged.
 
 Each kernel advances an immutable state per feature and returns a value, or none
-while its window fills. The stage commits an observation only when every step
+while its window fills. `pipeline_prepare.py` describes every step, so the
+compiler and the validation API need no numeric library. Smoothing over
+observations, Despike, Change, Lags in observations and Rolling are computed
+by aberrant's sequence transformers: RADAR's `pipelines/sequence.py` wraps one
+in a `SequenceStep`, which keeps the transformer's state next to a count of
+the values seen and withholds the output until the lead has passed. The other
+steps compute in `pipeline_prepare.py` itself. The stage commits an observation only when every step
 succeeds. A step that cannot use a value raises `PrepareRejected`, an
 `ObservationRejected`: every state stays as it was, the observation becomes a
 `pipeline_observation_rejected` coverage gap, and the run continues. Rejections
@@ -750,7 +756,7 @@ one plus the largest sum of leads along a chain. Until then the detectors return
 `preparing` results, the run stage reads `N/M observations prepared` and no
 learned node runs. The static strategy keeps preparing while it trains in the
 background, so windows never restart. Checkpoints carry the stage state
-(`prepare`, version 1), and a restore refuses state that does not match the
+(`prepare`, version 2), and a restore refuses state that does not match the
 design. A valid check reports `preparation_observations`, the observations before
 the first prepared one, which the composer shows as **Preparing** before learning.
 

@@ -12,7 +12,6 @@ from off_key_core.models.pipeline_combine import row_step
 from off_key_core.models.pipeline_prepare import (
     PrepareFailure,
     default_suffix,
-    kernel,
     prepared_bounds,
 )
 from off_key_core.models.pipelines import (
@@ -21,6 +20,7 @@ from off_key_core.models.pipelines import (
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.prepare import PrepareRejected, PrepareStage
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
+from off_key_mqtt_radar.pipelines.sequence import runnable
 
 from tests.support.pipelines import (
     assert_resumes_identically,
@@ -95,7 +95,7 @@ def reading(index):
 def test_an_accumulation_starts_over_with_the_observation_that_resets(
     function, expected
 ):
-    step = kernel("prepare.accumulate", {"function": function})
+    step = runnable("prepare.accumulate", {"function": function})
     state = step.initial()
     values = [2.0, 5.0, 4.0, 1.0, -2.0]
     resets = [False, False, True, False, False]
@@ -113,7 +113,7 @@ def test_an_accumulation_starts_over_with_the_observation_that_resets(
 
 
 def test_a_hold_keeps_the_value_from_the_last_observation_its_condition_held():
-    step = kernel("prepare.hold", {"update_when": "a > 0"})
+    step = runnable("prepare.hold", {"update_when": "a > 0"})
     state = step.initial()
     outputs = []
     for value, update in [(3.0, False), (4.0, False), (5.0, True), (6.0, False)]:
@@ -150,7 +150,7 @@ def test_relations_match_numpy(statistic, size):
     others = [rng.gauss(10, 3) for _ in range(150)]
     values = [2.5 * item + rng.gauss(0, 2) for item in others]
     params = {"against": "b", "statistic": statistic, "window_size": size}
-    step = kernel("prepare.relation", params)
+    step = runnable("prepare.relation", params)
     low, high = prepared_bounds("prepare.relation", params, (None, None))
     assert (low, high) == ((-1.0, 1.0) if statistic == "correlation" else (None, None))
     state = step.initial()
@@ -174,7 +174,7 @@ def test_relations_match_numpy(statistic, size):
 
 @pytest.mark.parametrize("statistic", RELATIONS)
 def test_a_flat_window_has_no_direction(statistic):
-    step = kernel(
+    step = runnable(
         "prepare.relation", {"against": "b", "statistic": statistic, "window_size": 3}
     )
 
@@ -204,7 +204,7 @@ def test_relations_of_very_large_and_very_small_values_stay_exact(scale):
     expected = {}
     for statistic in RELATIONS:
         for factor in (1.0, scale):
-            step = kernel(
+            step = runnable(
                 "prepare.relation",
                 {"against": "b", "statistic": statistic, "window_size": 4},
             )
@@ -218,7 +218,7 @@ def test_relations_of_very_large_and_very_small_values_stay_exact(scale):
             if factor == 1.0 or power is None:
                 continue
             assert actual == pytest.approx(expected[statistic] * factor**power)
-    step = kernel("prepare.relation", {"against": "b", "statistic": "covariance"})
+    step = runnable("prepare.relation", {"against": "b", "statistic": "covariance"})
     state = step.initial()
     for index in range(59):
         state, _ = step.advance(state, 1e200 * index, 1e200 * index)
@@ -231,7 +231,7 @@ def test_relations_of_very_large_and_very_small_values_stay_exact(scale):
 @pytest.mark.parametrize("statistic", RELATIONS)
 def test_relations_keep_small_differences_of_large_values(statistic):
     def last(pairs):
-        step = kernel(
+        step = runnable(
             "prepare.relation",
             {"against": "b", "statistic": statistic, "window_size": len(pairs)},
         )
@@ -250,7 +250,7 @@ def test_relations_keep_small_differences_of_large_values(statistic):
 
 
 def test_a_relation_refuses_states_of_another_shape():
-    step = kernel("prepare.relation", {"against": "b", "window_size": 3})
+    step = runnable("prepare.relation", {"against": "b", "window_size": 3})
     state = step.initial()
     for index in range(4):
         state, _ = step.advance(state, float(index), float(-index))
@@ -613,13 +613,10 @@ def test_relation_windows_count_toward_the_known_memory():
 
     relation = {"against": "b", "apply_to": ["a"], "window_size": 500}
     paired = known([("moves", "prepare.relation", relation)])
-    single = known(
-        [("mean", "prepare.rolling", {"apply_to": ["a"], "window_size": 500})]
-    )
     # A relation keeps a second window per feature, of the feature it is
     # compared with, and each can be alive twice while an observation is staged.
     window = sys.getsizeof(array("d")) + 8 * 500
-    assert paired - single == 2 * (window + sys.getsizeof((0, 0)) - sys.getsizeof((0,)))
+    assert paired == 2 * (sys.getsizeof((0, 0)) + 2 * window)
 
 
 @pytest.mark.parametrize("strategy", ["static_baseline", "adaptive_stream"])

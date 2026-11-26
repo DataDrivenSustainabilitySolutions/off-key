@@ -232,7 +232,7 @@ def test_a_prepare_state_of_another_design_is_refused():
     with pytest.raises(ValueError, match="does not match"):
         stage.load_state({**stage.export_state(), "states": {}})
     with pytest.raises(ValueError, match="unknown format"):
-        stage.load_state({"version": 2})
+        stage.load_state({"version": 1})
 
 
 def test_the_learned_graph_picks_the_prepared_columns():

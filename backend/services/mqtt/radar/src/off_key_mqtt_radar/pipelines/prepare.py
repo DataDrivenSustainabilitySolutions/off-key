@@ -30,7 +30,6 @@ from off_key_core.models.pipeline_prepare import (
     ROW_COMPONENTS,
     Kernel,
     PrepareFailure,
-    kernel,
     reads_time,
     step_lead,
 )
@@ -39,8 +38,9 @@ from off_key_core.models.pipeline_time import Clock, TimeFeatures
 
 from ..execution_errors import StepRejected
 from .plan import ExecutionPlan
+from .sequence import runnable
 
-STATE_VERSION = 1
+STATE_VERSION = 2
 
 
 class PrepareRejected(StepRejected):
@@ -180,7 +180,7 @@ class PrepareStage:
             node.component,
             parents,
             params,
-            kernel=kernel(node.component, node.params),
+            kernel=runnable(node.component, node.params),
             context=lane_context(node.component, node.params, inputs),
             selected=scope.selected,
             targets=scope.added if scope.add else scope.selected,

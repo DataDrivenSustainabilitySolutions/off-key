@@ -12,7 +12,6 @@ import pytest
 from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, series_topic
 from off_key_core.models.pipeline_prepare import (
     default_suffix,
-    kernel,
     prepared_bounds,
     reads_time,
     step_lead,
@@ -33,6 +32,7 @@ from off_key_mqtt_radar.pipelines import prepare as prepare_module
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.prepare import PrepareRejected, PrepareStage, Withheld
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
+from off_key_mqtt_radar.pipelines.sequence import runnable
 
 from tests.support.pipelines import (
     assert_resumes_identically,
@@ -418,7 +418,7 @@ def test_without_a_time_the_steps_read_the_clock_of_the_machine(monkeypatch):
 
 @pytest.mark.parametrize("time_constant", [0.5, 30.0, 86400.0])
 def test_smoothing_by_time_constant_weighs_values_by_their_age(time_constant):
-    step = kernel(
+    step = runnable(
         "prepare.smooth", {"method": "time_constant", "time_constant": time_constant}
     )
     assert (step.lead, step.window) == (0, 0)
@@ -451,7 +451,7 @@ def test_smoothing_by_time_constant_weighs_values_by_their_age(time_constant):
 
 def test_smoothing_by_time_constant_does_not_depend_on_how_often_readings_arrive():
     def level(interval, seconds):
-        step = kernel("prepare.smooth", {"method": "time_constant"})
+        step = runnable("prepare.smooth", {"method": "time_constant"})
         state, actual = step.advance(step.initial(), 0.0)
         for _ in range(round(seconds / interval)):
             state, actual = step.advance(state, 100.0, interval)
@@ -465,7 +465,7 @@ def test_smoothing_by_time_constant_does_not_depend_on_how_often_readings_arrive
     assert level(1, 60) == pytest.approx(63.2, abs=0.05)
     assert level(1, 180) == pytest.approx(95.0, abs=0.05)
     # Smoothing by a count follows the readings instead.
-    by_count = kernel("prepare.smooth", {"window_size": 10})
+    by_count = runnable("prepare.smooth", {"window_size": 10})
     slow, fast = by_count.initial(), by_count.initial()
     for _ in range(10):
         slow, once = by_count.advance(slow, 100.0)
@@ -488,7 +488,7 @@ def test_a_time_constant_names_its_features_and_keeps_their_range():
     assert default_suffix("prepare.smooth", {"window_size": 60}) == "smooth60"
     params = {"method": "time_constant"}
     assert prepared_bounds("prepare.smooth", params, (-1.0, 4.0)) == (-1.0, 4.0)
-    step = kernel("prepare.smooth", params)
+    step = runnable("prepare.smooth", params)
     assert step.accepts((False, 0.0)) and step.accepts((True, 2.5))
     assert not step.accepts((False, 1.0)) and not step.accepts((True, math.nan))
     assert not step.accepts((3, 2.5)) and not step.accepts((True, 2.5, 0.0))

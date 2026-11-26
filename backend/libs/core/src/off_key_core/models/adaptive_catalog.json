@@ -2995,6 +2995,163 @@
     }
   },
   "transformers": {
+    "deseasonalize": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Deseasonalize",
+      "family": "sequence",
+      "id": "deseasonalize",
+      "import_path": "aberrant.transform.Deseasonalize",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "memory": {
+            "default": 10,
+            "type": "integer"
+          },
+          "season_length": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season_length"
+        ],
+        "type": "object"
+      }
+    },
+    "despike": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Despike",
+      "family": "sequence",
+      "id": "despike",
+      "import_path": "aberrant.transform.Despike",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "threshold": {
+            "default": 3.0,
+            "type": "number"
+          },
+          "window_size": {
+            "default": 7,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "difference": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Difference",
+      "family": "sequence",
+      "id": "difference",
+      "import_path": "aberrant.transform.Difference",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "kind": {
+            "default": "difference",
+            "enum": [
+              "difference",
+              "percent"
+            ]
+          },
+          "lag": {
+            "default": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "exponential_smoother": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "ExponentialSmoother",
+      "family": "sequence",
+      "id": "exponential_smoother",
+      "import_path": "aberrant.transform.ExponentialSmoother",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "span": {
+            "default": 10,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
     "feature_schema_guard": {
       "available": true,
       "declarative": true,
@@ -3083,6 +3240,46 @@
         "required": [
           "n_components"
         ],
+        "type": "object"
+      }
+    },
+    "lags": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Lags",
+      "family": "sequence",
+      "id": "lags",
+      "import_path": "aberrant.transform.Lags",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "lags": {
+            "default": [
+              1
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
         "type": "object"
       }
     },
@@ -3237,6 +3434,67 @@
           },
           "window_size": {
             "default": 256,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "rolling_statistic": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "RollingStatistic",
+      "family": "sequence",
+      "id": "rolling_statistic",
+      "import_path": "aberrant.transform.RollingStatistic",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "quantile": {
+            "default": 0.5,
+            "type": "number"
+          },
+          "statistic": {
+            "default": "mean",
+            "enum": [
+              "sum",
+              "mean",
+              "std",
+              "min",
+              "max",
+              "range",
+              "median",
+              "quantile",
+              "iqr",
+              "mad",
+              "slope",
+              "zscore",
+              "robust_zscore",
+              "rank",
+              "rms",
+              "skewness",
+              "kurtosis"
+            ]
+          },
+          "window_size": {
+            "default": 10,
             "type": "integer"
           }
         },

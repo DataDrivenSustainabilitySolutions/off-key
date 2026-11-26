@@ -114,7 +114,7 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
-test("a forecast without an interval has no band, rings or count", async ({ page }, testInfo) => {
+test("a forecast without an interval has no band, fill or count", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1200 });
   const history = await openForecastMonitor(page, "light", false);
   await expect(history.getByRole("list", { name: "Chart key" }).getByRole("listitem")).toHaveText(["Observed", "Forecast"]);

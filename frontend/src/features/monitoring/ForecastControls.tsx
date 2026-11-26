@@ -6,12 +6,11 @@ const hasInterval = (forecasts: readonly ForecastEvidenceSeries[]) =>
   forecasts.some(forecast => forecast.data.some(point => point.value[2] !== null && point.value[3] !== null));
 
 /** A swatch for each mark the chart draws; colours follow each reading, so they stay neutral here. */
-function Swatch({ kind, color }: { kind: "observed" | "forecast" | "interval" | "outside"; color?: string }) {
+function Swatch({ kind }: { kind: "observed" | "forecast" | "interval" }) {
   return <svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true">
     {kind === "interval" && <rect x="1" y="2" width="20" height="8" rx="2" fill="currentColor" opacity=".2" />}
     {(kind === "observed" || kind === "forecast") && <path d="M1 6h20" stroke="currentColor" strokeWidth="2"
       strokeDasharray={kind === "forecast" ? "4 3" : undefined} />}
-    {kind === "outside" && <circle cx="11" cy="6" r="4" fill="none" stroke={color ?? "currentColor"} strokeWidth="2" />}
   </svg>;
 }
 
@@ -31,8 +30,8 @@ export function ForecastOptions({ forecasts, lead, onLead, showResiduals, onResi
 }
 
 /** Where the reading is, where the forecast goes next, and how often values left the interval. */
-export function ForecastFigures({ forecasts, coverage, unit, outsideColor }: {
-  forecasts: ForecastEvidenceSeries[]; coverage: { checked: number; outside: number }; unit?: string; outsideColor?: string;
+export function ForecastFigures({ forecasts, coverage, unit }: {
+  forecasts: ForecastEvidenceSeries[]; coverage: { checked: number; outside: number }; unit?: string;
 }) {
   const only = forecasts.length === 1 ? forecasts[0] : undefined;
   const observed = only && latestForecast(only)?.observed;
@@ -43,7 +42,7 @@ export function ForecastFigures({ forecasts, coverage, unit, outsideColor }: {
     {observed != null && <div><dt>Observed</dt><dd>{figure(observed)}{unit && <small>{unit}</small>}</dd></div>}
     {next && <div><dt>Next forecast</dt><dd>{figure(next.expected)}{unit && <small>{unit}</small>}</dd></div>}
     {checked && <div role="status" title="Outside the interval is not an anomaly by itself.">
-      <dt><Swatch kind="outside" color={outsideColor} />Outside interval</dt>
+      <dt>Outside interval</dt>
       <dd>{coverage.outside}<small>of {coverage.checked} · {percent(coverage.outside, coverage.checked)}</small></dd></div>}
   </dl>;
 }

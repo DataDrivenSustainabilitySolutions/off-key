@@ -121,14 +121,15 @@ of the line that marks it, on a shaded stretch that is not yet observed.
 
 Three figures sit above the chart: the latest **Observed** value, the **Next
 forecast**, and **Outside interval**, how many checked values left the interval
-("12 of 216 · 5.6 %"). Amber rings mark those values. Outside the interval is
-not an anomaly by itself, so the rings are never red. Vertical red lines still
+("12 of 216 · 5.6 %"). An amber fill between the interval's edge and those
+values shows how far they went. Outside the interval is not an anomaly by
+itself, so the fill is never red. Vertical red lines still
 mark the service's alarm decision, which depends on the pipeline's detection
-rule. Without a calibration step there is no interval, so there is no band, ring
+rule. Without a calibration step there is no interval, so there is no band, fill
 or count.
 
 **Residuals** adds a panel with the signed residual (observed minus forecast)
-and the same interval shifted around zero, with the same rings. It is off at
+and the same interval shifted around zero, with the same fill. It is off at
 first and always uses evaluated observations, never future values.
 
 The lead selector shows one recorded lead at a time. Leads count updates, not

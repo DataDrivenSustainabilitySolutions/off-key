@@ -149,7 +149,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </details>}
     {selection.controlCatalog.length > 1 && <TelemetryDetectorControls detectors={selection.controlCatalog}
       selected={selection.selectedDetectorIds} unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} />}
-    {shownForecasts.length > 0 && <ForecastFigures forecasts={shownForecasts} coverage={coverage} outsideColor={colors.outsideInterval}
+    {shownForecasts.length > 0 && <ForecastFigures forecasts={shownForecasts} coverage={coverage}
       unit={model.readings.find(reading => reading.inputKey === shownForecasts[0]!.readingId)?.unit} />}
     {forecasts.length > 0 && presentation.error && <p className="mn-history-problem" role="status">{presentation.error} <button onClick={presentation.retry}>Retry</button></p>}
     {model.extent ? <>

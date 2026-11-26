@@ -695,7 +695,7 @@ export const buildMonitoringChartOption = ({
     const readingPane = model.readings.findIndex(reading => reading.inputKey === forecast.readingId);
     return buildForecastChartSeries(forecast, readingPane < 0 ? inputsPane : readingPane,
       panes.indexOf(`residual:${forecast.id}`), palette[index % palette.length]!, colors.outsideInterval ?? "#b45309",
-      colors.popover, colors.mutedForeground);
+      colors.mutedForeground);
   });
 
   const ruledPanes = new Set<number>();

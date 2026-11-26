@@ -59,7 +59,7 @@ describe("forecast evidence presentation", () => {
 
   it("uses exact signed residuals and asymmetric calibrated bounds, including intervals crossing zero", () => {
     const [series] = buildForecastEvidence([row(1, [forecast({ lower: 49.7, upper: 50.1 })])], presentation.bindings);
-    const options = buildForecastChartSeries(series!, 0, 1, "blue", "amber", "white");
+    const options = buildForecastChartSeries(series!, 0, 1, "blue", "amber");
     const residual = options.find(line => line.id === `residual:${series!.id}`)!;
     expect(residual.data).toEqual([expect.objectContaining({ value: [start + 925, expect.closeTo(0.2), expect.closeTo(-0.3), expect.closeTo(0.1)] })]);
     expect(residual.markPoint?.data).toHaveLength(1);
@@ -86,7 +86,7 @@ describe("forecast evidence presentation", () => {
     expect(series.data.some(point => point.value[1] === null)).toBe(true);
     expect(series.data[series.data.length - 2]!.value[1]).toBeNull();
     const unbounded = buildForecastEvidence([row(1, [forecast({ lower: null, upper: null })], null)])[0]!;
-    const options = buildForecastChartSeries(unbounded, 0, 1, "blue", "amber", "white");
+    const options = buildForecastChartSeries(unbounded, 0, 1, "blue", "amber");
     expect(options.some(line => String(line.id).startsWith("forecast-band:"))).toBe(false);
     expect(intervalStatus(unbounded.data[0]!.forecastObservation!)).toBe("Interval unavailable");
     expect(options[1]!.data).toEqual([expect.objectContaining({ value: [start + 1000, null, null, null] })]);
@@ -134,7 +134,7 @@ describe("forecast evidence presentation", () => {
   it("continues the forecast from the latest observed value with the calibrated lead's interval", () => {
     const series = buildForecastEvidence([row(1, [forecast({ issued: issued(), lead: 3 })])], presentation.bindings)[0]!;
     series.future = futureForecastPoints(series.issued, start + 925, series.lead);
-    const chart = buildForecastChartSeries(series, 0, -1, "blue", "amber", "white");
+    const chart = buildForecastChartSeries(series, 0, -1, "blue", "amber");
     expect(chart.map(line => line.id)).toEqual(expect.arrayContaining([`forecast:${series.id}`, `future:${series.id}`]));
     expect(chart.some(line => line.id === `residual:${series.id}`)).toBe(false);
     const future = chart.find(line => line.id === `future:${series.id}`)!;
@@ -147,17 +147,23 @@ describe("forecast evidence presentation", () => {
       .toEqual([[start + 1925, null], [start + 2925, null], [start + 3925, 50.5]]);
   });
 
-  it("rings observed values outside the interval in the outside colour, never as alarms", () => {
+  it("fills the space beyond the interval in the outside colour, never as alarms", () => {
     const rows = [row(1, [forecast()], 50.2), row(2, [forecast()], 50.05), row(3, [forecast()], 49.8),
       row(4, [forecast({ lower: null, upper: null })], 52)];
     const series = buildForecastEvidence(rows, presentation.bindings)[0]!;
-    const chart = buildForecastChartSeries(series, 0, 1, "blue", "amber", "white");
-    const rings = (id: string) => chart.find(line => line.id === id)!.markPoint!.data as Array<{ name: string; coord: number[]; itemStyle: object }>;
-    expect(rings(`forecast:${series.id}`)).toEqual([
-      { name: "Outside interval", coord: [start + 925, 50.2], itemStyle: { color: "white", borderColor: "amber", borderWidth: 2 } },
-      { name: "Outside interval", coord: [start + 2925, 49.8], itemStyle: { color: "white", borderColor: "amber", borderWidth: 2 } },
+    const chart = buildForecastChartSeries(series, 0, 1, "blue", "amber");
+    const find = (id: string) => chart.find(line => line.id === id)!;
+    expect(find(`forecast:${series.id}`).markPoint!.data).toEqual([
+      { name: "Outside interval", coord: [start + 925, 50.2], itemStyle: { color: "amber" } },
+      { name: "Outside interval", coord: [start + 2925, 49.8], itemStyle: { color: "amber" } },
     ]);
-    expect(rings(`residual:${series.id}`).map(ring => ring.coord)).toEqual([[start + 925, expect.closeTo(0.2)], [start + 2925, expect.closeTo(-0.2)]]);
+    // Above: from the upper bound to the value. Inside neighbour: closed at its value. Below: from the value to the lower bound.
+    expect(find(`forecast-band:outside:${series.id}:base`).data)
+      .toEqual([[start + 925, 50.1], [start + 1925, 50.05], [start + 2925, 49.8], [start + 3925, 52]]);
+    expect(find(`forecast-band:outside:${series.id}:excess`)).toMatchObject({ areaStyle: { color: "amber" },
+      data: [[start + 925, expect.closeTo(0.1)], [start + 1925, 0], [start + 2925, expect.closeTo(0.1)], [start + 3925, 0]] });
+    expect(find(`forecast-band:outside:residual:${series.id}:base`).data)
+      .toEqual([[start + 925, expect.closeTo(0.1)], [start + 1925, expect.closeTo(0.05)], [start + 2925, expect.closeTo(-0.2)], [start + 3925, 2]]);
     // Values without an interval are not checked, so they count neither way.
     expect(intervalCoverage([series])).toEqual({ checked: 3, outside: 2 });
     const tooltip = formatForecastTooltip([{ seriesId: `forecast:${series.id}`, seriesName: "Frequency forecast",
@@ -174,7 +180,7 @@ describe("forecast evidence presentation", () => {
       colors, timeZone: "UTC", accessibleDescription: "Ahead", viewport: { mode: "live" }, layout: "monitoring" });
     expect(option.grid).toHaveLength(1);
     const series = model.forecasts![0]!;
-    expect(buildForecastChartSeries(series, 0, 1, "blue", "amber", "white").find(line => line.id === `residual:${series.id}`)?.data)
+    expect(buildForecastChartSeries(series, 0, 1, "blue", "amber").find(line => line.id === `residual:${series.id}`)?.data)
       .toHaveLength(1);
   });
 

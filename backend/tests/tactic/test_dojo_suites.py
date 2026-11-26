@@ -14,6 +14,7 @@ from off_key_core.db.models import (
     DojoRunResult,
     DojoStudy,
     DojoSuite,
+    MonitorEventRecord,
 )
 from off_key_core.schemas.dojo import (
     CsvImportQuery,
@@ -351,6 +352,48 @@ async def test_a_running_study_is_cancelled_before_it_is_deleted(sessions):
         assert await session.get(DojoStudy, study.id) is None
         # The dataset is free again once its suite is gone.
         await DojoDatasets(session).remove(view.id)
+
+
+@pytest.mark.asyncio
+async def test_a_suite_whose_test_a_monitor_names_is_deleted_and_the_test_stays(
+    sessions,
+):
+    _, factory = sessions
+    creator = await bootstrap(factory)
+    first = await labelled(factory, creator, "First", 50)
+    second = await labelled(factory, creator, "Second", 60)
+    async with factory() as session:
+        suites = DojoSuites(session)
+        suite = await suites.create_suite(
+            SuiteCreate(name="Kept test", dataset_ids=[first.id, second.id]),
+            created_by=creator,
+        )
+        study = await suites.create_study(
+            StudyCreate(suite_id=suite.id, definition=one_input()), created_by=creator
+        )
+        await suites.cancel_study(study.id)
+        runs = (
+            await session.scalars(
+                select(DojoRun.id).where(DojoRun.study_id == study.id)
+            )
+        ).all()
+        evidence = runs[0]
+        session.add(
+            MonitorEventRecord(
+                service_id="service-1",
+                event="started",
+                author="Member",
+                author_kind="member",
+                test_run_id=evidence,
+            )
+        )
+        await session.commit()
+        await suites.remove_suite(suite.id)
+    async with factory() as session:
+        assert await session.get(DojoSuite, suite.id) is None
+        assert await session.get(DojoStudy, study.id) is None
+        left = (await session.scalars(select(DojoRun))).all()
+    assert [(run.id, run.study_id) for run in left] == [(evidence, None)]
 
 
 @pytest.mark.asyncio

@@ -48,7 +48,7 @@ export function SuitePage({ id, study, listHref, datasetHref, onStudy, onDeleted
   };
   const remove = async () => {
     if (!suite || !await confirm({ title: `Delete ${suite.name}?`,
-      description: "Its studies and their runs go with it; its datasets stay. This cannot be undone.",
+      description: "Its studies and their runs go with it; its datasets stay, and so does any run a proposal or monitor uses as its test. This cannot be undone.",
       confirmLabel: "Delete suite", destructive: true })) return;
     try { await dojoApi.deleteSuite(id); onDeleted(); }
     catch (reason) { setActionError(getErrorMessage(reason)); }

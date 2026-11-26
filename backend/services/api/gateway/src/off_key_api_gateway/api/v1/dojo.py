@@ -935,6 +935,7 @@ async def delete_dojo_suite(
 ):
     """Delete a suite with its studies and their runs. This cannot be undone.
 
+    A run a proposal or a monitor names as its test stays on its dataset.
     A key deletes only a suite it made, holding only its own studies.
     """
     await suites.remove_suite(suite_id, caller)

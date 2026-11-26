@@ -9,7 +9,7 @@ was accepted, or of a started monitor.
 from collections.abc import Iterable
 
 from off_key_core.db.models import Agent, MonitorEventRecord, PipelineProposal, User
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
 from ...domain import ConflictError
 
@@ -24,11 +24,11 @@ def made_by(caller: User | Agent, member_column, agent_column):
     return member_column == caller.id
 
 
-async def require_no_evidence(session, run_ids: Iterable[str]) -> None:
-    """Refuse to delete a run a proposal or a monitor names as its test."""
+async def evidence_runs(session, run_ids: Iterable[str]) -> set[str]:
+    """The runs a proposal or a monitor names as its test."""
     run_ids = list(run_ids)
     if not run_ids:
-        return
+        return set()
     proposed = select(PipelineProposal.test_run_id).where(
         PipelineProposal.test_run_id.in_(run_ids),
         PipelineProposal.status.in_(PROPOSALS_KEEPING_THEIR_TEST),
@@ -36,8 +36,12 @@ async def require_no_evidence(session, run_ids: Iterable[str]) -> None:
     started = select(MonitorEventRecord.test_run_id).where(
         MonitorEventRecord.test_run_id.in_(run_ids)
     )
-    kept = await session.scalar(select(or_(proposed.exists(), started.exists())))
-    if kept:
+    return set((await session.scalars(proposed.union(started))).all())
+
+
+async def require_no_evidence(session, run_ids: Iterable[str]) -> None:
+    """Refuse to delete a run a proposal or a monitor names as its test."""
+    if await evidence_runs(session, run_ids):
         raise ConflictError(
             "A proposal that waits or was accepted, or a monitor, names this "
             "test as its evidence, so it stays. Withdraw a waiting proposal "

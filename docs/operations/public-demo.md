@@ -51,7 +51,7 @@ and [challenge-response detection](https://developers.cloudflare.com/cloudflare-
 
 ## Public feeds
 
-The initial catalogue contains three sources, three devices and twelve numeric
+The initial catalogue contains two sources, two devices and eight numeric
 readings, sampled at five-second intervals when new messages arrive. The sources
 report at different cadences; a quiet or unavailable upstream never produces
 invented readings. A small relay separates individual assets and gives upstream
@@ -62,30 +62,25 @@ The normal collection and monitoring services process those topics.
 | --- | --- | --- |
 | Fintraffic road weather | Air and road surface temperature, mean wind, humidity at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
 | Fintraffic traffic counts | Vehicles per hour and average speed in both directions at one station | [Road traffic API](https://www.digitraffic.fi/en/road-traffic/) |
-| Mosquitto public broker | Connected clients, received/sent messages per minute, received bytes per minute | [Public test broker](https://test.mosquitto.org/) |
 
 Provider attribution and license links are available from **Demo → Data sources**.
 
 Fintraffic weather updates can be several minutes apart; traffic counts are
-five-minute sliding values. Mosquitto reports
-real operational metrics, typically about every ten seconds. It is a public test
-service, so interruptions are possible. Single trams, trains and vessels
+five-minute sliding values. Single trams, trains and vessels
 were dropped from the initial selection because they only report while that one
 vehicle is in service.
 
 The relay rejects retained messages, duplicates, out-of-order readings, non-finite
-values and observations older than two minutes (ten for the Fintraffic road
-stations, which publish a measurement about a minute after taking it) or more
-than ten seconds in the future. It preserves observation and arrival timestamps
-where the provider supplies them. Mosquitto's numeric `$SYS` messages have no source
-timestamp: their observation time remains null and fresh delivery is recorded
-at arrival. Retained snapshots are discarded. The current application's charts
+values and observations older than ten minutes (the road stations publish a
+measurement about a minute after taking it) or more than ten seconds in the
+future. It preserves observation and arrival timestamps. Retained snapshots are
+discarded. The current application's charts
 use arrival time. Missing upstream data stays
 missing. There is no fallback generator. The relay retries failed connections
 with bounded backoff and keeps no history queue to replay as fresh data.
 
 Each feed is pinned to a particular asset in `demo_feed_selection`. A station can
-be out of service, and a public broker may be unavailable. Check
+be out of service. Check
 freshness on the deployment network before launch:
 
 ```sh
@@ -100,8 +95,8 @@ so prefer a known station with every sensor and check it with `--selection`. It 
 before copying it into the inventory. A zero count means no fresh observation was
 received during that bounded check, not proof that a source is permanently down.
 On 2026-11-13, weather station 1003 supplied all four selected measurements,
-traffic station 23438 supplied fresh readings, and all four Mosquitto
-metrics arrived over verified TLS from the demo worker. The invalid weather
+and traffic station 23438 supplied fresh readings over verified TLS from the
+demo worker. The invalid weather
 station 4057 and unreachable TDengine endpoint were replaced. These checks do not
 guarantee future provider availability; verify freshness before each launch.
 

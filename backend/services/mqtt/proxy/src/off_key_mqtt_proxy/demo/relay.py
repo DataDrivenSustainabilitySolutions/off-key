@@ -16,7 +16,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from off_key_core.demo.catalogue import (
-    MOSQUITTO_SENSORS,
     TRAFFIC_SENSORS,
     WEATHER_SENSORS,
     FeedSelection,
@@ -64,14 +63,6 @@ def feeds(selected: FeedSelection) -> tuple[Feed, ...]:
                 ),
                 "tms-v2/status",
             ),
-        ),
-        Feed(
-            "mosquitto",
-            "test.mosquitto.org",
-            tuple(MOSQUITTO_SENSORS.values()),
-            8886,
-            None,
-            True,
         ),
     )
 

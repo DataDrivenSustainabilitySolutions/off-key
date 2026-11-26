@@ -36,16 +36,6 @@ SOURCES = (
         "One automatic traffic measurement station: five-minute sliding "
         "averages, updated about once a minute.",
     ),
-    Source(
-        "mosquitto",
-        "Mosquitto public broker metrics",
-        "https://test.mosquitto.org/",
-        "Eclipse Mosquitto public test broker",
-        "Public test service terms",
-        "https://test.mosquitto.org/",
-        "Real client counts and message traffic from a public test broker. "
-        "Fresh updates are timestamped on arrival; service interruptions are possible.",
-    ),
 )
 
 

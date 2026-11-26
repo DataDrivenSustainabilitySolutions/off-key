@@ -401,7 +401,8 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    dataset on one metric, count where the challenger is better or worse, and
    get a Wilcoxon signed-rank p-value: a small one means the difference is
    unlikely to be chance across these datasets, not that it holds elsewhere.
-   **Delete** removes the ticked studies, cancelling any still running. A
+   **Delete** removes the ticked studies. While one of them still runs, the
+   bar offers **Cancel** instead, and **Delete** returns once it has stopped. A
    study's name opens its page, with its run and metrics for each dataset.
    **Datasets** lists the suite's datasets.
 7. **Fault suite**, on a dataset, tests designs on data that has no labels,

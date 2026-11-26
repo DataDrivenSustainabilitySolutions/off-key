@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { BadgeCheck, GitCompareArrows, Play, Trash2, X } from "lucide-react";
+import { BadgeCheck, CircleStop, GitCompareArrows, Play, Trash2, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Button } from "@/components/ui/button";
@@ -79,12 +79,13 @@ export function SuitePage({ id, study, tab, listHref, datasetHref, onStudy, onTa
   const ranked = new Set(suite.leaderboard.map(item => item.id));
   const pair = chosen.length === 2 && chosen.every(item => ranked.has(item.id)) ? chosen : null;
   const active = (item: StudySummary) => (item.runs.queued ?? 0) + (item.runs.running ?? 0) > 0;
+  const running = chosen.filter(active);
+  const cancelChosen = () => act(async () => { for (const item of running) await dojoApi.cancelStudy(item.id); });
   const removeChosen = async () => {
     if (!await confirm({ title: chosen.length === 1 ? `Delete ${chosen[0]!.name || "this study"}?` : `Delete ${chosen.length} studies?`,
       description: "Their runs and results go with them. This cannot be undone.", confirmLabel: "Delete", destructive: true })) return;
     let refused = "";
     await act(async () => {
-      for (const item of chosen.filter(active)) await dojoApi.cancelStudy(item.id);
       const result = await dojoApi.deleteItems({ study_ids: chosen.map(item => item.id) });
       const names = new Map(chosen.map(item => [item.id, item.name || "Untitled study"]));
       refused = result.refused.map(item => `${names.get(item.id) ?? item.id}: ${item.reason}`).join(" ");
@@ -121,8 +122,11 @@ export function SuitePage({ id, study, tab, listHref, datasetHref, onStudy, onTa
         {chosen.length > 0 && <div className="dj-selection" role="region" aria-label="Selection">
           <strong>{chosen.length} selected</strong>
           <Button variant="ghost" size="sm" className="dj-clear-selection" aria-label="Clear selection" onClick={selection.clear}><X size={14} /></Button>
-          <span className="dj-selection-hint">{chosen.length === 1 ? "Choose one more ranked study to compare." : !pair ? "Only two ranked studies can be compared." : ""}</span>
-          {editable && <Button variant="outline" size="sm" className="dj-delete-selected" onClick={() => void removeChosen()}><Trash2 size={14} />Delete</Button>}
+          <span className="dj-selection-hint">{editable && running.length ? "Cancel running studies to delete them."
+            : chosen.length === 1 ? "Choose one more ranked study to compare." : !pair ? "Only two ranked studies can be compared." : ""}</span>
+          {editable && (running.length
+            ? <Button variant="outline" size="sm" onClick={() => void cancelChosen()}><CircleStop size={14} />Cancel</Button>
+            : <Button variant="outline" size="sm" className="dj-delete-selected" onClick={() => void removeChosen()}><Trash2 size={14} />Delete</Button>)}
           <Button variant="default" size="sm" disabled={!pair} onClick={() => pair && setComparing([pair[1]!.id, pair[0]!.id])}>
             <GitCompareArrows size={14} />Compare</Button>
         </div>}

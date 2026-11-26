@@ -147,18 +147,26 @@ describe("Dojo benchmark suites", () => {
     expect(await screen.findByRole("table", { name: "Studies" })).toBeTruthy();
   });
 
-  it("deletes the picked studies in one request, cancelling one still running first, and names what it refused", async () => {
+  it("cancels a picked study still running before it offers to delete it", async () => {
     vi.mocked(dojoApi.cancelStudy).mockResolvedValue(undefined as never);
-    vi.mocked(dojoApi.deleteItems).mockResolvedValue({ deleted: 0,
-      refused: [{ kind: "study", id: "st3", reason: "A monitor uses one of its runs." }] });
     mount("/dojo?suite=s1");
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pending" }));
+    const bar = screen.getByRole("region", { name: "Selection" });
+    expect(within(bar).queryByRole("button", { name: "Delete" })).toBeNull();
+    fireEvent.click(within(bar).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(dojoApi.cancelStudy).toHaveBeenCalledWith("st3"));
+    expect(dojoApi.deleteItems).not.toHaveBeenCalled();
+  });
+
+  it("deletes the picked studies in one request and names what it refused", async () => {
+    vi.mocked(dojoApi.deleteItems).mockResolvedValue({ deleted: 0,
+      refused: [{ kind: "study", id: "st1", reason: "A monitor uses one of its runs." }] });
+    mount("/dojo?suite=s1");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Forest" }));
     fireEvent.click(within(screen.getByRole("region", { name: "Selection" })).getByRole("button", { name: "Delete" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete", hidden: false }));
-    await waitFor(() => expect(dojoApi.deleteItems).toHaveBeenCalledWith({ study_ids: ["st3"] }));
-    expect(dojoApi.cancelStudy).toHaveBeenCalledWith("st3");
-    expect(dojoApi.deleteStudy).not.toHaveBeenCalled();
-    expect((await screen.findByRole("alert")).textContent).toContain("Pending: A monitor uses one of its runs.");
+    await waitFor(() => expect(dojoApi.deleteItems).toHaveBeenCalledWith({ study_ids: ["st1"] }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Forest: A monitor uses one of its runs.");
   });
 
   it("lets a member review a key's suite", async () => {

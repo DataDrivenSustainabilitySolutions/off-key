@@ -66,16 +66,16 @@ export function ExplorerWorkspace() {
   const selectedLabel = selected && (selected.entityKind === "stream"
     ? document.readings.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label);
   let title = catalogueSelectionLabel(document, selected);
-  if (loadingCreation) title = "New service";
+  if (loadingCreation) title = "New monitor";
   else if (selectionMissing && !pipelineView) title = "Source not found";
   else if (pipelineView) {
-    title = params.get("pipeline") ? (params.has("activation") ? "Starting service" : "Template")
+    title = params.get("pipeline") ? (params.has("activation") ? "Starting monitor" : "Template")
       : params.get("view") === "pipelines" ? "Templates" : params.get("view") === "proposals" ? "Proposals"
-        : params.has("replace") ? "Update service" : "New service";
-  } else if (creating) title = "New service";
+        : params.has("replace") ? "Update monitor" : "New monitor";
+  } else if (creating) title = "New monitor";
   else if (selectedService) title = serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? []);
   else if (requestedService) title = params.get("tab") === "pipeline" ? "Retained pipeline"
-    : monitoring.ready ? "Service not found" : "Monitoring service";
+    : monitoring.ready ? "Monitor not found" : "Monitor";
   useDocumentTitle(title, "Monitoring");
   useEffect(() => {
     rememberNavigation(monitoringNavigationKey(userId), `/${params.size ? `?${params}` : ""}`);
@@ -112,9 +112,9 @@ export function ExplorerWorkspace() {
         collectionReady={collectionApplied(system.snapshot?.runtime)} document={document}
         draftKey={`service-setup:${userId}:${params.get("target") ?? ""}:${requestedReading ?? ""}`}
         onStarted={async id => { await monitoring.reload(); if (id) openService(id); else closeView(); }} onBack={closeView} />
-        : <p className="ex-muted">{system.status === "loading" ? "Loading…" : "Creating monitoring services needs the Manage monitors permission."}</p>}
+        : <p className="ex-muted">{system.status === "loading" ? "Loading…" : "Creating monitors needs the Manage monitors permission."}</p>}
     </Suspense>;
-    if (requestedService && selectedService) return <Suspense fallback={<p className="ex-muted" role="status">Opening service…</p>}>
+    if (requestedService && selectedService) return <Suspense fallback={<p className="ex-muted" role="status">Opening monitor…</p>}>
       <ServiceDetail key={selectedService.id} service={selectedService} inputs={monitoringIndex.inputs.get(selectedService.id) ?? []}
         document={document} historyCache={history} canEdit={manageMonitors} favourite={favourites.has(selectedService.id)}
         pipelineState={monitoring.pipelineState ?? undefined} onFavourite={() => toggleFavourite("monitor", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
@@ -123,8 +123,8 @@ export function ExplorerWorkspace() {
     </Suspense>;
     // A retained run outlives its service row.
     if (requestedService && monitoring.ready && params.get("tab") === "pipeline") return <Suspense fallback={<p role="status">Opening retained run…</p>}><RetainedPipeline key={requestedService} serviceId={requestedService} canEdit={manageMonitors} replaceable={false} /></Suspense>;
-    if (requestedService) return <div className="mn-empty"><p>{monitoring.error || (!monitoring.ready ? "Loading service…" : "Service not found.")}</p>
-      <button onClick={closeView}><ArrowLeft size={14} aria-hidden="true" />All services</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
+    if (requestedService) return <div className="mn-empty"><p>{monitoring.error || (!monitoring.ready ? "Loading monitor…" : "Service not found.")}</p>
+      <button onClick={closeView}><ArrowLeft size={14} aria-hidden="true" />All monitors</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
     </div>;
     const services = canRead && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices}
       index={monitoringIndex} ready={monitoring.ready} error={monitoring.error} favourites={favourites}

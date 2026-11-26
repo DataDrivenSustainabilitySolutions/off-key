@@ -101,7 +101,7 @@ export function AdaptiveMonitoringSetup({
     setStarting(true);
     try {
       const serviceId = await startFormMonitor(validation.request);
-      toast.success("Adaptive monitoring service started.");
+      toast.success("Adaptive monitor started.");
       await onStarted(serviceId);
     } catch (error) {
       setFieldErrors(current => ({ ...current, ...modelErrorFields(error) }));

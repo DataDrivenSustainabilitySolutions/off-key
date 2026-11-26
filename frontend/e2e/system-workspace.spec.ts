@@ -143,8 +143,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     for (const readingId of unrecorded) expect(await measured(readingId)).toEqual([]);
 
     await page.goto(`/?create=monitoring&reading=${encodeURIComponent(stream.id)}`);
-    await expect(page.getByRole("region", { name: "Create monitoring service", exact: true })).toBeVisible();
-    await page.getByRole("textbox", { name: "Service name", exact: true }).fill("Workspace monitor");
+    await expect(page.getByRole("region", { name: "Create monitor", exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Monitor name", exact: true }).fill("Workspace monitor");
     await page.getByRole("spinbutton", { name: "Max Leaf Samples", exact: true }).fill("1");
     await page.getByLabel("Warm-up samples", { exact: true }).fill("2");
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
@@ -152,7 +152,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");
+    await expect(page.getByRole("textbox", { name: "Monitor name", exact: true })).toHaveValue("Workspace monitor");
     await expect(page.getByLabel("Warm-up samples", { exact: true })).toHaveValue("2");
     await expect(page.getByLabel("Calibration samples", { exact: true })).toHaveValue("2");
     const startedResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/v1/monitors") && response.request().method() === "POST");
@@ -161,20 +161,20 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(started.ok(), await started.text()).toBeTruthy();
     serviceId = ((await started.json()) as { monitor_id: string }).monitor_id;
     // The form opens the service once its pipeline activation created the workload.
-    await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible({ timeout: 240_000 });
-    await page.getByRole("button", { name: "Rename service", exact: true }).click();
-    const serviceName = page.getByRole("textbox", { name: "Rename service", exact: true });
+    await expect(page.getByRole("region", { name: "Monitor details", exact: true })).toBeVisible({ timeout: 240_000 });
+    await page.getByRole("button", { name: "Rename monitor", exact: true }).click();
+    const serviceName = page.getByRole("textbox", { name: "Rename monitor", exact: true });
     await serviceName.fill("Saved workspace monitor");
     await serviceName.press("Enter");
-    await expect(page.getByRole("button", { name: "Rename service", exact: true })).toHaveText("Saved workspace monitor");
+    await expect(page.getByRole("button", { name: "Rename monitor", exact: true })).toHaveText("Saved workspace monitor");
     // The star shows at once; reload only after the account has saved it.
     const favouriteSaved = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/v1/favorites")
       && response.request().method() === "POST");
-    await page.getByRole("button", { name: "Add service to favourites", exact: true }).click();
+    await page.getByRole("button", { name: "Pin monitor", exact: true }).click();
     const favourite = await favouriteSaved;
     expect(favourite.ok(), await favourite.text()).toBeTruthy();
     await page.reload();
-    await expect(page.getByRole("button", { name: "Remove service from favourites", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Unpin monitor", exact: true })).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 1000 });
     const catalogue = await page.getByRole("navigation", { name: "Catalogue", exact: true }).elementHandle();
     const source = new URL(page.url()).searchParams.get("source");
@@ -189,7 +189,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
       expect(await catalogue!.evaluate(element => element.isConnected)).toBe(true);
       expect(new URL(page.url()).searchParams.get("source")).toBe(source);
     }
-    await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Monitor details", exact: true })).toBeVisible();
     await catalogue!.dispose();
     await expect.poll(async () => {
       const response = await api.get("/api/v1/monitors?active=true", { headers });
@@ -217,10 +217,10 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(monitoringHistory.getByRole("button", { name: "Live", exact: true })).toBeDisabled();
     await setAppearance(page, "Dark");
     await page.screenshot({ path: testInfo.outputPath("monitoring-shared-workspace.png") });
-    await page.getByRole("button", { name: "Service actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Stop and remove service", exact: true }).click();
-    await page.getByRole("dialog", { name: "Stop and remove service?", exact: true }).getByRole("button", { name: "Remove service", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "No monitoring services", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Monitor actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Stop and remove monitor", exact: true }).click();
+    await page.getByRole("dialog", { name: "Stop and remove monitor?", exact: true }).getByRole("button", { name: "Remove monitor", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "No monitors", exact: true })).toBeVisible();
     serviceId = undefined;
   } finally {
     await publisher?.endAsync();

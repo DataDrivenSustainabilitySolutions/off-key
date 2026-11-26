@@ -36,7 +36,7 @@ export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSet
   const [sourcesOpen, setSourcesOpen] = useState(false);
 
   if (!isAuthenticated && !isGuest) {
-    return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Log in</Link></Button>;
+    return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Sign in</Link></Button>;
   }
 
   return <><DropdownMenu>
@@ -71,7 +71,7 @@ export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSet
         : <DropdownMenuItem className="app-menu-item" onSelect={() => {
         logout();
         navigate("/login", { replace: true });
-      }}><LogOut className="size-4" />Log out</DropdownMenuItem>}
+      }}><LogOut className="size-4" />Sign out</DropdownMenuItem>}
     </DropdownMenuContent>
   </DropdownMenu><DemoSources open={sourcesOpen} onOpenChange={setSourcesOpen} returnFocus={() => menuTrigger.current?.focus()} /></>;
 }

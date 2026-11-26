@@ -79,7 +79,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(coverage.getByText("12 of 216 checked values were outside the interval.")).toBeHidden();
     await expect(history.getByRole("term")).toHaveCount(0);
     await expect(history.getByRole("img", { name: "No anomalies in this history" })).toBeVisible();
-    await expect(history.getByText(/Service alarm|Red line/)).toHaveCount(0);
+    await expect(history.getByText(/Monitor alarm|Red line/)).toHaveCount(0);
     const chart = history.getByRole("group", { name: "Chart navigation", exact: true });
     await expect(chart.locator("canvas")).toBeVisible();
     await expect(chart).toHaveCSS("height", "268px");

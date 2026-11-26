@@ -21,7 +21,7 @@ setup(
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await expect(page.getByRole("searchbox", { name: "Search catalogue", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "No monitoring services", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No monitors", exact: true })).toBeVisible();
 
     const sessionState = await page.evaluate(() => ({
       localAuthToken: localStorage.getItem("auth_token"),

@@ -46,7 +46,7 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await page.reload();
     await expect(create).toBeEnabled();
     await create.click();
-    await expect(page.getByRole("button", { name: "Create service", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create monitor", exact: true })).toHaveCount(0);
     const picker = page.getByRole("button", { name: "Choose monitoring inputs", exact: true });
     await picker.click();
     const choices = page.getByRole("dialog", { name: "Choose monitoring inputs", exact: true });

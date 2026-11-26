@@ -157,7 +157,7 @@ export function createHistoryTest() {
         const bindings = bindSeries(slots, readings, dataset.series, getSnapshot().chosen);
         const run = await dojoApi.createRun({
           dataset_id: dataset.id, definition, bindings,
-          name: `${name.trim() || "Unnamed service"} · ${formatInstant(Date.now())}`.slice(0, 120),
+          name: `${name.trim() || "Unnamed monitor"} · ${formatInstant(Date.now())}`.slice(0, 120),
         });
         const { current, previous } = getSnapshot();
         // A new test has observations of its own; its latest is shown first.

@@ -171,7 +171,7 @@ test.describe("visual pipeline real infrastructure", () => {
           page.getByRole("region", { name: "Monitoring workbench", exact: true }),
         ).toBeVisible();
         await page
-          .getByRole("textbox", { name: "Service name", exact: true })
+          .getByRole("textbox", { name: "Monitor name", exact: true })
           .fill(`Branched ${strategy} ${deviceId}`);
         if (strategy === "static_baseline") {
           await page.getByRole("button", { name: "Load template", exact: true }).click();
@@ -198,7 +198,7 @@ test.describe("visual pipeline real infrastructure", () => {
         await openPipelineInput(page);
         await page.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
         await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
-        await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
+        await page.getByRole("link", { name: "Return to monitor setup", exact: true }).click();
         for (const name of ["voltage", "current", "temperature"])
           await expect(page.getByRole("checkbox", { name: `Monitor ${name}`, exact: true })).toBeChecked();
         await expect(page.getByRole("checkbox", { name: "Monitor unused", exact: true })).not.toBeChecked();
@@ -235,7 +235,7 @@ test.describe("visual pipeline real infrastructure", () => {
         serviceId = activation.monitor_id;
         serviceIds.push(serviceId);
         const serviceDetails = page.getByRole("region", {
-          name: "Monitoring service details",
+          name: "Monitor details",
           exact: true,
         });
         const activationError = page.locator('.pl-apply-status--error');
@@ -425,7 +425,7 @@ test.describe("visual pipeline real infrastructure", () => {
           const predecessorRun = runtime.run_id;
           const predecessorService = serviceId;
           await page.setViewportSize({ width: 1600, height: 1100 });
-          await page.getByRole("button", { name: "Edit service", exact: true }).click();
+          await page.getByRole("button", { name: "Edit monitor", exact: true }).click();
           await expect(page.getByRole("region", { name: "Monitoring workbench", exact: true })).toBeVisible();
           await openPipelineSettings(page, "Service");
           await page.getByRole("spinbutton", { name: "Calibration observations", exact: true }).fill("9");

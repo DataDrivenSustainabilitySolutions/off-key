@@ -31,7 +31,7 @@ export function RemoveMemberDialog({ member, onClose, onRemoved, onCloseAutoFocu
   return (
     <ConfirmDialog open title="Remove member?" confirmLabel="Remove member" busyLabel="Removing…" destructive busy={busy} error={error}
       description={<>
-        Permanently remove <strong>{member.email}</strong> and their personal favorites.
+        Permanently remove <strong>{member.email}</strong> and their pinned items.
         {" "}They will need a new invitation to join again. Shared catalogue data, monitoring services, and reports are kept.
       </>}
       onConfirm={() => void remove()} onCancel={onClose} onCloseAutoFocus={onCloseAutoFocus} />

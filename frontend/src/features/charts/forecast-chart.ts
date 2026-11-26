@@ -94,7 +94,7 @@ export function formatForecastTooltip(params: unknown, time: (value: number) => 
     lines.push(point.lower === null || point.upper === null ? "Interval unavailable"
       : `${intervalLabel}: ${number(point.lower)} to ${number(point.upper)}`);
     if (point.observed !== null) lines.push(`Residual: ${number(point.observed - point.expected)} · ${intervalStatus(point)}${isOutside(point) ? " (not an anomaly by itself)" : ""}`);
-    lines.push(`Service alarm: ${point.alarm ? "active" : "inactive"}`);
+    lines.push(`Monitor alarm: ${point.alarm ? "active" : "inactive"}`);
   }
   for (const entry of entries) {
     const result = entry.data?.observation;

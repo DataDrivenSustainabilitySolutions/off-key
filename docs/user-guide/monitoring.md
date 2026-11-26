@@ -30,15 +30,15 @@ form-based setup instead:
 2. Choose a monitoring strategy and model.
 3. Keep the defaults for a first-run validation; tune parameters only when the baseline is understood.
 4. Start monitoring. The form's configuration becomes the equivalent pipeline,
-   so the started service is inspected, stopped and replaced like any other.
-5. Observe the service stage, monitoring evidence, and resulting anomalies.
+   so the started monitor is inspected, stopped and replaced like any other.
+5. Observe the monitor stage, monitoring evidence, and resulting anomalies.
 
 Either way, every selected reading must already be collected as a numeric
 reading in **Sources**.
 
-## Service health and coverage
+## Monitor health and coverage
 
-Coverage in the service overview reports known discarded observations and possible
+Coverage in the monitor overview reports known discarded observations and possible
 interruptions. RADAR currently consumes a best-effort MQTT stream without a
 durable replay cursor. Queue overflow, explicit throttling, invalid inputs and
 connection interruptions can leave gaps. New traffic does not repair those gaps:
@@ -52,7 +52,7 @@ counted and reported as lost monitoring coverage.
 Monitoring activity separates runtime heartbeats from valid input, inference and
 evidence persistence. A running detector becomes degraded if a required input is
 older than its hold limit (see [Observation time and alignment](#observation-time-and-alignment)), scoring stops, or evidence
-waits too long to commit. The service overview names missing or stale inputs and
+waits too long to commit. The monitor overview names missing or stale inputs and
 shows the last successful inference and evidence commit. Activity recovers when
 fresh inputs and scoring resume; historical coverage warnings remain visible.
 
@@ -66,7 +66,7 @@ fresh inputs and scoring resume; historical coverage warnings remain visible.
 
 ## Detector and alarm semantics
 
-A static service consumes consecutive, non-overlapping phases: baseline training,
+A static monitor consumes consecutive, non-overlapping phases: baseline training,
 calibration, and online inference. Inference produces one conformal p-value and
 feeds the same ordered stream to every configured martingale tracker. Trackers may
 use `power`, `simple_mixture`, or `simple_jumper` betting and may alarm on the
@@ -108,7 +108,7 @@ Charts draw each selected alarm statistic on a logarithmic secondary axis with
 its threshold, shaded above it from each evaluation to the next. Evidence more
 than four decades above the threshold is marked at the top edge instead of
 stretching the axis. The line joins consecutive evaluations and breaks only
-across a pause, such as one a Gate holds back. The service's **Evidence** tab
+across a pause, such as one a Gate holds back. The monitor's **Evidence** tab
 omits detector inputs whose saved provenance identifies them as unchanged raw
 readings. Derived features, such as phase deviations, retain their separate scale.
 Unknown associations stay separate until the pipeline's reading bindings load.
@@ -124,7 +124,7 @@ each observed value outside the interval. That alone is not an anomaly: an
 interval that covers 90 % of values leaves one in ten outside by design.
 **Coverage**, folded under the chart, gives the share of checked values the
 interval held and opens to the count behind it. Vertical red lines still mark
-the service's alarm decision, which depends on the pipeline's detection rule.
+the monitor's alarm decision, which depends on the pipeline's detection rule.
 Without a calibration step there is no interval, so there is no band, dot or
 coverage.
 
@@ -171,21 +171,21 @@ event timestamp.
 
 ## Reading ownership
 
-A reading may belong to only one active monitoring service. TACTIC serializes
+A reading may belong to only one active monitor. TACTIC serializes
 claims in PostgreSQL and rejects overlapping MQTT filters, including `+` and `#`
 wildcard overlap. Topic levels are literal: for example, charger IDs `charger-1`
-and `charger-10` do not overlap. Stop or remove the existing service before
+and `charger-10` do not overlap. Stop or remove the existing monitor before
 assigning its readings elsewhere.
 
 ## Visual monitoring pipelines
 
 The setup page is the processing graph under a compact header. The header holds
-the service name and two shortcuts: the input summary, such as **Room · 3
+the monitor name and two shortcuts: the input summary, such as **Room · 3
 readings**, opens the **Input** step, and how the detectors learn, such as
-**Learns continuously**, opens **Service settings**. A new service opens at its Input step, where **Readings from** picks
+**Learns continuously**, opens **Monitor settings**. A new monitor opens at its Input step, where **Readings from** picks
 the entity and **Readings to monitor** its readings; a saved template or a
-service being replaced opens at its graph. The main actions are **Load
-template**, **Save template** and **Start monitoring**. Starting a service never
+monitor being replaced opens at its graph. The main actions are **Load
+template**, **Save template** and **Start monitoring**. Starting a monitor never
 requires saving a template.
 
 **Load template** offers the built-in static and adaptive starting flows plus
@@ -196,7 +196,7 @@ time and needs that context to see a pattern over time. The lags are an
 example: the Lags panel's correlogram suggests ones that fit the reading.
 Loading never changes the source template, and **Undo** restores the previous
 flow. **Save template** stores the current graph and layout under its own
-template name, independently of the service name. A concurrent edit keeps your
+template name, independently of the monitor name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
 A design also travels as a file. **Download as a file** in the **Save
@@ -215,7 +215,7 @@ through the API, hands in a design with a reason instead of starting it. While
 proposals wait, the Monitoring page shows **Proposals** with their number
 beside **Create**. Every proposal in the list is a card laid out the same way:
 its name; who proposed it (**Agent**, or the member by name) and when, whether
-it starts a new service or replaces a running one, and whether it was tested on
+it starts a new monitor or replaces a running one, and whether it was tested on
 history; then what it **Watches**,
 the **Evidence** and the **Limits** its author gave, or the reason for a
 proposal that came without them. **All** adds the proposals already accepted,
@@ -231,9 +231,9 @@ watches, why it is built this way, the evidence, the limits, and what else its
 author wrote. Close the panel to see more of the graph, and open it again with
 **Proposal** in the toolbar. It is a design like any other, so change it before
 you start it if you wish. **Start monitoring**, or **Start in shadow** with
-**Shadow run** ticked, starts the service and accepts the proposal;
-**Decline** stands beside it. A proposal that replaces a running service says
-so in the list and opens as a change to that service, with the steps that
+**Shadow run** ticked, starts the monitor and accepts the proposal;
+**Decline** stands beside it. A proposal that replaces a running monitor says
+so in the list and opens as a change to that monitor, with the steps that
 differ from the running design marked on their cards. Members whose role cannot
 manage monitors can read a proposal and cannot decide on it.
 
@@ -285,7 +285,7 @@ way; the check names a step that does not. A design has one
 input, calibration step, detection rule and output, so the menu does not offer
 them again; it links to the existing steps instead. A detector's settings offer
 **Add another detector**: it adds a detector with the same model that reads the
-same features and connects it to the calibration step, up to four detectors. Change its model or its input afterwards like any step's. **Service settings** opens the side panel and **Step settings** the drawer under the canvas.
+same features and connects it to the calibration step, up to four detectors. Change its model or its input afterwards like any step's. **Monitor settings** opens the side panel and **Step settings** the drawer under the canvas.
 
 **Step settings** name the step they belong to: its family in the card's
 color, its title and one line on what it does. The arrows beside the count,
@@ -341,7 +341,7 @@ connection and in a step's **Add after** menu. Adding a block copies its steps
 into the design, connected to each other; on a connection they take the
 connection's place like a single step. The copies are ordinary steps with no tie
 to the block: changing them does not change the block, and deleting the block
-changes no service or template. The steps keep the feature names they were saved
+changes no monitor or template. The steps keep the feature names they were saved
 with, so the check names a feature the design already has. Before a detector, a
 block's learned step moves to the counterpart that learns as that detector does,
 as it would when the detector's model changes. A block that cannot be added
@@ -361,7 +361,7 @@ under the pointer, or in the middle of the view when the pointer is elsewhere,
 and Ctrl/Cmd+D duplicates them below the originals. Copies arrive chosen, on
 the first free rows, and are not connected to the rest of the design. They
 travel through the clipboard, so steps can be pasted into another design or
-another browser window, also from a running service into a new one. A design
+another browser window, also from a running monitor into a new one. A design
 keeps one input, calibration step, detection rule and output and adds detectors
 from a detector's settings, so a paste leaves such a step out and says so.
 Right-click a step, or hold a finger on it, for the same commands with their
@@ -407,7 +407,7 @@ checked** and offers **Check again**.
 
 **Test** opens **Test on history** beside the canvas, for members who may use
 the Dojo. It runs the design as it stands over recorded values in time order,
-with the same alignment, learning and scoring as a live service; nothing
+with the same alignment, learning and scoring as a live monitor; nothing
 reaches Monitoring or Reporting. **Values** offers the last 24 hours, 7 days or
 30 days recorded by the readings chosen in the Input step, and every Dojo
 dataset. A window is copied into a new Dojo dataset first, named after the
@@ -490,7 +490,7 @@ the **Fixed split**, a flag that stays 0 through calibration alarms whenever it
 is 1. A rule detector reads only steps that do not learn, runs beside other
 detectors, and does not run under the **Conformal alarm policy**. A design
 whose detectors are all rule detectors has no learning window: calibration
-starts with its first observation, and **Service settings** ask only for
+starts with its first observation, and **Monitor settings** ask only for
 **Calibration observations**. The form-based setup has no step to state a rule
 in, so it does not offer the Rule detector.
 
@@ -507,7 +507,7 @@ step** with that reason and cannot be chosen as a detector model.
 
 When a change also moves steps or the detection rule, a notice says what
 changed, and **Undo** reverses all of it.
-**Service settings** open with the **Alarm budget**: how many scores may lie
+**Monitor settings** open with the **Alarm budget**: how many scores may lie
 above the boundary per hour, day or week. The design keeps the budget as the
 **Target alarm rate** of its calibration step or, under the **Fixed split**, as
 the quantile of the **Calibrated score threshold**, so the budget and those
@@ -525,23 +525,23 @@ so the budget goes no lower than one score in **Calibration observations** plus
 one. A design that alarms by the **Conformal alarm policy** has no share of
 scores to set and shows no budget.
 
-**Shadow run**, under the budget, starts the service in shadow. A shadow
-service learns, calibrates and scores like any other and raises no alarm. Each
+**Shadow run**, under the budget, starts the monitor in shadow. A shadow
+monitor learns, calibrates and scores like any other and raises no alarm. Each
 alarm it would have raised is kept as **muted** evidence, an open dot on the
 monitor's chart, and none is listed or sent. The start button then reads
-**Start in shadow**, the service list shows **Shadow** where a service that
-raises alarms shows **Active**, and the service's page says that it runs in
+**Start in shadow**, the monitor list shows **Shadow** where a monitor that
+raises alarms shows **Active**, and the monitor's page says that it runs in
 shadow. Use it to see how often a new design would alarm on live readings
-before anyone is alerted. To take the service live, choose **Edit service** on
+before anyone is alerted. To take the monitor live, choose **Edit monitor** on
 its **Pipeline** tab, clear **Shadow run** and choose **Update monitoring**;
 the notice above the canvas then reads **Goes live**. Like every update this
-replaces the service, so it learns anew before its first alarm. A shadow
-service holds its readings like any other, and a reading belongs to one
-service, so a shadow run cannot stand beside a live service on the same
-readings. To judge a change to a running service, test the design on recorded
+replaces the monitor, so it learns anew before its first alarm. A shadow
+monitor holds its readings like any other, and a reading belongs to one
+monitor, so a shadow run cannot stand beside a live monitor on the same
+readings. To judge a change to a running monitor, test the design on recorded
 history instead.
 
-In **Service settings**, **Before the first alarm** shows the observations Prepare steps need first, then
+In **Monitor settings**, **Before the first alarm** shows the observations Prepare steps need first, then
 the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
 shows durations. The most frequent reading paces observations, because each
 observation uses the latest value of every other reading.
@@ -687,7 +687,7 @@ with a window has its first value once the window is full, and steps in a chain
 add up: **Smooth** over 10 followed by **Change** over 1 has its first value at
 the 11th observation, and its settings say **Ready after 11 observations**.
 **Before the first alarm** counts those observations as
-**Preparing**; meanwhile the service shows how many observations are prepared,
+**Preparing**; meanwhile the monitor shows how many observations are prepared,
 and nothing learns. A window holds at most 3,600 values per feature,
 and a design's Prepare windows hold at most 50,000 values in all. A **Rolling
 relation** keeps two windows per feature, its own and one of the feature it is
@@ -710,7 +710,7 @@ gap. The step's diagnostics count skipped observations by reason. Evidence
 always records the raw readings. Learned steps and the detector skip an
 observation the same way when it fails them without changing what they learned,
 such as a value the detector cannot score. Only a failure that can leave learned
-state uncertain, such as the detector failing while it learns, stops the service.
+state uncertain, such as the detector failing while it learns, stops the monitor.
 
 **Combine** steps compute one feature from several, usually after the features
 were prepared one by one. They run in the Prepare stage as well and have their
@@ -886,53 +886,53 @@ straight line needs its curve as a feature first, such as a **Formula** for the
 square of the flow.
 
 Unchecking readings in **Readings to monitor** changes the input slots and
-bindings together; a service accepts up to 100 readings. Each reading's feature
+bindings together; a monitor accepts up to 100 readings. Each reading's feature
 is named after its label, such as `dc_voltage` for *DC Voltage*; a repeated label
 continues with `_2`, `_3` and so on. Saved templates keep their own input names.
 **Start monitoring** opens the Input step when a reading is still missing. Every slot binds a
 distinct numeric reading on one entity. Labels are cosmetic; expected units
 require an exact match, and unknown units remain unknown.
 
-**Start monitoring** validates the graph and starts the service through the same
+**Start monitoring** validates the graph and starts the monitor through the same
 preflight, reading claims, capacity checks and worker heartbeat as every other
 start. Progress stays visible across navigation and reload: **Recover start
 request** resumes an uncertain request, **Cancel start** stops it, and a failed
 start offers **Return to setup**. A rejected request keeps the setup editable.
 
-A running service always displays its bound, immutable execution. Its
+A running monitor always displays its bound, immutable execution. Its
 arrangement can be saved independently. The live inspector shows one coherent
 sampled observation, separates score and post-learning passes, and marks nodes
 that did not execute. Snapshot age is visible; fresh diagnostics do not imply
 persisted evidence is current. Static training appears as a batch summary.
-**Run timeline**, under a pipeline service, lists what its run went through,
+**Run timeline**, under a pipeline monitor, lists what its run went through,
 newest first: each setup step, when the worker started or resumed from saved
 state, each stage with the time spent in the previous one, the alarm threshold and
 training sizes once learning ends, coverage losses, crashes the cluster recorded
 (an out-of-memory kill is named as such) and how the run ended. A failed run opens
 it with the final error. The timeline and the run's last status stay after the
-service is removed. Runs started before this release have none.
+monitor is removed. Runs started before this release have none.
 
 Configuration issues and sampled runtime state have separate badges. When the
 policy combines detectors, selecting it lists each detector's score and surprise
 for the sampled observation, and a selected detector shows its surprise beside
 its score. A chart's tooltip lists the same for each evidence row.
 
-**Edit service** opens the running definition, layout and bindings. A note
+**Edit monitor** opens the running definition, layout and bindings. A note
 above the graph explains the interruption and fresh learning, and **Update
-monitoring** replaces the service through the same preflight and handoff. Both sets of readings stay
+monitoring** replaces the monitor through the same preflight and handoff. Both sets of readings stay
 reserved during preflight and handoff, and a failed preflight leaves the
 predecessor running. After retirement, cancellation or failure does not silently
-revive it. History remains inspectable after a service is removed. Older library,
+revive it. History remains inspectable after a monitor is removed. Older library,
 revision and in-flight activation links still open.
 
-While you change a service, the graph is compared with the design that runs.
+While you change a monitor, the graph is compared with the design that runs.
 The card of a step the running design lacks is marked **New**, and the card of
 a step it holds differently is marked **Changed**. Step settings say what
 changed, such as "Factor 5, was 3" or "Switched off". The note above the graph
 counts both, names the steps that went, and says what else differs: the inputs
 and how many observations the design learns from. A step that only has a new
 step in front of it is not marked, because the new step is the change. A
-proposal that replaces a service is compared the same way, so a review starts
+proposal that replaces a monitor is compared the same way, so a review starts
 at the marked cards.
 
 Static preprocessing fits only the training window and stays frozen. Adaptive
@@ -974,9 +974,9 @@ changed, so create them again.
 
 ## Stop and cleanup workflow
 
-1. Open **Monitoring** at `/` and select the service.
-2. Choose **Stop and remove service** (or **Remove service** once it has stopped).
-3. Confirm that the service is absent from the service list and that its readings are available again.
+1. Open **Monitoring** at `/` and select the monitor.
+2. Choose **Stop and remove monitor** (or **Remove monitor** once it has stopped).
+3. Confirm that the monitor is absent from the monitor list and that its readings are available again.
 
 With the default `ephemeral` lifecycle, TACTIC also cleans up managed workloads when it restarts.
 
@@ -993,11 +993,11 @@ curl --fail http://localhost:8000/v1/alarms/count
 
 | Symptom | Likely cause | Action |
 | --- | --- | --- |
-| Start fails with a validation error | Invalid model parameters or sensors already claimed | Retry with defaults and check active services |
-| Service runs but evidence is empty | No MQTT data flow or warm-up/calibration is incomplete | Verify the topic stream and allow the initial window to complete |
-| Service disappears after a restart | Ephemeral lifecycle is configured | Use `TACTIC_RADAR_WORKLOAD_LIFECYCLE=persistent` only when persistence is required |
+| Start fails with a validation error | Invalid model parameters or sensors already claimed | Retry with defaults and check active monitors |
+| Monitor runs but evidence is empty | No MQTT data flow or warm-up/calibration is incomplete | Verify the topic stream and allow the initial window to complete |
+| Monitor disappears after a restart | Ephemeral lifecycle is configured | Use `TACTIC_RADAR_WORKLOAD_LIFECYCLE=persistent` only when persistence is required |
 | Model endpoint fails | TACTIC is unreachable | Check TACTIC `/ready` and its logs |
-| A pipeline service failed or keeps restarting | A node failed, the worker ran out of memory, or the database refused its writes | Open **Run timeline**; in production, search Grafana for its `service_id` (see [Production](../operations/production.md#logs-and-grafana)) |
+| A pipeline monitor failed or keeps restarting | A node failed, the worker ran out of memory, or the database refused its writes | Open **Run timeline**; in production, search Grafana for its `service_id` (see [Production](../operations/production.md#logs-and-grafana)) |
 | Evidence exists but no anomalies appear | Current observations have not crossed the detector threshold | Inspect evidence before changing model parameters |
 
 ## Telemetry persistence during outages

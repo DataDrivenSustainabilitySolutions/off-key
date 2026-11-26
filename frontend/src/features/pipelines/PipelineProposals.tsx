@@ -24,7 +24,7 @@ function missingReadings(proposal: PipelineProposalSummary): string {
 
 /** Whether the design becomes a service of its own or takes the place of one that runs. */
 const proposedAs = (proposal: PipelineProposalSummary, replaced?: ActiveService) => proposal.replace_monitor_id
-  ? `Replaces ${replaced?.display_name || "a running service"}` : "New service";
+  ? `Replaces ${replaced?.display_name || "a running monitor"}` : "New monitor";
 
 /** Who a proposal is by, in words: a member by name, an agent as an agent, since its key's name says little to a reviewer. */
 const proposedBy = (proposal: PipelineProposalSummary) => proposal.author_kind === "agent" ? "an agent" : proposal.author;
@@ -103,7 +103,7 @@ export function DeclineProposal({ proposal, onDeclined, named = false }: {
 /** Why a proposal cannot start from the list, or nothing when it can. */
 function startBlocked(proposal: PipelineProposalSummary, full: boolean, replaced?: ActiveService): string {
   if (proposal.missing_readings?.length) return "Review it to choose other readings.";
-  if (proposal.replace_monitor_id && !replaced) return "The service it replaces no longer runs. Review it to start it as a new one.";
+  if (proposal.replace_monitor_id && !replaced) return "The monitor it replaces no longer runs. Review it to start it as a new one.";
   if (full && !proposal.replace_monitor_id) return "No monitor place is free.";
   return "";
 }
@@ -155,7 +155,7 @@ function StartProposal({ proposal, blocked, describedBy, replaced, apply }: {
       <h3>{update ? "Update as proposed" : "Start as proposed"}</h3>
       <ul className="pl-decision-choices">
         {update
-          ? <StartChoice name={`Update ${replaced?.display_name || "the service"}`} disabled={loading} onChoose={() => void start(!!replaced?.shadow)}>
+          ? <StartChoice name={`Update ${replaced?.display_name || "the monitor"}`} disabled={loading} onChoose={() => void start(!!replaced?.shadow)}>
             Replaces the design that runs{replaced?.shadow ? " and stays in shadow" : ""}. Monitoring pauses briefly and learning
             restarts. History is kept.</StartChoice>
           : <>
@@ -349,7 +349,7 @@ export function PipelineProposalList({ onReview, onBack, onStarted, canDecide = 
     </div>
     <p className="pl-proposals-intro"><span className="pl-proposals-about">Monitors designed and tested on history, waiting for a decision.
       {canDecide ? " Read one, start it as proposed, or decline it." : " Read one and review its design."}</span>
-      {full && " Starting a proposal needs a free place: stop a monitor first, or start one that replaces a running service."}</p>
+      {full && " Starting a proposal needs a free place: stop a monitor first, or start one that replaces a running monitor."}</p>
     <div className="mn-list-tools pl-proposals-tools">
       <div className="mn-filters" aria-label="Filter proposals">
         {filters.map((item) => <button key={item.label} type="button" aria-pressed={decided === item.id} onClick={() => { setDecided(item.id); setReading(false); }}>
@@ -402,7 +402,7 @@ export function PipelineProposalBrief({ proposal, canDecide, replaced, onOpenTes
     <p className="pl-desk-lede">{proposalLede(proposal)}</p>
     <ProposalDecision proposal={proposal}>
       {open && <p className="pl-help">{canDecide
-        ? `${proposal.replace_monitor_id ? "Updating" : "Starting"} the service accepts the proposal. Change the design first if you wish.`
+        ? `${proposal.replace_monitor_id ? "Updating" : "Starting"} the monitor accepts the proposal. Change the design first if you wish.`
         : "It waits for a member who manages monitors."}</p>}
     </ProposalDecision>
     <ProposalByline proposal={proposal} replaced={replaced} />

@@ -115,5 +115,5 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
   const services = useMemo(() => context?.binding ? feed.services.filter(service => service.reading_ids.includes(id)) : [],
     [context, id, feed.services]);
   const history = context ? state : UNBOUND_HISTORY;
-  return { ...history, services, error: history.error || (context?.binding && feed.error ? "Monitoring services could not be updated." : "") };
+  return { ...history, services, error: history.error || (context?.binding && feed.error ? "Monitors could not be updated." : "") };
 }

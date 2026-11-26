@@ -1,6 +1,6 @@
 import { epochMilliseconds } from "@/lib/timestamps";
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Check, Copy, Pencil, Star } from "lucide-react";
+import { Check, Copy, Pencil, Pin } from "lucide-react";
 import { SourceIcon } from "@/components/source-icons/SourceIcon";
 import { IconPicker } from "@/components/source-icons/IconPicker";
 import type { SourceAppearance } from "@/types/source-appearance";
@@ -208,7 +208,7 @@ export default function ExplorerPreview({
             {isReading && parent && <p className="ex-preview-parent">{parent.label}</p>}
           </div>
         </div>
-        <div className="mn-detail-actions">{actions}{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
+        <div className="mn-detail-actions">{actions}{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Unpin reading" : "Pin reading"} onClick={() => onFavourite(stream.id)}><Pin size={17} /></button>}</div>
       </header>
       {!isReading && trail}
       {/* What is happening now, in one row: the latest value, the connection and the recording. */}

@@ -24,7 +24,7 @@ export function PipelineBlockLibrary({ components, canEdit }: { components: Pipe
   }, [retry]);
   const remove = async (block: PipelineBlock) => {
     if (!await confirm({ title: `Delete ${block.name}?`,
-      description: "Services and templates that already hold its steps keep them.",
+      description: "Monitors and templates that already hold its steps keep them.",
       confirmLabel: "Delete block", destructive: true })) return;
     setDeleting(block.id);
     setError("");

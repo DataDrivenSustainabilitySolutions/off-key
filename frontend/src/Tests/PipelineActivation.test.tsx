@@ -21,7 +21,7 @@ describe("existing activation links", () => {
     vi.mocked(pipelinesApi.activation).mockResolvedValue(operation());
     const input = props();
     render(<PipelineActivation {...input} />);
-    await screen.findByRole("heading", { name: "Preparing your service…" });
+    await screen.findByRole("heading", { name: "Preparing your monitor…" });
     expect(pipelinesApi.activation).toHaveBeenCalledWith("activation", expect.any(AbortSignal));
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
     expect(input.onComplete).not.toHaveBeenCalled();

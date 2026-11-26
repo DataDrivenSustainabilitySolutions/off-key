@@ -82,7 +82,7 @@ async function acceptInvitation(page: Page, link: string, email: string) {
   await page.getByLabel("Confirm password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Accept invitation", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Your account is ready");
-  await page.getByRole("link", { name: "Log in", exact: true }).click();
+  await page.getByRole("link", { name: "Sign in", exact: true }).click();
   await loginWithEmail(page, email, { rememberMe: true });
 }
 

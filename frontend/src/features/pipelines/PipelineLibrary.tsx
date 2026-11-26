@@ -19,7 +19,7 @@ export function PipelineLibrary({
     <div className="pl-header">
       <div>
         <h1>Templates</h1>
-        <p className="pl-help">Reusable monitoring flows. Open a template to configure a service or update it.</p>
+        <p className="pl-help">Reusable monitoring flows. Open a template to configure a monitor or update it.</p>
       </div>
       {canEdit && catalog.authoring_enabled && <button type="button" className="mn-primary" onClick={onCreate}>
         <Plus size={15} />Create monitoring service

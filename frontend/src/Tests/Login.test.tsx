@@ -61,7 +61,7 @@ describe("Login", () => {
     expect(
       screen.getByLabelText(/password/i, { selector: "input" })
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: /log in/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /sign in/i })).toBeTruthy();
   });
 
   it.each(["127.0.0.1", "localhost", "[::1]", "::1"])(
@@ -83,7 +83,7 @@ describe("Login", () => {
       expect(password.autocomplete).toBe("current-password");
       fireEvent.change(email, { target: { value: "admin" } });
       fireEvent.change(password, { target: { value: "admin" } });
-      fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+      fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
       await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
       expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
@@ -106,7 +106,7 @@ describe("Login", () => {
     expect(email.type).toBe("email");
     fireEvent.change(email, { target: { value: "admin" } });
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), { target: { value: "admin" } });
-    fireEvent.submit(screen.getByRole("button", { name: /log in/i }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: /sign in/i }).closest("form")!);
     expect(screen.getByText("Please enter a valid email address")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -116,7 +116,7 @@ describe("Login", () => {
     renderLogin();
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "administrator" } });
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), { target: { value: "admin" } });
-    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
     expect(screen.getByText("Please enter a valid email address")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -131,10 +131,10 @@ describe("Login", () => {
     renderLogin();
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "test@example.com" } });
     fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), { target: { value: "wrongpass" } });
-    const form = screen.getByRole("button", { name: "Log in" }).closest("form")!;
+    const form = screen.getByRole("button", { name: "Sign in" }).closest("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
-    const pending = screen.getByRole("button", { name: "Logging in…" }) as HTMLButtonElement;
+    const pending = screen.getByRole("button", { name: "Signing in…" }) as HTMLButtonElement;
     expect(pending.disabled).toBe(true);
     expect(pending.getAttribute("aria-busy")).toBe("true");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
@@ -147,13 +147,13 @@ describe("Login", () => {
       }));
     });
     expect(screen.getByText(failure === "network" ? "An error occurred" : "Invalid credentials")).toBeTruthy();
-    const ready = screen.getByRole("button", { name: "Log in" }) as HTMLButtonElement;
+    const ready = screen.getByRole("button", { name: "Sign in" }) as HTMLButtonElement;
     expect(ready.disabled).toBe(false);
     expect(ready.getAttribute("aria-busy")).toBe("false");
     fireEvent.submit(form);
     await screen.findByText("Retry rejected");
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect((screen.getByRole("button", { name: "Log in" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Sign in" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows an error message for invalid credentials", async () => {
@@ -171,7 +171,7 @@ describe("Login", () => {
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
       target: { value: "wrongpass" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/test-fehler/i)).toBeTruthy();
@@ -209,7 +209,7 @@ describe("Login", () => {
       target: { value: "correctpass" },
     });
     if (rememberMe) fireEvent.click(screen.getByLabelText("Remember this device"));
-    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
       expect(tokenManager.getToken()).toBe(mockToken);
@@ -249,7 +249,7 @@ describe("Login", () => {
     fireEvent.change(screen.getByLabelText(/password/i, { selector: "input" }), {
       target: { value: "correctpass" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
       expect(tokenManager.getToken()).toBe(mockToken);
@@ -269,7 +269,7 @@ describe("Login", () => {
     renderLogin(returnTo);
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "test@example.com" } });
     fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), { target: { value: "correctpass" } });
-    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(expected, { replace: true }));
   });
 });

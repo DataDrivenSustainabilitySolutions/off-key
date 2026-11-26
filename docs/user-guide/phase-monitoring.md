@@ -60,7 +60,7 @@ Open **Monitoring**, then **Create**.
 ### 1. Choose the readings and the strategy
 
 Under **Choose monitoring inputs**, pick the charger and check its three phase
-currents. Name the service, for example *Charger 07 phase balance*. Set
+currents. Name the monitor, for example *Charger 07 phase balance*. Set
 **Strategy** to **Static baseline**. The composer starts with the inputs, a
 detector, an alarm policy and the evidence output, already connected.
 
@@ -164,7 +164,7 @@ of them.
 ![The Features view: L1_dev and L2_dev, each from its current reading through Rename features and Phase deviations, under the Gate condition.](../assets/phase-monitoring/features.png)
 
 The validation badge should read **Valid** with the one division warning from
-step 5. **Start monitoring** starts the service.
+step 5. **Start monitoring** starts the monitor.
 
 ## Training period
 
@@ -178,7 +178,7 @@ fault as normal.
 
 ## Reading the chart
 
-The chart of a running service shows the readings, then a **Detector inputs**
+The chart of a running monitor shows the readings, then a **Detector inputs**
 pane with `L1_dev` and `L2_dev`, then the sequential evidence. The deviations
 show what the detector sees: they stay flat through load changes and step when
 the balance between the phases changes. The evidence pane shades the alarm zone

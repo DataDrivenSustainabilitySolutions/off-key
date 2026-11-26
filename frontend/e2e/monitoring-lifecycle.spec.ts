@@ -30,7 +30,7 @@ test.describe("monitoring lifecycle smoke", () => {
       await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
 
       await expect(
-        page.getByRole("heading", { name: "Create service", exact: true }),
+        page.getByRole("heading", { name: "Create monitor", exact: true }),
       ).toBeVisible();
       await page.getByRole("button", { name: "Static baseline", exact: true }).click();
       await expect(page.getByRole("checkbox", { name: "L1", exact: true })).toBeChecked();
@@ -98,7 +98,7 @@ test.describe("monitoring lifecycle smoke", () => {
         .monitor_id;
       expect(serviceId).toBeTruthy();
       const details = page.getByRole("region", {
-        name: "Monitoring service details",
+        name: "Monitor details",
         exact: true,
       });
       // The form opens the service once its pipeline activation created the workload.
@@ -111,14 +111,14 @@ test.describe("monitoring lifecycle smoke", () => {
         { timeout: 240_000 },
       );
       await page
-        .getByRole("button", { name: "Service actions", exact: true })
+        .getByRole("button", { name: "Monitor actions", exact: true })
         .click();
       await page
-        .getByRole("menuitem", { name: "Stop and remove service", exact: true })
+        .getByRole("menuitem", { name: "Stop and remove monitor", exact: true })
         .click();
       await page
-        .getByRole("dialog", { name: "Stop and remove service?", exact: true })
-        .getByRole("button", { name: "Remove service", exact: true })
+        .getByRole("dialog", { name: "Stop and remove monitor?", exact: true })
+        .getByRole("button", { name: "Remove monitor", exact: true })
         .click();
 
       const stopResponse = await stopResponsePromise;

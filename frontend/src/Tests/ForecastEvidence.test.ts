@@ -200,6 +200,6 @@ describe("forecast evidence presentation", () => {
     expect(tooltip).toContain("Estimated target:");
     expect(tooltip).toContain("NexCP interval at issue: 49.9 to 50.5");
     expect(tooltip).toContain("Outcome not yet observed");
-    expect(tooltip).not.toMatch(/Residual:|Service alarm:/);
+    expect(tooltip).not.toMatch(/Residual:|Monitor alarm:/);
   });
 });

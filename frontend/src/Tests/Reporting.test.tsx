@@ -168,7 +168,7 @@ describe('anomaly investigation', () => {
     expect(queryAlarms).not.toHaveBeenCalled();
     expect(getAlarm).toHaveBeenCalledWith('one', expect.any(AbortSignal));
     expect(screen.getByText('3.20e-5')).toBeTruthy();
-    expect(screen.getByText(/No per-sensor cause is established/)).toBeTruthy();
+    expect(screen.getByText(/No single reading is established as the cause/)).toBeTruthy();
     const technical = screen.getByText('Technical details').closest('details')!;
     expect(technical.open).toBe(false);
     expect(within(technical).getByText('one')).toBeTruthy();
@@ -185,7 +185,7 @@ describe('anomaly investigation', () => {
     vi.mocked(getAlarm).mockResolvedValue({ alarm: first, evidence: null });
     mount('/anomalies/one?signal=unrelated');
     await screen.findByText(/Detailed detector evidence is unavailable/);
-    expect(screen.getByText('This signal was not recorded as part of this anomaly.')).toBeTruthy();
+    expect(screen.getByText('This reading was not recorded as part of this anomaly.')).toBeTruthy();
     expect(getTelemetryRange).not.toHaveBeenCalled();
   });
 

@@ -110,7 +110,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? props.origin ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}:${Object.entries(initialBindings ?? {}).join(";")}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
     !replaceId && !props.revisionId && initialDesign?.is_template !== false ? initialDesign : undefined);
-  const viewTitle = replaceId ? "Update service" : initialDesign ? "Template" : "New service";
+  const viewTitle = replaceId ? "Update monitor" : initialDesign ? "Template" : "New monitor";
   useDetailDocumentTitle(draft.name.trim() ? `${draft.name} — ${viewTitle}` : viewTitle, "Monitoring");
   const setDraft = session.setDraft;
   const saving = saveState.status === "saving";
@@ -245,7 +245,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     catch (reason) { setError(getErrorMessage(reason)); }
     finally { setArranging(false); }
   };
-  const title = replaceId ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service";
+  const title = replaceId ? "Update monitor" : initialDesign ? initialDesign.name : "Create monitor";
   const inputStep = <div className="pl-input-step">
     <div className="pl-field"><span>Readings from</span><MonitoringTargetPicker targets={targets} value={draft.targetId} disabled={!canAuthor || busy}
       // A service starts on live sources; a template may be mapped to any entity.
@@ -267,7 +267,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       : <PipelineInputBindings slots={slots} target={target} bindings={draft.bindings ?? {}} disabled={!canAuthor || locked || checking} owned={owned}
         onChange={(bindings) => setDraft((previous) => ({ ...previous, bindings }))} onSlotsChange={changeInputs} />}
     {attempted && !ready && (!unrecorded.length || unrecorded.length < inputsForTarget.length) && <p className="pl-field-error" role="alert">{draft.startingId ? "Select at least one available reading to monitor."
-      : "Choose a different, collected reading for each input. Readings already monitored by another service are unavailable."}</p>}
+      : "Choose a different, collected reading for each input. Readings already watched by another monitor are unavailable."}</p>}
     <div className="pl-input-step-footer">
       <p className="pl-help">{target ? draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"} selected`
         : `${mapped} of ${slots.length} inputs mapped` : "Select a source to choose its readings."}</p>
@@ -279,16 +279,16 @@ export function PipelineCreate(props: PipelineSetupProps) {
     <header className="pl-header pl-setup-header">
       <div className="pl-setup-identity">
         <Breadcrumb disabled={busy} steps={[{ label: props.backLabel ?? "Monitoring", onClick: props.onBack }]}
-          current={replaceId ? "Update service" : initialDesign ? initialDesign.name : "New service"} />
+          current={replaceId ? "Update monitor" : initialDesign ? initialDesign.name : "New monitor"} />
         <h1 className="ex-sr-only">{title}</h1>
-        <input ref={nameInput} className="pl-name-input" aria-label="Service name" maxLength={120} placeholder="Name this service"
+        <input ref={nameInput} className="pl-name-input" aria-label="Monitor name" maxLength={120} placeholder="Name this monitor"
           disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
           value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
         <button type="button" className="pl-setup-input" aria-label={target ? `Input: ${target.label}, ${readingCount}` : "Input: choose readings"}
           title="Choose readings" onClick={openInput}>
           {target ? `${target.label} · ${readingCount}` : "Choose readings"}
         </button>
-        {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
+        {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a monitor name.</small>}
       </div>
       {(canAuthor || props.menu) && <div className="pl-actions pl-setup-actions">
         {canAuthor && <>
@@ -314,7 +314,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     </header>
     <div className="pl-setup-notices">
       {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
-        : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "Configuring monitoring services needs the Manage monitors permission."}</p>}
+        : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "Configuring monitors needs the Manage monitors permission."}</p>}
       {props.notice}
       {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
       {error && <p className="pl-error" role="alert">{error}</p>}
@@ -327,7 +327,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <Link to={recordingHref}>Turn on recording in Sources</Link>
         </p>}
       {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
-      {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning restarts. History is kept.
+      {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected monitor"}”. Monitoring pauses briefly and learning restarts. History is kept.
         {differs && <span className="pl-compared">Compared with what runs now: {differs}</span>}</p>}
     </div>
   </>;

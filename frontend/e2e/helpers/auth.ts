@@ -39,7 +39,7 @@ export const loginWithEmail = async (
       response.request().method() === "POST" &&
       new URL(response.url()).pathname === "/api/v1/auth/login",
   );
-  await page.getByRole("button", { name: /log in/i }).click();
+  await page.getByRole("button", { name: /sign in/i }).click();
 
   const loginResponse = await loginResponsePromise;
   const loginBody = await loginResponse.text();
@@ -61,7 +61,7 @@ export const acceptInvitationAndLogin = async (page: Page, email: string): Promi
   ]);
   await page.getByRole("button", { name: "Accept invitation" }).click();
   await expect(page.getByRole("status")).toContainText("Your account is ready");
-  await page.getByRole("link", { name: "Log in" }).click();
+  await page.getByRole("link", { name: "Sign in" }).click();
   await loginWithEmail(page, email);
   return email;
 };

@@ -24,7 +24,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
     const setupUrl = page.url();
     const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
-    await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Two phases ${deviceId}`);
+    await workbench.getByRole("textbox", { name: "Monitor name", exact: true }).fill(`Two phases ${deviceId}`);
     await workbench.getByRole("checkbox", { name: "Monitor AC2", exact: true }).uncheck();
     await expect(workbench.getByRole("checkbox", { name: "Monitor AC1", exact: true })).toBeChecked();
     await expect(workbench.getByRole("checkbox", { name: "Monitor AC3", exact: true })).toBeChecked();
@@ -38,7 +38,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     await expectNoHorizontalScroll(page);
     await page.screenshot({ path: testInfo.outputPath("creation-readings-mobile.png"), fullPage: true });
     await workbench.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
-    await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
+    await page.getByRole("link", { name: "Return to monitor setup", exact: true }).click();
     await page.reload();
     await expect(workbench.getByRole("checkbox", { name: "Monitor AC2", exact: true })).not.toBeChecked();
     const template = await savePipelineTemplate(page, `Two phases template ${deviceId}`); templateIds.add(template.id);
@@ -76,7 +76,7 @@ test("keeps an unnamed graph dirty and undoable across template browsing", async
   await page.setViewportSize({ width: 1600, height: 1100 });
   await page.goto("/?create=monitoring");
   const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
-  const name = workbench.getByRole("textbox", { name: "Service name", exact: true });
+  const name = workbench.getByRole("textbox", { name: "Monitor name", exact: true });
   const input = workbench.getByLabel("Pipeline graph", { exact: true }).locator('.react-flow__node[data-id="input"]');
   const position = () => input.evaluate((element) => {
     const transform = new DOMMatrix(getComputedStyle(element).transform);
@@ -94,7 +94,7 @@ test("keeps an unnamed graph dirty and undoable across template browsing", async
   const library = page.getByRole("region", { name: "Templates", exact: true });
   await expect(library).toBeVisible();
   // The breadcrumb names the setup that the library was opened from.
-  await library.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "New service", exact: true }).click();
+  await library.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "New monitor", exact: true }).click();
   await expect(name).toHaveValue(""); await expect.poll(position).toEqual(moved);
   const unloading = page.waitForEvent("dialog");
   const reload = page.evaluate(() => window.location.reload());
@@ -247,7 +247,7 @@ test("chooses several steps and copies, moves and removes them together", async 
   await closeSettings();
 
   // A text field keeps the keys for its own text.
-  const name = workbench.getByRole("textbox", { name: "Service name", exact: true });
+  const name = workbench.getByRole("textbox", { name: "Monitor name", exact: true });
   await name.fill("Charger");
   await name.press("ControlOrMeta+a");
   await name.press("ControlOrMeta+c");
@@ -396,7 +396,7 @@ test("downloads a design as a file and opens the file again", async ({ page }, t
   const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
   const graph = workbench.getByLabel("Pipeline graph", { exact: true });
   const cards = graph.locator(".react-flow__node");
-  const name = workbench.getByRole("textbox", { name: "Service name", exact: true });
+  const name = workbench.getByRole("textbox", { name: "Monitor name", exact: true });
   await workbench.getByRole("button", { name: "Add step", exact: true }).click();
   await page.getByRole("button", { name: "Add Smooth", exact: true }).click();
   await titlePipelineStep(workbench, "Calm it down");
@@ -484,7 +484,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await addTestCharger(page.request, token, deviceId, deviceId, ["voltage"], { mode: "off", interval_seconds: 10 });
       await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
       const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
-      await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Service ${deviceId}`);
+      await workbench.getByRole("textbox", { name: "Monitor name", exact: true }).fill(`Service ${deviceId}`);
       await openPipelineSettings(workbench, "Component");
       await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
       const title = pipelineStepTitle(workbench);
@@ -504,7 +504,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await workbench.getByRole("link", { name: "Turn on recording in Sources", exact: true }).click();
       const sources = page.getByRole("main", { name: "Sources workspace", exact: true }); await expect(sources).toBeVisible();
       if (acknowledgement === "after returning") {
-        await sources.getByRole("link", { name: "Return to service setup", exact: true }).click();
+        await sources.getByRole("link", { name: "Return to monitor setup", exact: true }).click();
         await expect(workbench.getByRole("button", { name: "Save template", exact: true })).toBeDisabled();
         await openPipelineSettings(workbench, "Component");
         await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
@@ -514,7 +514,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       release(); expect((await delivered).ok()).toBe(true);
       if (acknowledgement === "while in Sources") {
         await expect(sources).toBeVisible();
-        await sources.getByRole("link", { name: "Return to service setup", exact: true }).click();
+        await sources.getByRole("link", { name: "Return to monitor setup", exact: true }).click();
       }
       await page.unroute(`**${endpoint}`);
       await openPipelineSettings(workbench, "Component");
@@ -529,7 +529,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await page.reload(); await openPipelineSettings(workbench, "Component");
       await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
       await expect(title).toHaveText(finalTitle);
-      await expect(workbench.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue(`Service ${deviceId}`);
+      await expect(workbench.getByRole("textbox", { name: "Monitor name", exact: true })).toHaveValue(`Service ${deviceId}`);
     } finally {
       release(); await page.unrouteAll({ behavior: "wait" });
       await archivePipelines(page.request, headers, [...createdIds].map(id => `${endpoint}/${id}`));
@@ -555,14 +555,14 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     const latest = await saved.json() as PipelineView;
     await page.setViewportSize({ width: 1600, height: 1100 }); await page.goto("/?create=monitoring");
     const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
-    await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill("Machine health");
+    await workbench.getByRole("textbox", { name: "Monitor name", exact: true }).fill("Machine health");
     await expect(workbench.getByRole("button", { name: /Publish revision|Save draft|Start revision/ })).toHaveCount(0);
     await workbench.getByRole("button", { name: "Load template", exact: true }).click();
     const templates = page.getByRole("dialog", { name: "Monitoring templates", exact: true });
     await templates.getByRole("searchbox", { name: "Search templates", exact: true }).fill(source.name);
     await templates.getByRole("button", { name: `Use ${source.name}`, exact: true }).click();
     await expect(templates).toBeHidden();
-    await expect(workbench.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Machine health");
+    await expect(workbench.getByRole("textbox", { name: "Monitor name", exact: true })).toHaveValue("Machine health");
     await openPipelineSettings(workbench, "Service");
     for (const name of ["Detector learning updates before calibration", "Calibration observations", "Default random seed"])
       await expect(workbench.getByRole("spinbutton", { name, exact: true })).toBeVisible();

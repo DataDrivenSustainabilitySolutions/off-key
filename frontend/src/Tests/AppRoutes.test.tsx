@@ -7,7 +7,7 @@ import { createAppRoutes } from "../app/routes";
 
 const auth = vi.hoisted(() => ({ isAuthenticated: false, isLoading: false, can: () => false }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
-vi.mock("../pages/Login", () => ({ default: () => <h1>Log in</h1> }));
+vi.mock("../pages/Login", () => ({ default: () => <h1>Sign in</h1> }));
 vi.mock("../pages/MonitoringWorkspace", () => ({ default: () => <h1>Monitoring workspace</h1> }));
 vi.mock("../pages/Anomalies", () => ({
   default: () => { throw new Error("Internal rendering details"); },
@@ -48,7 +48,7 @@ describe("application route recovery", () => {
     fireEvent.click(screen.getByRole("link", { name: "Go home" }));
 
     expect(await screen.findByRole("heading", {
-      name: signedIn ? "Monitoring workspace" : "Log in",
+      name: signedIn ? "Monitoring workspace" : "Sign in",
     })).toBeTruthy();
     expect(router.state.location.pathname).toBe(signedIn ? "/" : "/login");
   });
@@ -61,7 +61,7 @@ describe("application route recovery", () => {
 
   it("continues to protect existing account routes", async () => {
     renderRoute("/account/settings");
-    expect(await screen.findByRole("heading", { name: "Log in" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/login");
   });
 
@@ -95,6 +95,6 @@ describe("application route recovery", () => {
     expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
     expect(screen.queryByText(/Internal response details|Hey developer/)).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "Go home" }));
-    expect(await screen.findByRole("heading", { name: "Log in" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   });
 });

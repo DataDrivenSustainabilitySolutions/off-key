@@ -177,7 +177,7 @@ describe("graph editing", () => {
       onChange={() => {}} onAdd={() => {}} onUndo={() => { undone++; }} onRedo={() => {}} settings={<input aria-label="Name" />} />);
     fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
     expect(undone).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: "Service settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Monitor settings" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "z", ctrlKey: true });
     expect(undone).toBe(1);
   });

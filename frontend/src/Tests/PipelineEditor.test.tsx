@@ -187,7 +187,7 @@ function mount(overrides: Partial<ReturnType<typeof props>> = {}) {
   const result = render(<MemoryRouter><PipelineEditor {...callbacks} /></MemoryRouter>);
   return { ...result, callbacks };
 }
-async function settings() { fireEvent.click(await screen.findByRole("button", { name: "Service settings" })); }
+async function settings() { fireEvent.click(await screen.findByRole("button", { name: "Monitor settings" })); }
 async function inputStep() { fireEvent.click(await screen.findByRole("button", { name: /^Input: / })); }
 async function saveDialog() { fireEvent.click(await screen.findByRole("button", { name: "Save template" })); return screen.findByRole("dialog"); }
 
@@ -200,8 +200,8 @@ describe("simple monitoring setup", () => {
   it("applies AC1 and AC3 directly, retaining the subset through navigation and undo", async () => {
     const ui = <MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>;
     const view = render(ui);
-    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Two phases" } });
-    expect(document.title).toBe("Two phases — New service · Monitoring · Aberration");
+    fireEvent.change(screen.getByRole("textbox", { name: "Monitor name" }), { target: { value: "Two phases" } });
+    expect(document.title).toBe("Two phases — New monitor · Monitoring · Aberration");
     fireEvent.click(screen.getByRole("checkbox", { name: "Monitor AC2" }));
     expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).checked).toBe(false);
@@ -220,7 +220,7 @@ describe("simple monitoring setup", () => {
 
   it("opens a new service at its readings and reaches each panel from the header", async () => {
     render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>);
-    expect(screen.getByRole("heading", { name: "Create monitoring service" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Create monitor" })).toBeTruthy();
     expect(within(stepSettings()).getByText("Input")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Validate" })).toBeNull();
     // A new service leaves the detector to choose; the place kept for it offers the starter's own first.
@@ -229,8 +229,8 @@ describe("simple monitoring setup", () => {
     expect(screen.queryByRole("button", { name: "Choose a detector" })).toBeNull();
     expect(within(stepSettings()).getByRole("combobox", { name: "Detector model" })).toBeTruthy();
     // A design has no strategy to switch; the service's settings say how its detectors learn.
-    fireEvent.click(screen.getByRole("button", { name: "Service settings" }));
-    expect(screen.getByRole("heading", { name: "Service settings" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Monitor settings" }));
+    expect(screen.getByRole("heading", { name: "Monitor settings" })).toBeTruthy();
     expect(screen.getByText(/The detectors take in every observation and keep adapting/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Static baseline" })).toBeNull();
     expect(screen.getByRole("spinbutton", { name: "Detector learning updates before calibration" })).toBeTruthy();
@@ -271,7 +271,7 @@ describe("simple monitoring setup", () => {
     expect(document.activeElement).toBe(open);
     fireEvent.click(screen.getByRole("button", { name: "Choose a detector" }));
     fireEvent.click(within(screen.getByRole("menu", { name: "Choose a detector" })).getByRole("menuitem", { name: /Suggested$/ }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Three phases" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Monitor name" }), { target: { value: "Three phases" } });
     fireEvent.click(open);
     await vi.advanceTimersByTimeAsync(800);
     await waitFor(() => expect((screen.getByRole("button", { name: "Run test" }) as HTMLButtonElement).disabled).toBe(false));
@@ -307,7 +307,7 @@ describe("simple monitoring setup", () => {
     const unavailable = { ...phases, inputs: phases.inputs.map((input, index) => index === 1
       ? { ...input, binding: { ...input.binding, policy: { ...input.binding.policy, mode: "off" as const } } } : input) };
     render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[unavailable]} /></MemoryRouter>);
-    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Two phases" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Monitor name" }), { target: { value: "Two phases" } });
     expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
@@ -366,7 +366,7 @@ describe("simple monitoring setup", () => {
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
     expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0].replace_monitor_id).toBe("old");
     view.rerender(ui());
-    expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("textbox", { name: "Monitor name" }) as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByRole("region", { name: "Monitoring setup progress" })).toBeTruthy();
     expect(screen.queryByText("Previous service retired")).toBeNull();
     vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "succeeded", monitor_id: "service", run_id: "run",
@@ -411,12 +411,12 @@ describe("simple monitoring setup", () => {
     await waitFor(() => expect(pipelinesApi.service).toHaveBeenCalled());
     await act(async () => { finishCatalog(catalog); });
     expect((await screen.findByRole("alert")).textContent).toContain("Previous service unavailable");
-    expect(screen.queryByText("Loading service configuration…")).toBeNull();
+    expect(screen.queryByText("Loading monitor configuration…")).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
   it("shows service details and applies the edited graph without saving or publishing a template", async () => {
     mount();
-    const name = await screen.findByRole("textbox", { name: "Service name" });
+    const name = await screen.findByRole("textbox", { name: "Monitor name" });
     fireEvent.change(name, { target: { value: "Room health" } });
     await inputStep();
     expect((screen.getByRole("combobox", { name: "Reading for Value" }) as HTMLSelectElement).value).toBe("current");
@@ -425,7 +425,7 @@ describe("simple monitoring setup", () => {
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalled());
     expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0]).toEqual(expect.objectContaining({ display_name: "Room health", definition, bindings: { value: "current" } }));
     expect(pipelinesApi.save).not.toHaveBeenCalled();
-    expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("textbox", { name: "Monitor name" }) as HTMLInputElement).disabled).toBe(true);
   });
   it("starts on the readings a Dojo run suggested for each slot", async () => {
     const pump: MonitoringTarget = { id: "pump", label: "Pump", inputs: ["main", "spare"].map((id) => ({
@@ -436,10 +436,10 @@ describe("simple monitoring setup", () => {
   });
   it("focuses the missing name and retains the edited graph", async () => {
     mount();
-    fireEvent.change(await screen.findByRole("textbox", { name: "Service name" }), { target: { value: "  " } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Monitor name" }), { target: { value: "  " } });
     fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
-    expect(screen.getByText("Enter a service name.")).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Service name" }));
+    expect(screen.getByText("Enter a monitor name.")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Monitor name" }));
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("opens the Input step when Apply finds a reading missing", async () => {
@@ -488,7 +488,7 @@ describe("simple monitoring setup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Update template" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({ name: "Reusable health", expected_version: 1 }));
-    expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Room pipeline");
+    expect((screen.getByRole("textbox", { name: "Monitor name" }) as HTMLInputElement).value).toBe("Room pipeline");
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("downloads the design as a file and opens a file in its place", async () => {
@@ -542,20 +542,20 @@ describe("simple monitoring setup", () => {
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("retains unsaved names and learning settings across navigation", async () => {
-    const first = mount(); fireEvent.change(await screen.findByRole("textbox", { name: "Service name" }), { target: { value: "Unsaved service" } });
+    const first = mount(); fireEvent.change(await screen.findByRole("textbox", { name: "Monitor name" }), { target: { value: "Unsaved service" } });
     await settings(); fireEvent.change(screen.getByRole("spinbutton", { name: "Calibration observations" }), { target: { value: "123" } });
     first.unmount(); mount();
-    expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Unsaved service");
+    expect((await screen.findByRole("textbox", { name: "Monitor name" }) as HTMLInputElement).value).toBe("Unsaved service");
     await settings(); expect((screen.getByRole("spinbutton", { name: "Calibration observations" }) as HTMLInputElement).value).toBe("123");
   });
   it("opens a historical configuration independently of unsaved template edits", async () => {
     const current = mount();
-    await screen.findByRole("textbox", { name: "Service name" });
+    await screen.findByRole("textbox", { name: "Monitor name" });
     await settings();
     fireEvent.change(screen.getByRole("spinbutton", { name: "Calibration observations" }), { target: { value: "123" } });
     current.unmount();
     render(<MemoryRouter><PipelineEditor {...props()} revisionId="revision" /></MemoryRouter>);
-    await screen.findByRole("textbox", { name: "Service name" });
+    await screen.findByRole("textbox", { name: "Monitor name" });
     await settings();
     expect((screen.getByRole("spinbutton", { name: "Calibration observations" }) as HTMLInputElement).value).toBe("360");
   });

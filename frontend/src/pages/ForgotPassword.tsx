@@ -104,7 +104,7 @@ const ForgotPassword: React.FC = () => {
             )}
 
             <p className="text-center text-sm">
-              <Link to="/login" className={AUTH_LINK_CLASS}>Back to log in</Link>
+              <Link to="/login" className={AUTH_LINK_CLASS}>Back to sign in</Link>
             </p>
           </form>
     </AuthLayout>

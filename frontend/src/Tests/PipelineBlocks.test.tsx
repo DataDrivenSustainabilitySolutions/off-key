@@ -370,7 +370,7 @@ describe("the library's blocks", () => {
       "CalmTake out short spikes1 stepDelete", "Power, scaledPower, Standard scaling2 stepsDelete",
     ]);
     fireEvent.click(list.getByRole("button", { name: "Delete Calm" }));
-    expect(screen.getByText("Services and templates that already hold its steps keep them.")).toBeTruthy();
+    expect(screen.getByText("Monitors and templates that already hold its steps keep them.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(remove).not.toHaveBeenCalled();
     fireEvent.click(list.getByRole("button", { name: "Delete Calm" }));

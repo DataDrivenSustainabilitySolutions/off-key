@@ -124,7 +124,7 @@ export function SourcesWorkspace({ sourceActions }: { sourceActions?: SourceActi
     <div className="ex-workspace-heading">{selected || selectionMissing
       ? <WorkspaceBack label="Sources" />
       : <h1>Sources</h1>}<div className="ex-workspace-actions">
-      {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
+      {safeReturn !== "/" && <Link to={safeReturn}>Return to monitor setup</Link>}
       {selectedBroker && system.canEdit && canRetry(selectedState) && <Button variant="outline" size="sm"
         disabled={!!reconnects[selectedBroker]?.pending} title="Retry the recording connection to this broker now"
         onClick={() => void retryBroker(selectedBroker)}><RotateCw size={14} />{reconnects[selectedBroker]?.pending ? "Reconnecting…" : "Reconnect recording"}</Button>}

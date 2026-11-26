@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import type { PipelineView } from "../../src/types/pipelines.generated";
 
 export async function openPipelineSettings(scope: Page | Locator, panel: "Service" | "Component") {
-  const button = scope.getByRole("button", { name: panel === "Service" ? "Service settings" : "Step settings", exact: true });
+  const button = scope.getByRole("button", { name: panel === "Service" ? "Monitor settings" : "Step settings", exact: true });
   if (await button.getAttribute("aria-expanded") !== "true") await button.click();
 }
 

@@ -389,6 +389,17 @@ const loneDots = (id: string, name: string, points: readonly Plotted[], color: s
 const nonNegativeFloor = ({ min, max }: { min: number; max: number }): number =>
   (min >= 0 && min - (max - min) * 0.1 < 0 ? 0 : null) as number;
 
+/** The newest value, lifted off the line so the eye lands on where the reading is now. */
+function latestValueMark(points: ReadonlyArray<readonly [number, number | null, ...unknown[]]>, color: string, rim: string) {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const [time, value] = points[index]!;
+    if (value === null) continue;
+    return [{ name: "Latest value", coord: [time, value], symbol: "circle", symbolSize: 9, silent: true,
+      itemStyle: { color, borderColor: rim, borderWidth: 2, shadowBlur: 10, shadowColor: chartColor.modifyAlpha(color, 0.55) ?? color } }];
+  }
+  return [];
+}
+
 type BuildMonitoringChartOptionInput = Omit<BuildTelemetryChartOptionInput, "model" | "valueType" | "layout"> & {
   model: MonitoringChartModel;
   layout?: "standard" | "compact" | "monitoring";
@@ -495,6 +506,8 @@ export const buildMonitoringChartOption = ({
     label: { show: true, formatter: marker.label, position: "insideEndTop" as const, color: colors.mutedForeground, fontSize: 11 } }));
 
   const alarmColor = colors.alarmBoundary ?? "#dc2626";
+  // Value rules stay behind the data: a solid hairline, lighter than the border it borrows from.
+  const quietRule = { lineStyle: { color: colors.border, type: "solid" as const, width: 1, opacity: 0.6 } };
   // How far from the pointer each series still speaks: see `formatTelemetryTooltip`.
   const reach = new Map<string, number>();
   const means = new Set<string>();
@@ -537,19 +550,26 @@ export const buildMonitoringChartOption = ({
       symbolSize: 5,
       sampling: valueType === "number" && !display ? "lttb" : "none",
       connectNulls: false,
-      lineStyle: { color: reading.color, width: 2.25 },
+      lineStyle: { color: reading.color, width: 2, join: "round", cap: "round" },
       itemStyle: { color: reading.color },
+      // A reading alone in its pane rests on a fade of its own colour; a forecast band needs the pane clear.
+      // Options merge into the live chart, so the fade is switched off by opacity, not by leaving it out.
+      areaStyle: { origin: "start" as const,
+        opacity: valueType === "number" && !forecasts.some(forecast => forecast.readingId === reading.inputKey) ? 1 : 0,
+        color: { type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+          { offset: 0, color: chartColor.modifyAlpha(reading.color, 0.16) ?? reading.color },
+          { offset: 1, color: chartColor.modifyAlpha(reading.color, 0) ?? "transparent" }] } },
       emphasis: { disabled: true },
       animation: false,
       z: 3,
       markPoint: {
         symbol: "circle",
         label: { show: false },
-        data: buildTelemetryEventMarkPoints(reading.anomalyMarkers, {
+        data: [...buildTelemetryEventMarkPoints(reading.anomalyMarkers, {
           timeZone, locale, colors,
           extent: viewport.mode === "absolute" ? [viewport.startMs, viewport.endMs] : domain,
           unit: reading.unit, telemetryValueExtent,
-        }),
+        }), ...(valueType === "number" ? latestValueMark(display?.map(point => point.value) ?? reading.data, reading.color, colors.popover) : [])],
       },
       ...(episodes.length ? { markArea: { silent: true, animation: false, label: { show: false },
         itemStyle: { color: colors.alarmFill ?? "rgba(220, 38, 38, 0.12)" },
@@ -675,7 +695,7 @@ export const buildMonitoringChartOption = ({
     const readingPane = model.readings.findIndex(reading => reading.inputKey === forecast.readingId);
     return buildForecastChartSeries(forecast, readingPane < 0 ? inputsPane : readingPane,
       panes.indexOf(`residual:${forecast.id}`), palette[index % palette.length]!, colors.outsideInterval ?? "#b45309",
-      colors.popover);
+      colors.mutedForeground);
   });
 
   const ruledPanes = new Set<number>();
@@ -746,7 +766,12 @@ export const buildMonitoringChartOption = ({
       appendToBody: false,
       backgroundColor: colors.popover,
       borderColor: colors.border,
-      textStyle: { color: colors.popoverForeground, fontSize: 12 },
+      borderRadius: 10,
+      padding: [10, 12],
+      shadowBlur: 18,
+      shadowOffsetY: 6,
+      shadowColor: "rgba(0, 0, 0, 0.16)",
+      textStyle: { color: colors.popoverForeground, fontSize: 12, lineHeight: 18 },
       axisPointer: { type: "line" },
       formatter: (params: unknown) => withRationale(
         (forecasts.length ? formatForecastTooltip(params,
@@ -778,7 +803,7 @@ export const buildMonitoringChartOption = ({
         ])) },
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
+        splitLine: quietRule,
       })),
       ...(hasInputsPane
         ? [
@@ -797,7 +822,7 @@ export const buildMonitoringChartOption = ({
                 hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },
-              splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
+              splitLine: quietRule,
             },
           ]
         : []),
@@ -811,7 +836,7 @@ export const buildMonitoringChartOption = ({
           overflow: "truncate" as const, width: 260 },
         axisLabel: { color: colors.mutedForeground, fontSize: 12, formatter: formatTick(), hideOverlap: true },
         axisLine: { show: false }, axisTick: { show: false },
-        splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
+        splitLine: quietRule,
       })),
       ...(hasStaticPane
         ? [
@@ -831,9 +856,7 @@ export const buildMonitoringChartOption = ({
               },
               axisLine: { show: false },
               axisTick: { show: false },
-              splitLine: {
-                lineStyle: { color: colors.border, type: "dashed" as const },
-              },
+              splitLine: quietRule,
             },
           ]
         : []),
@@ -852,7 +875,7 @@ export const buildMonitoringChartOption = ({
                 formatter: labelWithin(boundsByPane.get("adaptive"), formatTick()), hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },
-              splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
+              splitLine: quietRule,
             },
           ]
         : []),
@@ -879,20 +902,24 @@ export const buildMonitoringChartOption = ({
         filterMode: "none",
         ...(domain ? { rangeMode: ["value", "value"] as ["value", "value"] } : {}),
         bottom: 8,
-        height: compact ? 26 : 18,
+        height: compact ? 20 : 18,
         showDetail: false,
-        borderColor: colors.border,
+        brushSelect: false,
+        borderColor: "transparent",
+        borderRadius: 6,
         backgroundColor: colors.muted,
-        fillerColor: chartColor.modifyAlpha(colors.primary, 0.1) ?? colors.muted,
-        handleStyle: { color: colors.popover, borderColor: colors.primary, borderWidth: 1 },
+        fillerColor: chartColor.modifyAlpha(colors.primary, 0.12) ?? colors.muted,
+        handleIcon: "path://M-1,-8h2a1,1 0 0 1 1,1v14a1,1 0 0 1 -1,1h-2a1,1 0 0 1 -1,-1v-14a1,1 0 0 1 1,-1z",
+        handleSize: "70%",
+        handleStyle: { color: colors.primary, borderColor: colors.primary, borderWidth: 0 },
         moveHandleStyle: { color: colors.border },
         emphasis: {
           handleStyle: { color: colors.popover, borderColor: colors.primary },
           moveHandleStyle: { color: colors.primary },
         },
         dataBackground: {
-          lineStyle: { color: colors.mutedForeground },
-          areaStyle: { color: colors.muted },
+          lineStyle: { color: colors.mutedForeground, opacity: 0.35, width: 1 },
+          areaStyle: { color: colors.mutedForeground, opacity: 0.08 },
         },
         selectedDataBackground: {
           lineStyle: { color: model.readings[0]?.color ?? colors.primary },

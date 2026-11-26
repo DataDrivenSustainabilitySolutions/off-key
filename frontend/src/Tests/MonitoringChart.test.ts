@@ -745,7 +745,7 @@ describe("telemetry ECharts option", () => {
     const option = inspect(buildOption(model));
 
     expect(option.series[0]?.markArea).toBeUndefined();
-    expect(option.series[0]?.markPoint?.data).toHaveLength(1);
+    expect(option.series[0]?.markPoint?.data).toHaveLength(2); // The event and the latest value.
     expect(option.tooltip.renderMode).toBe("richText");
     expect(option.aria).toEqual({
       enabled: true,

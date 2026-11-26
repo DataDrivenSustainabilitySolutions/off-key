@@ -208,7 +208,7 @@ describe("workspace chart navigation and monitoring", () => {
     expect(series[0]).toMatchObject({ data: [[NOW - 1000, 21], [NOW, 22]] });
     expect(series.some(item => item.id === "adaptive-score:selected")).toBe(true);
     expect(series.some(item => item.id === "adaptive-score:other")).toBe(false);
-    expect(series[0]?.markPoint?.data).toHaveLength(1);
+    expect(series[0]?.markPoint?.data).toHaveLength(2); // The event and the latest value.
     expect(screen.getByRole("button", { name: "Reset zoom" })).toBeTruthy();
   });
 
@@ -310,7 +310,7 @@ describe("workspace chart navigation and monitoring", () => {
     });
     render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
     const series = lastChartProps().option.series as Array<{ markPoint?: { data: unknown[] } }>;
-    expect(series[0]?.markPoint?.data).toHaveLength(1);
+    expect(series[0]?.markPoint?.data).toHaveLength(2); // The event and the latest value.
     expect(series[0]?.markPoint?.data).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "1 anomaly event" }),
     ]));

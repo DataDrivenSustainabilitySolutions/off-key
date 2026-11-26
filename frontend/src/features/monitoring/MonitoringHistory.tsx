@@ -21,7 +21,7 @@ import { summarizeDetection } from "@/features/charts/detection-summary";
 import { useHistoryWidth } from "@/features/charts/use-history-width";
 import type { HistoryPreference } from "@/types/telemetry-history";
 import { useHistoryPresentation } from "./useHistoryPresentation";
-import { ForecastControls } from "./ForecastControls";
+import { ForecastFigures, ForecastKey, ForecastOptions } from "./ForecastControls";
 import { forecastLeadKey, intervalCoverage } from "@/features/charts/forecast-evidence";
 import { historyMarkers } from "@/domain/monitoring/monitorOrigin";
 
@@ -66,6 +66,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     forecasts: completeModel.forecasts?.filter(forecast => forecastLeadKey(forecast.lead) === lead),
     secondarySeries: completeModel.forecasts?.length && !showScores ? [] : completeModel.secondarySeries,
   }), [completeModel, intervalLabel, lead, showScores, showResiduals, markers, rationale]);
+  const shownForecasts = model.forecasts ?? [];
   const coverage = useMemo(() => intervalCoverage(model.forecasts ?? []), [model.forecasts]);
   const domain = getChartDomain(model.extent);
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
@@ -123,12 +124,14 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const latest = completeModel.secondarySeries[0]?.latestObservation;
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
   return <section ref={chartWidthRef} className="ex-preview-history mn-history" aria-label="Monitoring history">
-    <div className="ex-preview-section-heading"><h3>{forecasts.length ? "Forecast and deviations" : "Inputs and detection"}</h3>
+    <div className="ex-preview-section-heading"><h3>{forecasts.length ? "Forecast" : "Inputs and detection"}</h3>
       {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
+        {forecasts.length > 0 && <ForecastOptions forecasts={forecasts} lead={lead} onLead={setChosenLead}
+          showResiduals={showResiduals} onResiduals={setShowResiduals} showScores={showScores} onScores={setShowScores} />}
         {model.readings.some(reading => reading.valueType !== "boolean") && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={meanMs} />}
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
-        <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>
+        <button aria-label={inspection ? "Return to live" : "Live"} title={inspection ? "Return to live" : "Live"} disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={14} /></button>
       </div>}
     </div>
     {!forecasts.length && <p className="mn-history-scope">{modelName && <strong>{modelName}</strong>}{inputs.length > 1
@@ -146,9 +149,8 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </details>}
     {selection.controlCatalog.length > 1 && <TelemetryDetectorControls detectors={selection.controlCatalog}
       selected={selection.selectedDetectorIds} unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} />}
-    {forecasts.length > 0 && <ForecastControls forecasts={forecasts} lead={lead} onLead={setChosenLead}
-      coverage={coverage} showResiduals={showResiduals} onResiduals={setShowResiduals} outsideColor={colors.outsideInterval}
-      showScores={showScores} onScores={setShowScores} intervalLabel={intervalLabel} timeZone={timeZone} />}
+    {shownForecasts.length > 0 && <ForecastFigures forecasts={shownForecasts} coverage={coverage}
+      unit={model.readings.find(reading => reading.inputKey === shownForecasts[0]!.readingId)?.unit} />}
     {forecasts.length > 0 && presentation.error && <p className="mn-history-problem" role="status">{presentation.error} <button onClick={presentation.retry}>Retry</button></p>}
     {model.extent ? <>
       {!latest && <p className="ex-history-monitoring" role="status">{loading ? "Loading history…" : `Monitoring: ${stage} · Awaiting evaluated observations`}</p>}
@@ -157,6 +159,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
         <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect}
           className="mn-history-chart" />
       </div>
+      {shownForecasts.length > 0 && <ForecastKey forecasts={shownForecasts} intervalLabel={intervalLabel} />}
     </> : <div className={`mn-history-empty${problem && !loading ? " is-error" : ""}`} role="status">
       <strong>{loading ? "Loading recorded inputs…" : problem ? "History could not be loaded" : "Waiting for recorded inputs and detector results"}</strong>
       {!loading && <span>{problem || `Monitoring is ${stage}. The chart appears with the first recorded inputs.`}</span>}

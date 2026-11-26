@@ -2,7 +2,7 @@ import type { LineSeriesOption } from "echarts/charts";
 import { latestForecast, type ForecastEvidenceSeries } from "./forecast-evidence";
 import type { FutureForecastPoint } from "./forecast-future";
 
-export function buildFutureChartSeries(forecast: ForecastEvidenceSeries, pane: number, color: string): LineSeriesOption[] {
+export function buildFutureChartSeries(forecast: ForecastEvidenceSeries, pane: number, color: string, ink = color): LineSeriesOption[] {
   const points = forecast.future ?? [];
   if (!points.length) return [];
   const observed = latestForecast(forecast);
@@ -22,12 +22,15 @@ export function buildFutureChartSeries(forecast: ForecastEvidenceSeries, pane: n
     // calibration for all the model's other leads.
     markLine: { silent: true, symbol: ["none", "none"], label: { show: false },
       lineStyle: { color, width: 3, type: "solid", opacity: 0.5 },
-      data: [{ xAxis: origin, lineStyle: { width: 1, type: "dotted", opacity: 0.35 } },
+      data: [{ xAxis: origin, lineStyle: { color: ink, width: 1, type: "solid", opacity: 0.45 } },
         ...points.flatMap(point => point.lower === null || point.upper === null ? [] : [[
           { coord: [point.time, point.lower] }, { coord: [point.time, point.upper] },
         ] as [{ coord: number[] }, { coord: number[] }]]),
       ],
     },
+    // Everything right of the latest observation is not yet observed: a quiet wash sets it apart.
+    markArea: { silent: true, animation: false, label: { show: false }, itemStyle: { color: ink, opacity: 0.05 },
+      data: [[{ xAxis: origin }, { xAxis: points[points.length - 1]!.time }]] },
   };
   // Include the interval in axis extents even when historical bands are hidden.
   const bounds: LineSeriesOption[] = (["lower", "upper"] as const).map(bound => ({

@@ -189,7 +189,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
         {numeric && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={visibleHistory?.interval_ms} />}
         <button type="button" aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
-        <button type="button" disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} /> Reset zoom</button>
+        <button type="button" aria-label="Reset zoom" title="Reset zoom" disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={14} /></button>
         <div className="ex-history-ranges" role="group" aria-label="Chart time range">
           {RANGE_PRESETS.map((preset) => <button key={preset.id} type="button" title={preset.title}
             aria-pressed={preset.id === range.id} onClick={() => { setRangeId(preset.id); setInspection(undefined); }}>

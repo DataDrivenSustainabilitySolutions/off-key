@@ -1229,7 +1229,7 @@ JSON before the existing `forecasts` column and catalogue API carry it through.
 
 In the service Evidence tab, the reading pane always shows the evaluated
 forecast, its band and the latest future trajectory. Observed values outside the
-band get a ring in the theme's `outsideInterval` colour, not the alarm colour:
+band get a fill up to the band's edge in the theme's `outsideInterval` colour, not the alarm colour:
 `intervalCoverage()` counts them for the line above the chart, and only the
 detection rule raises alarms. Residuals have their own visibility setting, off
 at first. Future points are clipped after the latest observed sample and do not

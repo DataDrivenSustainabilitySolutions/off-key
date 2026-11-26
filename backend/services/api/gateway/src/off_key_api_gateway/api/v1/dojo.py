@@ -27,6 +27,8 @@ from off_key_core.schemas.dojo import (
     DatasetProfile,
     DatasetView,
     DatasetWithFaults,
+    DojoDeletion,
+    DojoDeletionResult,
     FaultSuiteCreate,
     LabelBatch,
     LabelChange,
@@ -69,6 +71,7 @@ from off_key_core.schemas.dojo import (
 )
 from off_key_tactic_middleware.services.dojo.benchmarks import DojoBenchmarks
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
+from off_key_tactic_middleware.services.dojo.deletions import DojoDeletions
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
 from off_key_tactic_middleware.services.dojo.pending_labels import DojoPendingLabels
@@ -78,6 +81,7 @@ from off_key_tactic_middleware.services.dojo.suites import DojoSuites
 from ...providers import (
     get_dojo_benchmarks,
     get_dojo_datasets,
+    get_dojo_deletions,
     get_dojo_labels,
     get_dojo_metrics,
     get_dojo_pending_labels,
@@ -308,6 +312,25 @@ async def delete_dojo_dataset(
     """
     await datasets.remove(dataset_id, caller)
     return Response(status_code=204)
+
+
+@router.post(
+    "/deletions", response_model=DojoDeletionResult, openapi_extra=OPEN_TO_AGENTS
+)
+@write_limit
+async def delete_dojo_items(
+    request: Request,
+    body: DojoDeletion,
+    caller: User | Agent = Depends(use_dojo),
+    deletions: DojoDeletions = Depends(get_dojo_deletions),
+):
+    """Delete several suites, studies and datasets at once. This cannot be undone.
+
+    Suites go first, then studies, then datasets. Each item follows the rules
+    of its own delete, and one that is refused is named with its reason while
+    the others are deleted.
+    """
+    return await deletions.remove(body, caller)
 
 
 @router.get(

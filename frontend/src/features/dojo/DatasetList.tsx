@@ -90,16 +90,16 @@ export function DatasetList({ view, viewHref, datasetHref, suiteHref, onCreated,
         : "Their studies and runs go with them; their datasets stay. This cannot be undone.",
       confirmLabel: "Delete", destructive: true })) return;
     setDeleting(true); setDeleteError("");
-    // A dataset in a suite refuses deletion, so suites go first.
-    const failed: string[] = [];
-    for (const suite of chosenSuites) {
-      try { await dojoApi.deleteSuite(suite.id); } catch (reason) { failed.push(`${suite.name}: ${getErrorMessage(reason)}`); }
+    try {
+      const result = await dojoApi.deleteItems({ suite_ids: chosenSuites.map(item => item.id), dataset_ids: chosenDatasets.map(item => item.id) });
+      const names = new Map([...chosenSuites, ...chosenDatasets].map(item => [item.id, item.name]));
+      if (result.refused.length) setDeleteError(`${result.refused.length} could not be deleted. `
+        + result.refused.map(item => `${names.get(item.id) ?? item.id}: ${item.reason}`).join(" "));
+    } catch (reason) {
+      setDeleteError(getErrorMessage(reason));
+    } finally {
+      setDeleting(false);
     }
-    for (const dataset of chosenDatasets) {
-      try { await dojoApi.deleteDataset(dataset.id); } catch (reason) { failed.push(`${dataset.name}: ${getErrorMessage(reason)}`); }
-    }
-    setDeleting(false);
-    if (failed.length) setDeleteError(`${failed.length} could not be deleted. ${failed.join(" ")}`);
     await reload();
   };
 

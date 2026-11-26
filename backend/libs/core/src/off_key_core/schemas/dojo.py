@@ -1346,6 +1346,33 @@ class SuiteChange(DojoModel):
     description: str | None = Field(default=None, max_length=2000)
 
 
+MAX_DELETION = 100
+
+
+class DojoDeletion(DojoModel):
+    """Suites, studies and datasets deleted in one request, which counts as one write.
+
+    Suites go first, then studies, then datasets, so a dataset freed by a suite
+    in the same request goes too. Each item is deleted on its own: one refused
+    item leaves the others deleted and is named in the answer.
+    """
+
+    suite_ids: list[str] = Field(default_factory=list, max_length=MAX_DELETION)
+    study_ids: list[str] = Field(default_factory=list, max_length=MAX_DELETION)
+    dataset_ids: list[str] = Field(default_factory=list, max_length=MAX_DELETION)
+
+
+class DeletionRefusal(DojoModel):
+    kind: Literal["suite", "study", "dataset"]
+    id: str
+    reason: str
+
+
+class DojoDeletionResult(DojoModel):
+    deleted: int
+    refused: list[DeletionRefusal]
+
+
 class SuiteListQuery(DojoModel):
     limit: int = Field(default=25, ge=1, le=100)
     offset: int = Field(default=0, ge=0)

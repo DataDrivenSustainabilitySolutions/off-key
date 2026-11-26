@@ -186,6 +186,23 @@ export type DatasetWithFaults = {
   end_at?: string | null;
 };
 
+export type DeletionRefusal = {
+  kind: "suite" | "study" | "dataset";
+  id: string;
+  reason: string;
+};
+
+export type DojoDeletion = {
+  suite_ids?: Array<string>;
+  study_ids?: Array<string>;
+  dataset_ids?: Array<string>;
+};
+
+export type DojoDeletionResult = {
+  deleted: number;
+  refused: Array<DeletionRefusal>;
+};
+
 export type DojoModel = Record<string, unknown>;
 
 export type Fault = {

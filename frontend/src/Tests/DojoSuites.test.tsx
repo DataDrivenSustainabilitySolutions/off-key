@@ -20,7 +20,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({
 vi.mock("@/features/workspace/SelectedSourceBar", () => ({ SelectedSourceBar: () => null }));
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), run: vi.fn(), suites: vi.fn(), suite: vi.fn(), createSuite: vi.fn(), deleteSuite: vi.fn(),
-  reviewSuite: vi.fn(), deleteDataset: vi.fn(), createFaultSuite: vi.fn(), compareStudies: vi.fn(), study: vi.fn(), createStudy: vi.fn(), cancelStudy: vi.fn(), deleteStudy: vi.fn(),
+  reviewSuite: vi.fn(), deleteItems: vi.fn(), createFaultSuite: vi.fn(), compareStudies: vi.fn(), study: vi.fn(), createStudy: vi.fn(), cancelStudy: vi.fn(), deleteStudy: vi.fn(),
 } }));
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { catalog: vi.fn(), list: vi.fn(), get: vi.fn() } }));
 
@@ -88,28 +88,17 @@ describe("Dojo benchmark suites", () => {
     expect(within(series).getAllByRole("link").map(link => link.textContent)).toEqual(["Pump A", "Pump B"]);
   });
 
-  it("deletes the selected suites before the selected datasets", async () => {
-    const order: string[] = [];
-    vi.mocked(dojoApi.deleteSuite).mockImplementation(async id => { order.push(`suite ${id}`); });
-    vi.mocked(dojoApi.deleteDataset).mockImplementation(async id => { order.push(`dataset ${id}`); });
+  it("deletes the selected suites and datasets in one request and names what was refused", async () => {
+    vi.mocked(dojoApi.deleteItems).mockResolvedValue({ deleted: 2, refused: [{ kind: "dataset", id: "d1", reason: "Pump B is in a suite." }] });
     mount("/dojo?view=benchmarks");
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pump A" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Pumps" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pumps" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all public series" }));
     const bar = screen.getByRole("region", { name: "Selection" });
-    expect(within(bar).getByText("2 selected")).toBeTruthy();
+    expect(within(bar).getByText("3 selected")).toBeTruthy();
     fireEvent.click(within(bar).getByRole("button", { name: "Delete selected" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(order).toEqual(["suite s1", "dataset d0"]));
-  });
-
-  it("selects a whole list at once and reports what could not be deleted", async () => {
-    vi.mocked(dojoApi.deleteDataset).mockImplementation(async id => { if (id === "d1") throw new Error("Pump B is in a suite."); });
-    mount("/dojo?view=benchmarks");
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Select all public series" }));
-    fireEvent.click(within(screen.getByRole("region", { name: "Selection" })).getByRole("button", { name: "Delete selected" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(dojoApi.deleteItems).toHaveBeenCalledWith({ suite_ids: ["s1"], dataset_ids: ["d0", "d1"] }));
     expect(await screen.findByText(/1 could not be deleted\. Pump B: Pump B is in a suite\./)).toBeTruthy();
-    expect(dojoApi.deleteSuite).not.toHaveBeenCalled();
   });
 
   it("creates a suite from chosen datasets in the order they were chosen", async () => {

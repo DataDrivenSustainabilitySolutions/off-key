@@ -312,7 +312,8 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    your own data, and **Benchmarks** lists suites and the public series
    imported for them. Every list orders by the header you press, and the
    checkboxes pick rows for **Delete selected**, which deletes the chosen
-   suites before the chosen datasets. **Upload CSV** copies a file into a new dataset;
+   suites before the chosen datasets in one request and names any it could
+   not delete. **Upload CSV** copies a file into a new dataset;
    **Copy recorded readings** copies the numeric readings of the device or
    reading selected in the catalogue: everything still stored, the last 30
    days, 7 days or 24 hours, or a window you type. **Copy to Dojo** on a

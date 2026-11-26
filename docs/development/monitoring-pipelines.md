@@ -1153,12 +1153,26 @@ which only a calibration step reads.
 A forecaster step is a detector that scores one feature by how far it misses the
 forecast made for it. `FORECASTER_IDS` in `models/adaptive.py` lists them; each
 is ABERRANT's `residual_detector` around one forecaster (`seasonal_naive`,
-`holt_winters`). A step's settings are the forecaster's own plus `lead`, how
-many updates ahead it forecasts, and `score`. `aberrant_model()` nests them into
-the residual detector's configuration, binds the step's single feature as the
-target and sets the forecaster's horizon to the lead. Warm-up is two seasons plus
-`lead - 1` updates and must fit the training window. The composer lists them
-under Forecaster (the catalog's `group`), together with pretrained forecasters.
+`holt_winters`, `autoregressive`, `kalman_forecaster`, `echo_state_forecaster`,
+`lag_forecaster`, `ensemble_forecaster`). A step's settings are the
+forecaster's own plus `lead`, how many updates ahead it forecasts, and `score`.
+`aberrant_model()` nests them into the residual detector's configuration, binds
+the step's single feature as the target and sets the forecaster's horizon to the
+lead. The warm-up follows the forecaster, such as two seasons plus `lead - 1`
+updates for Holt-Winters, and must fit the training window. The composer lists
+them under Forecaster (the catalog's `group`), together with pretrained
+forecasters.
+
+Two forecasters hold components of their own: a lag forecaster's `regressor`
+and an ensemble's `forecasters`. A design gives each as one object, its `id`
+beside its own settings, such as
+`{"id": "hoeffding_tree_regressor", "grace_period": 50}`. In the catalog that is
+a choice by `id` (`oneOf` with a discriminator), so the editor shows a kind
+picker and that component's settings. `COMPONENT_SETTINGS` lists what each can
+hold, and `COMPONENT_DEFAULTS` what a new step starts with.
+`forecaster_parameters()` turns each object into ABERRANT's `{"id", "params"}`
+and gives every ensemble member the step's horizon. Members hold no components
+themselves, so an ensemble has no lag forecaster among them.
 
 A forecaster step's port is `forecasts`: the score, and with it the forecast the
 observation was scored against. Any calibration step reads it as it reads

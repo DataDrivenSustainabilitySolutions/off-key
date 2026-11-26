@@ -70,6 +70,18 @@ FAST_PARAMS: dict[str, dict[str, Any]] = {
     "aberrant_local_outlier_factor": {"k": 1, "window_size": 8},
     "aberrant_holt_winters_forecaster": {"season_length": 4, "lead": 2},
     "aberrant_seasonal_naive_forecaster": {"season_length": 4},
+    "aberrant_echo_state_forecaster": {"n_reservoir": 8, "warm_up": 4, "seed": 1},
+    "aberrant_lag_forecaster": {
+        "order": 2,
+        "regressor": {"id": "hoeffding_tree_regressor", "warm_up": 4},
+    },
+    "aberrant_ensemble_forecaster": {
+        "lead": 2,
+        "forecasters": [
+            {"id": "autoregressive", "order": 1},
+            {"id": "seasonal_naive", "season_length": 4},
+        ],
+    },
     "aberrant_damp": {"subsequence_length": 4},
     "aberrant_online_ecod": {"warm_up": 2},
     "aberrant_online_copod": {"warm_up": 2},
@@ -172,7 +184,7 @@ LEARNING_MODELS = [
 
 
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
-    assert len(ADAPTIVE_MODELS_BY_TYPE) == 25
+    assert len(ADAPTIVE_MODELS_BY_TYPE) == 30
     for model_type, definition in ADAPTIVE_MODELS_BY_TYPE.items():
         # A rule detector is RADAR's own, so Aberrant has no specification of it.
         if model_type not in RULE_DETECTORS:
@@ -257,6 +269,11 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
         "aberrant_multivariate_rolling_matrix_profile",
         "aberrant_holt_winters_forecaster",
         "aberrant_seasonal_naive_forecaster",
+        "aberrant_autoregressive_forecaster",
+        "aberrant_kalman_forecaster",
+        "aberrant_echo_state_forecaster",
+        "aberrant_lag_forecaster",
+        "aberrant_ensemble_forecaster",
     ],
 )
 def test_native_pipeline_checkpoint_preserves_future_scores(model_type: str) -> None:

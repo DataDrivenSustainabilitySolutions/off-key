@@ -190,6 +190,116 @@
         "type": "object"
       }
     },
+    "aberrant_autoregressive_forecaster": {
+      "algorithm_family": "forecast",
+      "available": true,
+      "bound_parameters": [
+        "target"
+      ],
+      "catalog_id": "residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "requires_unit_interval": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "required": 6,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "delta": 1000.0,
+        "difference": 0,
+        "forgetting": 0.999,
+        "lead": 1,
+        "min_scale": 1e-06,
+        "order": 2,
+        "residual_alpha": 0.05,
+        "score": "scaled",
+        "season_length": 1,
+        "seasonal_difference": 0,
+        "seasonal_order": 0
+      },
+      "forecaster_id": "autoregressive",
+      "import_path": "aberrant.forecast.AutoRegressive",
+      "name": "Aberrant AutoRegressive forecaster",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "delta": {
+            "default": 1000.0,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "difference": {
+            "default": 0,
+            "maximum": 2,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "forgetting": {
+            "default": 0.999,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "lead": {
+            "default": 1,
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "order": {
+            "default": 2,
+            "maximum": 64,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "score": {
+            "default": "scaled",
+            "enum": [
+              "absolute",
+              "scaled"
+            ]
+          },
+          "season_length": {
+            "default": 1,
+            "maximum": 500000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seasonal_difference": {
+            "default": 0,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "seasonal_order": {
+            "default": 0,
+            "maximum": 8,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
     "aberrant_damp": {
       "algorithm_family": "time_series",
       "available": true,
@@ -257,6 +367,591 @@
         "required": [
           "subsequence_length"
         ],
+        "type": "object"
+      }
+    },
+    "aberrant_echo_state_forecaster": {
+      "algorithm_family": "forecast",
+      "available": true,
+      "bound_parameters": [
+        "target"
+      ],
+      "catalog_id": "residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "requires_unit_interval": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "required": 33,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "connectivity": 0.1,
+        "delta": 1.0,
+        "difference": 0,
+        "forgetting": 0.999,
+        "input_scale": 0.2,
+        "lead": 1,
+        "leak_rate": 1.0,
+        "min_scale": 1e-06,
+        "n_reservoir": 100,
+        "residual_alpha": 0.05,
+        "score": "scaled",
+        "season_length": 1,
+        "seasonal_difference": 0,
+        "seed": null,
+        "spectral_radius": 0.9,
+        "warm_up": 32
+      },
+      "forecaster_id": "echo_state_forecaster",
+      "import_path": "aberrant.forecast.EchoStateForecaster",
+      "name": "Aberrant EchoStateForecaster forecaster",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "connectivity": {
+            "default": 0.1,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "delta": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "difference": {
+            "default": 0,
+            "maximum": 2,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "forgetting": {
+            "default": 0.999,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "input_scale": {
+            "default": 0.2,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "lead": {
+            "default": 1,
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "leak_rate": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "n_reservoir": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "score": {
+            "default": "scaled",
+            "enum": [
+              "absolute",
+              "scaled"
+            ]
+          },
+          "season_length": {
+            "default": 1,
+            "maximum": 500000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seasonal_difference": {
+            "default": 0,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "spectral_radius": {
+            "default": 0.9,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "warm_up": {
+            "default": 32,
+            "maximum": 1000000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_ensemble_forecaster": {
+      "algorithm_family": "forecast",
+      "available": true,
+      "bound_parameters": [
+        "target"
+      ],
+      "catalog_id": "residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "requires_unit_interval": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "required": 34,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "forecasters": [
+          {
+            "id": "autoregressive"
+          },
+          {
+            "id": "kalman_forecaster"
+          },
+          {
+            "id": "echo_state_forecaster"
+          }
+        ],
+        "forgetting": 0.99,
+        "lead": 1,
+        "min_scale": 1e-06,
+        "residual_alpha": 0.05,
+        "score": "scaled"
+      },
+      "forecaster_id": "ensemble_forecaster",
+      "import_path": "aberrant.forecast.EnsembleForecaster",
+      "name": "Aberrant EnsembleForecaster forecaster",
+      "parameter_schema": {
+        "$defs": {
+          "autoregressive": {
+            "additionalProperties": false,
+            "properties": {
+              "delta": {
+                "default": 1000.0,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "difference": {
+                "default": 0,
+                "maximum": 2,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "forgetting": {
+                "default": 0.999,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "id": {
+                "const": "autoregressive"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "order": {
+                "default": 2,
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "season_length": {
+                "default": 1,
+                "maximum": 500000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "seasonal_difference": {
+                "default": 0,
+                "maximum": 1,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "seasonal_order": {
+                "default": 0,
+                "maximum": 8,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "echo_state_forecaster": {
+            "additionalProperties": false,
+            "properties": {
+              "connectivity": {
+                "default": 0.1,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "delta": {
+                "default": 1.0,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "difference": {
+                "default": 0,
+                "maximum": 2,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "forgetting": {
+                "default": 0.999,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "id": {
+                "const": "echo_state_forecaster"
+              },
+              "input_scale": {
+                "default": 0.2,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "leak_rate": {
+                "default": 1.0,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "n_reservoir": {
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "season_length": {
+                "default": 1,
+                "maximum": 500000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "seasonal_difference": {
+                "default": 0,
+                "maximum": 1,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "seed": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "spectral_radius": {
+                "default": 0.9,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "warm_up": {
+                "default": 32,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "holt_winters": {
+            "additionalProperties": false,
+            "properties": {
+              "alpha": {
+                "default": 0.2,
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "beta": {
+                "default": 0.05,
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "gamma": {
+                "default": 0.1,
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "id": {
+                "const": "holt_winters"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "season_length": {
+                "maximum": 500000,
+                "minimum": 2,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "season_length"
+            ],
+            "type": "object"
+          },
+          "kalman_forecaster": {
+            "additionalProperties": false,
+            "properties": {
+              "harmonics": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "maximum": 250,
+                "minimum": 0
+              },
+              "id": {
+                "const": "kalman_forecaster"
+              },
+              "learn_ratios": {
+                "default": true,
+                "type": "boolean"
+              },
+              "level_ratio": {
+                "default": 0.05,
+                "minimum": 0,
+                "type": "number"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "ratio_rate": {
+                "default": 0.01,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "season_length": {
+                "default": 1,
+                "maximum": 500000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "season_ratio": {
+                "default": 0.001,
+                "minimum": 0,
+                "type": "number"
+              },
+              "slope_ratio": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "seasonal_naive": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "const": "seasonal_naive"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "season_length": {
+                "default": 1,
+                "maximum": 500000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "forecasters": {
+            "default": [
+              {
+                "id": "autoregressive"
+              },
+              {
+                "id": "kalman_forecaster"
+              },
+              {
+                "id": "echo_state_forecaster"
+              }
+            ],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "autoregressive": "#/$defs/autoregressive",
+                  "echo_state_forecaster": "#/$defs/echo_state_forecaster",
+                  "holt_winters": "#/$defs/holt_winters",
+                  "kalman_forecaster": "#/$defs/kalman_forecaster",
+                  "seasonal_naive": "#/$defs/seasonal_naive"
+                },
+                "propertyName": "id"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/autoregressive"
+                },
+                {
+                  "$ref": "#/$defs/kalman_forecaster"
+                },
+                {
+                  "$ref": "#/$defs/holt_winters"
+                },
+                {
+                  "$ref": "#/$defs/seasonal_naive"
+                },
+                {
+                  "$ref": "#/$defs/echo_state_forecaster"
+                }
+              ]
+            },
+            "maxItems": 8,
+            "minItems": 2,
+            "type": "array"
+          },
+          "forgetting": {
+            "default": 0.99,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "lead": {
+            "default": 1,
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "score": {
+            "default": "scaled",
+            "enum": [
+              "absolute",
+              "scaled"
+            ]
+          }
+        },
         "type": "object"
       }
     },
@@ -415,6 +1110,125 @@
         "type": "object"
       }
     },
+    "aberrant_kalman_forecaster": {
+      "algorithm_family": "forecast",
+      "available": true,
+      "bound_parameters": [
+        "target"
+      ],
+      "catalog_id": "residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "requires_unit_interval": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "required": 2,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "harmonics": null,
+        "lead": 1,
+        "learn_ratios": true,
+        "level_ratio": 0.05,
+        "min_scale": 1e-06,
+        "ratio_rate": 0.01,
+        "residual_alpha": 0.05,
+        "score": "scaled",
+        "season_length": 1,
+        "season_ratio": 0.001,
+        "slope_ratio": null
+      },
+      "forecaster_id": "kalman_forecaster",
+      "import_path": "aberrant.forecast.KalmanForecaster",
+      "name": "Aberrant KalmanForecaster forecaster",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "harmonics": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "maximum": 250,
+            "minimum": 0
+          },
+          "lead": {
+            "default": 1,
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "learn_ratios": {
+            "default": true,
+            "type": "boolean"
+          },
+          "level_ratio": {
+            "default": 0.05,
+            "minimum": 0,
+            "type": "number"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "ratio_rate": {
+            "default": 0.01,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "score": {
+            "default": "scaled",
+            "enum": [
+              "absolute",
+              "scaled"
+            ]
+          },
+          "season_length": {
+            "default": 1,
+            "maximum": 500000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "season_ratio": {
+            "default": 0.001,
+            "minimum": 0,
+            "type": "number"
+          },
+          "slope_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "minimum": 0
+          }
+        },
+        "type": "object"
+      }
+    },
     "aberrant_knn": {
       "algorithm_family": "distance",
       "available": true,
@@ -454,6 +1268,471 @@
             "default": 1000,
             "maximum": 1000000,
             "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "aberrant_lag_forecaster": {
+      "algorithm_family": "forecast",
+      "available": true,
+      "bound_parameters": [
+        "target"
+      ],
+      "catalog_id": "residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "requires_unit_interval": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "required": 37,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "difference": 0,
+        "harmonics": 0,
+        "lead": 1,
+        "min_scale": 1e-06,
+        "order": 3,
+        "regressor": {
+          "id": "random_fourier_regressor"
+        },
+        "residual_alpha": 0.05,
+        "score": "scaled",
+        "season_length": 1,
+        "seasonal_difference": 0,
+        "seasonal_order": 0
+      },
+      "forecaster_id": "lag_forecaster",
+      "import_path": "aberrant.forecast.LagForecaster",
+      "name": "Aberrant LagForecaster forecaster",
+      "parameter_schema": {
+        "$defs": {
+          "adaptive_random_forest_regressor": {
+            "additionalProperties": false,
+            "properties": {
+              "delta": {
+                "default": 0.01,
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "drift_delta": {
+                "default": 0.001,
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "grace_period": {
+                "default": 50,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "const": "adaptive_random_forest_regressor"
+              },
+              "lambda_value": {
+                "default": 6.0,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "leaf_prediction": {
+                "default": "adaptive",
+                "enum": [
+                  "mean",
+                  "linear",
+                  "adaptive"
+                ]
+              },
+              "max_depth": {
+                "default": 8,
+                "maximum": 128,
+                "minimum": 2,
+                "type": "integer"
+              },
+              "max_features": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "maximum": 10000,
+                "minimum": 1
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "n_bins": {
+                "default": 32,
+                "maximum": 1024,
+                "minimum": 2,
+                "type": "integer"
+              },
+              "n_models": {
+                "default": 10,
+                "maximum": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "seed": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "tau": {
+                "default": 0.05,
+                "minimum": 0,
+                "type": "number"
+              },
+              "warm_up": {
+                "default": 32,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "warning_delta": {
+                "default": 0.01,
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "hoeffding_tree_regressor": {
+            "additionalProperties": false,
+            "properties": {
+              "delta": {
+                "default": 1e-07,
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "grace_period": {
+                "default": 200,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "const": "hoeffding_tree_regressor"
+              },
+              "leaf_prediction": {
+                "default": "adaptive",
+                "enum": [
+                  "mean",
+                  "linear",
+                  "adaptive"
+                ]
+              },
+              "max_depth": {
+                "default": 8,
+                "maximum": 128,
+                "minimum": 2,
+                "type": "integer"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "n_bins": {
+                "default": 32,
+                "maximum": 1024,
+                "minimum": 2,
+                "type": "integer"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "tau": {
+                "default": 0.05,
+                "minimum": 0,
+                "type": "number"
+              },
+              "warm_up": {
+                "default": 32,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "knn_regressor": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "const": "knn_regressor"
+              },
+              "k": {
+                "default": 5,
+                "maximum": 10000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "warm_up": {
+                "default": 32,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "weighted": {
+                "default": false,
+                "type": "boolean"
+              },
+              "window_size": {
+                "default": 500,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "random_fourier_regressor": {
+            "additionalProperties": false,
+            "properties": {
+              "delta": {
+                "default": 100.0,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "forgetting": {
+                "default": 0.999,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "id": {
+                "const": "random_fourier_regressor"
+              },
+              "length_scale": {
+                "default": 1.0,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "n_components": {
+                "default": 64,
+                "maximum": 4096,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "seed": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "warm_up": {
+                "default": 32,
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "rls_regressor": {
+            "additionalProperties": false,
+            "properties": {
+              "delta": {
+                "default": 1000.0,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "fit_intercept": {
+                "default": true,
+                "type": "boolean"
+              },
+              "forgetting": {
+                "default": 0.999,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "id": {
+                "const": "rls_regressor"
+              },
+              "min_scale": {
+                "default": 1e-06,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "residual_alpha": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "difference": {
+            "default": 0,
+            "maximum": 2,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "harmonics": {
+            "default": 0,
+            "maximum": 250,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lead": {
+            "default": 1,
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "order": {
+            "default": 3,
+            "maximum": 64,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "regressor": {
+            "default": {
+              "id": "random_fourier_regressor"
+            },
+            "discriminator": {
+              "mapping": {
+                "adaptive_random_forest_regressor": "#/$defs/adaptive_random_forest_regressor",
+                "hoeffding_tree_regressor": "#/$defs/hoeffding_tree_regressor",
+                "knn_regressor": "#/$defs/knn_regressor",
+                "random_fourier_regressor": "#/$defs/random_fourier_regressor",
+                "rls_regressor": "#/$defs/rls_regressor"
+              },
+              "propertyName": "id"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/random_fourier_regressor"
+              },
+              {
+                "$ref": "#/$defs/rls_regressor"
+              },
+              {
+                "$ref": "#/$defs/knn_regressor"
+              },
+              {
+                "$ref": "#/$defs/hoeffding_tree_regressor"
+              },
+              {
+                "$ref": "#/$defs/adaptive_random_forest_regressor"
+              }
+            ]
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "score": {
+            "default": "scaled",
+            "enum": [
+              "absolute",
+              "scaled"
+            ]
+          },
+          "season_length": {
+            "default": 1,
+            "maximum": 500000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "seasonal_difference": {
+            "default": 0,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "seasonal_order": {
+            "default": 0,
+            "maximum": 8,
+            "minimum": 0,
             "type": "integer"
           }
         },
@@ -553,6 +1832,8 @@
           },
           "n_bins": {
             "default": 32,
+            "maximum": 1024,
+            "minimum": 2,
             "type": "integer"
           },
           "n_projections": {

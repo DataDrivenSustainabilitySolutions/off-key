@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "catalog_id": "8cb6f467476464558e1e36caf3f826bab4c2d97c04c5870b5323b5c6cebaa604",
+ "catalog_id": "bb4bef38706d9f87686d5ca3bc79a5f330d7b55c092c01bd4f624ffab8b5d6b2",
  "authoring_enabled": true,
  "components": [
   {
@@ -3797,6 +3797,138 @@
    "output_type": "scores"
   },
   {
+   "id": "detector:aberrant_autoregressive_forecaster",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Autoregressive forecaster",
+   "description": "Forecast from a weighted sum of recent values, and of values one cycle ago, learned as they arrive, and score the miss.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "delta",
+     "label": "Delta",
+     "type": "number",
+     "default": 1000.0,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer.",
+     "advanced": true
+    },
+    {
+     "name": "difference",
+     "label": "Difference",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 2.0,
+     "description": "Forecast the change from one value to the next (1), or the change of that change (2), instead of the value. Follows a level that wanders.",
+     "advanced": true
+    },
+    {
+     "name": "forgetting",
+     "label": "Forgetting",
+     "type": "number",
+     "default": 0.999,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How much each past observation still counts, up to 1. Lower follows changes faster and is noisier.",
+     "advanced": true
+    },
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "order",
+     "label": "Order",
+     "type": "integer",
+     "default": 2,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 64.0,
+     "description": "Recent values the forecast is computed from."
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "season_length",
+     "label": "Season Length",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 500000.0,
+     "description": "Observations in one cycle. 1 means no cycle."
+    },
+    {
+     "name": "seasonal_difference",
+     "label": "Seasonal Difference",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "Forecast the change from one cycle ago instead of the value. Follows a cycle that changes shape.",
+     "advanced": true
+    },
+    {
+     "name": "seasonal_order",
+     "label": "Seasonal Order",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 8.0,
+     "description": "Values one, two or more cycles ago the forecast also uses.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
+  },
+  {
    "id": "detector:aberrant_damp",
    "contract_version": 1,
    "kind": "detector",
@@ -3848,6 +3980,736 @@
    ],
    "input_type": "features",
    "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_echo_state_forecaster",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Echo state forecaster",
+   "description": "Forecast from a fixed random network that echoes recent values, with only its readout learned. Follows nonlinear dynamics.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "connectivity",
+     "label": "Connectivity",
+     "type": "number",
+     "default": 0.1,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "Share of the connections that exist, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "delta",
+     "label": "Delta",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer.",
+     "advanced": true
+    },
+    {
+     "name": "difference",
+     "label": "Difference",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 2.0,
+     "description": "Forecast the change from one value to the next (1), or the change of that change (2), instead of the value. Follows a level that wanders.",
+     "advanced": true
+    },
+    {
+     "name": "forgetting",
+     "label": "Forgetting",
+     "type": "number",
+     "default": 0.999,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How much each past observation still counts, up to 1. Lower follows changes faster and is noisier.",
+     "advanced": true
+    },
+    {
+     "name": "input_scale",
+     "label": "Input Scale",
+     "type": "number",
+     "default": 0.2,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "How strongly each value drives the network.",
+     "advanced": true
+    },
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "leak_rate",
+     "label": "Leak Rate",
+     "type": "number",
+     "default": 1.0,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the network forgets, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "n_reservoir",
+     "label": "N Reservoir",
+     "type": "integer",
+     "default": 100,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000.0,
+     "description": "Units in the network. More remember more and cost time."
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "season_length",
+     "label": "Season Length",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 500000.0,
+     "description": "Observations in one cycle. 1 means no cycle.",
+     "advanced": true
+    },
+    {
+     "name": "seasonal_difference",
+     "label": "Seasonal Difference",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "Forecast the change from one cycle ago instead of the value. Follows a cycle that changes shape.",
+     "advanced": true
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "nullable": true,
+     "description": "Seed for the random choices. Empty uses the design's seed.",
+     "advanced": true
+    },
+    {
+     "name": "spectral_radius",
+     "label": "Spectral Radius",
+     "type": "number",
+     "default": 0.9,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "How long the network echoes a value. Below 1 keeps it stable.",
+     "advanced": true
+    },
+    {
+     "name": "warm_up",
+     "label": "Warm Up",
+     "type": "integer",
+     "default": 32,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1000000.0,
+     "description": "Observations before forecasts start.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
+  },
+  {
+   "id": "detector:aberrant_ensemble_forecaster",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Ensemble forecaster",
+   "description": "Forecast with several forecasters at once, weighted by how well each has done lately, and score the miss.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "forecasters",
+     "label": "Forecasters",
+     "type": "object_list",
+     "default": [
+      {
+       "id": "autoregressive"
+      },
+      {
+       "id": "kalman_forecaster"
+      },
+      {
+       "id": "echo_state_forecaster"
+      }
+     ],
+     "has_default": true,
+     "description": "The forecasters combined, two or more.",
+     "discriminator": "id",
+     "variants": {
+      "autoregressive": [
+       {
+        "name": "delta",
+        "label": "Delta",
+        "type": "number",
+        "default": 1000.0,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer."
+       },
+       {
+        "name": "difference",
+        "label": "Difference",
+        "type": "integer",
+        "default": 0,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 2.0,
+        "description": "Forecast the change from one value to the next (1), or the change of that change (2), instead of the value. Follows a level that wanders."
+       },
+       {
+        "name": "forgetting",
+        "label": "Forgetting",
+        "type": "number",
+        "default": 0.999,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How much each past observation still counts, up to 1. Lower follows changes faster and is noisier."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "autoregressive"
+        ],
+        "description": "Which forecaster this member is."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "order",
+        "label": "Order",
+        "type": "integer",
+        "default": 2,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 64.0,
+        "description": "Recent values the forecast is computed from."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "season_length",
+        "label": "Season Length",
+        "type": "integer",
+        "default": 1,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 500000.0,
+        "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
+       },
+       {
+        "name": "seasonal_difference",
+        "label": "Seasonal Difference",
+        "type": "integer",
+        "default": 0,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "Forecast the change from one cycle ago instead of the value. Follows a cycle that changes shape."
+       },
+       {
+        "name": "seasonal_order",
+        "label": "Seasonal Order",
+        "type": "integer",
+        "default": 0,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 8.0,
+        "description": "Values one, two or more cycles ago the forecast also uses."
+       }
+      ],
+      "echo_state_forecaster": [
+       {
+        "name": "connectivity",
+        "label": "Connectivity",
+        "type": "number",
+        "default": 0.1,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "Share of the connections that exist, above 0 up to 1."
+       },
+       {
+        "name": "delta",
+        "label": "Delta",
+        "type": "number",
+        "default": 1.0,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer."
+       },
+       {
+        "name": "difference",
+        "label": "Difference",
+        "type": "integer",
+        "default": 0,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 2.0,
+        "description": "Forecast the change from one value to the next (1), or the change of that change (2), instead of the value. Follows a level that wanders."
+       },
+       {
+        "name": "forgetting",
+        "label": "Forgetting",
+        "type": "number",
+        "default": 0.999,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How much each past observation still counts, up to 1. Lower follows changes faster and is noisier."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "echo_state_forecaster"
+        ],
+        "description": "Which forecaster this member is."
+       },
+       {
+        "name": "input_scale",
+        "label": "Input Scale",
+        "type": "number",
+        "default": 0.2,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "How strongly each value drives the network."
+       },
+       {
+        "name": "leak_rate",
+        "label": "Leak Rate",
+        "type": "number",
+        "default": 1.0,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the network forgets, above 0 up to 1."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "n_reservoir",
+        "label": "N Reservoir",
+        "type": "integer",
+        "default": 100,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000.0,
+        "description": "Units in the network. More remember more and cost time."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "season_length",
+        "label": "Season Length",
+        "type": "integer",
+        "default": 1,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 500000.0,
+        "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
+       },
+       {
+        "name": "seasonal_difference",
+        "label": "Seasonal Difference",
+        "type": "integer",
+        "default": 0,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "Forecast the change from one cycle ago instead of the value. Follows a cycle that changes shape."
+       },
+       {
+        "name": "seed",
+        "label": "Seed",
+        "type": "integer",
+        "default": null,
+        "has_default": true,
+        "nullable": true,
+        "description": "Seed for the random choices. Empty uses the design's seed."
+       },
+       {
+        "name": "spectral_radius",
+        "label": "Spectral Radius",
+        "type": "number",
+        "default": 0.9,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "How long the network echoes a value. Below 1 keeps it stable."
+       },
+       {
+        "name": "warm_up",
+        "label": "Warm Up",
+        "type": "integer",
+        "default": 32,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Observations before forecasts start."
+       }
+      ],
+      "holt_winters": [
+       {
+        "name": "alpha",
+        "label": "Alpha",
+        "type": "number",
+        "default": 0.2,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "How fast the level follows new values, from 0 to 1."
+       },
+       {
+        "name": "beta",
+        "label": "Beta",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "How fast the trend follows new values, from 0 to 1."
+       },
+       {
+        "name": "gamma",
+        "label": "Gamma",
+        "type": "number",
+        "default": 0.1,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "How fast the cycle follows new values, from 0 to 1 minus the level weight."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "holt_winters"
+        ],
+        "description": "Which forecaster this member is."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "season_length",
+        "label": "Season Length",
+        "type": "integer",
+        "required": true,
+        "minimum": 2.0,
+        "maximum": 500000.0,
+        "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
+       }
+      ],
+      "kalman_forecaster": [
+       {
+        "name": "harmonics",
+        "label": "Harmonics",
+        "type": "integer",
+        "default": null,
+        "has_default": true,
+        "minimum": 0.0,
+        "maximum": 250.0,
+        "nullable": true,
+        "description": "Sine and cosine pairs that describe the cycle. Fewer are smoother and cheaper. Empty or 0 uses all of them where the forecaster has them."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "kalman_forecaster"
+        ],
+        "description": "Which forecaster this member is."
+       },
+       {
+        "name": "learn_ratios",
+        "label": "Learn Ratios",
+        "type": "boolean",
+        "default": true,
+        "has_default": true,
+        "description": "Learn how fast each part drifts from the data."
+       },
+       {
+        "name": "level_ratio",
+        "label": "Level Ratio",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "minimum": 0.0,
+        "description": "How fast the level drifts, relative to the scatter."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "ratio_rate",
+        "label": "Ratio Rate",
+        "type": "number",
+        "default": 0.01,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the learned drift rates move."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "season_length",
+        "label": "Season Length",
+        "type": "integer",
+        "default": 1,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 500000.0,
+        "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
+       },
+       {
+        "name": "season_ratio",
+        "label": "Season Ratio",
+        "type": "number",
+        "default": 0.001,
+        "has_default": true,
+        "minimum": 0.0,
+        "description": "How fast the cycle drifts, relative to the scatter."
+       },
+       {
+        "name": "slope_ratio",
+        "label": "Slope Ratio",
+        "type": "number",
+        "default": null,
+        "has_default": true,
+        "minimum": 0.0,
+        "nullable": true,
+        "description": "How fast the slope drifts, relative to the scatter. Empty means no slope."
+       }
+      ],
+      "seasonal_naive": [
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "seasonal_naive"
+        ],
+        "description": "Which forecaster this member is."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "season_length",
+        "label": "Season Length",
+        "type": "integer",
+        "default": 1,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 500000.0,
+        "description": "Observations in one cycle, such as 24 for hourly values with a daily rhythm."
+       }
+      ]
+     }
+    },
+    {
+     "name": "forgetting",
+     "label": "Forgetting",
+     "type": "number",
+     "default": 0.99,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How much a member's past misses still count toward its weight, up to 1. Lower reacts faster to a change.",
+     "advanced": true
+    },
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
   },
   {
    "id": "detector:aberrant_half_space_trees",
@@ -4004,6 +4866,136 @@
    "output_type": "forecasts"
   },
   {
+   "id": "detector:aberrant_kalman_forecaster",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Kalman forecaster",
+   "description": "Forecast from a level, an optional slope and a cycle that each drift, at rates learned as values arrive, and score the miss.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "harmonics",
+     "label": "Harmonics",
+     "type": "integer",
+     "default": null,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 250.0,
+     "nullable": true,
+     "description": "Sine and cosine pairs that describe the cycle. Fewer are smoother and cheaper. Empty or 0 uses all of them where the forecaster has them.",
+     "advanced": true
+    },
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "learn_ratios",
+     "label": "Learn Ratios",
+     "type": "boolean",
+     "default": true,
+     "has_default": true,
+     "description": "Learn how fast each part drifts from the data.",
+     "advanced": true
+    },
+    {
+     "name": "level_ratio",
+     "label": "Level Ratio",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "minimum": 0.0,
+     "description": "How fast the level drifts, relative to the scatter.",
+     "advanced": true
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "ratio_rate",
+     "label": "Ratio Rate",
+     "type": "number",
+     "default": 0.01,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the learned drift rates move.",
+     "advanced": true
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "season_length",
+     "label": "Season Length",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 500000.0,
+     "description": "Observations in one cycle. 1 means no cycle."
+    },
+    {
+     "name": "season_ratio",
+     "label": "Season Ratio",
+     "type": "number",
+     "default": 0.001,
+     "has_default": true,
+     "minimum": 0.0,
+     "description": "How fast the cycle drifts, relative to the scatter.",
+     "advanced": true
+    },
+    {
+     "name": "slope_ratio",
+     "label": "Slope Ratio",
+     "type": "number",
+     "default": null,
+     "has_default": true,
+     "minimum": 0.0,
+     "nullable": true,
+     "description": "How fast the slope drifts, relative to the scatter. Empty means no slope.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
+  },
+  {
    "id": "detector:aberrant_knn",
    "contract_version": 1,
    "kind": "detector",
@@ -4036,6 +5028,622 @@
    ],
    "input_type": "features",
    "output_type": "scores"
+  },
+  {
+   "id": "detector:aberrant_lag_forecaster",
+   "contract_version": 1,
+   "kind": "detector",
+   "group": "forecaster",
+   "label": "Lag forecaster",
+   "description": "Forecast with a regression on recent values, such as a tree forest or a kernel model, step by step, and score the miss.",
+   "library": "Aberrant",
+   "learning": "online",
+   "fields": [
+    {
+     "name": "difference",
+     "label": "Difference",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 2.0,
+     "description": "Forecast the change from one value to the next (1), or the change of that change (2), instead of the value. Follows a level that wanders.",
+     "advanced": true
+    },
+    {
+     "name": "harmonics",
+     "label": "Harmonics",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 250.0,
+     "description": "Sine and cosine pairs of the cycle given as inputs.",
+     "advanced": true
+    },
+    {
+     "name": "lead",
+     "label": "Lead",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 1024.0,
+     "description": "How many observations ahead a forecast is made. It is compared with the value that arrives then."
+    },
+    {
+     "name": "min_scale",
+     "label": "Min Scale",
+     "type": "number",
+     "default": 1e-06,
+     "has_default": true,
+     "exclusive_minimum": 0.0,
+     "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss.",
+     "advanced": true
+    },
+    {
+     "name": "order",
+     "label": "Order",
+     "type": "integer",
+     "default": 3,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 64.0,
+     "description": "Recent values the forecast is computed from."
+    },
+    {
+     "name": "regressor",
+     "label": "Regressor",
+     "type": "object",
+     "default": {
+      "id": "random_fourier_regressor"
+     },
+     "has_default": true,
+     "description": "The regression that forecasts from the recent values.",
+     "discriminator": "id",
+     "variants": {
+      "adaptive_random_forest_regressor": [
+       {
+        "name": "delta",
+        "label": "Delta",
+        "type": "number",
+        "default": 0.01,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "exclusive_maximum": 1.0,
+        "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer."
+       },
+       {
+        "name": "drift_delta",
+        "label": "Drift Delta",
+        "type": "number",
+        "default": 0.001,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "exclusive_maximum": 1.0,
+        "description": "How sure a tree must be that its error grew before it is replaced."
+       },
+       {
+        "name": "grace_period",
+        "label": "Grace Period",
+        "type": "integer",
+        "default": 50,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Observations a leaf collects between attempts to split it."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "adaptive_random_forest_regressor"
+        ],
+        "description": "Which regression forecasts from the recent values."
+       },
+       {
+        "name": "lambda_value",
+        "label": "Lambda Value",
+        "type": "number",
+        "default": 6.0,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "How often each tree learns an observation, on average."
+       },
+       {
+        "name": "leaf_prediction",
+        "label": "Leaf Prediction",
+        "type": "enum",
+        "default": "adaptive",
+        "has_default": true,
+        "options": [
+         "mean",
+         "linear",
+         "adaptive"
+        ],
+        "description": "What a leaf forecasts: the mean, a line, or whichever has been better."
+       },
+       {
+        "name": "max_depth",
+        "label": "Max Depth",
+        "type": "integer",
+        "default": 8,
+        "has_default": true,
+        "minimum": 2.0,
+        "maximum": 128.0,
+        "description": "Deepest level of each tree."
+       },
+       {
+        "name": "max_features",
+        "label": "Max Features",
+        "type": "integer",
+        "default": null,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 10000.0,
+        "nullable": true,
+        "description": "Inputs each split may choose from. Empty uses the square root of all."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "n_bins",
+        "label": "N Bins",
+        "type": "integer",
+        "default": 32,
+        "has_default": true,
+        "minimum": 2.0,
+        "maximum": 1024.0,
+        "description": "Candidate split points per input."
+       },
+       {
+        "name": "n_models",
+        "label": "N Models",
+        "type": "integer",
+        "default": 10,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 100.0,
+        "description": "Trees in the forest. More are steadier and cost time."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "seed",
+        "label": "Seed",
+        "type": "integer",
+        "default": null,
+        "has_default": true,
+        "nullable": true,
+        "description": "Seed for the random choices. Empty uses the design's seed."
+       },
+       {
+        "name": "tau",
+        "label": "Tau",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "minimum": 0.0,
+        "description": "Split anyway when the best candidates are this close in merit."
+       },
+       {
+        "name": "warm_up",
+        "label": "Warm Up",
+        "type": "integer",
+        "default": 32,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Observations before forecasts start."
+       },
+       {
+        "name": "warning_delta",
+        "label": "Warning Delta",
+        "type": "number",
+        "default": 0.01,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "exclusive_maximum": 1.0,
+        "description": "How sure a tree must be that its error grows before a replacement is grown in the background."
+       }
+      ],
+      "hoeffding_tree_regressor": [
+       {
+        "name": "delta",
+        "label": "Delta",
+        "type": "number",
+        "default": 1e-07,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "exclusive_maximum": 1.0,
+        "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer."
+       },
+       {
+        "name": "grace_period",
+        "label": "Grace Period",
+        "type": "integer",
+        "default": 200,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Observations a leaf collects between attempts to split it."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "hoeffding_tree_regressor"
+        ],
+        "description": "Which regression forecasts from the recent values."
+       },
+       {
+        "name": "leaf_prediction",
+        "label": "Leaf Prediction",
+        "type": "enum",
+        "default": "adaptive",
+        "has_default": true,
+        "options": [
+         "mean",
+         "linear",
+         "adaptive"
+        ],
+        "description": "What a leaf forecasts: the mean, a line, or whichever has been better."
+       },
+       {
+        "name": "max_depth",
+        "label": "Max Depth",
+        "type": "integer",
+        "default": 8,
+        "has_default": true,
+        "minimum": 2.0,
+        "maximum": 128.0,
+        "description": "Deepest level of each tree."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "n_bins",
+        "label": "N Bins",
+        "type": "integer",
+        "default": 32,
+        "has_default": true,
+        "minimum": 2.0,
+        "maximum": 1024.0,
+        "description": "Candidate split points per input."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "tau",
+        "label": "Tau",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "minimum": 0.0,
+        "description": "Split anyway when the best candidates are this close in merit."
+       },
+       {
+        "name": "warm_up",
+        "label": "Warm Up",
+        "type": "integer",
+        "default": 32,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Observations before forecasts start."
+       }
+      ],
+      "knn_regressor": [
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "knn_regressor"
+        ],
+        "description": "Which regression forecasts from the recent values."
+       },
+       {
+        "name": "k",
+        "label": "K",
+        "type": "integer",
+        "default": 5,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 10000.0,
+        "description": "Nearest earlier situations the forecast is averaged over."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "warm_up",
+        "label": "Warm Up",
+        "type": "integer",
+        "default": 32,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Observations before forecasts start."
+       },
+       {
+        "name": "weighted",
+        "label": "Weighted",
+        "type": "boolean",
+        "default": false,
+        "has_default": true,
+        "description": "Weigh nearer situations more."
+       },
+       {
+        "name": "window_size",
+        "label": "Window Size",
+        "type": "integer",
+        "default": 500,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Recent observations the detector keeps. A longer window is steadier and slower to adapt."
+       }
+      ],
+      "random_fourier_regressor": [
+       {
+        "name": "delta",
+        "label": "Delta",
+        "type": "number",
+        "default": 100.0,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer."
+       },
+       {
+        "name": "forgetting",
+        "label": "Forgetting",
+        "type": "number",
+        "default": 0.999,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How much each past observation still counts, up to 1. Lower follows changes faster and is noisier."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "random_fourier_regressor"
+        ],
+        "description": "Which regression forecasts from the recent values."
+       },
+       {
+        "name": "length_scale",
+        "label": "Length Scale",
+        "type": "number",
+        "default": 1.0,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "How far apart values may be and still count as alike. Larger is smoother."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "n_components",
+        "label": "N Components",
+        "type": "integer",
+        "default": 64,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 4096.0,
+        "description": "Random features the regression runs on. More capture finer shapes and cost time."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       },
+       {
+        "name": "seed",
+        "label": "Seed",
+        "type": "integer",
+        "default": null,
+        "has_default": true,
+        "nullable": true,
+        "description": "Seed for the random choices. Empty uses the design's seed."
+       },
+       {
+        "name": "warm_up",
+        "label": "Warm Up",
+        "type": "integer",
+        "default": 32,
+        "has_default": true,
+        "minimum": 1.0,
+        "maximum": 1000000.0,
+        "description": "Observations before forecasts start."
+       }
+      ],
+      "rls_regressor": [
+       {
+        "name": "delta",
+        "label": "Delta",
+        "type": "number",
+        "default": 1000.0,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "For least squares, how freely the first weights move; for trees, how sure a split must be before it is made, where smaller waits longer."
+       },
+       {
+        "name": "fit_intercept",
+        "label": "Fit Intercept",
+        "type": "boolean",
+        "default": true,
+        "has_default": true,
+        "description": "Learn a constant beside the weights."
+       },
+       {
+        "name": "forgetting",
+        "label": "Forgetting",
+        "type": "number",
+        "default": 0.999,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How much each past observation still counts, up to 1. Lower follows changes faster and is noisier."
+       },
+       {
+        "name": "id",
+        "label": "Id",
+        "type": "enum",
+        "required": true,
+        "options": [
+         "rls_regressor"
+        ],
+        "description": "Which regression forecasts from the recent values."
+       },
+       {
+        "name": "min_scale",
+        "label": "Min Scale",
+        "type": "number",
+        "default": 1e-06,
+        "has_default": true,
+        "exclusive_minimum": 0.0,
+        "description": "Smallest spread a miss is divided by, in the feature's units. It keeps a flat signal from scoring every small miss."
+       },
+       {
+        "name": "residual_alpha",
+        "label": "Residual Alpha",
+        "type": "number",
+        "default": 0.05,
+        "has_default": true,
+        "maximum": 1.0,
+        "exclusive_minimum": 0.0,
+        "description": "How fast the typical forecast error follows new errors, above 0 up to 1."
+       }
+      ]
+     }
+    },
+    {
+     "name": "residual_alpha",
+     "label": "Residual Alpha",
+     "type": "number",
+     "default": 0.05,
+     "has_default": true,
+     "maximum": 1.0,
+     "exclusive_minimum": 0.0,
+     "description": "How fast the typical forecast error follows new errors, above 0 up to 1.",
+     "advanced": true
+    },
+    {
+     "name": "score",
+     "label": "Score",
+     "type": "enum",
+     "default": "scaled",
+     "has_default": true,
+     "options": [
+      "absolute",
+      "scaled"
+     ],
+     "description": "Scaled divides the miss by the typical forecast error; absolute reports it in the feature's units.",
+     "advanced": true
+    },
+    {
+     "name": "season_length",
+     "label": "Season Length",
+     "type": "integer",
+     "default": 1,
+     "has_default": true,
+     "minimum": 1.0,
+     "maximum": 500000.0,
+     "description": "Observations in one cycle. 1 means no cycle.",
+     "advanced": true
+    },
+    {
+     "name": "seasonal_difference",
+     "label": "Seasonal Difference",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 1.0,
+     "description": "Forecast the change from one cycle ago instead of the value. Follows a cycle that changes shape.",
+     "advanced": true
+    },
+    {
+     "name": "seasonal_order",
+     "label": "Seasonal Order",
+     "type": "integer",
+     "default": 0,
+     "has_default": true,
+     "minimum": 0.0,
+     "maximum": 8.0,
+     "description": "Values one, two or more cycles ago the forecast also uses.",
+     "advanced": true
+    }
+   ],
+   "input_type": "features",
+   "output_type": "forecasts"
   },
   {
    "id": "detector:aberrant_local_outlier_factor",
@@ -4109,6 +5717,8 @@
      "type": "integer",
      "default": 32,
      "has_default": true,
+     "minimum": 2.0,
+     "maximum": 1024.0,
      "description": "Bins of each view's histogram.",
      "advanced": true
     },

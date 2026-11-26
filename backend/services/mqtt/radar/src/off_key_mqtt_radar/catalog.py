@@ -17,6 +17,8 @@ from aberrant.catalog import (
 )
 from off_key_core.models.adaptive import (
     BOUND_PARAMETER_NAMES,
+    COMPONENT_DEFAULTS,
+    COMPONENT_SETTINGS,
     FORECASTER_IDS,
     FORECASTER_LIMITS,
     MODEL_DEFAULTS,
@@ -50,6 +52,70 @@ def _supported(catalog_id: str, spec, capabilities: dict) -> None:
         raise ValueError(f"RADAR requires a declarative detector: {catalog_id}")
 
 
+def _choice(component_ids: tuple[str, ...], definitions: dict) -> dict:
+    """One of several components, told apart by its ``id`` beside its settings."""
+    for component_id in component_ids:
+        if component_id not in definitions:
+            definitions[component_id] = {}
+            definitions[component_id] = _held_schema(component_id, definitions)
+    return {
+        "oneOf": [{"$ref": f"#/$defs/{item}"} for item in component_ids],
+        "discriminator": {
+            "propertyName": "id",
+            "mapping": {item: f"#/$defs/{item}" for item in component_ids},
+        },
+    }
+
+
+def _component_schema(component_id: str, definitions: dict) -> dict:
+    """A component's own settings, with those it holds chosen by ``id``.
+
+    Its horizon is not a setting: every forecaster forecasts as far as the lead.
+    """
+    schema = get_forecaster_spec(component_id).parameter_schema()
+    properties = schema["properties"]
+    properties.pop("horizon", None)
+    for name, component_ids in COMPONENT_SETTINGS.items():
+        if name not in properties:
+            continue
+        default = COMPONENT_DEFAULTS[component_id][name]
+        if properties[name].get("type") == "array":
+            properties[name] = {
+                "type": "array",
+                "items": _choice(component_ids, definitions),
+                "default": default,
+            }
+        else:
+            properties[name] = {
+                **_choice(component_ids, definitions),
+                "default": default,
+            }
+        schema["required"] = [item for item in schema["required"] if item != name]
+        if not schema["required"]:
+            del schema["required"]
+    defaults = {
+        name: field["default"]
+        for name, field in properties.items()
+        if "default" in field
+    }
+    _limit(
+        properties,
+        defaults,
+        PARAMETER_LIMITS | FORECASTER_LIMITS.get(component_id, {}),
+    )
+    return schema
+
+
+def _held_schema(component_id: str, definitions: dict) -> dict:
+    """A held component's settings with its ``id``, as one variant of a choice."""
+    schema = _component_schema(component_id, definitions)
+    return {
+        **schema,
+        "properties": {"id": {"const": component_id}, **schema["properties"]},
+        "required": ["id", *schema.get("required", [])],
+    }
+
+
 def _forecaster_entry(forecaster_id: str) -> dict:
     """A forecaster step: the forecaster's settings, a lead and a score.
 
@@ -58,9 +124,11 @@ def _forecaster_entry(forecaster_id: str) -> dict:
     spec = get_model_spec(RESIDUAL_DETECTOR)
     forecaster = get_forecaster_spec(forecaster_id)
     detector = spec.parameter_schema()["properties"]
-    schema = forecaster.parameter_schema()
+    definitions: dict = {}
+    schema = _component_schema(forecaster_id, definitions)
+    if definitions:
+        schema["$defs"] = definitions
     properties = schema["properties"]
-    del properties["horizon"]
     properties["lead"] = {"type": "integer", "default": 1}
     properties["score"] = detector["score"]
     bound_parameters = _bind(detector)

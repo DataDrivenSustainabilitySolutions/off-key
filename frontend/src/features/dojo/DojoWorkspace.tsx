@@ -53,7 +53,7 @@ export function DojoWorkspace() {
   const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null, run: null }));
   // A dataset opened from a suite leaves the suite: its link leads back to the list.
   const datasetHref = (id: string) => href({ dataset: id, suite: null, study: null, tab: null, run: null });
-  const listHref = href({ dataset: null, suite: null, study: null, tab: null, run: null });
+  const benchmarksHref = href({ view: "benchmarks", dataset: null, suite: null, study: null, tab: null, run: null });
 
   return <main className="ex-main-content" aria-label="Dojo workspace">
     {!allowed ? <div className="dj-empty"><h2>The Dojo is not open to you</h2>
@@ -66,11 +66,14 @@ export function DojoWorkspace() {
         onTab={(tab: DatasetTab) => setParams(previous => { const next = new URLSearchParams(previous); next.set("tab", tab); return next; },
           { replace: true })}
         onDeleted={() => navigate(href({ dataset: null, tab: null, run: null }), { replace: true })} />
-      : suiteId ? <SuitePage key={suiteId} id={suiteId} study={params.get("study") ?? undefined} listHref={listHref}
+      : suiteId ? <SuitePage key={suiteId} id={suiteId} study={params.get("study") ?? undefined} listHref={benchmarksHref}
+        tab={params.get("tab") === "datasets" ? "datasets" : "studies"}
+        onTab={tab => setParams(previous => { const next = new URLSearchParams(previous);
+          if (tab === "datasets") next.set("tab", tab); else next.delete("tab"); return next; }, { replace: true })}
         datasetHref={datasetHref}
         onStudy={study => setParams(previous => { const next = new URLSearchParams(previous);
-          if (study) next.set("study", study); else next.delete("study"); return next; }, { replace: true })}
-        onDeleted={() => navigate(listHref, { replace: true })} />
+          if (study) next.set("study", study); else next.delete("study"); return next; })}
+        onDeleted={() => navigate(benchmarksHref, { replace: true })} />
       : <DatasetList view={view} viewHref={next => href({ view: next === "datasets" ? null : next })} datasetHref={datasetHref} suiteHref={id => href({ suite: id, study: null })} onCreated={open}
         scope={scoped?.label} readings={readings} selection={<SelectedSourceBar />} />}
   </main>;

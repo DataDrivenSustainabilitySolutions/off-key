@@ -174,3 +174,20 @@
   .dj-check-box .dj-narrow-only { display: inline; margin-left: 10px; color: var(--ex-muted); font-size: var(--text-caption); font-weight: 400; }
   .dj-check-box:has(.dj-narrow-only) { align-items: center; }
 }
+
+/* Suite and study pages: one meta line instead of a block of figures, counts in the tabs, one list of studies. */
+.dj-meta { color: var(--ex-muted); font-size: var(--text-body); margin: 8px 0 0; overflow-wrap: anywhere; }
+.dj-tab-count { margin-left: 6px; color: var(--ex-muted); font-variant-numeric: tabular-nums; }
+.dj-tab-panel { padding-top: 16px; }
+.ex-shell .dj-row-link { padding: 0; font: inherit; font-weight: 500; color: var(--ex-ink); text-align: left; overflow-wrap: anywhere; }
+.ex-shell .dj-row-link:hover { color: var(--ex-accent); }
+.dj-list td.dj-name .dj-row-link::after { content: ""; position: absolute; inset: 0; }
+.dj-row-pending td { color: var(--ex-muted); }
+.dj-table abbr { text-decoration: none; cursor: help; }
+.dj-selection-hint { color: var(--ex-muted); }
+.dj-selection .dj-delete-selected + [data-slot="button"] { padding-inline: 10px; }
+.dj-detail .ex-breadcrumb { margin-bottom: 22px; }
+@media (max-width: 760px) {
+  .dj-detail-header { flex-wrap: wrap; }
+  .dj-detail-header > div:first-child { flex: 1 1 100%; }
+}

@@ -394,14 +394,16 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    left **Automatic**, a dataset's only series or the series named like the
    input. A study is refused, with nothing queued, when a dataset lacks a series.
    It takes one place in the run queue, and single runs go before it.
-   The **Leaderboard** ranks only studies whose runs all finished and were
-   scored, by VUS-PR, then PR-AUC, then detection rate, averaged over the
-   datasets; the rest wait under **Not yet ranked**, where a running study can
-   be cancelled. **Compare two studies** pairs two ranked studies dataset by
-   dataset on one metric, counts where the challenger is better or worse, and
-   gives a Wilcoxon signed-rank p-value: a small one means the difference is
+   **Studies** lists every study in one list: ranked ones first, by VUS-PR,
+   then PR-AUC, then detection rate, averaged over the datasets; studies whose
+   runs have not all finished and been scored follow with their progress.
+   Tick two ranked studies and choose **Compare** to pair them dataset by
+   dataset on one metric, count where the challenger is better or worse, and
+   get a Wilcoxon signed-rank p-value: a small one means the difference is
    unlikely to be chance across these datasets, not that it holds elsewhere.
-   Choosing a study's name lists its run and metrics for each dataset.
+   **Delete** removes the ticked studies, cancelling any still running. A
+   study's name opens its page, with its run and metrics for each dataset.
+   **Datasets** lists the suite's datasets.
 7. **Fault suite**, on a dataset, tests designs on data that has no labels,
    such as a setup's recorded history. The **screening protocol** (the
    default, 48 copies) and the **full protocol** (about 90) plant one fault

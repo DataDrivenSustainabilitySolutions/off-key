@@ -115,18 +115,47 @@ describe("Dojo benchmark suites", () => {
     await waitFor(() => expect(router.state.location.search).toBe("?view=benchmarks&suite=s2"));
   });
 
-  it("ranks complete studies, keeps unfinished ones apart and compares two", async () => {
+  it("ranks complete studies above unfinished ones in one list and compares the two picked", async () => {
     mount("/dojo?suite=s1");
-    const ranked = await screen.findByRole("table", { name: "Ranked studies" });
-    const rows = within(ranked).getAllByRole("row").slice(1);
-    expect(rows.map(row => within(row).getAllByRole("cell")[1]!.textContent)).toEqual(["Forest", "Baseline"]);
-    expect(within(screen.getByRole("table", { name: "Unfinished studies" })).getByText("1 waiting or running")).toBeTruthy();
+    const table = await screen.findByRole("table", { name: "Studies" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map(row => within(row).getByRole("button").textContent)).toEqual(["Forest", "Baseline", "Pending"]);
+    expect(within(rows[2]!).getByText("1 waiting or running")).toBeTruthy();
+    expect(dojoApi.compareStudies).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Forest" }));
+    const bar = screen.getByRole("region", { name: "Selection" });
+    expect(within(bar).getByRole("button", { name: "Compare" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Baseline" }));
+    fireEvent.click(within(bar).getByRole("button", { name: "Compare" }));
     await waitFor(() => expect(dojoApi.compareStudies).toHaveBeenCalledWith("s1",
       { baseline: "st2", challenger: "st1", metric: "vus_pr" }, expect.anything()));
     expect(await screen.findByText(/better on 2, worse on 0/)).toHaveProperty("textContent", expect.stringContaining("could be chance"));
     fireEvent.change(screen.getByLabelText("Metric"), { target: { value: "auroc" } });
     await waitFor(() => expect(dojoApi.compareStudies).toHaveBeenLastCalledWith("s1",
       { baseline: "st2", challenger: "st1", metric: "auroc" }, expect.anything()));
+  });
+
+  it("opens a study as a page of its own, with the suite one step back", async () => {
+    vi.mocked(dojoApi.study).mockResolvedValue({ ...study("st1", "Forest", 0.6), definition: {}, bindings: {},
+      alignment: { hold_intervals: 3, minimum_hold_seconds: 30 }, items: [] });
+    const router = mount("/dojo?suite=s1");
+    fireEvent.click(await screen.findByRole("button", { name: "Forest" }));
+    expect(await screen.findByRole("heading", { name: "Forest" })).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Studies" })).toBeNull();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", { name: "Pumps" }));
+    await waitFor(() => expect(router.state.location.search).toBe("?suite=s1"));
+    expect(await screen.findByRole("table", { name: "Studies" })).toBeTruthy();
+  });
+
+  it("deletes the picked studies, cancelling one still running first", async () => {
+    vi.mocked(dojoApi.cancelStudy).mockResolvedValue(undefined as never);
+    vi.mocked(dojoApi.deleteStudy).mockResolvedValue(undefined as never);
+    mount("/dojo?suite=s1");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pending" }));
+    fireEvent.click(within(screen.getByRole("region", { name: "Selection" })).getByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete", hidden: false }));
+    await waitFor(() => expect(dojoApi.deleteStudy).toHaveBeenCalledWith("st3"));
+    expect(dojoApi.cancelStudy).toHaveBeenCalledWith("st3");
   });
 
   it("lets a member review a key's suite", async () => {
@@ -159,9 +188,11 @@ describe("Dojo benchmark suites", () => {
   it("shows guests a suite without anything that changes it", async () => {
     access.guest = true;
     mount("/dojo?suite=s1");
-    await screen.findByRole("table", { name: "Ranked studies" });
+    await screen.findByRole("table", { name: "Studies" });
     expect(screen.queryByRole("button", { name: "New study" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete suite" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Forest" }));
+    expect(within(screen.getByRole("region", { name: "Selection" })).queryByRole("button", { name: "Delete" })).toBeNull();
   });
 });
 

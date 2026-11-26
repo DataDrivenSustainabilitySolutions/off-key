@@ -147,7 +147,7 @@ describe("forecast evidence presentation", () => {
       .toEqual([[start + 1925, null], [start + 2925, null], [start + 3925, 50.5]]);
   });
 
-  it("fills the space beyond the interval in the outside colour, never as alarms", () => {
+  it("marks values beyond the interval with dots in the outside colour, never as alarms", () => {
     const rows = [row(1, [forecast()], 50.2), row(2, [forecast()], 50.05), row(3, [forecast()], 49.8),
       row(4, [forecast({ lower: null, upper: null })], 52)];
     const series = buildForecastEvidence(rows, presentation.bindings)[0]!;
@@ -157,13 +157,8 @@ describe("forecast evidence presentation", () => {
       { name: "Outside interval", coord: [start + 925, 50.2], itemStyle: { color: "amber" } },
       { name: "Outside interval", coord: [start + 2925, 49.8], itemStyle: { color: "amber" } },
     ]);
-    // Above: from the upper bound to the value. Inside neighbour: closed at its value. Below: from the value to the lower bound.
-    expect(find(`forecast-band:outside:${series.id}:base`).data)
-      .toEqual([[start + 925, 50.1], [start + 1925, 50.05], [start + 2925, 49.8], [start + 3925, 52]]);
-    expect(find(`forecast-band:outside:${series.id}:excess`)).toMatchObject({ areaStyle: { color: "amber" },
-      data: [[start + 925, expect.closeTo(0.1)], [start + 1925, 0], [start + 2925, expect.closeTo(0.1)], [start + 3925, 0]] });
-    expect(find(`forecast-band:outside:residual:${series.id}:base`).data)
-      .toEqual([[start + 925, expect.closeTo(0.1)], [start + 1925, expect.closeTo(0.05)], [start + 2925, expect.closeTo(-0.2)], [start + 3925, 2]]);
+    // A value outside the interval is a dot and nothing more: no fill reaches for the interval's edge.
+    expect(chart.some(line => String(line.id).includes("outside"))).toBe(false);
     // Values without an interval are not checked, so they count neither way.
     expect(intervalCoverage([series])).toEqual({ checked: 3, outside: 2 });
     const tooltip = formatForecastTooltip([{ seriesId: `forecast:${series.id}`, seriesName: "Frequency forecast",

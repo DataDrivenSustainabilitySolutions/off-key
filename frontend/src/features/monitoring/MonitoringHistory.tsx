@@ -21,7 +21,11 @@ import { summarizeDetection } from "@/features/charts/detection-summary";
 import { useHistoryWidth } from "@/features/charts/use-history-width";
 import type { HistoryPreference } from "@/types/telemetry-history";
 import { useHistoryPresentation } from "./useHistoryPresentation";
-import { ForecastFigures, ForecastKey, ForecastOptions } from "./ForecastControls";
+import { ForecastCoverage, ForecastKey, ForecastOptions } from "./ForecastControls";
+import { AnomalyStrip } from "@/features/charts/AnomalyStrip";
+import { monitorColors } from "@/features/charts/monitor-colors";
+import { CHART_INSETS } from "@/features/charts/telemetry-chart";
+import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 import { forecastLeadKey, intervalCoverage } from "@/features/charts/forecast-evidence";
 import { historyMarkers } from "@/domain/monitoring/monitorOrigin";
 
@@ -94,6 +98,15 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const anyMuted = useMemo(() => displayModel.secondarySeries.some(series =>
     series.data.some(point => point.observation?.alarmMuted)), [displayModel.secondarySeries]);
   const anyAlarm = model.readings.some(reading => reading.alarmSpans?.length);
+  // The monitor keeps the colour it has on its reading's page, among the monitors that share that reading.
+  const { services } = useMonitoringServices(true);
+  const stripReading = initialReading ?? inputs[0]?.stream.id;
+  const stripRows = useMemo(() => {
+    const siblings = services.filter(item => stripReading !== undefined && item.reading_ids.includes(stripReading)).map(item => item.id);
+    const spans = model.readings.flatMap(reading => reading.alarmSpans ?? []).sort((left, right) => left[0] - right[0]);
+    return [{ id: service.id, name: service.display_name || service.id, spans,
+      color: monitorColors([...siblings, service.id], resolvedTheme === "dark").get(service.id)! }];
+  }, [services, stripReading, model.readings, service.id, service.display_name, resolvedTheme]);
   const inspect = useCallback((startMs: number, endMs: number) => {
     if (!domain || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
     setInspection(current => current && Math.abs(current.startMs - startMs) < 1 && Math.abs(current.endMs - endMs) < 1
@@ -149,8 +162,6 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </details>}
     {selection.controlCatalog.length > 1 && <TelemetryDetectorControls detectors={selection.controlCatalog}
       selected={selection.selectedDetectorIds} unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} />}
-    {shownForecasts.length > 0 && <ForecastFigures forecasts={shownForecasts} coverage={coverage}
-      unit={model.readings.find(reading => reading.inputKey === shownForecasts[0]!.readingId)?.unit} />}
     {forecasts.length > 0 && presentation.error && <p className="mn-history-problem" role="status">{presentation.error} <button onClick={presentation.retry}>Retry</button></p>}
     {model.extent ? <>
       {!latest && <p className="ex-history-monitoring" role="status">{loading ? "Loading history…" : `Monitoring: ${stage} · Awaiting evaluated observations`}</p>}
@@ -159,7 +170,9 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
         <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect}
           className="mn-history-chart" />
       </div>
+      <AnomalyStrip rows={stripRows} domain={inspection ? [inspection.startMs, inspection.endMs] : domain} inset={CHART_INSETS.monitoring} />
       {shownForecasts.length > 0 && <ForecastKey forecasts={shownForecasts} intervalLabel={intervalLabel} />}
+      <ForecastCoverage forecasts={shownForecasts} coverage={coverage} />
     </> : <div className={`mn-history-empty${problem && !loading ? " is-error" : ""}`} role="status">
       <strong>{loading ? "Loading recorded inputs…" : problem ? "History could not be loaded" : "Waiting for recorded inputs and detector results"}</strong>
       {!loading && <span>{problem || `Monitoring is ${stage}. The chart appears with the first recorded inputs.`}</span>}

@@ -73,10 +73,12 @@ for (const theme of ["light", "dark"] as const) {
     await expect(history.getByRole("heading", { name: "Forecast", exact: true })).toBeVisible();
     await expect(history.getByRole("list", { name: "Chart key" }).getByRole("listitem"))
       .toHaveText(["Observed", "Forecast", "NexCP interval"]);
-    const outside = history.getByRole("status").filter({ hasText: "Outside interval" });
-    await expect(outside).toHaveText("Outside interval12of 216 · 5.6 %");
-    await expect(outside).toHaveAttribute("title", "Outside the interval is not an anomaly by itself.");
-    await expect(history.getByRole("term")).toHaveText(["Observed", "Next forecast", "Outside interval"]);
+    // No figures at rest: the share the interval held is folded away, with the count behind it.
+    const coverage = history.getByRole("group").filter({ hasText: "Coverage" });
+    await expect(coverage.locator("summary")).toHaveText("Coverage 94 %");
+    await expect(coverage.getByText("12 of 216 checked values were outside the interval.")).toBeHidden();
+    await expect(history.getByRole("term")).toHaveCount(0);
+    await expect(history.getByRole("img", { name: "No anomalies in this history" })).toBeVisible();
     await expect(history.getByText(/Service alarm|Red line/)).toHaveCount(0);
     const chart = history.getByRole("group", { name: "Chart navigation", exact: true });
     await expect(chart.locator("canvas")).toBeVisible();
@@ -89,7 +91,7 @@ for (const theme of ["light", "dark"] as const) {
     await history.screenshot({ path: testInfo.outputPath(`forecast-zoomed-${theme}.png`) });
     await selector.selectOption("12");
     await expect(selector).toHaveValue("12");
-    await expect(outside).toHaveText("Outside interval5of 216 · 2.3 %");
+    await expect(coverage.locator("summary")).toHaveText("Coverage 98 %");
     await history.getByRole("button", { name: "Return to live", exact: true }).click();
     await history.screenshot({ path: testInfo.outputPath(`forecast-lead-12-${theme}.png`) });
     const bounds = await chart.boundingBox();
@@ -118,6 +120,6 @@ test("a forecast without an interval has no band, fill or count", async ({ page 
   await page.setViewportSize({ width: 1440, height: 1200 });
   const history = await openForecastMonitor(page, "light", false);
   await expect(history.getByRole("list", { name: "Chart key" }).getByRole("listitem")).toHaveText(["Observed", "Forecast"]);
-  await expect(history.getByRole("term")).toHaveText(["Observed", "Next forecast"]);
+  await expect(history.getByText("Coverage")).toHaveCount(0);
   await history.screenshot({ path: testInfo.outputPath("forecast-no-interval-light.png") });
 });

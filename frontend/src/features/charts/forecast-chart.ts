@@ -26,31 +26,6 @@ function outsideMarks(points: Array<{ value: [number, number | null]; point?: Fo
       ? [{ name: "Outside interval", coord: [time, value], itemStyle: { color } }] : []) };
 }
 
-/** The space between the interval's edge and each observed value beyond it, filled in the outside
- * colour. A neighbour inside the interval closes the shape at its own value, so one stray value still shows. */
-function outsideArea(id: string, points: Array<ForecastObservation | undefined>, shift: (point: ForecastObservation) => number,
-  pane: number, color: string): LineSeriesOption[] {
-  const excess = (point: ForecastObservation | undefined): [number, number] | undefined => {
-    if (!point || !isOutside(point)) return undefined;
-    const observed = point.observed! - shift(point);
-    return observed > point.upper! - shift(point) ? [point.upper! - shift(point), observed] : [observed, point.lower! - shift(point)];
-  };
-  const spans = points.map((point, index) => {
-    const own = excess(point);
-    if (own || !point || point.observed === null || !(excess(points[index - 1]) || excess(points[index + 1]))) return own;
-    return [point.observed - shift(point), point.observed - shift(point)] as [number, number];
-  });
-  if (!spans.some(Boolean)) return [];
-  const shared: LineSeriesOption = { type: "line", xAxisIndex: pane, yAxisIndex: pane,
-    stack: `forecast-band:outside:${id}`, stackStrategy: "all", showSymbol: false, connectNulls: false,
-    silent: true, lineStyle: { opacity: 0 }, emphasis: { disabled: true }, animation: false, tooltip: { show: false }, z: 2 };
-  return [
-    { ...shared, id: `forecast-band:outside:${id}:base`, data: points.map((point, index) => [point?.time ?? index, spans[index]?.[0] ?? null]) },
-    { ...shared, id: `forecast-band:outside:${id}:excess`, areaStyle: { color, opacity: 0.32 },
-      data: points.map((point, index) => [point?.time ?? index, spans[index] ? spans[index][1] - spans[index][0] : null]) },
-  ];
-}
-
 export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane: number, residualPane: number,
   color: string, outsideColor: string, ink = color): LineSeriesOption[] {
   const common: LineSeriesOption = { type: "line", showSymbol: forecast.data.length === 1, symbolSize: 5,
@@ -61,7 +36,6 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
       point?.upper == null ? null : point.upper - point.expected] as ForecastValue,
     forecastObservation: point,
   }));
-  const observations = forecast.data.flatMap(point => point.forecastObservation ? [point.forecastObservation] : []);
   const history: LineSeriesOption[] = [
     ...intervalSeries(forecast.id, forecast.data.map(point => point.value), pane, color),
     { ...common, id: `forecast:${forecast.id}`, name: `${forecast.name} forecast`,
@@ -69,7 +43,6 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
       lineStyle: { color, width: 1.6, type: "dashed" }, itemStyle: { color }, z: 4,
       markPoint: outsideMarks(forecast.data.map(({ value: [time], forecastObservation: point }) =>
         ({ value: [time, point?.observed ?? null], point })), outsideColor) },
-    ...outsideArea(forecast.id, observations, () => 0, pane, outsideColor),
   ];
   const residualSeries: LineSeriesOption[] = [
     ...intervalSeries(`residual:${forecast.id}`, residuals.map(point => point.value), residualPane, color),
@@ -80,7 +53,6 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
         lineStyle: { color, type: "dotted", opacity: 0.6 }, data: [{ yAxis: 0 }] },
       markPoint: outsideMarks(residuals.map(({ value: [time, residual], forecastObservation: point }) =>
         ({ value: [time, residual], point })), outsideColor) },
-    ...outsideArea(`residual:${forecast.id}`, observations, point => point.expected, residualPane, outsideColor),
   ];
   return [
     ...history,

@@ -405,6 +405,9 @@ type BuildMonitoringChartOptionInput = Omit<BuildTelemetryChartOptionInput, "mod
   layout?: "standard" | "compact" | "monitoring";
 };
 
+/** Where the plot begins and ends inside the chart, so what is drawn beside a chart lines up with its time axis. */
+export const CHART_INSETS = { monitoring: { left: 52, right: 18 }, compact: { left: 44, right: 16 } } as const;
+
 export const buildMonitoringChartOption = ({
   model,
   viewport,
@@ -438,12 +441,12 @@ export const buildMonitoringChartOption = ({
 
   const formatTick = (compact = true) => (value: number) => formatAxisValue(Number(value), locale, compact);
   const grid: GridComponentOption[] = monitoring
-    ? panes.map((_, index) => ({ left: 52, right: 18,
+    ? panes.map((_, index) => ({ ...CHART_INSETS.monitoring,
         top: 28 + index * 148 + (forecasts.length ? 60 * Math.min(index, model.readings.length) : 0),
         height: forecasts.length && index < model.readings.length ? 160 : 100 }))
     : compact
     ? panes.map((_, index) => ({
-        left: 44, right: 16,
+        ...CHART_INSETS.compact,
         top: index === 0 ? 26 : 242 + (index - 1) * 164,
         ...(panes.length === 1 ? { bottom: 76 } : { height: index === 0 ? 164 : 112 }),
       }))

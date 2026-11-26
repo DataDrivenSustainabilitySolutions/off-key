@@ -11,12 +11,14 @@ relation reads the feature it compares with; pipeline_combine.py hands them
 that value. A Smooth by time constant reads the seconds since its previous
 observation, and a Time features step makes features of the observation's time
 (pipeline_time.py). The compiler, the validation API and RADAR read the steps
-from here.
+from here. Smoothing over observations, Despike, Change, Lags in observations
+and Rolling are described here and computed by aberrant's sequence
+transformers in RADAR.
 """
 
 import math
 from array import array
-from bisect import bisect_left, bisect_right, insort
+from bisect import bisect_right
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -121,12 +123,6 @@ _RELATION_SUFFIXES = {
     "slope": "beta",
     "residual": "resid",
 }
-_ORDERED_STATISTICS = frozenset(
-    {
-        *("median", "min", "max", "range", "quantile", "iqr", "mad"),
-        *("robust_zscore", "rank"),
-    }
-)
 # Scales a mean absolute deviation to the standard deviation of normal data.
 MEAN_DEVIATION_SCALE = math.sqrt(math.pi / 2)
 
@@ -275,15 +271,6 @@ def _pushed(values: array, value: float, size: int) -> array:
     return window
 
 
-def _reordered(ordered: array, leaving: float | None, value: float) -> array:
-    """A new sorted copy of the window after leaving goes and value arrives."""
-    ordered = ordered[:]
-    if leaving is not None:
-        del ordered[bisect_left(ordered, leaving)]
-    insort(ordered, value)
-    return ordered
-
-
 def _window_state(state: State, size: int, count: int) -> bool:
     if len(state) != count or not all(
         isinstance(item, array) and item.typecode == "d" for item in state
@@ -300,33 +287,13 @@ def _window_state(state: State, size: int, count: int) -> bool:
 class Exponential(Kernel):
     """y = y' + alpha (x - y') with alpha = 2 / (n + 1), from the first value on.
 
-    Outputs start once n values have arrived, when the start no longer dominates.
+    Outputs start once n values have arrived, when the start no longer
+    dominates. RADAR runs it on aberrant.
     """
 
     def __init__(self, span: int):
         self.span = span
-        self.alpha = 2 / (span + 1)
         self.lead = span - 1
-
-    def initial(self) -> State:
-        return (0, 0.0)
-
-    def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        count, level = state
-        level = finite_result(
-            value if count == 0 else level + self.alpha * (value - level)
-        )
-        count = min(count + 1, self.span)
-        return (count, level), level if count == self.span else None
-
-    def accepts(self, state: State) -> bool:
-        return (
-            len(state) == 2
-            and isinstance(state[0], int)
-            and 0 <= state[0] <= self.span
-            and isinstance(state[1], float)
-            and math.isfinite(state[1])
-        )
 
 
 def _held_state(state: State) -> bool:
@@ -369,110 +336,17 @@ class Decay(Kernel):
 
 
 class Rolling(Kernel):
-    """A statistic of the last n values, from the n-th value on."""
+    """A statistic of the last n values, from the n-th value on.
+
+    RADAR runs it on aberrant.
+    """
 
     def __init__(self, size: int, statistic: str, quantile: float = 0.5):
         self.size = size
         self.statistic = statistic
         self.quantile = quantile
-        self.ordered = statistic in _ORDERED_STATISTICS
         self.lead = size - 1
         self.window = size
-        if statistic == "slope":
-            # Positions centred on the window sum to zero, so the mean of the
-            # values drops out of the least-squares slope.
-            centre = (size - 1) / 2
-            self._positions = array("d", (index - centre for index in range(size)))
-            self._spread = size * (size * size - 1) / 12
-
-    def initial(self) -> State:
-        return (array("d"), array("d")) if self.ordered else (array("d"),)
-
-    def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        values = state[0]
-        leaving = values[0] if len(values) == self.size else None
-        window = _pushed(values, value, self.size)
-        new = (
-            (window, _reordered(state[1], leaving, value))
-            if self.ordered
-            else (window,)
-        )
-        if len(window) < self.size:
-            return new, None
-        try:
-            return new, finite_result(self._statistic(window, new[-1]))
-        except OverflowError:
-            raise PrepareFailure(
-                "non_finite", "The result is not a finite number"
-            ) from None
-
-    def _statistic(self, window: array, ordered: array) -> float:
-        size = self.size
-        middle = size // 2
-        match self.statistic:
-            case "sum":
-                return math.fsum(window)
-            case "mean":
-                return math.fsum(window) / size
-            case "std":
-                return _root_mean_square(_deviations(window), size - 1)
-            case "median":
-                if size % 2:
-                    return ordered[middle]
-                return (ordered[middle - 1] + ordered[middle]) / 2
-            case "min":
-                return ordered[0]
-            case "max":
-                return ordered[-1]
-            case "range":
-                return ordered[-1] - ordered[0]
-        return self._extended_statistic(window, ordered)
-
-    def _extended_statistic(self, window: array, ordered: array) -> float:
-        match self.statistic:
-            case "quantile":
-                return _quantile(ordered, self.quantile)
-            case "iqr":
-                return _quantile(ordered, 0.75) - _quantile(ordered, 0.25)
-            case "mad":
-                return _median_deviation(ordered, _quantile(ordered, 0.5))
-            case "slope":
-                return math.sumprod(self._positions, window) / self._spread
-            case "rank":
-                # Values below the latest one, and half of those equal to it.
-                below = bisect_left(ordered, window[-1])
-                equal = bisect_right(ordered, window[-1]) - below
-                return (below + (equal - 1) / 2) / (self.size - 1)
-            case "robust_zscore":
-                return _robust_score(window, ordered)
-            case "rms":
-                # The root lies between the smallest and the largest magnitude,
-                # which is the range the compiler passes on; rounding may not.
-                root = _root_mean_square(window, self.size)
-                return max(root, min(map(abs, window)))
-        return self._moment_statistic(window)
-
-    def _moment_statistic(self, window: array) -> float:
-        """zscore, skewness or excess kurtosis; 0 for a window of one value."""
-        size = self.size
-        unit, largest = _unit_deviations(window)
-        if largest == 0:
-            return 0.0
-        second = math.sumprod(unit, unit) / size
-        if self.statistic == "zscore":
-            score = unit[-1] / math.sqrt(second * size / (size - 1))
-        elif self.statistic == "skewness":
-            third = math.fsum(item * item * item for item in unit) / size
-            score = third / second**1.5
-        else:
-            squares = [item * item for item in unit]
-            score = math.sumprod(squares, squares) / size / second**2 - 3
-        # No window exceeds these limits; rounding near a flat window may.
-        low, high = _moment_limits(self.statistic, size)
-        return min(max(score, low), high)
-
-    def accepts(self, state: State) -> bool:
-        return _window_state(state, self.size, 2 if self.ordered else 1)
 
 
 def _deviations(window) -> list[float]:
@@ -504,69 +378,6 @@ def _unit_deviations(window) -> tuple[list[float], float]:
     if largest == 0:
         return deviations, 0.0
     return [item / largest for item in deviations], largest
-
-
-def _root_mean_square(values, divisor: int) -> float:
-    """The root of the sum of squares over divisor.
-
-    The largest magnitude stands for 1, so the squares of very large or very
-    small values neither overflow nor vanish where their root does not.
-    """
-    largest = max(map(abs, values))
-    if largest == 0:
-        return 0.0
-    unit = [item / largest for item in values]
-    return largest * math.sqrt(math.sumprod(unit, unit) / divisor)
-
-
-def _quantile(ordered, fraction: float) -> float:
-    position = (len(ordered) - 1) * fraction
-    low = int(position)
-    weight = position - low
-    if weight == 0:
-        return ordered[low]
-    return (1 - weight) * ordered[low] + weight * ordered[low + 1]
-
-
-def _deviation(ordered: array, centre: float, rank: int) -> float:
-    """The rank-th smallest distance from centre, counted from 1.
-
-    In a sorted window the rank values nearest to centre lie side by side, so
-    a binary search finds where they start and nothing is sorted again.
-    """
-    low, high = 0, len(ordered) - rank
-    while low < high:
-        middle = (low + high) // 2
-        if centre - ordered[middle] > ordered[middle + rank] - centre:
-            low = middle + 1
-        else:
-            high = middle
-    return max(centre - ordered[low], ordered[low + rank - 1] - centre)
-
-
-def _median_deviation(ordered: array, centre: float) -> float:
-    """The median distance from centre, as the median of the sorted distances."""
-    size = len(ordered)
-    middle = _deviation(ordered, centre, size // 2 + 1)
-    if size % 2:
-        return middle
-    return 0.5 * _deviation(ordered, centre, size // 2) + 0.5 * middle
-
-
-def _robust_score(window: array, ordered: array) -> float:
-    """The latest value's distance from the median in scaled MADs.
-
-    More than half of a window can hold one value, which makes the MAD 0;
-    the mean absolute deviation then takes its place, scaled alike, so a
-    value that differs still stands out. A window of one value gives 0.
-    """
-    median = _quantile(ordered, 0.5)
-    distance = window[-1] - median
-    spread = MAD_SCALE * _median_deviation(ordered, median)
-    if spread == 0:
-        mean_deviation = math.fsum(abs(item - median) for item in window)
-        spread = MEAN_DEVIATION_SCALE * mean_deviation / len(window)
-    return distance / spread if spread else 0.0
 
 
 def _moment_limits(statistic: str, size: int) -> tuple[float, float]:
@@ -729,7 +540,7 @@ class Despike(Kernel):
     The window holds the last w raw values, the current one included. A value
     more than threshold * 1.4826 * MAD from the median is a spike. An excursion
     longer than half the window moves the median and passes; a flat window,
-    MAD 0, replaces nothing.
+    MAD 0, replaces nothing. RADAR runs it on aberrant.
     """
 
     def __init__(self, size: int, threshold: float):
@@ -738,28 +549,12 @@ class Despike(Kernel):
         self.lead = size - 1
         self.window = size
 
-    def initial(self) -> State:
-        return (array("d"), array("d"))
-
-    def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        values, ordered = state
-        leaving = values[0] if len(values) == self.size else None
-        window = _pushed(values, value, self.size)
-        ordered = _reordered(ordered, leaving, value)
-        if len(window) < self.size:
-            return (window, ordered), None
-        middle = self.size // 2
-        median = ordered[middle]
-        spread = _deviation(ordered, median, middle + 1)
-        spike = spread > 0 and abs(value - median) > self.threshold * MAD_SCALE * spread
-        return (window, ordered), median if spike else value
-
-    def accepts(self, state: State) -> bool:
-        return _window_state(state, self.size, 2)
-
 
 class Change(Kernel):
-    """Difference, percent change or the value lag observations back."""
+    """Difference, percent change or the value lag observations back.
+
+    RADAR runs it on aberrant.
+    """
 
     def __init__(self, lag: int, mode: str):
         self.lag = lag
@@ -767,29 +562,12 @@ class Change(Kernel):
         self.lead = lag
         self.window = lag
 
-    def initial(self) -> State:
-        return (array("d"),)
-
-    def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        (values,) = state
-        window = _pushed(values, value, self.lag)
-        if len(values) < self.lag:
-            return (window,), None
-        reference = values[0]
-        if self.mode == "lag":
-            return (window,), reference
-        if self.mode == "difference":
-            return (window,), finite_result(value - reference)
-        if reference == 0:
-            raise PrepareFailure("out_of_domain", "Percent change from 0 is undefined")
-        return (window,), finite_result(100 * (value - reference) / abs(reference))
-
-    def accepts(self, state: State) -> bool:
-        return _window_state(state, self.lag, 1)
-
 
 class Lags(Kernel):
-    """The values several observations back, one output per lag, ascending."""
+    """The values several observations back, one output per lag, ascending.
+
+    RADAR runs it on aberrant.
+    """
 
     def __init__(self, lags: list[int]):
         self.lags = tuple(sorted(lags))
@@ -797,21 +575,6 @@ class Lags(Kernel):
         self.several = True
         self.lead = self.lags[-1]
         self.window = self.lags[-1]
-
-    def initial(self) -> State:
-        return (array("d"),)
-
-    def advance(self, state: State, value: float) -> tuple[State, Any]:
-        """The next state and a value per lag, or None until the largest arrived."""
-        (values,) = state
-        window = _pushed(values, value, self.window)
-        if len(values) < self.window:
-            return (window,), None
-        # values ends with the observation before this one: lag 1 is its last.
-        return (window,), tuple(values[-lag] for lag in self.lags)
-
-    def accepts(self, state: State) -> bool:
-        return _window_state(state, self.window, 1)
 
 
 # How closely a lag in time finds its value: within this share of the lag.

@@ -1,5 +1,6 @@
 """Lags: one step that adds a feature's values from several observations back."""
 
+import math
 import pickle
 import random
 from array import array
@@ -8,7 +9,6 @@ from bisect import bisect_right
 import pytest
 from off_key_core.models.pipeline_prepare import (
     default_suffix,
-    kernel,
     output_suffixes,
     prepared_bounds,
 )
@@ -22,6 +22,7 @@ from off_key_core.schemas.pipelines import (
 )
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.prepare import PrepareStage
+from off_key_mqtt_radar.pipelines.sequence import runnable
 from pydantic import ValidationError
 
 from tests.support.pipelines import (
@@ -56,7 +57,7 @@ LAGS = [("lags", "prepare.lags", {"apply_to": ["a"], "lags": [3, 1, 2], **COUNTE
 
 
 def test_lags_give_the_values_several_observations_back():
-    step = kernel("prepare.lags", {"lags": [24, 1, 3], **COUNTED})
+    step = runnable("prepare.lags", {"lags": [24, 1, 3], **COUNTED})
     assert (step.width, step.lead, step.window) == (3, 24, 24)
     state = step.initial()
     for index in range(30):
@@ -70,7 +71,8 @@ def test_lags_give_the_values_several_observations_back():
         else:
             # Ascending lags: 1, 3 and 24 observations back.
             assert actual == (index - 1.0, index - 3.0, index - 24.0)
-    assert not step.accepts((pickle.loads(pickle.dumps(state))[0][:0] * 0,) * 2)
+    assert not step.accepts((26, state[1]))
+    assert not step.accepts((0, (math.nan,)))
     assert default_suffix("prepare.lags", {}) == "lag"
     assert output_suffixes("prepare.lags", {"lags": [24, 1], **COUNTED}, "lag") == (
         "lag1",
@@ -192,7 +194,7 @@ def test_many_lags_are_worth_a_word():
 
 def test_lags_in_time_find_their_value_within_one_percent_of_the_lag():
     rng = random.Random(7)
-    step = kernel("prepare.lags", {"lags": [1, 15, 60], "unit": "minutes"})
+    step = runnable("prepare.lags", {"lags": [1, 15, 60], "unit": "minutes"})
     assert (step.width, step.lead) == (3, 0)
     state = step.initial()
     history = []

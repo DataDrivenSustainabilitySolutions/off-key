@@ -9,11 +9,12 @@ from typing import Any
 
 import numpy as np
 from off_key_core.models.pipeline_calibration import calibrator_id
-from off_key_core.models.pipeline_prepare import LANE_COMPONENTS, kernel
+from off_key_core.models.pipeline_prepare import LANE_COMPONENTS, Kernel
 from off_key_core.models.pipeline_scope import step_scope
 from pydantic import BaseModel
 
 from .plan import ExecutionPlan
+from .sequence import SequenceStep, runnable
 
 
 class ResourceEstimate(BaseModel):
@@ -124,31 +125,34 @@ def _prepare_state(plan: ExecutionPlan) -> int:
 
     A step that needs order statistics keeps a sorted copy as well. A pass
     stages new arrays before the old ones are released, so twice the arrays can
-    be alive at once. A rolling slope also keeps one array of window positions
-    for the step. Row operations keep no state.
+    be alive at once. Row operations keep no state.
     """
     if plan.stage is None:
         return 0
-    header = sys.getsizeof(array("d"))
     total = 0
     for identifier in plan.stage.steps:
         node = plan.nodes[identifier]
         if node.component not in LANE_COMPONENTS:
             continue
-        step = kernel(node.component, node.params)
-        initial = step.initial()
-        arrays = sum(isinstance(item, array) for item in initial)
-        lane = sys.getsizeof(initial) + arrays * (header + 8 * step.window)
-        lane += sum(
-            sys.getsizeof(item) for item in initial if not isinstance(item, array)
-        )
-        if node.component == "prepare.rolling" and node.params["statistic"] == "slope":
-            total += header + 8 * step.window
+        step = runnable(node.component, node.params)
         scope = step_scope(
             node.component, node.params, plan.names(plan.parents(identifier)[0])
         )
-        total += 2 * len(scope.selected) * lane
+        total += 2 * len(scope.selected) * _lane_bytes(step)
     return total
+
+
+def _lane_bytes(step: Kernel) -> int:
+    initial = step.initial()
+    parts = initial[1] if isinstance(step, SequenceStep) else initial
+    header = sys.getsizeof(array("d"))
+    arrays = sum(isinstance(item, array) for item in parts)
+    lane = sys.getsizeof(initial) + arrays * (header + 8 * step.window)
+    if parts is not initial:
+        lane += sys.getsizeof(parts)
+    return lane + sum(
+        sys.getsizeof(item) for item in parts if not isinstance(item, array)
+    )
 
 
 def _fusion_state(plan: ExecutionPlan) -> int:

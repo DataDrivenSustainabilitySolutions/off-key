@@ -13,7 +13,6 @@ from off_key_core.models.pipeline_combine import combined_columns, row_step
 from off_key_core.models.pipeline_prepare import (
     PrepareFailure,
     default_suffix,
-    kernel,
     prepared_bounds,
 )
 from off_key_core.models.pipeline_scope import ScopeError
@@ -28,6 +27,7 @@ from off_key_mqtt_radar.dojo.replay import Replay, detection_config
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.prepare import PrepareRejected, PrepareStage
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
+from off_key_mqtt_radar.pipelines.sequence import runnable
 
 from tests.support.pipelines import (
     assert_resumes_identically,
@@ -116,7 +116,7 @@ def test_flags_compose_with_a_window_and_assignment_without_discarding_observati
 @pytest.mark.parametrize("size", [2, 3, 7])
 def test_new_window_statistics_match_independent_references(statistic, size):
     values = [-8.0, -1.0, 3.0, 9.0, 2.0, -4.0, 8.0, 10.0, 11.0]
-    step = kernel(
+    step = runnable(
         "prepare.rolling",
         {"statistic": statistic, "window_size": size, "quantile": 0.9},
     )
@@ -174,7 +174,7 @@ def test_scores_and_shape_statistics_match_numpy_within_their_limits(statistic, 
         for _ in range(200)
     ]
     params = {"statistic": statistic, "window_size": size}
-    step = kernel("prepare.rolling", params)
+    step = runnable("prepare.rolling", params)
     low, high = prepared_bounds("prepare.rolling", params, (None, None))
     state = step.initial()
     for index, value in enumerate(values):
@@ -194,7 +194,7 @@ def test_scores_and_shape_statistics_match_numpy_within_their_limits(statistic, 
 
 def rolled(statistic, values):
     """The statistic of a window that holds exactly these values."""
-    step = kernel(
+    step = runnable(
         "prepare.rolling", {"statistic": statistic, "window_size": len(values)}
     )
     state = step.initial()
@@ -257,7 +257,7 @@ def test_small_differences_between_large_values_are_not_rounded_away(sign):
 
 
 def test_a_robust_score_survives_a_window_that_is_mostly_one_value():
-    step = kernel("prepare.rolling", {"statistic": "robust_zscore", "window_size": 5})
+    step = runnable("prepare.rolling", {"statistic": "robust_zscore", "window_size": 5})
     state = step.initial()
     for value in [0.0, 0.0, 0.0, 0.0, 5.0]:
         state, score = step.advance(state, value)
@@ -293,7 +293,7 @@ def test_scores_have_ranges_a_unit_interval_detector_can_rely_on():
     ],
 )
 def test_accumulation_starts_with_the_first_value_and_restores(function, expected):
-    step = kernel("prepare.accumulate", {"function": function})
+    step = runnable("prepare.accumulate", {"function": function})
     state = step.initial()
     for value, result in zip([-2.0, 5.0, -1.0], expected, strict=True):
         state, actual = step.advance(pickle.loads(pickle.dumps(state)), value)
@@ -309,7 +309,7 @@ def test_accumulation_starts_with_the_first_value_and_restores(function, expecte
     "function,expected", [("sum", 4.5), ("min", 1.5), ("max", 3.0)]
 )
 def test_accumulation_continues_a_checkpoint_from_before_the_carry(function, expected):
-    step = kernel("prepare.accumulate", {"function": function})
+    step = runnable("prepare.accumulate", {"function": function})
     assert step.accepts((True, 1.5)) and step.accepts((False, 0.0))
     assert not step.accepts((True, math.nan)) and not step.accepts((False, 1.0))
     state, actual = step.advance((True, 1.5), 3.0)
@@ -318,7 +318,7 @@ def test_accumulation_continues_a_checkpoint_from_before_the_carry(function, exp
 
 
 def test_a_long_total_keeps_what_plain_addition_drops():
-    step = kernel("prepare.accumulate", {"function": "sum"})
+    step = runnable("prepare.accumulate", {"function": "sum"})
     state = step.initial()
     values = [1e16, 1.0, 1.0, -1e16, 0.5, 0.5]
     for value in values:
@@ -339,7 +339,7 @@ def test_the_median_deviation_is_found_in_the_sorted_window_exactly(size):
     values = [
         float(rng.choice([rng.randint(-3, 3), rng.gauss(0, 5)])) for _ in range(300)
     ]
-    step = kernel("prepare.rolling", {"statistic": "mad", "window_size": size})
+    step = runnable("prepare.rolling", {"statistic": "mad", "window_size": size})
     state = step.initial()
     for index, value in enumerate(values):
         state, actual = step.advance(state, value)

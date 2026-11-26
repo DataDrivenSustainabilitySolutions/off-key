@@ -1,6 +1,7 @@
 """Prepare steps: golden streams, names, ranges and the compiler's stage checks."""
 
 import math
+import pickle
 from array import array
 from itertools import pairwise
 
@@ -8,12 +9,12 @@ import pytest
 from off_key_core.models.pipeline_prepare import (
     PrepareFailure,
     default_suffix,
-    kernel,
     stage_split,
 )
 from off_key_core.models.pipeline_reports import bounded_validation_report
 from off_key_core.models.pipelines import compile_pipeline, validate_pipeline
 from off_key_core.schemas.pipelines import PipelineDefinition
+from off_key_mqtt_radar.pipelines.sequence import runnable
 
 DETECTORS = {
     "static_baseline": ("detector:pyod_iforest", "policy.martingale"),
@@ -26,7 +27,7 @@ DETECTORS = {
 
 def stream(component, values, **params):
     """Feed one feature's values through a step; None while it warms up."""
-    step = kernel(component, params)
+    step = runnable(component, params)
     state = step.initial()
     outputs = []
     for value in values:
@@ -176,17 +177,18 @@ def test_overflowing_window_statistics_skip_the_observation():
 
 
 def test_advancing_never_changes_the_previous_state():
-    step = kernel("prepare.rolling", {"statistic": "median", "window_size": 3})
+    step = runnable("prepare.rolling", {"statistic": "median", "window_size": 3})
     state = step.initial()
     for value in (3.0, 1.0, 2.0):
         state, _ = step.advance(state, value)
-    before = [array("d", item) for item in state]
+    before = pickle.dumps(state)
     advanced, output = step.advance(state, 10.0)
-    assert [list(item) for item in state] == [list(item) for item in before]
-    assert list(advanced[0]) == [1.0, 2.0, 10.0]
-    assert list(advanced[1]) == [1.0, 2.0, 10.0]
+    assert pickle.dumps(state) == before
+    assert advanced[0] == 3
+    assert [list(item) for item in advanced[1]] == [[1.0, 2.0, 10.0]] * 2
     assert output == 2.0
-    assert step.accepts(advanced) and not step.accepts((array("d", [2.0, 1.0]),) * 2)
+    assert step.accepts(advanced)
+    assert not step.accepts((3, (array("d", [2.0, 1.0]),) * 2))
 
 
 @pytest.mark.parametrize(

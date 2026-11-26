@@ -133,7 +133,7 @@ export function PipelineDesignSettings({
           gated={startup?.gated} shortfall={shortfall} readOnly={readOnly} onChange={onChange} />}
         {onShadow && <label className="pl-check">
           <input type="checkbox" checked={!!shadow} disabled={readOnly} onChange={(event) => onShadow(event.target.checked)} />
-          <span>Shadow run<small>Records the alarms it would raise and raises none. An update without it takes the service live.</small></span>
+          <span>Shadow run<small>Records the alarms it would raise and raises none. An update without it takes the monitor live.</small></span>
         </label>}
       </section>}
       {catalog && <p className="pl-help pl-learning-note">

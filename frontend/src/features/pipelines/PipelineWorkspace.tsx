@@ -103,7 +103,7 @@ export default function PipelineWorkspace({
     return (
       <section aria-label="Pipelines">
         <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]}
-          current={params.get("view") === "proposals" ? "Proposals" : creating ? "New service" : "Templates"} />
+          current={params.get("view") === "proposals" ? "Proposals" : creating ? "New monitor" : "Templates"} />
         {error ? (
           <p role="alert" className="pl-error">
             {error}
@@ -124,13 +124,13 @@ export default function PipelineWorkspace({
         onCreate={create}
         onOpen={open}
         onBack={creating ? create : onBack}
-        backLabel={creating ? "New service" : "Monitoring"}
+        backLabel={creating ? "New monitor" : "Monitoring"}
       />
     );
   if (!id && params.get("view") === "proposals")
     return <PipelineProposalList onBack={onBack} canDecide={canEdit} services={services} onStarted={onStarted}
       onReview={(item) => setParams(reviewProposal(params, item.id, item.replace_monitor_id))} />;
-  if (!id && sourceId && !predecessor && !sourceError) return <p role="status">Loading service configuration…</p>;
+  if (!id && sourceId && !predecessor && !sourceError) return <p role="status">Loading monitor configuration…</p>;
   if (!id && proposalId && !proposal && !proposalError) return <p role="status">Opening proposal…</p>;
   if (!id) return <>
     {(error || sourceError || proposalError) && <p role="alert" className="pl-error">{error || sourceError || proposalError}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
@@ -149,7 +149,7 @@ export default function PipelineWorkspace({
     proposalId={proposal?.status === "open" ? proposal.id : undefined}
     replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
     sourceService={sourceId ? { id: sourceId, replace: !!replacementId } : undefined}
-    activationBlocked={sourceId && (!predecessor || replacementId && !replacement) ? "This service configuration is unavailable. Return to Monitoring and choose an available service." : undefined}
+    activationBlocked={sourceId && (!predecessor || replacementId && !replacement) ? "This monitor configuration is unavailable. Return to Monitoring and choose an available monitor." : undefined}
     initialTarget={initialTarget} initialReading={contextReading} onStarted={onStarted} onManage={library}
     onBack={proposal ? proposals : onBack} backLabel={proposal ? "Proposals" : undefined} />
   </>;
@@ -195,7 +195,7 @@ export default function PipelineWorkspace({
         predecessor={predecessor}
         activationBlocked={
           replacementId && !replacement
-            ? "Select an available predecessor or explicitly choose a new service before activation."
+            ? "Select an available predecessor or explicitly choose a new monitor before activation."
             : undefined
         }
         onBack={creating ? onBack : library}

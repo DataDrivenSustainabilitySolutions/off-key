@@ -35,7 +35,7 @@ export function useFavourites(account: string | number | null) {
       } catch (failure) {
         if (controller.signal.aborted) return;
         clientLogger.warn({ event: "favourites.load_failed", message: "Favourites could not be loaded", error: failure });
-        setError("Favourites could not be loaded. Reload the page to try again.");
+        setError("Pinned items could not be loaded. Reload the page to try again.");
       }
     })();
     return () => controller.abort();
@@ -65,7 +65,7 @@ export function useFavourites(account: string | number | null) {
         setError("");
       } catch (failure) {
         clientLogger.warn({ event: "favourites.save_failed", message: "Favourite could not be saved", error: failure });
-        setError("Your favourite could not be saved. Try again.");
+        setError("Your pinned items could not be saved. Try again.");
         // Show what the server still holds for this item; others stay.
         if (latest.current.account === account)
           update({ account, items: confirmed.current.get(key) ? [...without(current(), item), item] : without(current(), item) });

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Copy, Star, Trash2 } from "lucide-react";
+import { Copy, Pin, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
@@ -49,7 +49,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   const activity = service.operational_status.activity;
   const inputNames = new Map(inputs.map(input => [input.stream.id, input.stream.label]));
   const describeInputs = (readingIds: string[]) => readingIds.map(id => inputNames.get(id) ?? id).join(", ");
-  const removeLabel = service.active ? "Stop and remove service" : "Remove service";
+  const removeLabel = service.active ? "Stop and remove monitor" : "Remove monitor";
   useEffect(() => {
     const controller = new AbortController();
     void apiUtils.get<{ configuration?: Configuration }>(API_CONFIG.ENDPOINTS.MONITORING.ITEM(service.id),
@@ -68,15 +68,15 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     finally { setDeleting(false); }
   };
   const copyId = async () => {
-    try { await navigator.clipboard.writeText(service.id); toast.success("Service ID copied"); }
-    catch { toast.error("The service ID could not be copied."); }
+    try { await navigator.clipboard.writeText(service.id); toast.success("Monitor ID copied"); }
+    catch { toast.error("The monitor ID could not be copied."); }
   };
-  return <section className="mn-detail" aria-label="Monitoring service details">
+  return <section className="mn-detail" aria-label="Monitor details">
     <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current={name} />
-    <div className="mn-detail-header"><div><h1 aria-label={name}><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h1>
+    <div className="mn-detail-header"><div><h1 aria-label={name}><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename monitor" /></h1>
       <small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}{service.shadow ? " · Shadow run" : ""}</small></div>
-      <div className="mn-detail-actions"><button className="mn-favourite ex-icon-button" aria-pressed={favourite} aria-label={favourite ? "Remove service from favourites" : "Add service to favourites"} onClick={onFavourite}><Star size={17} /></button>
-        <ActionMenu label="Service actions" actions={[{ label: "Copy service ID", icon: Copy, onSelect: () => void copyId() },
+      <div className="mn-detail-actions"><button className="mn-favourite ex-icon-button" aria-pressed={favourite} aria-label={favourite ? "Unpin monitor" : "Pin monitor"} onClick={onFavourite}><Pin size={17} /></button>
+        <ActionMenu label="Monitor actions" actions={[{ label: "Copy monitor ID", icon: Copy, onSelect: () => void copyId() },
           ...(canEdit ? [{ label: removeLabel, icon: Trash2, destructive: true, separated: true, onSelect: () => { setDeleteError(""); setConfirm(true); } }] : [])]} />
       </div></div>
     {service.origin && <RationaleCard author={service.origin.author} authorKind={service.origin.author_kind}
@@ -89,7 +89,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
       <div><dt>Inputs</dt><dd>{service.reading_ids.length} {service.reading_ids.length === 1 ? "reading" : "readings"}</dd></div>
       <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString()}</dd></div>
       <div><dt>Last update</dt><dd><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" /></dd></div></dl>
-    <div className="mn-tabs" role="tablist" aria-label="Service details">{tabs.map((item, index) => <button key={item.id} id={`monitor-tab-${item.id}`} role="tab"
+    <div className="mn-tabs" role="tablist" aria-label="Monitor sections">{tabs.map((item, index) => <button key={item.id} id={`monitor-tab-${item.id}`} role="tab"
       aria-selected={tab === item.id} aria-controls={`monitor-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => chooseTab(item.id)} onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
@@ -131,7 +131,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
       {tab === "evidence" && (inputs.length ? <MonitoringHistory key={`${service.id}:${params.get("stream") ?? "all"}`}
         service={service} inputs={inputs} connections={document.brokers} historyCache={historyCache}
         initialReading={inputs.some(input => input.stream.id === params.get("stream")) ? params.get("stream")! : undefined} />
-        : <p className="ex-muted">These service inputs are not available in the current catalogue.</p>)}
+        : <p className="ex-muted">These monitor inputs are not available in the current catalogue.</p>)}
       {tab === "configuration" && <>
         {error && <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
         <dl className="mn-configuration"><div><dt>Strategy</dt><dd>{strategyName(service)}</dd></div><div><dt>Model</dt><dd title={service.model_type}>{service.model_type ? modelName(service.model_type) : "Not recorded"}</dd></div>
@@ -140,12 +140,12 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
           <div><dt>Email recipients</dt><dd>Managed by the operator</dd></div>
         </dl>
         {configuration && Object.keys(configuration.monitoring).length > 0 && <details className="mn-section"><summary>Detector configuration</summary><pre className="mn-json">{JSON.stringify(configuration, null, 2)}</pre></details>}
-        <section className="mn-section"><h3>Service</h3><dl className="mn-configuration"><div><dt>Created</dt><dd>{formatDateTime(service.created_at ?? "") || "Not recorded"}</dd></div>
-          <div><dt>Service ID</dt><dd>{service.id}</dd></div></dl></section>
+        <section className="mn-section"><h3>Monitor</h3><dl className="mn-configuration"><div><dt>Created</dt><dd>{formatDateTime(service.created_at ?? "") || "Not recorded"}</dd></div>
+          <div><dt>Monitor ID</dt><dd>{service.id}</dd></div></dl></section>
       </>}
     </div>
     <ConfirmDialog open={confirm} title={`${removeLabel}?`} description={`${name}. Collected history is retained.`}
-      confirmLabel="Remove service" busyLabel="Removing…" destructive busy={deleting} error={deleteError}
+      confirmLabel="Remove monitor" busyLabel="Removing…" destructive busy={deleting} error={deleteError}
       onConfirm={() => void remove()} onCancel={() => setConfirm(false)} />
   </section>;
 }

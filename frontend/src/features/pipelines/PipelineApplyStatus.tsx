@@ -2,9 +2,9 @@ import { CircleCheck, LoaderCircle, TriangleAlert } from "lucide-react";
 import { applyFinished, cancelRefused, REPLACEMENT_UNDER_WAY, type usePipelineApply } from "./applySession";
 
 const phases: Record<string, string> = {
-  requested: "Preparing your service…", preflighting: "Checking the configuration…",
-  validated: "Configuration checked", retiring: "Stopping the previous service…",
-  starting: "Starting monitoring…", awaiting_heartbeat: "Waiting for the service to connect…",
+  requested: "Preparing your monitor…", preflighting: "Checking the configuration…",
+  validated: "Configuration checked", retiring: "Stopping the previous monitor…",
+  starting: "Starting monitoring…", awaiting_heartbeat: "Waiting for the monitor to connect…",
   succeeded: "Monitoring applied", cancelling: "Cancelling…", cancelled: "Setup cancelled", failed: "Monitoring could not start",
 };
 
@@ -35,6 +35,6 @@ export function PipelineApplyStatus({ apply, onInspect, onReset }: {
       {terminal && operation?.phase !== "succeeded" && <button type="button" onClick={onReset ?? session.reset}>Return to setup</button>}
     </div>
     {cancelRefused(operation) && <p>{REPLACEMENT_UNDER_WAY}</p>}
-    {(request?.replace_monitor_id || operation?.predecessor_monitor_id) && operation?.phase === "failed" && <p>The previous service may have stopped. Check its status before trying again.</p>}
+    {(request?.replace_monitor_id || operation?.predecessor_monitor_id) && operation?.phase === "failed" && <p>The previous monitor may have stopped. Check its status before trying again.</p>}
   </section>;
 }

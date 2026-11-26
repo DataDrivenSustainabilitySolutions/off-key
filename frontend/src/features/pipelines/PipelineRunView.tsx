@@ -122,7 +122,7 @@ export default function PipelineRunView({
                   disabled={busy}
                   onClick={edit}
                 >
-                  Edit service
+                  Edit monitor
                 </button>
                 {view.run && !arranging && (
                   <button type="button" onClick={() => setArranging(true)}>

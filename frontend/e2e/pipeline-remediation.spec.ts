@@ -40,7 +40,7 @@ test("preserves edits made after a real atomic draft save was submitted", async 
     const title = pipelineStepTitle(editor);
     await titlePipelineStep(editor, "Submitted title");
     await openPipelineSettings(editor, "Service");
-    const name = editor.getByRole("textbox", { name: "Service name", exact: true });
+    const name = editor.getByRole("textbox", { name: "Monitor name", exact: true });
     await name.fill("Submitted name");
     await editor.getByRole("button", { name: "Save template", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });

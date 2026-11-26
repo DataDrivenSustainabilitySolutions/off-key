@@ -37,5 +37,5 @@ export async function startFormMonitor(
     }
     await delay(pollMilliseconds);
   }
-  throw new Error("Monitoring service did not start in time");
+  throw new Error("The monitor did not start in time");
 }

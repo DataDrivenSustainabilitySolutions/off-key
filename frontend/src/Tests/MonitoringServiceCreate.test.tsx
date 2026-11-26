@@ -35,7 +35,7 @@ function mount(ready = true, services: ActiveService[] = [], byStream = new Map<
 describe("integrated monitor creation", () => {
   it.each(["adaptive", "static"])("starts %s monitoring with a saved name on the chosen reading", async strategy => {
     const onStarted = mount();
-    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Room climate monitor" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Monitor name" }), { target: { value: "Room climate monitor" } });
     if (strategy === "static") fireEvent.click(screen.getByRole("button", { name: "Static baseline" }));
     const start = await screen.findByRole("button", { name: strategy === "static" ? "Start monitoring" : "Start adaptive monitoring" });
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
@@ -70,13 +70,13 @@ describe("integrated monitor creation", () => {
 it("restores the entire service draft after a Sources detour", async () => {
   const router = createMemoryRouter([
     { path: "/", element: <MonitoringServiceCreate targets={[target]} services={[]} byStream={new Map()} initialTarget="device:room" initialReading="temperature" collectionReady draftKey="test-detour" onStarted={vi.fn()} onBack={vi.fn()} /> },
-    { path: "/sources", element: <Link to="/?create=monitoring&reading=temperature">Return to service setup</Link> },
+    { path: "/sources", element: <Link to="/?create=monitoring&reading=temperature">Return to monitor setup</Link> },
   ], { initialEntries: ["/?create=monitoring&reading=temperature"] });
   render(<RouterProvider router={router} />);
-  fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Saved climate draft" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Monitor name" }), { target: { value: "Saved climate draft" } });
   fireEvent.change(await screen.findByLabelText("Warm-up samples"), { target: { value: "33" } });
   fireEvent.click(screen.getByRole("link", { name: "Review recording in Sources" }));
-  fireEvent.click(await screen.findByRole("link", { name: "Return to service setup" }));
-  await waitFor(() => expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Saved climate draft"));
+  fireEvent.click(await screen.findByRole("link", { name: "Return to monitor setup" }));
+  await waitFor(() => expect((screen.getByRole("textbox", { name: "Monitor name" }) as HTMLInputElement).value).toBe("Saved climate draft"));
   expect((await screen.findByLabelText("Warm-up samples") as HTMLInputElement).value).toBe("33");
 });

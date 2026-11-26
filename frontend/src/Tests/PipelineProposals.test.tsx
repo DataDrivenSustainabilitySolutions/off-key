@@ -131,7 +131,7 @@ describe("proposals", () => {
     // An agent reads as an agent: the name of its key says nothing to the member who decides.
     expect(within(open).getAllByRole("listitem")[0]?.textContent).toMatch(/^Agent/);
     expect(open.textContent).not.toContain("Night shift agent");
-    expect(within(open).getAllByRole("listitem").slice(1, 3).map((item) => item.textContent)).toEqual(["New service", "Not tested"]);
+    expect(within(open).getAllByRole("listitem").slice(1, 3).map((item) => item.textContent)).toEqual(["New monitor", "Not tested"]);
     expect(within(open).getByText("It was handed in without a test on history.")).toBeTruthy();
     // A list of waiting proposals need not say of each that it waits.
     expect(within(open).queryByText("Waiting for a decision")).toBeNull();
@@ -275,7 +275,7 @@ describe("proposals", () => {
     expect(screen.getByText("Review it to choose other readings.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Pump" }));
     expect((screen.getByRole("button", { name: "Update with Pump" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("The service it replaces no longer runs. Review it to start it as a new one.")).toBeTruthy();
+    expect(screen.getByText("The monitor it replaces no longer runs. Review it to start it as a new one.")).toBeTruthy();
     // An update needs no free place, and keeps the service it replaces in shadow.
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ id: "p4", name: "Valve", replace_monitor_id: "running" }));
     fireEvent.click(screen.getByRole("button", { name: "Valve" }));
@@ -365,11 +365,11 @@ describe("proposals", () => {
     expect(screen.getByText("Waiting for a decision")).toBeTruthy();
     expect(screen.getByText("It waits for a member who manages monitors.")).toBeTruthy();
     view.rerender(<MemoryRouter><PipelineProposalBrief proposal={summary()} canDecide /></MemoryRouter>);
-    expect(screen.getByText("Starting the service accepts the proposal. Change the design first if you wish.")).toBeTruthy();
+    expect(screen.getByText("Starting the monitor accepts the proposal. Change the design first if you wish.")).toBeTruthy();
     view.rerender(<MemoryRouter><PipelineProposalBrief proposal={declined} canDecide /></MemoryRouter>);
     expect(screen.getByText("Declined by admin@example.com")).toBeTruthy();
     expect(screen.getByText("Alarms too often at night")).toBeTruthy();
-    expect(screen.queryByText(/Starting the service accepts/)).toBeNull();
+    expect(screen.queryByText(/Starting the monitor accepts/)).toBeNull();
   });
 
   it("opens a proposal from the list in the setup", async () => {
@@ -377,7 +377,7 @@ describe("proposals", () => {
     await card("Pump vibration");
     fireEvent.click(screen.getByRole("button", { name: "Review design" }));
     expect(address()).toBe("?create=monitoring&proposal=p1");
-    expect((await screen.findByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Pump vibration");
+    expect((await screen.findByRole("textbox", { name: "Monitor name" }) as HTMLInputElement).value).toBe("Pump vibration");
     // The proposal opens beside its design, under a button of its own, and leaves the canvas whole when closed.
     expect(screen.getByRole("group", { name: "Proposal by an agent" })).toBeTruthy();
     const panels = within(screen.getByLabelText("Settings panels"));
@@ -458,7 +458,7 @@ describe("proposals", () => {
     vi.mocked(pipelinesApi.proposal).mockResolvedValue(proposal({ replace_monitor_id: "old" }));
     vi.mocked(pipelinesApi.service).mockRejectedValue(new Error("gone"));
     workspace("/?view=proposals");
-    expect((await card("Pump vibration")).textContent).toContain("Replaces a running service");
+    expect((await card("Pump vibration")).textContent).toContain("Replaces a running monitor");
     fireEvent.click(screen.getByRole("button", { name: "Review design" }));
     expect(address()).toBe("?create=monitoring&proposal=p1&replace=old");
   });

@@ -89,7 +89,7 @@ function WorkspaceFrame() {
           if (!dialog && !settingsSectionOf(search)) show.current?.focus();
         }}>
         <Dialog.Title className="ex-sr-only">Navigation</Dialog.Title>
-        <Dialog.Description className="ex-sr-only">Workspaces, favourites, collections and the catalogue of brokers, devices, topics and readings.</Dialog.Description>
+        <Dialog.Description className="ex-sr-only">Workspaces, pinned items, collections and the catalogue of brokers, devices, topics and readings.</Dialog.Description>
         <AppSidebar drawer onHide={() => setDrawerOpen(false)} onNavigate={() => setDrawerOpen(false)} searchRef={searchInput} />
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>

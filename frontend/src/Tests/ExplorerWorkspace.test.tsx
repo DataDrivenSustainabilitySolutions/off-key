@@ -279,7 +279,7 @@ describe("service-centred monitoring workspace", () => {
     };
     withServices([monitor]);
     mount("/?service=service-one");
-    const details = await screen.findByRole("region", { name: "Monitoring service details" });
+    const details = await screen.findByRole("region", { name: "Monitor details" });
     expect(within(details).getByText("No recent inputs")).toBeTruthy();
     expect(within(details).getByText("Stale inputs: Air temperature")).toBeTruthy();
     expect(within(details).getByText("Inputs count as stale after: Air temperature 30 s.")).toBeTruthy();
@@ -297,7 +297,7 @@ describe("service-centred monitoring workspace", () => {
     };
     withServices([monitor]);
     mount("/?service=service-one");
-    const details = await screen.findByRole("region", { name: "Monitoring service details" });
+    const details = await screen.findByRole("region", { name: "Monitor details" });
     expect(within(details).getByText("Coverage gap")).toBeTruthy();
     expect(within(details).getByText("Delivery is best effort. Missing observations cannot be replayed.")).toBeTruthy();
     expect(within(details).getByText("rate limit: 100")).toBeTruthy();
@@ -337,7 +337,7 @@ describe("service-centred monitoring workspace", () => {
     withServices([service()]);
     const router = makeRouter("/?service=service-one");
     render(<RouterProvider router={router} />);
-    await screen.findByRole("region", { name: "Monitoring service details" });
+    await screen.findByRole("region", { name: "Monitor details" });
     const workspaces = within(screen.getByRole("navigation", { name: "Workspace" }));
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(workspaces.getByRole("link", { name: "Sources" }));
@@ -347,7 +347,7 @@ describe("service-centred monitoring workspace", () => {
     const back = sourcesNavigation.getByRole("link", { name: "Monitoring" });
     expect(back.getAttribute("href")).toBe("/?service=service-one");
     fireEvent.click(back);
-    await screen.findByRole("region", { name: "Monitoring service details" });
+    await screen.findByRole("region", { name: "Monitor details" });
     expect(router.state.location.search).toBe("?service=service-one");
     expect(document.title).toBe("Room climate · Monitoring · Aberration");
     expect(apiUtils.put).not.toHaveBeenCalled();
@@ -356,7 +356,7 @@ describe("service-centred monitoring workspace", () => {
   it("names the service section and restores it after settings and browser navigation", async () => {
     withServices([service()]);
     const { router } = mount("/?service=service-one&tab=configuration");
-    await screen.findByRole("region", { name: "Monitoring service details" });
+    await screen.findByRole("region", { name: "Monitor details" });
     expect(document.title).toBe("Room climate — Configuration · Monitoring · Aberration");
     await act(async () => { await router.navigate("/?service=service-one&tab=configuration&settings=preferences"); });
     await screen.findByRole("dialog", { name: "Settings" });
@@ -415,7 +415,7 @@ describe("service-centred monitoring workspace", () => {
   it("shows monitors by default without starting telemetry or enabling collection, and keeps service selection in the URL", async () => {
     withServices([service()]); mount();
     fireEvent.click(await screen.findByRole("link", { name: "Room climate" }));
-    expect(await screen.findByRole("region", { name: "Monitoring service details" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Monitor details" })).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("?service=service-one");
     expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/service-one", expect.anything());
     expect(vi.mocked(apiUtils.get).mock.calls.some(([path]) => path.includes("/data?") || path.includes("/evidence/"))).toBe(false);
@@ -426,9 +426,9 @@ describe("service-centred monitoring workspace", () => {
   it("searches service inputs, scopes rows to a catalogue branch, and returns home without losing the sidebar position", async () => {
     withServices([service(), { ...service("other", "Other service"), reading_ids: [] }]); mount();
     await screen.findByRole("link", { name: "Other service" });
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "temperature" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search monitors" }), { target: { value: "temperature" } });
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search monitors" }), { target: { value: "" } });
     await enterReadings();
     // Choosing a branch row scopes the page; opening it alone did not.
     expect(screen.getByRole("link", { name: "Other service" })).toBeTruthy();
@@ -446,7 +446,7 @@ describe("service-centred monitoring workspace", () => {
     await screen.findByRole("link", { name: "Zone sensors" });
     const names = screen.getAllByRole("link").map(link => link.textContent).filter(name => ["Attic", "Boiler", "Zone sensors"].includes(name ?? ""));
     expect(names).toEqual(["Zone sensors", "Attic", "Boiler"]);
-    const filters = within(screen.getByLabelText("Filter services"));
+    const filters = within(screen.getByLabelText("Filter monitors"));
     expect(filters.getByRole("button", { name: "All 3" })).toBeTruthy();
     expect(filters.getByRole("button", { name: "Active 2" })).toBeTruthy();
     expect(filters.getByRole("button", { name: "Attention 1" }).querySelector(".mn-filter-count.is-alert")).toBeTruthy();
@@ -457,28 +457,28 @@ describe("service-centred monitoring workspace", () => {
     const starred = favouritesServer();
     vi.mocked(apiUtils.patch).mockImplementation(async (_path, payload) => { saved[0] = { ...saved[0]!, ...(payload as { display_name: string }) }; return {}; });
     const view = mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Add Room climate to favourites" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pin Room climate" }));
     await waitFor(() => expect(starred).toEqual([{ kind: "monitor", id: "service-one" }]));
-    fireEvent.click(screen.getByRole("button", { name: "Favourites 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pinned 1" }));
     fireEvent.click(screen.getByRole("link", { name: "Room climate" }));
-    const details = await screen.findByRole("region", { name: "Monitoring service details" });
+    const details = await screen.findByRole("region", { name: "Monitor details" });
     // The service names its page; the rename control inside keeps its own label.
     expect(within(details).getByRole("heading", { level: 1, name: "Room climate" })).toBeTruthy();
-    fireEvent.click(within(details).getByRole("button", { name: "Rename service" }));
-    fireEvent.change(within(details).getByRole("textbox", { name: "Rename service" }), { target: { value: "Climate monitor" } });
-    fireEvent.blur(within(details).getByRole("textbox", { name: "Rename service" }));
-    await waitFor(() => expect(within(details).getByRole("button", { name: "Rename service" }).textContent).toBe("Climate monitor"));
+    fireEvent.click(within(details).getByRole("button", { name: "Rename monitor" }));
+    fireEvent.change(within(details).getByRole("textbox", { name: "Rename monitor" }), { target: { value: "Climate monitor" } });
+    fireEvent.blur(within(details).getByRole("textbox", { name: "Rename monitor" }));
+    await waitFor(() => expect(within(details).getByRole("button", { name: "Rename monitor" }).textContent).toBe("Climate monitor"));
     expect(apiUtils.patch).toHaveBeenCalledExactlyOnceWith("/v1/monitors/service-one", { display_name: "Climate monitor" });
     expect(screen.queryByText("Name saved.")).toBeNull(); expect(saved[0]?.id).toBe("service-one");
     view.unmount(); mount();
     expect(await screen.findByRole("link", { name: "Climate monitor" })).toBeTruthy();
-    expect((await screen.findByRole("button", { name: "Favourites 1" })).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByRole("region", { name: "Favourites" })).toBeNull();
+    expect((await screen.findByRole("button", { name: "Pinned 1" })).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
   });
 
   it("opens input setup from a stable reading ID but keeps collection off until explicitly applied", async () => {
     withServices([]); mount("/?create=monitoring&reading=temperature");
-    const setup = await screen.findByRole("region", { name: "Create monitoring service" });
+    const setup = await screen.findByRole("region", { name: "Create monitor" });
     expect(within(setup).getByRole("button", { name: "Choose monitoring inputs" }).textContent).toContain("Room station");
     expect(within(setup).getByRole("link", { name: "Turn on recording in Sources" })).toBeTruthy();
     expect(within(setup).queryByRole("button", { name: "Start monitoring" })).toBeNull();
@@ -554,7 +554,7 @@ describe("hierarchical explorer workspace", () => {
     mount();
     expect(screen.getByText("Loading catalogue…")).toBeTruthy();
     await enterReadings();
-    expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "No monitors" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(screen.getByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/catalogue")).toHaveLength(1);
@@ -569,7 +569,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.getByRole("region", { name: "Reading preview" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
-    expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "No monitors" })).toBeTruthy();
   });
 
   it("preserves search while inspecting a reading and renames through the revisioned API", async () => {
@@ -642,7 +642,7 @@ describe("hierarchical explorer workspace", () => {
     const second = mount();
     expect(await screen.findByRole("button", { name: "Air temperature, preview" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Building broker, open" }).getAttribute("aria-expanded")).toBe("true");
-    expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "No monitors" })).toBeTruthy();
     auth.userId = 2;
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot({ ...fixture(), label: "Other account" }) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     second.rerender(<RouterProvider router={makeRouter()} />);

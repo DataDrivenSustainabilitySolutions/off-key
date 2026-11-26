@@ -36,7 +36,7 @@ export default function Registration() {
 
   return (
     <AuthLayout title="Accept invitation">
-      {accepted ? <p role="status">Your account is ready. <Link to="/login" className={AUTH_LINK_CLASS}>Log in</Link></p> : !token ? (
+      {accepted ? <p role="status">Your account is ready. <Link to="/login" className={AUTH_LINK_CLASS}>Sign in</Link></p> : !token ? (
         <p className="text-sm">Ask your administrator for an invitation link.</p>
       ) : (
         <form onSubmit={accept} className="space-y-4">

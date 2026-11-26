@@ -72,7 +72,7 @@ test("one sidebar holds workspaces, saved items, the catalogue tree and account 
   await expect(page.getByRole("navigation", { name: "Primary navigation", exact: true })).toHaveCount(0);
   expect(await workspaces.getByRole("link").allTextContents()).toEqual(["Monitoring", "Sources", "Reporting", "Dojo"]);
   await expect(workspaces.getByRole("link", { name: "Sources", exact: true })).toHaveAttribute("aria-current", "page");
-  for (const category of ["Favourites", "Collections"]) await expect(sidebar.getByRole("region", { name: category, exact: true })).toBeVisible();
+  for (const category of ["Pinned", "Collections"]) await expect(sidebar.getByRole("region", { name: category, exact: true })).toBeVisible();
   expect((await bounds(sidebar)).width).toBe(264);
   expect((await bounds(main)).x).toBe(264);
   const sidebarRow = await bounds(workspaces.getByRole("link", { name: "Monitoring", exact: true }));
@@ -172,7 +172,7 @@ test("a chosen source scopes the page while the chart keeps its full workspace",
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const sidebar = page.getByRole("complementary", { name: "Sidebar", exact: true });
-  await sidebar.getByRole("region", { name: "Favourites", exact: true }).getByRole("button", { name: "Air temperature", exact: true }).click();
+  await sidebar.getByRole("region", { name: "Pinned", exact: true }).getByRole("button", { name: "Air temperature", exact: true }).click();
   const preview = page.getByRole("region", { name: "Reading preview", exact: true });
   await expect(preview).toBeVisible();
   // The favourite and its tree row both show the selection; the workspace link keeps its own state.
@@ -264,7 +264,7 @@ test("read-only, empty and unavailable catalogues keep a coherent sidebar", asyn
   await expect(sidebar.getByRole("button", { name: "Building broker, open", exact: true })).toBeVisible();
   expect(await sidebar.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link").allTextContents())
     .toEqual(["Monitoring", "Sources", "Reporting"]);
-  await expect(sidebar.getByRole("region", { name: "Favourites", exact: true })).toHaveCount(0);
+  await expect(sidebar.getByRole("region", { name: "Pinned", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add broker", exact: true })).toHaveCount(0);
 
   const empty = await browser.newPage();

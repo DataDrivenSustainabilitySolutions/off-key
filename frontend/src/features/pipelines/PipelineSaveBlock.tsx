@@ -44,7 +44,7 @@ export function PipelineSaveBlock({ document, components, from, onSave, onClose 
         <div className="pl-component-menu-heading"><Dialog.Title>Save as block</Dialog.Title>
           <Dialog.Close aria-label="Close save block"><X size={18} /></Dialog.Close>
         </div>
-        <Dialog.Description className="pl-help">Keep steps with their settings to add them to any service. This design stays as it is.</Dialog.Description>
+        <Dialog.Description className="pl-help">Keep steps with their settings to add them to any monitor. This design stays as it is.</Dialog.Description>
         <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
           <label className="pl-field"><span>Block name</span><input required maxLength={120} value={name}
             disabled={saving} placeholder="e.g. Scale and reduce" onChange={(event) => setName(event.target.value)} /></label>

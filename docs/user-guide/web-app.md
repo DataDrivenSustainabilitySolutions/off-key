@@ -4,7 +4,7 @@ This page explains end-user workflows in the React frontend.
 
 ## When to use this page
 
-Use this page for account, device, favourites, monitoring-service, and anomaly workflows in the UI.
+Use this page for account, device, pinned items, monitor, and anomaly workflows in the UI.
 
 ## Audience
 
@@ -19,7 +19,7 @@ Use this page for account, device, favourites, monitoring-service, and anomaly w
 | `/login` | Sign in | Public |
 | `/forgot-password` | Request a password reset | Public |
 | `/reset-password` | Set a new password with a reset token | Public |
-| `/` | Monitoring services and selected-source evidence | Authenticated |
+| `/` | Monitors and selected-source evidence | Authenticated |
 | `/details/:chargerId` | Telemetry details for one charger | Authenticated |
 | `/services` | Legacy link to Monitoring | Authenticated |
 | `/sources` | Sources: configure brokers, HTTP APIs and recorded readings | Authenticated |
@@ -40,22 +40,22 @@ From top to bottom it holds:
   the Dojo permission, **Dojo**. The current workspace is highlighted. Device
   details opened from a report keep **Reporting** highlighted. Pipelines and
   datasets stay where they were: in Monitoring and in Dojo.
-- **Favourites**: your starred readings and devices, when you have any.
+- **Pinned**: your pinned readings and devices, when you have any.
 - **Collections**: the catalogue's shared collections, when it has any.
 - **Catalogue**: search and a tree of brokers, devices, MQTT topic levels and
   readings.
 - **Settings** and your account at the bottom. They stay in view however long the
   catalogue is.
 
-Favourites and Collections fold away from their headings, and the sidebar
+Pinned and Collections fold away from their headings, and the sidebar
 remembers which are folded.
 
-![The sidebar beside Monitoring: Workspace links with Monitoring highlighted, Favourites with the chosen Air temperature reading highlighted, Collections with Lab benches applied, the Catalogue narrowed to that collection, and Settings and the account at the bottom.](../assets/web-app/sidebar-desktop-light.png)
+![The sidebar beside Monitoring: Workspace links with Monitoring highlighted, Pinned with the chosen Air temperature reading highlighted, Collections with Lab benches applied, the Catalogue narrowed to that collection, and Settings and the account at the bottom.](../assets/web-app/sidebar-desktop-light.png)
 
 ### Choosing a source
 
-Selecting a catalogue row, or a favourite, chooses that broker, device, topic or
-reading as the source for the current workspace. Monitoring shows its services
+Selecting a catalogue row, or a pinned item, chooses that broker, device, topic or
+reading as the source for the current workspace. Monitoring shows its monitors
 and previews a reading. Sources shows its metadata and recording configuration;
 a selected device lists its readings so you can configure one. Reporting shows
 events involving it. The chosen row is highlighted in the sidebar.
@@ -113,7 +113,7 @@ closes it, and focus returns to **Show sidebar**.
 
 1. Ask your organization administrator for an invitation.
 2. Open the invitation link and choose a password of at least 12 characters.
-3. Log in and receive a bearer token.
+3. Sign in and receive a bearer token.
 4. The frontend API client attaches that token to subsequent requests.
 
 Opening a protected link while signed out takes you to **Sign in**. After login,
@@ -131,12 +131,12 @@ In local development, invitation and password-reset messages are available in Ma
 Members whose role can manage members handle invitations, roles and access under
 **Account → Members** and **Account → Roles**. Disable a member to revoke
 their access. Once disabled, **Remove** permanently deletes their account and personal
-favorites after confirmation. Shared catalogue data, monitoring services and reports
+pinned items after confirmation. Shared catalogue data, monitors and reports
 are kept. A removed member needs a new invitation to return.
 **Account → Agents** gives a program a key to work with in place of a person.
 The key is shown once, when it is created. Every key can read, design, test on
 history and propose. The choice beside a key says what it may start itself:
-**Proposes only**, **Starts in shadow**, where its services record the alarms
+**Proposes only**, **Starts in shadow**, where its monitors record the alarms
 they would raise and raise none, or **Starts live**. **Revoke** stops a key at
 once. What a key
 proposes waits under **Proposals** on the Monitoring page for a member who
@@ -161,7 +161,7 @@ Most clients take both in their configuration:
 }
 ```
 
-Every member can view the shared workspace and edit their own favorites. A role
+Every member can view the shared workspace and edit their own pinned items. A role
 adds permissions to manage sources, monitors, alarms or members; Administrator
 holds all of them. Controls a role does not cover stay hidden.
 
@@ -186,7 +186,7 @@ seconds; **Refresh storage** requests updated database measurements. The former
 `/system/status` and `/account/settings` links open this section above Monitoring.
 
 Select your email at the bottom of the sidebar to open the account menu with
-**Account**, **Preferences**, **Catalogue**, **System status** and **Log out**.
+**Account**, **Preferences**, **Catalogue**, **System status** and **Sign out**.
 **Account** shows who is signed in and, for members who manage members, member
 access and roles. **Catalogue** opens catalogue configuration; adding or editing
 an entry opens the editor on top of it. An empty catalogue also offers **Open
@@ -198,7 +198,7 @@ catalogue settings** in the sidebar.
 2. Select the reading in **Monitoring** to see its latest value, age and history.
    Hover over the age for the exact timestamp or open **Source details** for the catalogue path.
 3. Switch to **Sources** to inspect or change the selected reading's recording policy.
-4. Open its monitoring service to review detector evidence and configuration.
+4. Open its monitor to review detector evidence and configuration.
 
 Device details at `/details/:deviceId` show a device's recorded readings with
 category and time-range controls. Readings of a broker that have no device open
@@ -246,7 +246,7 @@ stored history do not count as fresh traffic. Browsing alone starts no collectio
 The **Recently active** filter icon beside the **Catalogue** heading keeps
 filled-circle readings and the paths leading to them. It also filters search and
 the members of a chosen collection, updates as traffic starts or becomes stale, and
-remembers your choice in this browser. Favourites stay listed. Turn it off to show
+remembers your choice in this browser. Pinned items stay listed. Turn it off to show
 the full catalogue again. Filtering keeps the current source selected and does not
 start a connection or change recording. An empty filtered tree shows **No recently
 active topics.** with an underlined **Show all topics** action beneath it. This
@@ -267,22 +267,22 @@ an HTTP API starts at one request a minute; choose another interval under
 field as the reading's **Source timestamp**, and a repeated measurement is
 recorded once. Your operator decides which APIs may be reached.
 
-## Favourites workflow
+## Pinned items
 
-1. Star a service in Monitoring or a reading in its preview.
-2. Select **Favourites** in the Monitoring service filters to show starred services.
-3. Starred readings and devices appear under **Favourites** in the sidebar;
+1. Pin a monitor in Monitoring or a reading in its preview.
+2. Select **Pinned** in the filters on Monitoring to show pinned monitors.
+3. Pinned readings and devices appear under **Pinned** in the sidebar;
    select one to choose it as the source.
 
-Favourites belong to your account and follow you to every browser. Agents and
+Pinned items belong to your account and follow you to every browser. Agents and
 scripts read and change the same list through `/v1/favorites`.
 
-## Services workflow
+## Monitors workflow
 
 The [visual monitoring guide](monitoring.md#visual-monitoring-pipelines) explains
 templates, the typed graph, reading selection and live inspection.
 
-Open **Monitoring** at `/` to inspect monitoring services. The view refreshes service state and shows the strategy and processing stage reported by the backend. Removing a service also releases its claimed readings.
+Open **Monitoring** at `/` to inspect monitors. The view refreshes monitor state and shows the strategy and processing stage reported by the backend. Removing a monitor also releases its claimed readings.
 
 ## Reporting workflow
 
@@ -293,7 +293,7 @@ Open **Monitoring** at `/` to inspect monitoring services. The view refreshes se
    scope, each reading is listed with its device's name.
 4. Open a source or signal to inspect its readings around the event, or open the
    detection description for the full anomaly. Multivariate events show their
-   involved signals without attributing a cause to an individual sensor.
+   involved readings without attributing a cause to a single reading.
 5. Use **Copy link** to share an anomaly with another signed-in member. The event
    ID remains available under **Technical details** for API requests and logs.
 6. Select individual rows, select all matching events across pages, or choose

@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { Link } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Search, Star } from "lucide-react";
+import { Pin, Search } from "lucide-react";
 import type { ActiveService } from "@/types/monitoring";
 import { RelativeTime } from "@/components/RelativeTime";
 import { serviceName, serviceState, type MonitoringIndex } from "@/domain/monitoring/serviceModel";
@@ -44,21 +44,21 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
   }, [ready, offset]);
   const filters = [{ id: "all", label: "All" }, { id: "monitoring", label: "Active" }, { id: "preparing", label: "Preparing" }, { id: "stopped", label: "Stopped" },
     ...(filter === "attention" || rows.some(row => row.state.category === "attention") ? [{ id: "attention", label: "Attention" }] : []),
-    ...(filter === "favourites" || favourites.size ? [{ id: "favourites", label: "Favourites" }] : [])];
-  return <section className="mn-services" aria-label="Monitoring services">
+    ...(filter === "favourites" || favourites.size ? [{ id: "favourites", label: "Pinned" }] : [])];
+  return <section className="mn-services" aria-label="Monitors">
     {error && <p className="ex-banner ex-error" role="alert">{error}<button onClick={onRetry}>Retry</button></p>}
-    {!ready && !error ? <p className="mn-loading" role="status">Loading services…</p> : ready && !services.length ?
-      <div className="mn-empty"><h2>No monitoring services</h2><p>Create a service to monitor readings from the catalogue.</p></div> : ready && <>
-      <div className="mn-list-tools"><div className="mn-filters" aria-label="Filter services">
+    {!ready && !error ? <p className="mn-loading" role="status">Loading monitors…</p> : ready && !services.length ?
+      <div className="mn-empty"><h2>No monitors</h2><p>Create a monitor to watch readings from the catalogue.</p></div> : ready && <>
+      <div className="mn-list-tools"><div className="mn-filters" aria-label="Filter monitors">
         {filters.map(item => {
           const total = count(item.id);
           return <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); scroll.current?.scrollTo?.(0, 0); }}>
             {item.label} <span className={`mn-filter-count${item.id === "attention" && total > 0 ? " is-alert" : ""}`}>{total.toLocaleString()}</span></button>;
         })}
-      </div><label className="mn-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search monitoring services" placeholder="Find a service…" value={query}
+      </div><label className="mn-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search monitors" placeholder="Find a monitor…" value={query}
         onChange={event => { setQuery(event.target.value); scroll.current?.scrollTo?.(0, 0); }} /></label></div>
-      <div role="table" aria-label="Monitoring service list" aria-rowcount={shown.length + 1} aria-colcount={4}>
-        <div className="mn-row mn-table-head" role="row"><span role="columnheader">Service</span><span role="columnheader">Readings</span><span role="columnheader">Status</span><span role="columnheader" className="ex-sr-only">Favourite</span></div>
+      <div role="table" aria-label="Monitor list" aria-rowcount={shown.length + 1} aria-colcount={4}>
+        <div className="mn-row mn-table-head" role="row"><span role="columnheader">Monitor</span><span role="columnheader">Readings</span><span role="columnheader">Status</span><span role="columnheader" className="ex-sr-only">Favourite</span></div>
         <div className="mn-table-scroll" ref={scroll} onScroll={event => setOffset(event.currentTarget.scrollTop)} role="rowgroup" style={{ height: `min(${Math.max(76, virtual.getTotalSize())}px, max(320px, calc(100dvh - 260px)))` }}>
           <div className="mn-virtual-rows" style={{ height: virtual.getTotalSize() }}>
             {virtual.getVirtualItems().map(item => {
@@ -79,12 +79,12 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
                 <div role="cell" className="mn-service-state"><span className={`mn-state mn-state--${row.state.tone}`}>{row.state.label}</span>
                   {progress && <small>{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples</small>}
                   {service.operational_status.updated_at && <small className="mn-service-time">Reported <RelativeTime value={service.operational_status.updated_at} /></small>}</div>
-                <div role="cell"><button className="mn-favourite ex-icon-button" aria-pressed={favourites.has(service.id)} aria-label={`${favourites.has(service.id) ? "Remove" : "Add"} ${row.name} ${favourites.has(service.id) ? "from" : "to"} favourites`}
-                  onClick={() => onFavourite(service.id)}><Star size={15} aria-hidden="true" /></button></div>
+                <div role="cell"><button className="mn-favourite ex-icon-button" aria-pressed={favourites.has(service.id)} aria-label={`${favourites.has(service.id) ? "Unpin" : "Pin"} ${row.name}`}
+                  onClick={() => onFavourite(service.id)}><Pin size={15} aria-hidden="true" /></button></div>
               </div>;
             })}
           </div>
-          {!shown.length && <p className="mn-no-matches" role="status">No matching services.</p>}
+          {!shown.length && <p className="mn-no-matches" role="status">No matching monitors.</p>}
         </div>
       </div>
     </>}

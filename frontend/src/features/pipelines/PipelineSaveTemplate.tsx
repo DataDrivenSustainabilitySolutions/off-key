@@ -34,7 +34,7 @@ export function PipelineSaveTemplate({ name, description, existing, disabled, sa
             disabled={saving} placeholder="When to use this template" onChange={(event) => setNotes(event.target.value)} /></label>
           {error && <p className="pl-error" role="alert">{error}</p>}
           {saving && <p className="pl-help" role="status">Saving template… You can close this window and continue editing.</p>}
-          {existing && <p className="pl-help">Update this template or save a separate copy. Running services keep their current configuration.</p>}
+          {existing && <p className="pl-help">Update this template or save a separate copy. Running monitors keep their current configuration.</p>}
           <div className="pl-template-dialog-footer">
             <button type="button" className="pl-template-download" onClick={() => { onDownload({ name: title.trim(), description: notes }); setOpen(false); }}>
               Download as a file</button>

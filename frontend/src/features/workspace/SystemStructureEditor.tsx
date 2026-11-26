@@ -367,7 +367,7 @@ export function SystemStructureEditor({
                   update({ device_id: event.target.value || undefined })
                 }
               >
-                <option value="">Independent stream</option>
+                <option value="">No device</option>
                 {baseline.devices
                   .filter(
                     (item) =>
@@ -509,7 +509,7 @@ export function SystemStructureEditor({
               Find members
               <input
                 aria-label="Find collection members"
-                placeholder="Search connections, devices, streams…"
+                placeholder="Search sources, devices, readings…"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />

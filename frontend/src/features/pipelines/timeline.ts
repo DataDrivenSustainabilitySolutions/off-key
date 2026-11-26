@@ -26,7 +26,7 @@ const setupPhases: Record<string, string> = {
   requested: "Setup requested",
   preflighting: "Checking the configuration",
   validated: "Configuration checked",
-  retiring: "Stopping the previous service",
+  retiring: "Stopping the previous monitor",
   starting: "Starting the worker",
   awaiting_heartbeat: "Waiting for the worker to connect",
   succeeded: "Setup finished",

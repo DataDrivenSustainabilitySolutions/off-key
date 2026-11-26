@@ -22,14 +22,14 @@ function mount(path = "/") {
 describe("shared application menu", () => {
   it("logs out and returns to sign-in immediately", async () => {
     mount();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Log out" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
     expect(auth.logout).toHaveBeenCalledOnce();
     expect(await screen.findByText("/login")).toBeTruthy();
   });
 
   it.each(["/", "/sources", "/anomalies", "/details/device-one"])("offers shared preferences, catalogue and system status at %s", (path) => {
     mount(path);
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Preferences", "Catalogue", "System status", "Log out"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Preferences", "Catalogue", "System status", "Sign out"]);
   });
 
   it("shows who is signed in on the menu trigger", () => {
@@ -44,7 +44,7 @@ describe("shared application menu", () => {
   it("offers sign-in without authenticated application actions", () => {
     auth.isAuthenticated = false;
     render(<MemoryRouter><ApplicationMenu /></MemoryRouter>);
-    expect(screen.getByRole("link", { name: "Log in" }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/login");
     expect(screen.queryByRole("button", { name: "Account menu" })).toBeNull();
   });
 

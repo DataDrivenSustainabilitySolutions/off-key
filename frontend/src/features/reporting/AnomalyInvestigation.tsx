@@ -61,8 +61,8 @@ function EventView({ detail }: { detail: AlarmDetail }) {
   const deletion = useAlarmDeletion(async () => { navigate(back, { replace: true }); });
   const copyLink = () => void copyAnomalyLink(alarm.alarm_id).then(() => toast.success('Anomaly link copied'))
     .catch(() => toast.error('The anomaly link could not be copied.'));
-  const copyId = () => void navigator.clipboard.writeText(alarm.alarm_id).then(() => toast.success('Event ID copied'))
-    .catch(() => toast.error('The event ID could not be copied.'));
+  const copyId = () => void navigator.clipboard.writeText(alarm.alarm_id).then(() => toast.success('Anomaly ID copied'))
+    .catch(() => toast.error('The anomaly ID could not be copied.'));
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const selectedIds = signal ? alarm.reading_ids.filter(id => id === signal) : alarm.reading_ids;
   const device = alarm.device_label ?? 'Removed source';
@@ -85,9 +85,9 @@ function EventView({ detail }: { detail: AlarmDetail }) {
         <span className="rp-event-strategy">{description.strategy}</span>
         <h2>{description.title}</h2>
         <p className="rp-explanation">{description.explanation}</p>
-        <div className="rp-reading-links rp-event-signals" aria-label="Involved signals">{alarm.reading_ids.map(id => <Link key={id}
+        <div className="rp-reading-links rp-event-signals" aria-label="Involved readings">{alarm.reading_ids.map(id => <Link key={id}
           aria-current={signal === id ? 'page' : undefined} state={{ reportingReturn: back }} to={anomalyHref(alarm.alarm_id, id)}>{alarm.reading_labels[id] ?? id}</Link>)}</div>
-        {alarm.multivariate && <p className="rp-note">Joint result across the involved signals. No per-sensor cause is established.</p>}
+        {alarm.multivariate && <p className="rp-note">Joint result across the involved readings. No single reading is established as the cause.</p>}
       </div>
       <dl className="rp-evidence-summary">{evidence?.strategy !== 'adaptive_stream' && <div><dt>{getAnomalyValueLabel(alarm.value_type)}</dt><dd>{formatAnomalyValue(alarm.value, alarm.value_type)}</dd></div>}
         {evidence?.model_type && <div><dt>Model</dt><dd>{modelName(evidence.model_type)}</dd></div>}
@@ -95,7 +95,7 @@ function EventView({ detail }: { detail: AlarmDetail }) {
       </dl>
       {alarm.monitor_id && <MonitorWatches monitorId={alarm.monitor_id} />}
       <div className="rp-event-links">
-        {signal && <Link to={anomalyHref(alarm.alarm_id)} state={{ reportingReturn: back }}>Show all involved signals</Link>}
+        {signal && <Link to={anomalyHref(alarm.alarm_id)} state={{ reportingReturn: back }}>Show all involved readings</Link>}
         {source && <Link to={detailsHref(source)}>All {source.kind} readings</Link>}
         {alarm.monitor_id && <Link to={`/?${new URLSearchParams({ service: alarm.monitor_id, tab: 'evidence' })}`}>Originating monitor</Link>}
       </div>
@@ -108,10 +108,10 @@ function EventView({ detail }: { detail: AlarmDetail }) {
       </details>}
     </section>
     {selectedIds.length ? <EventCharts key={`${alarm.alarm_id}:${signal ?? ''}`} detail={detail} ids={selectedIds} />
-      : <p role="status" className="rp-note">{signal ? 'This signal was not recorded as part of this anomaly.' : 'The involved signals are no longer available in the catalogue.'}</p>}
+      : <p role="status" className="rp-note">{signal ? 'This reading was not recorded as part of this anomaly.' : 'The involved readings are no longer available in the catalogue.'}</p>}
     <details className="rp-technical"><summary>Technical details</summary>
-      <p className="rp-note">The event ID identifies this stored anomaly in API requests and logs.</p>
-      <dl><div><dt>Event ID</dt><dd><code>{alarm.alarm_id}</code><Button variant="ghost" size="sm" onClick={copyId}><Copy size={14} />Copy event ID</Button></dd></div>
+      <p className="rp-note">The anomaly ID identifies this stored anomaly in API requests and logs.</p>
+      <dl><div><dt>Anomaly ID</dt><dd><code>{alarm.alarm_id}</code><Button variant="ghost" size="sm" onClick={copyId}><Copy size={14} />Copy anomaly ID</Button></dd></div>
         <div><dt>Recorded type</dt><dd><code>{alarm.alarm_type}</code></dd></div>
         <div><dt>Exact event time</dt><dd><code>{alarm.timestamp}</code></dd></div>
         <div><dt>Value type</dt><dd>{alarm.value_type ?? 'Not recorded'}</dd></div>

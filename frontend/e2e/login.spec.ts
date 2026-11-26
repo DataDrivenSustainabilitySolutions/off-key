@@ -55,7 +55,7 @@ test("a demo visitor can complete browser verification after admin logout and re
   await signIn(page);
   await expect(page.getByRole("main", { name: "Sources workspace" })).toBeVisible();
   await page.getByRole("button", { name: "Account menu", exact: true }).first().click();
-  await page.getByRole("menuitem", { name: "Log out", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto(destination);
   await expect(page.getByRole("alert")).toContainText("Cloudflare needs to verify your browser");

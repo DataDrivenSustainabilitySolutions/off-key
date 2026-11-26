@@ -187,7 +187,7 @@ const Login: React.FC = () => {
           disabled={isSubmitting}
           aria-busy={isSubmitting}
         >
-          {isSubmitting ? "Logging in…" : "Log in"}
+          {isSubmitting ? "Signing in…" : "Sign in"}
         </Button>
 
         {/* A successful login navigates away, so a message is always an error. */}

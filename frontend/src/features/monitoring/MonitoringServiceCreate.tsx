@@ -54,10 +54,10 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   const displayName = name.trim() || `${target?.label ?? "Monitoring"} · ${strategy === "adaptive_stream" ? "Adaptive" : "Static"}`;
   const props = { draftKey: draftKey && `${draftKey}:${targetId}:${strategy}`, readingIds, claimsByReading: claims, loadingModels: loading || !collectionReady,
     onStarted, displayName, initialReading: target?.inputs.some(input => input.stream.id === initialReading) ? initialReading : undefined, readingLabels };
-  return <section className="mn-create" aria-label="Create monitoring service">
-    <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current="New service" />
-    <div className="mn-detail-header"><div><h1>Create service</h1></div></div>
-    <div className="mn-create-fields"><label className="mn-field">Name<input aria-label="Service name" maxLength={120} placeholder="e.g. Machine health" value={name} onChange={event => setName(event.target.value)} /></label>
+  return <section className="mn-create" aria-label="Create monitor">
+    <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current="New monitor" />
+    <div className="mn-detail-header"><div><h1>Create monitor</h1></div></div>
+    <div className="mn-create-fields"><label className="mn-field">Name<input aria-label="Monitor name" maxLength={120} placeholder="e.g. Machine health" value={name} onChange={event => setName(event.target.value)} /></label>
       <div className="mn-field"><span>Inputs</span><MonitoringTargetPicker targets={targets} value={targetId} onChange={id => { setTargetId(id); }} /></div></div>
     {!targets.length && <p className="ex-muted">Add numeric readings to the catalogue to configure monitoring.</p>}
     {target && <>

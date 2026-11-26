@@ -59,7 +59,7 @@ test("setup controls retain typed values and display real API field errors on de
     const request = response.request().postDataJSON();
     expect(request.monitoring.model_params).toMatchObject({ k: 4, window_size: 8 });
     serviceId = (await response.json() as { monitor_id: string }).monitor_id;
-    await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByRole("region", { name: "Monitor details", exact: true })).toBeVisible({ timeout: 240_000 });
   } finally {
     if (serviceId && token) await api.delete(`/api/v1/monitors/${serviceId}`, {
       headers: { Authorization: `Bearer ${token}` },

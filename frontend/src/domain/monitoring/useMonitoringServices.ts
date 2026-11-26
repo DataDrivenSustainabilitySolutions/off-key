@@ -19,7 +19,7 @@ export function useWorkspacePoll(enabled: boolean, refreshInterval: number, sele
       const query = selectedServiceId ? `?selected_monitor_id=${encodeURIComponent(selectedServiceId)}` : "";
       const next = await apiUtils.get<PipelineWorkspace>(`${API_CONFIG.ENDPOINTS.MONITORING.OVERVIEW}${query}`,
         { signal });
-      if (!Array.isArray(next.monitors)) throw new Error("The monitoring service list could not be read.");
+      if (!Array.isArray(next.monitors)) throw new Error("The monitor list could not be read.");
       if (!signal.aborted) { setServices(next.monitors as unknown as ActiveService[]); setWorkspace(next); setReady(true); setError(""); }
     } catch (reason) {
       if (!signal.aborted) setError(getErrorMessage(reason));

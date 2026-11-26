@@ -399,9 +399,9 @@ export function PipelineWorkbench({
       {brief && <button type="button" ref={briefButton} className="pl-brief-button"
         aria-expanded={panel === "brief"} aria-controls={panelId}
         onClick={() => toggle("brief")}>{brief.label}</button>}
-      {settings && <button type="button" ref={serviceButton} aria-label="Service settings"
+      {settings && <button type="button" ref={serviceButton} aria-label="Monitor settings"
         aria-expanded={panel === "service"} aria-controls={panelId}
-        onClick={() => toggle("service")}>Service</button>}
+        onClick={() => toggle("service")}>Monitor</button>}
       <button type="button" ref={componentButton} aria-label="Step settings"
         aria-expanded={panel === "component"} aria-controls={panelId}
         onClick={() => toggle("component")}>Step</button>
@@ -428,7 +428,7 @@ export function PipelineWorkbench({
       onConfigure={select} onChooseDetector={chooseDetector}
       blocks={library.blocks} onSaveBlock={saveBlock} />;
   // What a panel is called, in its heading and on the button that closes it. A step's settings are headed by the step.
-  const panelTitle = panel === "brief" ? brief?.label ?? "" : panel === "service" ? "Service settings" : "Test on history";
+  const panelTitle = panel === "brief" ? brief?.label ?? "" : panel === "service" ? "Monitor settings" : "Test on history";
   const panelName = panel === "brief" ? panelTitle.toLowerCase() : panel === "test" ? "test" : "settings";
   const settingsContent = panel && <div className={`pl-settings-panel${panel === "brief" ? " pl-settings-panel--brief" : ""}${
     drawer ? " pl-settings-panel--drawer" : ""}`}

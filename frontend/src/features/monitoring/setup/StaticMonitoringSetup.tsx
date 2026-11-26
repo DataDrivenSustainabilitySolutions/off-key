@@ -108,7 +108,7 @@ export function StaticMonitoringSetup({
     setStarting(true);
     try {
       const serviceId = await startFormMonitor(validation.request);
-      toast.success("Static monitoring service started.");
+      toast.success("Static monitor started.");
       await onStarted(serviceId);
     } catch (error) {
       setFieldErrors(current => ({ ...current, ...modelErrorFields(error) }));

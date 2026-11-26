@@ -38,7 +38,7 @@ export function SavedNavigation({ onNavigate }: { onNavigate?: () => void }) {
   });
   const open = (node: ExplorerNode) => { selectSource(node); onNavigate?.(); };
   return <>
-    {starred.length > 0 && <Category section="favourites" title="Favourites" count={starred.length}>
+    {starred.length > 0 && <Category section="favourites" title="Pinned" count={starred.length}>
       {starred.map(({ item, node, label }) => <li key={`${item.kind}:${item.id}`}>
         <button type="button" className="app-sidebar-item" aria-current={selected?.key === node.key ? "true" : undefined}
           title={[label, catalogueLocation(index, node)].filter(Boolean).join(" — ")} onClick={() => open(node)}>

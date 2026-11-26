@@ -53,7 +53,7 @@ describe("favourites kept on the server", () => {
     vi.mocked(apiUtils.post).mockRejectedValueOnce(new Error("A member keeps at most 256 favorites."));
 
     act(() => hook.result.current.toggle("monitor", "m1"));
-    await waitFor(() => expect(hook.result.current.error).toBe("Your favourite could not be saved. Try again."));
+    await waitFor(() => expect(hook.result.current.error).toBe("Your pinned items could not be saved. Try again."));
     expect(hook.result.current.favourites).toEqual([]);
   });
 

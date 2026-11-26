@@ -69,7 +69,7 @@ export function ShadowReview({ service, canEdit, onTakeLive, onStopped }: {
       <button type="button" className="mn-primary" onClick={onTakeLive}><Play size={14} aria-hidden="true" />Take live</button>
       <button type="button" onClick={() => { setStopError(""); setConfirm(true); }}><Square size={13} aria-hidden="true" />Stop</button>
     </div>}
-    {canEdit && <p className="ex-muted mn-shadow-hint">Take live opens the Pipeline tab: choose Edit service and update it without Shadow run.</p>}
+    {canEdit && <p className="ex-muted mn-shadow-hint">Take live opens the Pipeline tab: choose Edit monitor and update it without Shadow run.</p>}
     <ConfirmDialog open={confirm} title="Stop the shadow run?" description="It stops recording. Its history and the alarms it held back stay."
       confirmLabel="Stop" busyLabel="Stopping…" busy={stopping} error={stopError}
       onConfirm={() => void stop()} onCancel={() => setConfirm(false)} />

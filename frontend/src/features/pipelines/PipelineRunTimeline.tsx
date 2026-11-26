@@ -39,7 +39,7 @@ export function PipelineRunTimeline({ serviceId, failed = false }: { serviceId: 
       {open && (
         <>
           <div className="pl-timeline-head">
-            <p className="pl-help">Newest first. Kept after the service stops.</p>
+            <p className="pl-help">Newest first. Kept after the monitor stops.</p>
             <button type="button" disabled={busy} onClick={refresh}>Refresh</button>
           </div>
           {timeline?.error && (

@@ -147,15 +147,18 @@ describe("Dojo benchmark suites", () => {
     expect(await screen.findByRole("table", { name: "Studies" })).toBeTruthy();
   });
 
-  it("deletes the picked studies, cancelling one still running first", async () => {
+  it("deletes the picked studies in one request, cancelling one still running first, and names what it refused", async () => {
     vi.mocked(dojoApi.cancelStudy).mockResolvedValue(undefined as never);
-    vi.mocked(dojoApi.deleteStudy).mockResolvedValue(undefined as never);
+    vi.mocked(dojoApi.deleteItems).mockResolvedValue({ deleted: 0,
+      refused: [{ kind: "study", id: "st3", reason: "A monitor uses one of its runs." }] });
     mount("/dojo?suite=s1");
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pending" }));
     fireEvent.click(within(screen.getByRole("region", { name: "Selection" })).getByRole("button", { name: "Delete" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete", hidden: false }));
-    await waitFor(() => expect(dojoApi.deleteStudy).toHaveBeenCalledWith("st3"));
+    await waitFor(() => expect(dojoApi.deleteItems).toHaveBeenCalledWith({ study_ids: ["st3"] }));
     expect(dojoApi.cancelStudy).toHaveBeenCalledWith("st3");
+    expect(dojoApi.deleteStudy).not.toHaveBeenCalled();
+    expect((await screen.findByRole("alert")).textContent).toContain("Pending: A monitor uses one of its runs.");
   });
 
   it("lets a member review a key's suite", async () => {

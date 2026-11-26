@@ -82,12 +82,14 @@ export function SuitePage({ id, study, tab, listHref, datasetHref, onStudy, onTa
   const removeChosen = async () => {
     if (!await confirm({ title: chosen.length === 1 ? `Delete ${chosen[0]!.name || "this study"}?` : `Delete ${chosen.length} studies?`,
       description: "Their runs and results go with them. This cannot be undone.", confirmLabel: "Delete", destructive: true })) return;
+    let refused = "";
     await act(async () => {
-      for (const item of chosen) {
-        if (active(item)) await dojoApi.cancelStudy(item.id);
-        await dojoApi.deleteStudy(item.id);
-      }
+      for (const item of chosen.filter(active)) await dojoApi.cancelStudy(item.id);
+      const result = await dojoApi.deleteItems({ study_ids: chosen.map(item => item.id) });
+      const names = new Map(chosen.map(item => [item.id, item.name || "Untitled study"]));
+      refused = result.refused.map(item => `${names.get(item.id) ?? item.id}: ${item.reason}`).join(" ");
     });
+    if (refused) setActionError(`Some studies could not be deleted. ${refused}`);
     selection.clear();
   };
   const meta = [`${suite.items.length} ${suite.items.length === 1 ? "dataset" : "datasets"}`,

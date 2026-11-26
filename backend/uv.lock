@@ -27,7 +27,7 @@ members = [
 [[package]]
 name = "aberrant"
 version = "2.0.0"
-source = { git = "https://github.com/OliverHennhoefer/aberrant.git?rev=cad146d5a0d83882e51633ea2fcb8817eb47a3d3#cad146d5a0d83882e51633ea2fcb8817eb47a3d3" }
+source = { git = "https://github.com/OliverHennhoefer/aberrant.git?rev=f78e2216641e818a933a8304e08ebe3aedb413bb#f78e2216641e818a933a8304e08ebe3aedb413bb" }
 dependencies = [
     { name = "numpy" },
 ]
@@ -1720,7 +1720,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aberrant", git = "https://github.com/OliverHennhoefer/aberrant.git?rev=cad146d5a0d83882e51633ea2fcb8817eb47a3d3" },
+    { name = "aberrant", git = "https://github.com/OliverHennhoefer/aberrant.git?rev=f78e2216641e818a933a8304e08ebe3aedb413bb" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<3" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "off-key-core", editable = "libs/core" },

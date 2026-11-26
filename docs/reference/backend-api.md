@@ -583,6 +583,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `GET` | `/dojo/studies/{study_id}` | One study with each dataset's run and metrics and the totals over the suite; reading it calculates metrics that are missing, for up to eight seconds | Path: `study_id` |
 | `POST` | `/dojo/studies/{study_id}/cancel` | Cancel the study's waiting and running runs. A key cancels only a study it made (403 otherwise) | Path: `study_id` |
 | `DELETE` | `/dojo/studies/{study_id}` | Delete a study and its runs once none waits or runs (409); 204. A key deletes only a study it made (403), none of whose runs is named as evidence (409) | Path: `study_id` |
+| `POST` | `/dojo/deletions` | Delete several suites, studies and datasets in one request, counted as one write: suites first, then studies, then datasets, so a dataset freed by its suite goes too. Each item follows the rules of its own delete; refused items are listed with their reason and the rest are deleted. 200 with `deleted` and `refused` | Body: `suite_ids`, `study_ids`, `dataset_ids` (at most 100 each) |
 
 A wide CSV has one timestamp column (the first unless `timestamp_column`
 names another) and one series per remaining column; a long CSV has one value

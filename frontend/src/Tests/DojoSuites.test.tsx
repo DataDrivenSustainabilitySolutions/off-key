@@ -20,7 +20,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({
 vi.mock("@/features/workspace/SelectedSourceBar", () => ({ SelectedSourceBar: () => null }));
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), run: vi.fn(), suites: vi.fn(), suite: vi.fn(), createSuite: vi.fn(), deleteSuite: vi.fn(),
-  reviewSuite: vi.fn(), createFaultSuite: vi.fn(), compareStudies: vi.fn(), study: vi.fn(), createStudy: vi.fn(), cancelStudy: vi.fn(), deleteStudy: vi.fn(),
+  reviewSuite: vi.fn(), deleteItems: vi.fn(), createFaultSuite: vi.fn(), compareStudies: vi.fn(), study: vi.fn(), createStudy: vi.fn(), cancelStudy: vi.fn(), deleteStudy: vi.fn(),
 } }));
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { catalog: vi.fn(), list: vi.fn(), get: vi.fn() } }));
 
@@ -29,6 +29,7 @@ const datasets: DatasetSummary[] = ["Pump A", "Pump B"].map((name, index) => ({
   id: `d${index}`, name, description: "", origin: "benchmark", point_count: 1000, series_count: 1,
   start_at: T0, end_at: T0, created_by: 1, created_at: T0,
 }));
+const own: DatasetSummary = { ...datasets[0]!, id: "d5", name: "Boiler", origin: "history" };
 const totals = (vus: number): StudyTotals => ({ runs_scored: 2, labels_scored: 2, labels_detected: 2, detection_rate: 1,
   median_false_alarms_per_day: 0.5, pr_auc: vus, pr_auc_runs: 2, vus_pr: vus, vus_pr_runs: 2, auroc: 0.9, auroc_runs: 2,
   top1_hits: 2, top1_runs: 2 });
@@ -63,17 +64,46 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Dojo benchmark suites", () => {
-  it("lists suites beside datasets and says when an agent's suite waits for review", async () => {
+  it("keeps benchmarks apart from your own datasets and says when an agent's suite waits for review", async () => {
+    vi.mocked(dojoApi.datasets).mockResolvedValue({ items: [...datasets, own], next_offset: null });
     mount("/dojo");
+    const mine = await screen.findByRole("table", { name: "Datasets" });
+    expect(within(mine).getAllByRole("link").map(link => link.textContent)).toEqual(["Boiler"]);
+    expect(screen.queryByRole("table", { name: "Benchmark suites" })).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: /Benchmarks/ }));
     const table = await screen.findByRole("table", { name: "Benchmark suites" });
-    expect(within(table).getByRole("link", { name: "Pumps" }).getAttribute("href")).toBe("/dojo?suite=s1");
-    expect(within(table).getByText("Agent Night")).toBeTruthy();
-    expect(within(table).getByText("Not yet reviewed")).toBeTruthy();
+    expect(within(table).getByRole("link", { name: "Pumps" }).getAttribute("href")).toBe("/dojo?view=benchmarks&suite=s1");
+    expect(within(table).getByText("By agent Night, not yet reviewed")).toBeTruthy();
+    const series = screen.getByRole("table", { name: "Public series" });
+    expect(within(series).getAllByRole("link").map(link => link.textContent)).toEqual(["Pump A", "Pump B"]);
+  });
+
+  it("orders a list by the header pressed, largest first for numbers", async () => {
+    vi.mocked(dojoApi.datasets).mockResolvedValue({ items: datasets.map((item, index) => ({ ...item, point_count: 10 + index * 5 })), next_offset: null });
+    mount("/dojo?view=benchmarks");
+    const series = await screen.findByRole("table", { name: "Public series" });
+    fireEvent.click(within(series).getByRole("button", { name: "Values" }));
+    expect(within(series).getAllByRole("link").map(link => link.textContent)).toEqual(["Pump B", "Pump A"]);
+    fireEvent.click(within(series).getByRole("button", { name: "Values" }));
+    expect(within(series).getAllByRole("link").map(link => link.textContent)).toEqual(["Pump A", "Pump B"]);
+  });
+
+  it("deletes the selected suites and datasets in one request and names what was refused", async () => {
+    vi.mocked(dojoApi.deleteItems).mockResolvedValue({ deleted: 2, refused: [{ kind: "dataset", id: "d1", reason: "Pump B is in a suite." }] });
+    mount("/dojo?view=benchmarks");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pumps" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all public series" }));
+    const bar = screen.getByRole("region", { name: "Selection" });
+    expect(within(bar).getByText("3 selected")).toBeTruthy();
+    fireEvent.click(within(bar).getByRole("button", { name: "Delete selected" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(dojoApi.deleteItems).toHaveBeenCalledWith({ suite_ids: ["s1"], dataset_ids: ["d0", "d1"] }));
+    expect(await screen.findByText(/1 could not be deleted\. Pump B: Pump B is in a suite\./)).toBeTruthy();
   });
 
   it("creates a suite from chosen datasets in the order they were chosen", async () => {
     vi.mocked(dojoApi.createSuite).mockResolvedValue({ ...suite, id: "s2" });
-    const router = mount("/dojo");
+    const router = mount("/dojo?view=benchmarks");
     fireEvent.click(await screen.findByRole("button", { name: "New suite" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Both pumps" } });
@@ -82,7 +112,7 @@ describe("Dojo benchmark suites", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Create suite" }));
     await waitFor(() => expect(dojoApi.createSuite).toHaveBeenCalledWith(
       { name: "Both pumps", description: "", dataset_ids: ["d1", "d0"] }));
-    await waitFor(() => expect(router.state.location.search).toBe("?suite=s2"));
+    await waitFor(() => expect(router.state.location.search).toBe("?view=benchmarks&suite=s2"));
   });
 
   it("ranks complete studies, keeps unfinished ones apart and compares two", async () => {

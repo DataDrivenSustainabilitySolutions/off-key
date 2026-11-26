@@ -6,7 +6,7 @@ import type { DatasetView } from "@/types/dojo.generated";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SelectedSourceBar } from "../workspace/SelectedSourceBar";
 import { DatasetDetail } from "./DatasetDetail";
-import { DatasetList } from "./DatasetList";
+import { DatasetList, type DojoView } from "./DatasetList";
 import { SuitePage } from "./SuitePage";
 import { dojoApi } from "./api";
 import { useDojoAccess } from "./access";
@@ -22,6 +22,7 @@ export function DojoWorkspace() {
   const datasetId = params.get("dataset");
   const runId = params.get("run");
   const suiteId = params.get("suite");
+  const view: DojoView = params.get("view") === "benchmarks" ? "benchmarks" : "datasets";
   const [runError, setRunError] = useState<{ run: string; message: string }>();
   // A link to one run, such as a proposal's test, names only the run: its dataset is read first.
   useEffect(() => {
@@ -70,7 +71,7 @@ export function DojoWorkspace() {
         onStudy={study => setParams(previous => { const next = new URLSearchParams(previous);
           if (study) next.set("study", study); else next.delete("study"); return next; }, { replace: true })}
         onDeleted={() => navigate(listHref, { replace: true })} />
-      : <DatasetList datasetHref={datasetHref} suiteHref={id => href({ suite: id, study: null })} onCreated={open}
+      : <DatasetList view={view} viewHref={next => href({ view: next === "datasets" ? null : next })} datasetHref={datasetHref} suiteHref={id => href({ suite: id, study: null })} onCreated={open}
         scope={scoped?.label} readings={readings} selection={<SelectedSourceBar />} />}
   </main>;
 }

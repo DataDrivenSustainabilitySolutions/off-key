@@ -18,6 +18,7 @@ from off_key_core.db.models import (
 )
 from off_key_core.schemas.dojo import (
     CsvImportQuery,
+    DojoDeletion,
     FaultSuiteCreate,
     LabelCreate,
     StudyComparisonQuery,
@@ -32,6 +33,7 @@ from off_key_tactic_middleware.domain import (
     ValidationError,
 )
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
+from off_key_tactic_middleware.services.dojo.deletions import DojoDeletions
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
 from off_key_tactic_middleware.services.dojo.suites import DojoSuites, wilcoxon
 from pydantic import ValidationError as SchemaError
@@ -530,3 +532,34 @@ async def test_a_keys_fault_suite_waits_for_review(sessions):
             created_by_agent=key,
         )
     assert not suite.reviewed and suite.created_by_agent == "Night"
+
+
+@pytest.mark.asyncio
+async def test_one_deletion_frees_a_dataset_by_its_suite_and_names_what_it_refused(
+    sessions,
+):
+    _, factory = sessions
+    creator = await bootstrap(factory)
+    freed = await labelled(factory, creator, "Freed", 50)
+    held = await labelled(factory, creator, "Held", 60)
+    async with factory() as session:
+        suites = DojoSuites(session)
+        gone = await suites.create_suite(
+            SuiteCreate(name="Gone", dataset_ids=[freed.id]), created_by=creator
+        )
+        await suites.create_suite(
+            SuiteCreate(name="Kept", dataset_ids=[held.id]), created_by=creator
+        )
+        result = await DojoDeletions(session).remove(
+            DojoDeletion(
+                suite_ids=[gone.id],
+                dataset_ids=[held.id, freed.id, freed.id],
+            )
+        )
+        left = (await session.scalars(select(DojoDataset.name))).all()
+        suites_left = (await session.scalars(select(DojoSuite.name))).all()
+    assert result.deleted == 2
+    assert [(item.kind, item.id) for item in result.refused] == [("dataset", held.id)]
+    assert "Kept" in result.refused[0].reason
+    assert left == ["Held"]
+    assert suites_left == ["Kept"]

@@ -176,6 +176,7 @@ GATEWAY_ACCESS = {
         "GET /v1/dojo/studies/{study_id}",
         "POST /v1/dojo/studies/{study_id}/cancel",
         "DELETE /v1/dojo/studies/{study_id}",
+        "POST /v1/dojo/deletions",
     },
     "manage_members": {
         "GET /v1/agents",
@@ -214,6 +215,7 @@ GATEWAY_AGENT_ACCESS = {
         "GET /v1/dojo/studies/{study_id}",
         "POST /v1/dojo/studies/{study_id}/cancel",
         "DELETE /v1/dojo/studies/{study_id}",
+        "POST /v1/dojo/deletions",
         "GET /v1/dojo/benchmarks",
         "POST /v1/dojo/benchmarks/import",
         "GET /v1/dojo/datasets",
@@ -362,7 +364,8 @@ def test_a_key_changes_nothing_it_did_not_make():
         benchmark import labels only what the collection itself labelled. It cancels and
         deletes only its own tests and its own withdrawn or declined proposals,
         which the services check (test_dojo_agent_cleanup). Its benchmark suites
-    wait for a member's review, and it deletes only its own suites and studies."""
+    wait for a member's review, and it deletes only its own suites and studies,
+    one at a time or in one deletion."""
     writes = {
         route
         for routes in GATEWAY_AGENT_ACCESS.values()
@@ -386,6 +389,7 @@ def test_a_key_changes_nothing_it_did_not_make():
         "POST /v1/dojo/studies",
         "POST /v1/dojo/studies/{study_id}/cancel",
         "DELETE /v1/dojo/studies/{study_id}",
+        "POST /v1/dojo/deletions",
         "DELETE /v1/pipeline-proposals/{proposal_id}",
         "POST /v1/pipelines/edit",
         "POST /v1/pipelines/validate",

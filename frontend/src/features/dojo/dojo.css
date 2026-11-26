@@ -124,3 +124,53 @@
 .dj-protocol-budget dt { font-size: var(--text-caption); color: var(--ex-ink); font-weight: 500; }
 .dj-protocol-budget dd { margin: 2px 0 0; font-size: var(--text-caption); color: var(--ex-muted); }
 .dj-protocol-level { display: inline-block; margin-inline-end: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Two modes of the Dojo's front page: your own datasets, and benchmark suites with the public series they use. */
+.dj-mode { display: inline-grid; grid-auto-flow: column; gap: 2px; padding: 2px; margin: 0 0 20px; border-radius: var(--radius); background: hsl(var(--muted)); }
+.dj-mode a { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: var(--radius); color: var(--ex-muted); font-size: var(--text-control); text-decoration: none; }
+.dj-mode a:hover { color: var(--ex-ink); }
+.dj-mode a[aria-current="page"] { background: hsl(var(--card)); color: var(--ex-ink); font-weight: 500; box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12); }
+.dj-mode span { color: var(--ex-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.dj-section-title { font-size: var(--text-title3); line-height: var(--leading-title3); font-weight: 500; margin: 36px 0 4px; }
+@media (max-width: 760px) {
+  .dj-mode { display: grid; grid-template-columns: 1fr 1fr; }
+  .dj-mode a { justify-content: center; min-height: 40px; }
+}
+
+/* Dojo lists: numbers align right, headers order the list, the whole row opens it, a checkbox picks it. */
+.dj-table :is(th, td).dj-num { text-align: right; }
+.dj-list tbody tr { position: relative; }
+.dj-list tbody tr:hover td { background: var(--ex-hover); }
+.dj-list td.dj-name a::after { content: ""; position: absolute; inset: 0; }
+.dj-list .dj-select { position: relative; z-index: 1; width: 1%; padding-right: 14px; }
+.dj-list tr.dj-row-chosen td { background: var(--ex-hover); }
+.ex-shell .dj-sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; color: inherit; font: inherit; }
+.ex-shell .dj-sort:hover { color: var(--ex-ink); }
+.dj-table th.dj-num .dj-sort { flex-direction: row-reverse; }
+.dj-sort-idle { opacity: 0; }
+.dj-sort:hover .dj-sort-idle, .dj-sort:focus-visible .dj-sort-idle { opacity: 0.5; }
+.dj-check-box { display: inline-flex; padding: 6px; margin: -6px; cursor: pointer; }
+.dj-check-box input { width: 14px; height: 14px; margin: 0; accent-color: var(--ex-accent); cursor: pointer; }
+.dj-selection { display: flex; align-items: center; gap: 6px 12px; min-height: 44px; padding: 6px 10px; margin: 0 0 8px; background: var(--ex-hover); border-radius: var(--radius); font-size: var(--text-caption); }
+.dj-selection strong { font-weight: 550; font-variant-numeric: tabular-nums; }
+.dj-selection [data-slot="button"] { height: 30px; font-size: var(--text-caption); }
+.dj-selection .dj-delete-selected { margin-left: auto; padding-inline: 10px; }
+.dj-clear-selection { width: 28px; padding: 0; color: var(--ex-muted); }
+@media (max-width: 760px) {
+  .dj-list--select tbody tr { padding-left: 34px; }
+  .dj-list td.dj-name { flex-basis: 100%; }
+  .dj-list tbody tr:hover td, .dj-list tr.dj-row-chosen td { background: none; }
+  .dj-list tr.dj-row-chosen { background: var(--ex-hover); }
+  .dj-list--select td.dj-select { position: absolute; left: 0; top: 12px; padding: 0; }
+  .dj-list--select thead { position: static; width: auto; height: auto; overflow: visible; clip-path: none; display: block; }
+  .dj-list--select thead tr { display: flex; padding: 4px 0 10px; border-bottom: 1px solid var(--ex-line); }
+  .dj-list--select thead th { display: none; }
+  .dj-list--select thead th.dj-select { display: block; border: 0; padding: 0; }
+  .dj-check-box { padding: 12px; margin: -12px; }
+  .dj-check-box input { width: 18px; height: 18px; }
+}
+.dj-check-box .dj-narrow-only { display: none; }
+@media (max-width: 760px) {
+  .dj-check-box .dj-narrow-only { display: inline; margin-left: 10px; color: var(--ex-muted); font-size: var(--text-caption); font-weight: 400; }
+  .dj-check-box:has(.dj-narrow-only) { align-items: center; }
+}

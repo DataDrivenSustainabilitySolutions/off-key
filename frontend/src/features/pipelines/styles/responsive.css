@@ -55,7 +55,7 @@
     max-height: round(down, 58%, 1px);
     z-index: 6;
     border-top: 1px solid hsl(var(--border));
-    border-radius: 12px 12px 0 0;
+    border-radius: var(--radius) var(--radius) 0 0;
     box-shadow: 0 -8px 24px #0002;
     overflow: hidden;
   }
@@ -118,7 +118,7 @@
   justify-content: space-between;
   gap: 8px;
   border: 1px solid hsl(var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: hsl(var(--card));
   color: hsl(var(--foreground));
   cursor: grab;

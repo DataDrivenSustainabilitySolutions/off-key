@@ -439,19 +439,19 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             {displayName}
           </CardTitle>
           {hasStaticPane && (
-            <span className="telemetry-evidence-label inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+            <span className="telemetry-evidence-label inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               Sequential evidence
             </span>
           )}
           {hasAdaptivePane && (
-            <span className="telemetry-evidence-label inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
+            <span className="telemetry-evidence-label inline-flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
               <span className="size-1.5 rounded-full bg-violet-500" />
               Adaptive scores
             </span>
           )}
           {monitoringService && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-2.5 py-1 text-xs font-semibold text-muted-foreground">
               {awaitingFirstScore
                 ? "Awaiting first score"
                 : `Monitoring: ${formatOperationalStage(
@@ -460,7 +460,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             </span>
           )}
           {pendingTelemetryTimestamps.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/[0.07] px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
               {pendingTelemetryTimestamps.length} awaiting score
             </span>
           )}

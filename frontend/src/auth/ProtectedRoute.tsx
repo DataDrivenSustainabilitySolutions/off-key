@@ -30,7 +30,7 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   if (isLoading) {
     return (
       <AuthBackdrop contentClassName="flex justify-center">
-        <div className="flex items-center gap-3 rounded-full border border-border/70 bg-card/82 px-4 py-2 text-sm text-muted-foreground shadow-sm backdrop-blur-xl">
+        <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-card/82 px-4 py-2 text-sm text-muted-foreground shadow-sm backdrop-blur-xl">
           <span className="h-2 w-2 rounded-full bg-primary live-pulse-ring" />
           Authentication is loading...
         </div>

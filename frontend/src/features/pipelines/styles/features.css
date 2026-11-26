@@ -7,7 +7,7 @@
 }
 .pl-canvas-toolbar .pl-view-switch button {
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 5px 10px;
   background: transparent;
   color: hsl(var(--muted-foreground));
@@ -57,7 +57,7 @@
 .pl-features-heading h3 span {
   min-width: 22px;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-round);
   background: hsl(var(--muted));
   color: hsl(var(--muted-foreground));
   font-size: var(--text-caption);
@@ -123,7 +123,7 @@
   max-width: 100%;
   padding: 3px 9px;
   border: 1px solid color-mix(in srgb, var(--pl-step-accent) 40%, hsl(var(--border)));
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: color-mix(in srgb, var(--pl-step-accent) 8%, hsl(var(--card)));
   color: hsl(var(--foreground));
   font-size: var(--text-caption);
@@ -153,7 +153,7 @@
   height: 26px;
   padding: 0;
   border: 1px dashed hsl(var(--border));
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: transparent;
   color: hsl(var(--muted-foreground));
   display: inline-flex;
@@ -235,13 +235,13 @@
   gap: 2px;
   margin: 0 0 12px;
   padding: 2px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: hsl(var(--muted));
 }
 .pl-features-detectors button {
   max-width: 100%;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 5px 10px;
   background: transparent;
   color: hsl(var(--muted-foreground));

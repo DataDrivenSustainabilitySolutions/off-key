@@ -6,7 +6,7 @@
   height: clamp(480px, calc(100dvh - 360px), 820px);
   min-height: 480px;
   border: 1px solid hsl(var(--border));
-  border-radius: 10px;
+  border-radius: var(--radius);
   overflow: hidden;
   background: hsl(var(--background));
 }
@@ -95,7 +95,7 @@
 .pl-canvas-wrap .react-flow__controls {
   box-shadow: none;
   border: 1px solid hsl(var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
@@ -135,7 +135,7 @@
    chosen cards show the group themselves, and each stays within reach of the pointer. */
 .pl-canvas-wrap .react-flow__selection {
   border: 1px dashed hsl(var(--foreground) / 0.55);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: hsl(var(--foreground) / 0.04);
 }
 .pl-canvas-wrap .react-flow__nodesselection {
@@ -162,7 +162,7 @@
   padding: 10px var(--pl-node-padding-x);
   gap: 3px;
   border: 1px solid color-mix(in srgb, var(--pl-node-accent) 35%, hsl(var(--border)));
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: color-mix(in srgb, var(--pl-node-accent) 7%, hsl(var(--card)));
   color: hsl(var(--foreground));
   box-shadow: 0 2px 6px #00000008;
@@ -219,7 +219,7 @@
   margin: 3px;
   padding: 1px 6px;
   border: 1px solid var(--pl-node-accent);
-  border-radius: 8px;
+  border-radius: var(--radius);
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--pl-node-accent) 22%, transparent);
   background: hsl(var(--card));
@@ -268,7 +268,7 @@
   text-overflow: ellipsis;
   padding: 0 7px;
   border: 1px solid color-mix(in srgb, var(--pl-node-accent) 24%, hsl(var(--card)));
-  border-radius: 9px;
+  border-radius: var(--radius);
   background: color-mix(in srgb, var(--pl-node-accent) 12%, hsl(var(--card)));
   color: color-mix(in srgb, var(--pl-node-accent) 78%, hsl(var(--foreground)));
   font-size: var(--text-caption);
@@ -307,7 +307,7 @@
   flex-shrink: 0;
   padding: 0 5px;
   border: 1px solid currentColor;
-  border-radius: 999px;
+  border-radius: var(--radius);
   color: hsl(var(--foreground));
   font-weight: 600;
   line-height: 1.5;
@@ -384,7 +384,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  border-radius: 9px;
+  border-radius: var(--radius-round);
   color: hsl(var(--card));
   font-size: var(--text-caption);
   font-weight: 600;
@@ -437,7 +437,7 @@
   padding: 10px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: var(--text-caption);
   pointer-events: none;
 }

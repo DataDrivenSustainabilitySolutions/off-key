@@ -28,6 +28,8 @@
   --radius-lg: var(--radius);
   --radius-md: var(--radius-control);
   --radius-sm: var(--radius-control);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
   /* Tailwind's small sizes follow the app's type scale. */
   --text-xs: var(--text-caption);
   --text-xs--line-height: var(--leading-caption);
@@ -64,6 +66,8 @@
     /* Shared with auth: crisp controls, quiet surfaces and light headings. */
     --radius: 4px;
     --radius-control: 2px;
+    /* Count badges only; dots use 50%. */
+    --radius-round: 999px;
     --heading-weight: 400;
     --heading-tracking: -0.02em;
     --shadow-ink: 210 22% 19%;

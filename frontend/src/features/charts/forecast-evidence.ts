@@ -90,8 +90,22 @@ export function buildForecastEvidence(
 
 export const latestForecast = (series: ForecastEvidenceSeries) => series.data[series.data.length - 1]?.forecastObservation;
 
+export const isOutside = (point: ForecastObservation) => point.observed !== null && point.lower !== null
+  && point.upper !== null && (point.observed < point.lower || point.observed > point.upper);
+
 export function intervalStatus(point: ForecastObservation): string {
   if (point.lower === null || point.upper === null) return "Interval unavailable";
   if (point.observed === null) return "Observed value unavailable";
-  return point.observed < point.lower || point.observed > point.upper ? "Outside interval" : "Within interval";
+  return isOutside(point) ? "Outside interval" : "Within interval";
+}
+
+/** How many evaluated observations the interval covered, for the lead on show. */
+export function intervalCoverage(forecasts: readonly ForecastEvidenceSeries[]) {
+  let checked = 0, outside = 0;
+  for (const forecast of forecasts) for (const { forecastObservation: point } of forecast.data) {
+    if (!point || point.observed === null || point.lower === null || point.upper === null) continue;
+    checked += 1;
+    if (isOutside(point)) outside += 1;
+  }
+  return { checked, outside };
 }

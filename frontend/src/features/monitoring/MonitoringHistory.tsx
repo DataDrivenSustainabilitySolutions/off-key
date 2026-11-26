@@ -22,9 +22,7 @@ import { useHistoryWidth } from "@/features/charts/use-history-width";
 import type { HistoryPreference } from "@/types/telemetry-history";
 import { useHistoryPresentation } from "./useHistoryPresentation";
 import { ForecastControls } from "./ForecastControls";
-import { forecastLeadKey } from "@/features/charts/forecast-evidence";
-import { FORECAST_VIEW_LABELS, type ForecastView } from "@/features/charts/forecast-future";
-import { ForecastViewButton } from "./ForecastViewButton";
+import { forecastLeadKey, intervalCoverage } from "@/features/charts/forecast-evidence";
 import { historyMarkers } from "@/domain/monitoring/monitorOrigin";
 
 type Inspection = { startMs: number; endMs: number };
@@ -42,8 +40,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const { ref: chartWidthRef, buckets } = useHistoryWidth();
   const [chosenLead, setChosenLead] = useNavigationDraft<string>(`${key}:lead`, "");
   const [showScores, setShowScores] = useNavigationDraft<boolean>(`${key}:scores`, false);
-  const [forecastView, setForecastView] = useNavigationDraft<ForecastView>(`${key}:forecast-view`, "overlay");
-  const [showResiduals, setShowResiduals] = useNavigationDraft<boolean>(`${key}:residuals`, true);
+  const [showResiduals, setShowResiduals] = useNavigationDraft<boolean>(`${key}:residuals`, false);
   const presentation = useHistoryPresentation(service.id);
   const selectedInputs = useMemo(() => {
     const retained = inputs.filter(input => chosen.includes(input.stream.id)).slice(0, MAX_VISIBLE_READINGS);
@@ -65,14 +62,15 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const origin = service.origin;
   const markers = useMemo(() => historyMarkers(origin?.history ?? []), [origin]);
   const rationale = origin?.rationale ?? undefined;
-  const model = useMemo(() => ({ ...completeModel, intervalLabel, forecastView, showResiduals, markers, rationale,
+  const model = useMemo(() => ({ ...completeModel, intervalLabel, showResiduals, markers, rationale,
     forecasts: completeModel.forecasts?.filter(forecast => forecastLeadKey(forecast.lead) === lead),
     secondarySeries: completeModel.forecasts?.length && !showScores ? [] : completeModel.secondarySeries,
-  }), [completeModel, intervalLabel, lead, showScores, forecastView, showResiduals, markers, rationale]);
+  }), [completeModel, intervalLabel, lead, showScores, showResiduals, markers, rationale]);
+  const coverage = useMemo(() => intervalCoverage(model.forecasts ?? []), [model.forecasts]);
   const domain = getChartDomain(model.extent);
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
     + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}`
-    + `${forecasts.length ? `${FORECAST_VIEW_LABELS[forecastView]}; ${showResiduals ? "signed residuals below; " : ""}future times are estimated from recent cadence. ` : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
+    + `${forecasts.length ? `Observed values with the forecast${coverage.checked ? `, its ${intervalLabel} and ${coverage.outside} values outside it` : ""}; ${showResiduals ? "signed residuals below; " : ""}future times are estimated from recent cadence. ` : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
   // One interval for the whole chart, so every pane's means and peaks cover the same spans of time.
   const displayModel = useMemo(() => {
     const shown = inspection && [inspection.startMs, inspection.endMs] as const;
@@ -126,7 +124,6 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   return <section ref={chartWidthRef} className="ex-preview-history mn-history" aria-label="Monitoring history">
     <div className="ex-preview-section-heading"><h3>{forecasts.length ? "Forecast and deviations" : "Inputs and detection"}</h3>
       {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
-        {forecasts.length > 0 && <ForecastViewButton view={forecastView} onChange={setForecastView} />}
         {model.readings.some(reading => reading.valueType !== "boolean") && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={meanMs} />}
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
@@ -134,7 +131,8 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
       </div>}
     </div>
     <p className="mn-history-scope">{modelName && <strong>{modelName}</strong>}{inputs.length > 1
-      ? `Joint result across all ${inputs.length} inputs. Display selection does not change detection.` : "Reading and detector result on one timeline."}</p>
+      ? `Joint result across all ${inputs.length} inputs. Display selection does not change detection.`
+      : forecasts.length ? "Observed values and the forecast on one timeline." : "Reading and detector result on one timeline."}</p>
     {inputs.length > 1 && <details className="mn-history-readings"><summary>Displayed readings · {selectedInputs.length} of {inputs.length}</summary>
       <fieldset><legend>Choose up to {MAX_VISIBLE_READINGS} readings to display</legend>{inputs.map(input => {
         const checked = selectedInputs.some(selected => selected.stream.id === input.stream.id);
@@ -148,7 +146,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     {selection.controlCatalog.length > 1 && <TelemetryDetectorControls detectors={selection.controlCatalog}
       selected={selection.selectedDetectorIds} unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} />}
     {forecasts.length > 0 && <ForecastControls forecasts={forecasts} lead={lead} onLead={setChosenLead}
-      view={forecastView} showResiduals={showResiduals} onResiduals={setShowResiduals}
+      coverage={coverage} showResiduals={showResiduals} onResiduals={setShowResiduals} outsideColor={colors.outsideInterval}
       showScores={showScores} onScores={setShowScores} intervalLabel={intervalLabel} timeZone={timeZone} />}
     {forecasts.length > 0 && presentation.error && <p className="mn-history-problem" role="status">{presentation.error} <button onClick={presentation.retry}>Retry</button></p>}
     {model.extent ? <>

@@ -95,6 +95,11 @@
 .mn-forecast-toolbar label { display: flex; align-items: center; gap: 8px; min-height: 36px; }
 .mn-forecast-toolbar select { background: var(--ex-panel); color: var(--ex-ink); border: 1px solid var(--ex-line); border-radius: var(--radius-control); padding: 6px 10px; }
 .mn-forecast-toolbar input { accent-color: var(--ex-accent); }
+.mn-forecast-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; padding: 0; margin: 10px 0 0; color: var(--ex-ink); }
+.mn-forecast-legend li { display: flex; align-items: center; gap: 7px; }
+.mn-forecast-legend svg { flex-shrink: 0; color: var(--ex-muted); }
+.mn-forecast-coverage { color: var(--ex-muted); line-height: 1.5; margin: 8px 0 0; }
+.mn-forecast-coverage strong { color: var(--ex-ink); font-weight: 500; }
 .mn-forecast-summary { margin-top: 12px; }
 .mn-forecast-summary summary { cursor: pointer; padding: 6px 0; }
 .mn-forecast-table { overflow-x: auto; margin-top: 8px; }

@@ -1227,11 +1227,12 @@ times are explicitly marked `estimated_cadence`; untimed forecasts retain their
 model-update coordinates. `forecast_records.py` bounds and validates this nested
 JSON before the existing `forecasts` column and catalogue API carry it through.
 
-In the service Evidence tab, `forecastView` controls only forecast visibility:
-Overlay includes historical and future forecasts, Forecast ahead includes the
-latest future trajectory, and Data only hides both. All retain the same time
-extent, reading data and lead selection. Residuals have their own visibility
-setting. Future points are clipped after the latest observed sample and do not
+In the service Evidence tab, the reading pane always shows the evaluated
+forecast, its band and the latest future trajectory. Observed values outside the
+band get a ring in the theme's `outsideInterval` colour, not the alarm colour:
+`intervalCoverage()` counts them for the line above the chart, and only the
+detection rule raises alarms. Residuals have their own visibility setting, off
+at first. Future points are clipped after the latest observed sample and do not
 enter residual calculations. The current calibrated lead's future interval is a
 whisker; other leads are not presented as calibrated. Legacy evidence remains
 usable without an `issued` member.

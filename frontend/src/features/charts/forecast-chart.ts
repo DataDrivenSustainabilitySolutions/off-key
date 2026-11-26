@@ -1,8 +1,8 @@
 import type { LineSeriesOption } from "echarts/charts";
 import type { ForecastEvidenceSeries, ForecastObservation, ForecastValue } from "./forecast-evidence";
-import { intervalStatus } from "./forecast-evidence";
+import { intervalStatus, isOutside } from "./forecast-evidence";
 import type { DetectionObservation } from "./telemetry-detectors";
-import type { ForecastView, FutureForecastPoint } from "./forecast-future";
+import type { FutureForecastPoint } from "./forecast-future";
 import { buildFutureChartSeries, formatFutureTooltip } from "./forecast-future-chart";
 
 /** Stack the width on the lower bound, including when the interval crosses zero. */
@@ -18,8 +18,17 @@ function intervalSeries(id: string, data: ForecastValue[], pane: number, color: 
   ];
 }
 
+/** Observed values that left the interval, as rings in the outside colour. Red stays
+ * reserved for service alarms: leaving the interval alone is not an anomaly. */
+function outsideMarks(points: Array<{ value: [number, number | null]; point?: ForecastObservation }>,
+  color: string, fill: string) {
+  return { silent: true, symbol: "circle", symbolSize: 8, label: { show: false },
+    data: points.flatMap(({ value: [time, value], point }) => point && value !== null && isOutside(point)
+      ? [{ name: "Outside interval", coord: [time, value], itemStyle: { color: fill, borderColor: color, borderWidth: 2 } }] : []) };
+}
+
 export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane: number, residualPane: number,
-  color: string, alarmColor: string, view: ForecastView = "overlay"): LineSeriesOption[] {
+  color: string, outsideColor: string, fill: string): LineSeriesOption[] {
   const common: LineSeriesOption = { type: "line", showSymbol: forecast.data.length === 1, symbolSize: 5,
     connectNulls: false, encode: { x: 0, y: 1 }, emphasis: { disabled: true }, animation: false };
   const residuals = forecast.data.map(({ value: [time], forecastObservation: point }) => ({
@@ -32,7 +41,9 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
     ...intervalSeries(forecast.id, forecast.data.map(point => point.value), pane, color),
     { ...common, id: `forecast:${forecast.id}`, name: `${forecast.name} forecast`,
       xAxisIndex: pane, yAxisIndex: pane, data: forecast.data,
-      lineStyle: { color, width: 1.8, type: "dashed" }, itemStyle: { color }, z: 4 },
+      lineStyle: { color, width: 1.6, type: "dashed" }, itemStyle: { color }, z: 4,
+      markPoint: outsideMarks(forecast.data.map(({ value: [time], forecastObservation: point }) =>
+        ({ value: [time, point?.observed ?? null], point })), outsideColor, fill) },
   ];
   const residualSeries: LineSeriesOption[] = [
     ...intervalSeries(`residual:${forecast.id}`, residuals.map(point => point.value), residualPane, color),
@@ -41,13 +52,12 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
       lineStyle: { color, width: 1.5 }, itemStyle: { color },
       markLine: { silent: true, symbol: ["none", "none"], label: { show: false },
         lineStyle: { color, type: "dotted", opacity: 0.6 }, data: [{ yAxis: 0 }] },
-      markPoint: { symbol: "circle", symbolSize: 6, label: { show: false }, data: residuals.flatMap(point =>
-        point.forecastObservation && intervalStatus(point.forecastObservation) === "Outside interval"
-          ? [{ name: "Outside calibrated interval", coord: [point.value[0], point.value[1]!], itemStyle: { color: alarmColor } }] : []) } },
+      markPoint: outsideMarks(residuals.map(({ value: [time, residual], forecastObservation: point }) =>
+        ({ value: [time, residual], point })), outsideColor, fill) },
   ];
   return [
-    ...(view === "overlay" ? history : []),
-    ...(view !== "data" ? buildFutureChartSeries(forecast, pane, color) : []),
+    ...history,
+    ...buildFutureChartSeries(forecast, pane, color),
     ...(residualPane >= 0 ? residualSeries : []),
   ];
 }
@@ -58,7 +68,7 @@ type TooltipEntry = { seriesId?: string; seriesName?: string; value?: unknown;
 
 /** Never show a neighbouring forecast as if it evaluated the hovered sample. */
 export function formatForecastTooltip(params: unknown, time: (value: number) => string,
-  number: (value: number) => string, intervalLabel: string, showMissing = true): string | undefined {
+  number: (value: number) => string, intervalLabel: string): string | undefined {
   const entries = (Array.isArray(params) ? params : [params]).filter((entry): entry is TooltipEntry => !!entry && typeof entry === "object");
   const anchor = entries.find(entry => Array.isArray(entry.value));
   if (!Array.isArray(anchor?.value)) return undefined;
@@ -68,7 +78,7 @@ export function formatForecastTooltip(params: unknown, time: (value: number) => 
   const points = entries.filter(entry => entry.data?.forecastObservation?.time === timestamp);
   // An interval mean is not an input sample, so its own tooltip names the interval, range and count.
   if (!points.length && entries.some(entry => entry.data?.summary)) return undefined;
-  if (!points.length) return showMissing && (anchor.seriesId?.startsWith("reading:") || anchor.seriesId?.startsWith("pending-reading:"))
+  if (!points.length) return (anchor.seriesId?.startsWith("reading:") || anchor.seriesId?.startsWith("pending-reading:"))
     ? [time(timestamp), `${anchor.seriesName}: ${number(Number(anchor.value[1]))}`, "No evaluated forecast for this input sample."].join("\n")
     : undefined;
   const lines = [time(timestamp)];
@@ -84,7 +94,7 @@ export function formatForecastTooltip(params: unknown, time: (value: number) => 
     lines.push(`Observed: ${point.observed === null ? "unavailable" : number(point.observed)} · Forecast: ${number(point.expected)}`);
     lines.push(point.lower === null || point.upper === null ? "Interval unavailable"
       : `${intervalLabel}: ${number(point.lower)} to ${number(point.upper)}`);
-    if (point.observed !== null) lines.push(`Residual: ${number(point.observed - point.expected)} · ${intervalStatus(point)}`);
+    if (point.observed !== null) lines.push(`Residual: ${number(point.observed - point.expected)} · ${intervalStatus(point)}${isOutside(point) ? " (not an anomaly by itself)" : ""}`);
     lines.push(`Service alarm: ${point.alarm ? "active" : "inactive"}`);
   }
   for (const entry of entries) {

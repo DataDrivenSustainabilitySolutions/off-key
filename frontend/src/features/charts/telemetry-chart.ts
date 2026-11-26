@@ -12,7 +12,6 @@ import { buildDetectionSeriesOption, buildThresholdSeriesOption } from "./teleme
 import { formatMonitoringObservationTooltip } from "./monitoring-tooltip";
 import { buildForecastChartSeries, formatForecastTooltip } from "./forecast-chart";
 import { formatForecastValue, type ForecastEvidenceSeries } from "./forecast-evidence";
-import type { ForecastView } from "./forecast-future";
 
 import type { AnomalyMarker } from "@/lib/anomaly-utils";
 import { getPauseLimit, type TimeValue } from "./telemetry-data";
@@ -87,7 +86,6 @@ export interface MonitoringChartModel {
   readings: MonitoringChartReading[];
   forecasts?: ForecastEvidenceSeries[];
   intervalLabel?: string;
-  forecastView?: ForecastView;
   showResiduals?: boolean;
   /** The features the detectors scored, in their own pane under the readings. */
   detectorInputs?: DetectorInputSeries[];
@@ -128,6 +126,8 @@ export interface ChartThemeColors {
   seriesPalette?: readonly string[];
   alarmBoundary?: string;
   alarmFill?: string;
+  /** Observed values outside a forecast interval: a deviation, not an alarm. */
+  outsideInterval?: string;
 }
 
 interface BuildTelemetryChartModelInput {
@@ -674,8 +674,8 @@ export const buildMonitoringChartOption = ({
   const evaluatedForecastSeries = forecasts.flatMap((forecast, index) => {
     const readingPane = model.readings.findIndex(reading => reading.inputKey === forecast.readingId);
     return buildForecastChartSeries(forecast, readingPane < 0 ? inputsPane : readingPane,
-      panes.indexOf(`residual:${forecast.id}`), palette[index % palette.length]!, colors.alarmBoundary ?? "#dc2626",
-      model.forecastView ?? "overlay");
+      panes.indexOf(`residual:${forecast.id}`), palette[index % palette.length]!, colors.outsideInterval ?? "#b45309",
+      colors.popover);
   });
 
   const ruledPanes = new Set<number>();
@@ -750,8 +750,7 @@ export const buildMonitoringChartOption = ({
       axisPointer: { type: "line" },
       formatter: (params: unknown) => withRationale(
         (forecasts.length ? formatForecastTooltip(params,
-          time => formatChartTime(time, timeZone, "tooltip", locale), formatForecastValue, model.intervalLabel ?? "Calibrated interval",
-          !model.forecastView || model.forecastView === "overlay") : undefined)
+          time => formatChartTime(time, timeZone, "tooltip", locale), formatForecastValue, model.intervalLabel ?? "Calibrated interval") : undefined)
           ?? (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
           time => formatChartTime(time, timeZone, "tooltip", locale), formatNumber) : undefined)
           ?? formatTelemetryTooltip(params, timeZone, units, locale, reach, means), model.rationale),

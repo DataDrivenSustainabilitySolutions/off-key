@@ -506,7 +506,7 @@ export const buildMonitoringChartOption = ({
   // Each start, retune, take-live and stop of the monitor, named at the top of the first pane.
   const markerLines = (model.markers ?? []).map(marker => ({ xAxis: marker.timeMs,
     lineStyle: { color: colors.primary, type: "dotted" as const, width: 1, opacity: 0.7 },
-    label: { show: true, formatter: marker.label, position: "insideEndTop" as const, color: colors.mutedForeground, fontSize: 11 } }));
+    label: { show: true, formatter: marker.label, position: "insideEndTop" as const, color: colors.mutedForeground, fontSize: 12 } }));
 
   const alarmColor = colors.alarmBoundary ?? "#dc2626";
   // Value rules stay behind the data: a solid hairline, lighter than the border it borrows from.
@@ -690,7 +690,7 @@ export const buildMonitoringChartOption = ({
     icon: "roundRect",
     itemWidth: 12,
     itemHeight: 3,
-    textStyle: { color: colors.foreground, fontSize: 11 },
+    textStyle: { color: colors.foreground, fontSize: 12 },
     pageTextStyle: { color: colors.mutedForeground },
   } : undefined;
 

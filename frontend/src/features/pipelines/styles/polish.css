@@ -59,7 +59,7 @@
 /* The kind reads as a small coloured tag. */
 .pl-canvas-wrap .pl-node-kind {
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--text-caption);
   letter-spacing: 0.08em;
 }
 .pl-canvas-wrap .pl-node-kind::before {

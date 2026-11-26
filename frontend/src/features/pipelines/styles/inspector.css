@@ -391,7 +391,7 @@
   min-width: 0;
   margin-right: auto;
   color: var(--pl-step-accent);
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   line-height: 16px;
@@ -585,7 +585,7 @@
 .pl-inspector :is(.pl-step-body, .pl-step-flow) > h4 {
   margin: 22px 0 8px;
   color: hsl(var(--muted-foreground));
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;

@@ -98,6 +98,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     : monitoring.services.find(item => item.id === chosenView) ?? monitoring.services.find(item => item.active),
   [monitoring.services, chosenView]);
   const [aimed, setAimed] = useState<string>();
+  const [gutter, setGutter] = useState<number>(CHART_INSETS.compact.left);
   const monitors = useMemo(() => {
     const colors = monitorColors(monitoring.services.map(item => item.id), resolvedTheme === "dark");
     return monitoring.services.map(item => ({ id: item.id, name: item.display_name || item.id, color: colors.get(item.id)! }));
@@ -237,9 +238,9 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     {hasValues ? <div className="ex-history-navigation" role="group" aria-label="Chart navigation" tabIndex={0}
       onKeyDown={navigate}>
       <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description}
-        onViewportChange={inspect} className={`ex-preview-chart ex-preview-chart--${paneCount}`} />
+        onViewportChange={inspect} onGutter={setGutter} className={`ex-preview-chart ex-preview-chart--${paneCount}`} />
       {monitors.length > 0 && <AnomalyStrip rows={stripRows} domain={inspection ? [inspection.startMs, inspection.endMs] : domain}
-        inset={CHART_INSETS.compact} onPick={service ? undefined : setView} onAim={setAimed} />}
+        inset={{ ...CHART_INSETS.compact, left: gutter }} onPick={service ? undefined : setView} onAim={setAimed} />}
       {monitors.length > 0 && <p className="an-aimed" aria-hidden="true">{monitors.filter(monitor => monitor.id === aimed)
         .map(monitor => <Fragment key={monitor.id}><i style={{ background: monitor.color }} />{monitor.name}</Fragment>)}</p>}
     </div> : <div className="ex-preview-chart-empty" aria-busy={monitoring.loading || stored.loading || undefined}><Radio size={24} strokeWidth={1.3} /><strong>{monitoring.loading || stored.loading ? "Loading history…"

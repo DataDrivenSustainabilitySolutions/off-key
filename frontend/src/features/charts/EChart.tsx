@@ -49,6 +49,8 @@ export interface EChartProps {
   resolvedTheme: ResolvedTheme;
   accessibleDescription: string;
   onViewportChange?: (startMs: number, endMs: number) => void;
+  /** Where the plot begins once the value labels are measured, for what is drawn beside the chart. */
+  onGutter?: (left: number) => void;
   className?: string;
 }
 
@@ -160,6 +162,7 @@ export function EChart({
   resolvedTheme,
   accessibleDescription,
   onViewportChange,
+  onGutter,
   className,
 }: EChartProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -167,13 +170,15 @@ export function EChart({
   const appliedThemeRef = useRef<ResolvedTheme | undefined>(undefined);
   const initialThemeRef = useRef(resolvedTheme);
   const viewportCallbackRef = useRef(onViewportChange);
+  const gutterCallbackRef = useRef(onGutter);
   const axisIdsRef = useRef<string | undefined>(undefined);
   const optionRef = useRef(option);
   const gutterRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     viewportCallbackRef.current = onViewportChange;
-  }, [onViewportChange]);
+    gutterCallbackRef.current = onGutter;
+  }, [onViewportChange, onGutter]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -200,6 +205,7 @@ export function EChart({
       const gutter = valueAxisGutter(widths);
       if (gutter === gutterRef.current) return;
       gutterRef.current = gutter;
+      gutterCallbackRef.current?.(gutter);
       chart.setOption(gutterOnly(optionRef.current, gutter), { lazyUpdate: true });
     };
     chart.on("finished", fitGutter);

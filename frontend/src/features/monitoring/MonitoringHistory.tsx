@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type KeyboardEvent } from "react";
+import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { EChart } from "@/features/charts/EChart";
 import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorControls";
@@ -97,6 +97,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   // The key names open dots only where the chart shows one.
   const anyMuted = useMemo(() => displayModel.secondarySeries.some(series =>
     series.data.some(point => point.observation?.alarmMuted)), [displayModel.secondarySeries]);
+  const [gutter, setGutter] = useState<number>(CHART_INSETS.monitoring.left);
   const anyAlarm = model.readings.some(reading => reading.alarmSpans?.length);
   // The monitor keeps the colour it has on its reading's page, among the monitors that share that reading.
   const { services } = useMonitoringServices(true);
@@ -167,10 +168,10 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
       {!latest && <p className="ex-history-monitoring" role="status">{loading ? "Loading history…" : `Monitoring: ${stage} · Awaiting evaluated observations`}</p>}
       <div className="ex-history-navigation" role="group" aria-label="Chart navigation" tabIndex={0} onKeyDown={navigate}
         style={{ height: `${panes * 148 + 60 + (forecasts.length ? model.readings.length * 60 : 0)}px` }}>
-        <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect}
+        <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect} onGutter={setGutter}
           className="mn-history-chart" />
       </div>
-      <AnomalyStrip rows={stripRows} domain={inspection ? [inspection.startMs, inspection.endMs] : domain} inset={CHART_INSETS.monitoring} />
+      <AnomalyStrip rows={stripRows} domain={inspection ? [inspection.startMs, inspection.endMs] : domain} inset={{ ...CHART_INSETS.monitoring, left: gutter }} />
       {shownForecasts.length > 0 && <ForecastKey forecasts={shownForecasts} intervalLabel={intervalLabel} />}
       <ForecastCoverage forecasts={shownForecasts} coverage={coverage} />
     </> : <div className={`mn-history-empty${problem && !loading ? " is-error" : ""}`} role="status">

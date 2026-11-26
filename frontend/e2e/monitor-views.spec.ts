@@ -72,6 +72,10 @@ for (const theme of ["light", "dark"] as const) {
 
     // The pointer is a lens: over the stretch all three share, each monitor gets a field, and its name shows.
     const box = (await strip.boundingBox())!;
+    // The strip begins where the plot does: at the gutter the chart measured for its value labels, a multiple of eight.
+    const plot = (await history.locator("canvas").first().boundingBox())!;
+    expect(box.x - plot.x).toBeGreaterThan(0);
+    expect((box.x - plot.x) % 8).toBe(0);
     const shared = box.x + box.width * (231 / (COUNT - 1));
     await page.mouse.move(shared, box.y + box.height / 2);
     await expect(views.locator(".is-aimed")).toHaveCount(1);

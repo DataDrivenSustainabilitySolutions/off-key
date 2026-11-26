@@ -51,6 +51,44 @@ RESIDUAL_DETECTOR = "residual_detector"
 FORECASTER_IDS = {
     "aberrant_seasonal_naive_forecaster": "seasonal_naive",
     "aberrant_holt_winters_forecaster": "holt_winters",
+    "aberrant_autoregressive_forecaster": "autoregressive",
+    "aberrant_kalman_forecaster": "kalman_forecaster",
+    "aberrant_echo_state_forecaster": "echo_state_forecaster",
+    "aberrant_lag_forecaster": "lag_forecaster",
+    "aberrant_ensemble_forecaster": "ensemble_forecaster",
+}
+# The components a forecaster holds: a lag forecaster's regressor and an
+# ensemble's members. A design names each by its ``id`` beside its own settings,
+# and every member forecasts as far ahead as the step does. Members hold no
+# components of their own, which keeps each step's settings one level deep.
+REGRESSOR_IDS = (
+    "random_fourier_regressor",
+    "rls_regressor",
+    "knn_regressor",
+    "hoeffding_tree_regressor",
+    "adaptive_random_forest_regressor",
+)
+MEMBER_IDS = (
+    "autoregressive",
+    "kalman_forecaster",
+    "holt_winters",
+    "seasonal_naive",
+    "echo_state_forecaster",
+)
+COMPONENT_SETTINGS = {"regressor": REGRESSOR_IDS, "forecasters": MEMBER_IDS}
+# A regressor predicts the present, and an ensemble's horizon is its members'.
+_NO_HORIZON = frozenset((*REGRESSOR_IDS, "ensemble_forecaster"))
+# A lag forecaster starts from the regressor that forecast best in Aberrant's
+# benchmark, and an ensemble from two linear members and a nonlinear one.
+COMPONENT_DEFAULTS: dict[str, dict[str, Any]] = {
+    "lag_forecaster": {"regressor": {"id": "random_fourier_regressor"}},
+    "ensemble_forecaster": {
+        "forecasters": [
+            {"id": "autoregressive"},
+            {"id": "kalman_forecaster"},
+            {"id": "echo_state_forecaster"},
+        ]
+    },
 }
 # Settings of the residual detector itself; the others belong to its forecaster.
 _RESIDUAL_SETTINGS = ("target", "lead", "score")
@@ -119,11 +157,51 @@ PARAMETER_LIMITS = {
     "min_scale": {"exclusiveMinimum": 0},
     # A forecast is compared with the value that arrives this many updates later.
     "lead": {"minimum": 1, "maximum": 1024},
+    "order": {"minimum": 0, "maximum": 64},
+    "seasonal_order": {"minimum": 0, "maximum": 8},
+    "difference": {"minimum": 0, "maximum": 2},
+    "seasonal_difference": {"minimum": 0, "maximum": 1},
+    "forgetting": {"exclusiveMinimum": 0, "maximum": 1},
+    "delta": {"exclusiveMinimum": 0},
+    "level_ratio": {"minimum": 0},
+    "slope_ratio": {"minimum": 0},
+    "season_ratio": {"minimum": 0},
+    "harmonics": {"minimum": 0, "maximum": 250},
+    "ratio_rate": {"exclusiveMinimum": 0},
+    "n_reservoir": {"minimum": 1, "maximum": 1000},
+    "spectral_radius": {"exclusiveMinimum": 0},
+    "leak_rate": {"exclusiveMinimum": 0, "maximum": 1},
+    "input_scale": {"exclusiveMinimum": 0},
+    "connectivity": {"exclusiveMinimum": 0, "maximum": 1},
+    "n_components": {"minimum": 1, "maximum": 4096},
+    "length_scale": {"exclusiveMinimum": 0},
+    "C": {"exclusiveMinimum": 0},
+    "epsilon": {"minimum": 0},
+    "huber": {"exclusiveMinimum": 0},
+    "l2": {"minimum": 0},
+    "grace_period": {"minimum": 1, "maximum": 1_000_000},
+    "tau": {"minimum": 0},
+    "n_bins": {"minimum": 2, "maximum": 1024},
+    "n_models": {"minimum": 1, "maximum": 100},
+    "max_features": {"minimum": 1, "maximum": 10_000},
+    "lambda_value": {"exclusiveMinimum": 0},
+    "drift_delta": {"exclusiveMinimum": 0, "exclusiveMaximum": 1},
+    "warning_delta": {"exclusiveMinimum": 0, "exclusiveMaximum": 1},
+    "forecasters": {"minItems": 2, "maxItems": 8},
 }
 
-# Limits that differ for one forecaster. Season length 1 repeats the last value.
+# Limits that differ for one component. Season length 1 is no season, or for
+# the seasonal naive forecaster the last value; a tree's delta is a probability.
+_NO_SEASON = {"season_length": {"minimum": 1, "maximum": 500_000}}
+_SPLIT_CONFIDENCE = {"delta": {"exclusiveMinimum": 0, "exclusiveMaximum": 1}}
 FORECASTER_LIMITS: dict[str, dict[str, dict[str, Any]]] = {
-    "seasonal_naive": {"season_length": {"minimum": 1, "maximum": 500_000}},
+    "seasonal_naive": _NO_SEASON,
+    "autoregressive": _NO_SEASON,
+    "kalman_forecaster": _NO_SEASON,
+    "echo_state_forecaster": _NO_SEASON,
+    "lag_forecaster": _NO_SEASON,
+    "hoeffding_tree_regressor": _SPLIT_CONFIDENCE,
+    "adaptive_random_forest_regressor": _SPLIT_CONFIDENCE,
 }
 
 # A pretrained forecaster's weights live in the shared forecast service, so it is
@@ -339,16 +417,46 @@ def bind_detector_parameters(
     return result
 
 
+def _component_parameters(
+    component_id: str, params: Mapping[str, Any], horizon: Any
+) -> dict[str, Any]:
+    """A component's settings, with the components it holds as Aberrant's
+    ``{"id", "params"}`` and every forecaster's horizon set."""
+    result: dict[str, Any] = {}
+    for name, value in params.items():
+        if name == "regressor" and isinstance(value, Mapping):
+            result[name] = _held_component(value, horizon)
+        elif name == "forecasters" and isinstance(value, list):
+            result[name] = [
+                _held_component(item, horizon) if isinstance(item, Mapping) else item
+                for item in value
+            ]
+        else:
+            result[name] = value
+    if horizon is not None and component_id not in _NO_HORIZON:
+        result["horizon"] = horizon
+    return result
+
+
+def _held_component(value: Mapping[str, Any], horizon: Any) -> dict[str, Any]:
+    settings = {name: item for name, item in value.items() if name != "id"}
+    component_id = value.get("id")
+    return {
+        "id": component_id,
+        "params": _component_parameters(str(component_id), settings, horizon),
+    }
+
+
 def forecaster_parameters(forecaster_id: str, params: Mapping[str, Any]) -> dict:
     """A forecaster step's settings as Aberrant's residual detector parameters.
 
-    The forecaster forecasts exactly as far ahead as the lead that is scored.
+    The forecaster, and every member of an ensemble, forecasts exactly as far
+    ahead as the lead that is scored.
     """
     outer = {name: params[name] for name in _RESIDUAL_SETTINGS if name in params}
     inner = {name: value for name, value in params.items() if name not in outer}
-    if outer.get("lead") is not None:
-        inner["horizon"] = outer["lead"]
-    return {**outer, "model": {"id": forecaster_id, "params": inner}}
+    model = _component_parameters(forecaster_id, inner, outer.get("lead"))
+    return {**outer, "model": {"id": forecaster_id, "params": model}}
 
 
 def aberrant_model(definition: Mapping[str, Any], params: Mapping[str, Any]) -> dict:

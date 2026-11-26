@@ -13,6 +13,7 @@ from off_key_core.models import (
 )
 from off_key_core.models.adaptive import (
     CATALOG,
+    FORECASTER_IDS,
     aberrant_model,
     bind_detector_parameters,
 )
@@ -65,6 +66,36 @@ def test_generated_catalog_matches_pinned_runtime():
         ),
         ("aberrant_seasonal_naive_forecaster", {"season_length": 0}),
         ("aberrant_seasonal_naive_forecaster", {"model": {"id": "holt_winters"}}),
+        ("aberrant_autoregressive_forecaster", {"difference": 3}),
+        ("aberrant_autoregressive_forecaster", {"order": 65}),
+        ("aberrant_echo_state_forecaster", {"n_reservoir": 5000}),
+        ("aberrant_echo_state_forecaster", {"leak_rate": 1.5}),
+        ("aberrant_kalman_forecaster", {"level_ratio": -1.0}),
+        ("aberrant_lag_forecaster", {"regressor": {"id": "sgd_regressor"}}),
+        ("aberrant_lag_forecaster", {"regressor": {"id": "knn_regressor", "k": 0}}),
+        (
+            "aberrant_lag_forecaster",
+            {"regressor": {"id": "hoeffding_tree_regressor", "delta": 1.0}},
+        ),
+        ("aberrant_lag_forecaster", {"regressor": {"grace_period": 10}}),
+        ("aberrant_ensemble_forecaster", {"forecasters": [{"id": "autoregressive"}]}),
+        (
+            "aberrant_ensemble_forecaster",
+            {"forecasters": [{"id": "autoregressive"}, {"id": "lag_forecaster"}]},
+        ),
+        (
+            "aberrant_ensemble_forecaster",
+            {
+                "forecasters": [
+                    {"id": "autoregressive", "horizon": 3},
+                    {"id": "kalman_forecaster"},
+                ]
+            },
+        ),
+        (
+            "aberrant_ensemble_forecaster",
+            {"forecasters": [{"id": "holt_winters"}, {"id": "kalman_forecaster"}]},
+        ),
     ],
 )
 def test_configuration_rejects_conflicts_unsupported_components_and_resource_abuse(
@@ -129,6 +160,54 @@ def test_seasonal_forecast_detector_in_a_design_checks_its_season_and_features()
             {"season_length": 1, "horizon": 1},
             2,
         ),
+        (
+            "aberrant_autoregressive_forecaster",
+            "autoregressive",
+            {"order": 3, "lead": 2},
+            {"order": 3, "horizon": 2},
+            10,
+        ),
+        (
+            "aberrant_kalman_forecaster",
+            "kalman_forecaster",
+            {"season_length": 24},
+            {"season_length": 24, "horizon": 1, "learn_ratios": True},
+            25,
+        ),
+        (
+            "aberrant_echo_state_forecaster",
+            "echo_state_forecaster",
+            {},
+            {"n_reservoir": 100, "horizon": 1},
+            33,
+        ),
+        (
+            "aberrant_lag_forecaster",
+            "lag_forecaster",
+            {"regressor": {"id": "hoeffding_tree_regressor", "grace_period": 50}},
+            {
+                "order": 3,
+                "horizon": 1,
+                "regressor": {
+                    "id": "hoeffding_tree_regressor",
+                    "params": {"grace_period": 50},
+                },
+            },
+            37,
+        ),
+        (
+            "aberrant_ensemble_forecaster",
+            "ensemble_forecaster",
+            {"lead": 2},
+            {
+                "forecasters": [
+                    {"id": "autoregressive", "params": {"horizon": 2}},
+                    {"id": "kalman_forecaster", "params": {"horizon": 2}},
+                    {"id": "echo_state_forecaster", "params": {"horizon": 2}},
+                ]
+            },
+            37,
+        ),
     ],
 )
 def test_forecaster_step_is_a_residual_detector_around_its_forecaster(
@@ -188,10 +267,7 @@ def test_forecaster_steps_are_described_as_forecasts_in_the_composer():
     from off_key_core.models.pipeline_catalog import pipeline_components
 
     components = {item.id: item for item in pipeline_components()}
-    for model_type in (
-        "aberrant_holt_winters_forecaster",
-        "aberrant_seasonal_naive_forecaster",
-    ):
+    for model_type in FORECASTER_IDS:
         component = components[f"detector:{model_type}"]
         assert (component.kind, component.learning) == ("detector", "online")
         assert component.output_type == "forecasts"

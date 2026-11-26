@@ -83,6 +83,70 @@ SETTINGS: dict[str, str] = {
     "gamma": (
         "How fast the cycle follows new values, from 0 to 1 minus the level weight."
     ),
+    "order": "Recent values the forecast is computed from.",
+    "seasonal_order": "Values one, two or more cycles ago the forecast also uses.",
+    "difference": (
+        "Forecast the change from one value to the next (1), or the change of "
+        "that change (2), instead of the value. Follows a level that wanders."
+    ),
+    "seasonal_difference": (
+        "Forecast the change from one cycle ago instead of the value. Follows "
+        "a cycle that changes shape."
+    ),
+    "forgetting": (
+        "How much each past observation still counts, up to 1. Lower follows "
+        "changes faster and is noisier."
+    ),
+    "delta": (
+        "For least squares, how freely the first weights move; for trees, how "
+        "sure a split must be before it is made, where smaller waits longer."
+    ),
+    "harmonics": (
+        "Sine and cosine pairs that describe the cycle. Fewer are smoother and "
+        "cheaper. Empty or 0 uses all of them where the forecaster has them."
+    ),
+    "warm_up": "Observations before forecasts start.",
+    "fit_intercept": "Learn a constant beside the weights.",
+    "n_components": (
+        "Random features the regression runs on. More capture finer shapes "
+        "and cost time."
+    ),
+    "length_scale": (
+        "How far apart values may be and still count as alike. Larger is smoother."
+    ),
+    "k": "Nearest earlier situations the forecast is averaged over.",
+    "weighted": "Weigh nearer situations more.",
+    "grace_period": "Observations a leaf collects between attempts to split it.",
+    "tau": "Split anyway when the best candidates are this close in merit.",
+    "n_bins": "Candidate split points per input.",
+    "max_depth": "Deepest level of each tree.",
+    "leaf_prediction": (
+        "What a leaf forecasts: the mean, a line, or whichever has been better."
+    ),
+    "n_models": "Trees in the forest. More are steadier and cost time.",
+    "max_features": (
+        "Inputs each split may choose from. Empty uses the square root of all."
+    ),
+    "lambda_value": "How often each tree learns an observation, on average.",
+    "drift_delta": (
+        "How sure a tree must be that its error grew before it is replaced."
+    ),
+    "warning_delta": (
+        "How sure a tree must be that its error grows before a replacement is "
+        "grown in the background."
+    ),
+    "level_ratio": "How fast the level drifts, relative to the scatter.",
+    "slope_ratio": (
+        "How fast the slope drifts, relative to the scatter. Empty means no slope."
+    ),
+    "season_ratio": "How fast the cycle drifts, relative to the scatter.",
+    "learn_ratios": "Learn how fast each part drifts from the data.",
+    "ratio_rate": "How fast the learned drift rates move.",
+    "n_reservoir": "Units in the network. More remember more and cost time.",
+    "spectral_radius": "How long the network echoes a value. Below 1 keeps it stable.",
+    "leak_rate": "How fast the network forgets, above 0 up to 1.",
+    "input_scale": "How strongly each value drives the network.",
+    "connectivity": "Share of the connections that exist, above 0 up to 1.",
     "subsequence_length": "Consecutive values compared as one shape.",
     "normalize": (
         "Compare shapes regardless of level and amplitude. Off also scores "
@@ -404,6 +468,57 @@ DETECTORS: dict[str, DetectorGuide] = {
         f"stretch in the window. {_ONE} with repeating shapes.",
         ("subsequence_length", "window_size"),
         {"window_size": _PROFILE_WINDOW},
+    ),
+    "aberrant_autoregressive_forecaster": DetectorGuide(
+        "Autoregressive forecaster",
+        "Forecast from a weighted sum of recent values, and of values one cycle "
+        "ago, learned as they arrive, and score the miss.",
+        ("order", "season_length", "lead"),
+        {"season_length": "Observations in one cycle. 1 means no cycle."},
+    ),
+    "aberrant_kalman_forecaster": DetectorGuide(
+        "Kalman forecaster",
+        "Forecast from a level, an optional slope and a cycle that each drift, "
+        "at rates learned as values arrive, and score the miss.",
+        ("season_length", "lead"),
+        {
+            "season_length": "Observations in one cycle. 1 means no cycle.",
+        },
+    ),
+    "aberrant_echo_state_forecaster": DetectorGuide(
+        "Echo state forecaster",
+        "Forecast from a fixed random network that echoes recent values, with "
+        "only its readout learned. Follows nonlinear dynamics.",
+        ("n_reservoir", "lead"),
+        {
+            "season_length": "Observations in one cycle. 1 means no cycle.",
+        },
+    ),
+    "aberrant_lag_forecaster": DetectorGuide(
+        "Lag forecaster",
+        "Forecast with a regression on recent values, such as a tree forest or "
+        "a kernel model, step by step, and score the miss.",
+        ("regressor", "order", "lead"),
+        {
+            "season_length": "Observations in one cycle. 1 means no cycle.",
+            "regressor": "The regression that forecasts from the recent values.",
+            "regressor.id": "Which regression forecasts from the recent values.",
+            "harmonics": "Sine and cosine pairs of the cycle given as inputs.",
+        },
+    ),
+    "aberrant_ensemble_forecaster": DetectorGuide(
+        "Ensemble forecaster",
+        "Forecast with several forecasters at once, weighted by how well each "
+        "has done lately, and score the miss.",
+        ("forecasters", "lead"),
+        {
+            "forecasters": "The forecasters combined, two or more.",
+            "forecasters.id": "Which forecaster this member is.",
+            "forgetting": (
+                "How much a member's past misses still count toward its "
+                "weight, up to 1. Lower reacts faster to a change."
+            ),
+        },
     ),
     "aberrant_seasonal_naive_forecaster": DetectorGuide(
         "Seasonal naive forecaster",

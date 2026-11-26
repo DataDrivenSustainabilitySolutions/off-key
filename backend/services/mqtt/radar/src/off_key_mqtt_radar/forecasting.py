@@ -101,7 +101,8 @@ class ServiceForecaster:
     """A pretrained model in the forecast service, as an Aberrant forecaster.
 
     ``learn_one(y)`` keeps the latest ``context_length`` values and learns
-    nothing else: the model's weights are frozen. ``forecast_one()`` asks the
+    nothing else: the model's weights are frozen. ``learn_one(None)`` keeps a
+    missing value, which the model reads as a gap. ``forecast_one()`` asks the
     service to forecast leads ``1..horizon`` from those values, once at least
     ``minimum_context`` have arrived.
 
@@ -165,7 +166,7 @@ class ServiceForecaster:
     def reset(self) -> None:
         self.n_samples_seen = 0
         # Enough values to repeat any forecast a residual detector still holds.
-        self._values: deque[float] = deque(
+        self._values: deque[float | None] = deque(
             maxlen=self.context_length + self._horizon - 1
         )
         self.failures = 0
@@ -176,8 +177,8 @@ class ServiceForecaster:
         self._prepare_at = 0.0
         self._paused_until = 0.0
 
-    def learn_one(self, y: float) -> None:
-        self._values.append(float(y))
+    def learn_one(self, y: float | None) -> None:
+        self._values.append(None if y is None else float(y))
         self.n_samples_seen += 1
         if time.monotonic() >= self._prepare_at:
             self.prepare()
@@ -221,7 +222,7 @@ class ServiceForecaster:
                 ) from error
             raise
 
-    def context(self, back: int = 0) -> list[float]:
+    def context(self, back: int = 0) -> list[float | None]:
         """The values the model reads for a forecast made ``back`` values ago."""
         end = len(self._values) - back
         return list(self._values)[max(0, end - self.context_length) : end]

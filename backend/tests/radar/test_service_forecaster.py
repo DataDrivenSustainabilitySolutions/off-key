@@ -119,6 +119,21 @@ def test_service_forecaster_is_an_aberrant_forecaster(service):
         forecaster.forecast_from(back=3)
 
 
+def test_a_missing_value_reaches_the_model_as_a_gap(service):
+    forecaster = ServiceForecaster(
+        MODEL, horizon=2, context_length=16, minimum_context=8, client=service[0]
+    )
+    values = [_cycle(index) for index in range(12)]
+    values[3] = None
+    for value in values:
+        forecaster.learn_one(value)
+
+    assert forecaster.context()[3] is None
+    forecast = forecaster.forecast_one()
+    assert forecast is not None and forecast.origin == 12
+    assert forecast.mean == pytest.approx((_cycle(12), _cycle(13)))
+
+
 def test_residual_detector_scores_a_break_in_the_cycle(service):
     detector = ResidualDetector(
         ServiceForecaster(

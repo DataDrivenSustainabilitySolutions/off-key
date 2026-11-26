@@ -308,13 +308,17 @@ Detector results describe statistical evidence, not operational severity.
 The Dojo tries detection designs on stored data before anything is monitored
 live. Nothing in it claims readings, starts monitors or writes to Reporting.
 
-1. Open **Dojo** at `/dojo`. **Upload CSV** copies a file into a new dataset;
+1. Open **Dojo** at `/dojo`. Its front page has two views: **Datasets** lists
+   your own data, and **Benchmarks** lists suites and the public series
+   imported for them. Every list orders by the header you press, and the
+   checkboxes pick rows for **Delete selected**, which deletes the chosen
+   suites before the chosen datasets. **Upload CSV** copies a file into a new dataset;
    **Copy recorded readings** copies the numeric readings of the device or
    reading selected in the catalogue: everything still stored, the last 30
    days, 7 days or 24 hours, or a window you type. **Copy to Dojo** on a
    device's Reporting page, and on a reading or device preview in Monitoring,
    does the same for that device or reading without a catalogue selection and
-   opens the new dataset. **Add benchmark** searches a public anomaly
+   opens the new dataset. Under **Benchmarks**, **Add public series** searches a public anomaly
    benchmark, today the UCR Time Series Anomaly Archive of Wu and Keogh
    (250 series, each with one labelled anomaly after an anomaly-free training
    part), and imports up to 20 series. Each becomes a dataset with its anomaly
@@ -380,7 +384,7 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    then opens the template in Monitoring with each input set to the recorded
    reading its series was copied from, where that reading is still collected
    and fits. Inputs fed by an uploaded series are chosen there.
-6. **New suite** gathers labelled datasets into a benchmark suite, up to 50 in
+6. **New suite**, under **Benchmarks**, gathers labelled datasets into a benchmark suite, up to 50 in
    the order you tick them. A suite's datasets never change, so its studies stay
    comparable, and a dataset in a suite cannot be deleted until the suite is.
    A suite an agent made says **Not yet reviewed** until a member opens it and

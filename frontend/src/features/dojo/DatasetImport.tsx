@@ -169,7 +169,7 @@ export function BenchmarkImportDialog({ open, onOpenChange, onImported }: {
   };
   const collection = page?.collections[0];
   const full = chosen.length >= DOJO_LIMITS.benchmarkImport;
-  return <ImportDialog open={open} onOpenChange={close} title="Add benchmark datasets" busy={busy} error={error}
+  return <ImportDialog open={open} onOpenChange={close} title="Add public series" busy={busy} error={error}
     busyLabel="Downloading series…"
     description="Each series becomes a dataset of its own, with its known anomaly as a label. Values are downloaded once and checked against the published file."
     submitLabel={chosen.length > 1 ? `Import ${chosen.length} series` : "Import series"} canSubmit={chosen.length > 0}

@@ -229,9 +229,9 @@ describe("Dojo workspace", () => {
     });
     vi.mocked(dojoApi.importBenchmarks).mockResolvedValue({ items: [{ ...dataset, id: "d3", origin: "benchmark", series_count: 1 }], imported: 1 });
     vi.mocked(dojoApi.dataset).mockResolvedValue({ ...dataset, id: "d3" });
-    const router = mount("/dojo");
-    fireEvent.click(await screen.findByRole("button", { name: "Add benchmark" }));
-    const dialog = await screen.findByRole("dialog", { name: "Add benchmark datasets" });
+    const router = mount("/dojo?view=benchmarks");
+    fireEvent.click(await screen.findByRole("button", { name: "Add public series" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add public series" });
     expect(await within(dialog).findByText(/Cite: Wu and Keogh, TKDE 2021/)).toBeTruthy();
     expect(within(dialog).getByText("Imported")).toBeTruthy();
     fireEvent.change(within(dialog).getByRole("combobox", { name: "Domain" }), { target: { value: "ECG" } });
@@ -240,7 +240,7 @@ describe("Dojo workspace", () => {
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /112 · BIDMC1/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Import series" }));
     await waitFor(() => expect(dojoApi.importBenchmarks).toHaveBeenCalledWith({ series_ids: ["ucr-112"] }));
-    await waitFor(() => expect(router.state.location.search).toBe("?dataset=d3"));
+    await waitFor(() => expect(router.state.location.search).toBe("?view=benchmarks&dataset=d3"));
   });
 
   it("copies everything stored by default and a chosen window on request", async () => {

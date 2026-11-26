@@ -64,7 +64,7 @@ class _Adapting:
     """A method of ``aberrant.calibration``: predict, compare, then learn."""
 
     def __init__(self, method: str, alpha: float, window: int) -> None:
-        self.calibrator = ScoreCalibrator(method, alpha=alpha, window=window)
+        self.calibrator = ScoreCalibrator(method, alpha=alpha, window_size=window)
         self.key = 0
 
     def seed(self, rows: list[list[float]], values: list[float]) -> None:

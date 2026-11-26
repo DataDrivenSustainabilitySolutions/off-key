@@ -68,7 +68,7 @@ def test_every_method_is_a_calibration_step_with_its_own_settings():
         ScoreCalibrator(
             method,
             alpha=defaults.pop("alpha"),
-            window=100,
+            window_size=100,
             **{key: value for key, value in defaults.items() if key != "fusion"},
         )
     assert calibrator_id("calibrate.fixed_split") is None
@@ -231,7 +231,7 @@ def test_one_spike_no_longer_sets_the_boundary(spikes, boundary):
     """At the smallest window allowed, the boundary is the second largest score."""
     alpha = 0.05
     window = minimum_window("split", alpha, 1, "max")
-    calibrator = ScoreCalibrator("split", alpha=alpha, window=window)
+    calibrator = ScoreCalibrator("split", alpha=alpha, window_size=window)
     scores = [*map(float, range(window - spikes)), *[1000.0] * spikes]
     for key, score in enumerate(scores):
         calibrator.predict(key)
@@ -239,7 +239,7 @@ def test_one_spike_no_longer_sets_the_boundary(spikes, boundary):
 
     assert calibrator.predict(len(scores)) == boundary
     # One score fewer and the spike is the boundary.
-    short = ScoreCalibrator("split", alpha=alpha, window=window - 1)
+    short = ScoreCalibrator("split", alpha=alpha, window_size=window - 1)
     for key, score in enumerate(scores[1:]):
         short.predict(key)
         short.update(key, score)

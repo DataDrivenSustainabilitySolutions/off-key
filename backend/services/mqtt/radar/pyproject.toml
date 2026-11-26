@@ -37,4 +37,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 off-key-core = { workspace = true }
-aberrant = { git = "https://github.com/OliverHennhoefer/aberrant.git", rev = "16766b552605ac5237190559f04b045bfe1b3f27" }
+aberrant = { git = "https://github.com/OliverHennhoefer/aberrant.git", rev = "1afc99dd0728f8353cc51f914af5e9fb0517e534" }

@@ -46,7 +46,7 @@ def _limit(properties: dict, defaults: dict, limits: dict) -> None:
 
 
 def _supported(catalog_id: str, spec, capabilities: dict) -> None:
-    if capabilities["warmup"]["unit"] != "events":
+    if capabilities["warm_up"]["unit"] != "events":
         raise ValueError(f"RADAR needs {catalog_id} to warm up in events")
     if not spec.declarative:
         raise ValueError(f"RADAR requires a declarative detector: {catalog_id}")

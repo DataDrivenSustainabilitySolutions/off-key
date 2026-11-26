@@ -65,8 +65,8 @@ def resolve_rule_detector(model: Mapping[str, Any]) -> ResolvedRuleDetector:
         feature_schema=FeatureSchemaKind.FIXED,
         # A feature can be negative; only its order matters to calibration.
         score_kind=ScoreKind.SIGNED,
-        warmup=0,
-        warmup_unit=ReadinessUnit.EVENTS,
+        warm_up=0,
+        warm_up_unit=ReadinessUnit.EVENTS,
         state=StateKind.STATELESS,
         requires_unit_interval=False,
     )

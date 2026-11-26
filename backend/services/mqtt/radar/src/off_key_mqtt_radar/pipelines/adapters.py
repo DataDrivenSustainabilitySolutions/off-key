@@ -100,7 +100,7 @@ def adaptive_graph(
         config = resolved_detector_config(plan, detector_id)
     capabilities = config.capabilities
     minimum = (
-        capabilities.warmup or 0 if capabilities.warmup_unit.value == "events" else 0
+        capabilities.warm_up or 0 if capabilities.warm_up_unit.value == "events" else 0
     )
     if minimum > plan.execution.definition.settings.training_window_size:
         raise ValueError(f"Detector warm-up must contain at least {minimum} updates")

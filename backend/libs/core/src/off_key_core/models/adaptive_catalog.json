@@ -16,7 +16,7 @@
         "requires_unit_interval": false,
         "score_kind": "signed",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 1,
           "unit": "events"
         }
@@ -120,7 +120,7 @@
         "requires_unit_interval": false,
         "score_kind": "zero_to_one",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 256,
           "unit": "events"
         }
@@ -207,7 +207,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 6,
           "unit": "events"
         }
@@ -315,7 +315,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 158,
           "unit": "events"
         }
@@ -387,7 +387,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 33,
           "unit": "events"
         }
@@ -535,7 +535,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 34,
           "unit": "events"
         }
@@ -970,7 +970,7 @@
         "requires_unit_interval": true,
         "score_kind": "zero_to_one",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 250,
           "unit": "events"
         }
@@ -1036,7 +1036,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": null,
           "unit": "events"
         }
@@ -1127,7 +1127,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 2,
           "unit": "events"
         }
@@ -1244,7 +1244,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 5,
           "unit": "events"
         }
@@ -1291,7 +1291,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 37,
           "unit": "events"
         }
@@ -1754,7 +1754,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 11,
           "unit": "events"
         }
@@ -1807,7 +1807,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 256,
           "unit": "events"
         }
@@ -1891,7 +1891,7 @@
         "requires_unit_interval": false,
         "score_kind": "zero_to_one",
         "state": "growing",
-        "warmup": {
+        "warm_up": {
           "required": 2,
           "unit": "events"
         }
@@ -1970,7 +1970,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 2,
           "unit": "events"
         }
@@ -2015,7 +2015,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 2,
           "unit": "events"
         }
@@ -2058,7 +2058,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 100,
           "unit": "events"
         }
@@ -2117,7 +2117,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 3,
           "unit": "events"
         }
@@ -2160,7 +2160,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 100,
           "unit": "events"
         }
@@ -2217,7 +2217,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 40,
           "unit": "events"
         }
@@ -2291,7 +2291,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 64,
           "unit": "events"
         }
@@ -2404,7 +2404,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 64,
           "unit": "events"
         }
@@ -2517,7 +2517,7 @@
         "requires_unit_interval": false,
         "score_kind": "zero_to_one",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 33,
           "unit": "events"
         }
@@ -2610,7 +2610,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 256,
           "unit": "events"
         }
@@ -2688,7 +2688,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 256,
           "unit": "events"
         }
@@ -2752,7 +2752,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 40,
           "unit": "events"
         }
@@ -2828,7 +2828,7 @@
         "requires_unit_interval": false,
         "score_kind": "non_negative",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 2,
           "unit": "events"
         }
@@ -2895,7 +2895,7 @@
         "requires_unit_interval": false,
         "score_kind": "zero_to_one",
         "state": "bounded",
-        "warmup": {
+        "warm_up": {
           "required": 256,
           "unit": "events"
         }
@@ -2995,6 +2995,52 @@
     }
   },
   "transformers": {
+    "calendar_features": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "CalendarFeatures",
+      "family": "encoding",
+      "id": "calendar_features",
+      "import_path": "aberrant.transform.CalendarFeatures",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "cycles": {
+            "default": [
+              "day",
+              "week"
+            ],
+            "items": {
+              "enum": [
+                "day",
+                "week",
+                "year"
+              ]
+            },
+            "type": "array"
+          },
+          "time_key": {
+            "default": "t",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "x-python-type": "datetime.tzinfo"
+              }
+            ],
+            "default": "UTC"
+          }
+        },
+        "type": "object"
+      }
+    },
     "deseasonalize": {
       "available": true,
       "declarative": true,
@@ -3008,7 +3054,7 @@
       "parameters": {
         "additionalProperties": false,
         "properties": {
-          "features": {
+          "apply_to": {
             "anyOf": [
               {
                 "items": {
@@ -3049,7 +3095,7 @@
       "parameters": {
         "additionalProperties": false,
         "properties": {
-          "features": {
+          "apply_to": {
             "anyOf": [
               {
                 "items": {
@@ -3088,7 +3134,7 @@
       "parameters": {
         "additionalProperties": false,
         "properties": {
-          "features": {
+          "apply_to": {
             "anyOf": [
               {
                 "items": {
@@ -3130,7 +3176,7 @@
       "parameters": {
         "additionalProperties": false,
         "properties": {
-          "features": {
+          "apply_to": {
             "anyOf": [
               {
                 "items": {
@@ -3182,6 +3228,90 @@
           "sort_features": {
             "default": true,
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "frequency_encoder": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "FrequencyEncoder",
+      "family": "encoding",
+      "id": "frequency_encoder",
+      "import_path": "aberrant.transform.FrequencyEncoder",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "window_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "features"
+        ],
+        "type": "object"
+      }
+    },
+    "imputer": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "Imputer",
+      "family": "validation",
+      "id": "imputer",
+      "import_path": "aberrant.transform.Imputer",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "indicate": {
+            "default": false,
+            "type": "boolean"
+          },
+          "strategy": {
+            "default": "last",
+            "enum": [
+              "last",
+              "mean",
+              "constant"
+            ]
+          },
+          "value": {
+            "default": 0.0,
+            "type": "number"
           }
         },
         "type": "object"
@@ -3256,7 +3386,7 @@
       "parameters": {
         "additionalProperties": false,
         "properties": {
-          "features": {
+          "apply_to": {
             "anyOf": [
               {
                 "items": {
@@ -3318,6 +3448,42 @@
             "type": "array"
           }
         },
+        "type": "object"
+      }
+    },
+    "one_hot_encoder": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "OneHotEncoder",
+      "family": "encoding",
+      "id": "one_hot_encoder",
+      "import_path": "aberrant.transform.OneHotEncoder",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "categories"
+        ],
         "type": "object"
       }
     },
@@ -3453,7 +3619,7 @@
       "parameters": {
         "additionalProperties": false,
         "properties": {
-          "features": {
+          "apply_to": {
             "anyOf": [
               {
                 "items": {
@@ -3524,6 +3690,37 @@
         "required": [
           "features"
         ],
+        "type": "object"
+      }
+    },
+    "signed_log": {
+      "available": true,
+      "declarative": true,
+      "dependencies": [],
+      "display_name": "SignedLog",
+      "family": "preprocessing",
+      "id": "signed_log",
+      "import_path": "aberrant.transform.SignedLog",
+      "kind": "transformer",
+      "optional_extra": null,
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "apply_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
         "type": "object"
       }
     },

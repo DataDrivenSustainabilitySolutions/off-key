@@ -269,7 +269,7 @@ PRETRAINED_FORECASTERS: dict[str, dict[str, Any]] = {
             "requires_unit_interval": False,
             "score_kind": "non_negative",
             "state": "bounded",
-            "warmup": {"required": 32, "unit": "events"},
+            "warm_up": {"required": 32, "unit": "events"},
         },
         "bound_parameters": ["target"],
     }
@@ -299,7 +299,7 @@ RULE_DETECTORS: dict[str, dict[str, Any]] = {
             "requires_unit_interval": False,
             "score_kind": "signed",
             "state": "stateless",
-            "warmup": {"required": 0, "unit": "events"},
+            "warm_up": {"required": 0, "unit": "events"},
         },
         "bound_parameters": ["key"],
     }
@@ -336,7 +336,7 @@ def detector_warmup(model_type: str, params: dict[str, Any]) -> int:
     definition = ADAPTIVE_MODELS_BY_TYPE.get(model_type)
     if definition is None:
         return 0
-    warmup = definition["default_capabilities"].get("warmup") or {}
+    warmup = definition["default_capabilities"].get("warm_up") or {}
     if warmup.get("unit") != "events":
         return 0
     names = _WARMUP_SETTINGS.get(model_type)

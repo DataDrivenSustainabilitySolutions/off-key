@@ -73,9 +73,9 @@ for (const theme of ["light", "dark"] as const) {
     await expect(history.getByRole("heading", { name: "Forecast and deviations" })).toBeVisible();
     const key = history.getByRole("list", { name: "Chart key" });
     await expect(key).toContainText("NexCP interval");
-    await expect(key).toContainText("Outside the interval");
-    await expect(history.getByRole("status").filter({ hasText: "observed values fell outside the NexCP interval" }))
-      .toContainText("Outside the interval is not an anomaly by itself.");
+    await expect(key.getByRole("status")).toHaveText("Outside12 of 216 · 5.6 %");
+    await expect(key.getByRole("status")).toHaveAttribute("title", "Outside the interval is not an anomaly by itself.");
+    await expect(history.getByText(/Service alarm|Red line/)).toHaveCount(0);
     const chart = history.getByRole("group", { name: "Chart navigation", exact: true });
     await expect(chart.locator("canvas")).toBeVisible();
     await expect(chart).toHaveCSS("height", "268px");
@@ -91,18 +91,19 @@ for (const theme of ["light", "dark"] as const) {
     const bounds = await chart.boundingBox();
     await page.mouse.move(bounds!.x + bounds!.width - 21, bounds!.y + 110);
     await chart.screenshot({ path: testInfo.outputPath(`forecast-tooltip-${theme}.png`) });
-    await history.getByRole("checkbox", { name: "Show residuals" }).check();
+    await history.getByRole("checkbox", { name: "Residuals" }).check();
     await expect(chart).toHaveCSS("height", "416px");
     await history.screenshot({ path: testInfo.outputPath(`forecast-residuals-${theme}.png`) });
-    await history.getByRole("checkbox", { name: "Show detector scores" }).check();
+    await history.getByRole("checkbox", { name: "Scores" }).check();
     await expect(chart).toHaveCSS("height", "564px");
-    await history.getByRole("checkbox", { name: "Show detector scores" }).uncheck();
-    await history.getByText("Latest forecast results · 2 leads", { exact: true }).click();
+    await history.getByRole("checkbox", { name: "Scores" }).uncheck();
+    await history.getByText("Latest results", { exact: true }).click();
     await expect(history.getByRole("table")).toBeVisible();
     await history.getByRole("button", { name: "Frequency (Hz) · 1 update ahead", exact: true }).click();
     await expect(selector).toHaveValue("1");
+    await history.getByText("Latest results", { exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
-    await history.getByRole("checkbox", { name: "Show residuals" }).uncheck();
+    await history.getByRole("checkbox", { name: "Residuals" }).uncheck();
     await history.getByRole("list", { name: "Chart key" }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`forecast-${theme}-mobile.png`) });
     await chart.scrollIntoViewIfNeeded();
@@ -112,13 +113,10 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
-test("a forecast without an interval says so and rings nothing", async ({ page }, testInfo) => {
+test("a forecast without an interval has no band or rings in its key", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1200 });
   const history = await openForecastMonitor(page, "light", false);
-  await expect(history.getByRole("status").filter({ hasText: "No interval" }))
-    .toContainText("this pipeline does not quantify the forecast's uncertainty");
   const key = history.getByRole("list", { name: "Chart key" });
-  await expect(key).toContainText("Forecast");
-  await expect(key).not.toContainText("Outside the interval");
+  await expect(key.getByRole("listitem")).toHaveText(["Observed", "Forecast"]);
   await history.screenshot({ path: testInfo.outputPath("forecast-no-interval-light.png") });
 });

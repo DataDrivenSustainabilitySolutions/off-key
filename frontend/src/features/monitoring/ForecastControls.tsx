@@ -23,28 +23,23 @@ export function ForecastControls({ forecasts, lead, onLead, showScores, onScores
   const leads = [...new Set(forecasts.map(forecast => forecast.lead))];
   const shown = forecasts.filter(forecast => forecastLeadKey(forecast.lead) === lead);
   const hasInterval = shown.some(forecast => forecast.data.some(point => point.value[2] !== null && point.value[3] !== null));
-  const hasFuture = shown.some(forecast => forecast.future?.length);
   return <div className="mn-forecast-controls">
     <div className="mn-forecast-toolbar">
-      {leads.length > 1 ? <label>Forecast lead <select aria-label="Forecast lead" value={lead} onChange={event => onLead(event.target.value)}>
+      {leads.length > 1 ? <select aria-label="Forecast lead" value={lead} onChange={event => onLead(event.target.value)}>
         {leads.map(value => <option key={forecastLeadKey(value)} value={forecastLeadKey(value)}>{leadLabel(value)}</option>)}
-      </select></label> : <strong>{leadLabel(leads[0] ?? null)}</strong>}
-      <label><input type="checkbox" checked={showResiduals} onChange={event => onResiduals(event.target.checked)} />Show residuals</label>
-      <label><input type="checkbox" checked={showScores} onChange={event => onScores(event.target.checked)} />Show detector scores</label>
+      </select> : <strong>{leadLabel(leads[0] ?? null)}</strong>}
+      <ul className="mn-forecast-legend" aria-label="Chart key">
+        <li><Swatch kind="observed" />Observed</li>
+        <li><Swatch kind="forecast" />Forecast</li>
+        {hasInterval && <li><Swatch kind="interval" />{intervalLabel}</li>}
+        {hasInterval && <li role="status" title="Outside the interval is not an anomaly by itself.">
+          <Swatch kind="outside" color={outsideColor} />Outside{coverage.checked > 0
+            && <strong>{coverage.outside} of {coverage.checked} · {percent(coverage.outside, coverage.checked)}</strong>}</li>}
+      </ul>
+      <label><input type="checkbox" checked={showResiduals} onChange={event => onResiduals(event.target.checked)} />Residuals</label>
+      <label><input type="checkbox" checked={showScores} onChange={event => onScores(event.target.checked)} />Scores</label>
     </div>
-    <ul className="mn-forecast-legend" aria-label="Chart key">
-      <li><Swatch kind="observed" />Observed</li>
-      <li><Swatch kind="forecast" />Forecast{hasFuture && ", continued ahead of the latest value"}</li>
-      {hasInterval && <li><Swatch kind="interval" />{intervalLabel}</li>}
-      {hasInterval && <li><Swatch kind="outside" color={outsideColor} />Outside the interval</li>}
-    </ul>
-    <p className="mn-forecast-coverage" role="status">{hasInterval && coverage.checked > 0
-      ? <><strong>{coverage.outside} of {coverage.checked}</strong> observed values fell outside the {intervalLabel}
-        {" "}({percent(coverage.outside, coverage.checked)}). Outside the interval is not an anomaly by itself.</>
-      : hasInterval ? "No observed value has been checked against the interval yet."
-        : "No interval: this pipeline does not quantify the forecast's uncertainty, so the chart shows the forecast alone."}
-      {hasFuture && ` Times ahead are estimated from recent cadence${hasInterval ? "; the interval ahead covers only the calibrated lead" : ""}.`}</p>
-    <details className="mn-forecast-summary"><summary>Latest forecast results{leads.length > 1 ? ` · ${leads.length} leads` : ""}</summary>
+    <details className="mn-forecast-summary"><summary>Latest results</summary>
       <div className="mn-forecast-table"><table><caption>Latest evaluated forecast for each recorded lead</caption>
         <thead><tr><th scope="col">Forecast</th><th scope="col">Evaluated at</th><th scope="col">Residual</th><th scope="col">{intervalLabel}</th><th scope="col">Result</th></tr></thead>
         <tbody>{forecasts.map(forecast => {

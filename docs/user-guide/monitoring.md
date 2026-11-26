@@ -117,22 +117,22 @@ For forecasters, **Forecast and deviations** draws the dashed forecast and its
 recorded calibrated interval as a band on the original reading, at the exact
 input timestamp the forecast evaluated. A transformed target stays on its feature
 scale. The newly issued forecast continues from the latest observed value into
-the future. Amber rings mark observed values outside the interval, and a line
-above the chart counts them: "12 of 216 observed values fell outside the NexCP
-interval". Outside the interval is not an anomaly by itself, so the rings are
-never red. Vertical red lines still mark the service's alarm decision, which
-depends on the pipeline's detection rule. Without a calibration step there is no
-interval: the chart shows the forecast alone and says so.
+the future. Amber rings mark observed values outside the interval, and the key
+above the chart counts them: "Outside 12 of 216 · 5.6 %". Outside the interval
+is not an anomaly by itself, so the rings are never red. Vertical red lines
+still mark the service's alarm decision, which depends on the pipeline's
+detection rule. Without a calibration step there is no interval: the chart and
+its key show the forecast alone.
 
-**Show residuals** adds a panel with the signed residual (observed minus
+**Residuals** adds a panel with the signed residual (observed minus
 forecast) and the same interval shifted around zero, with the same rings. It is
 off at first and always uses evaluated observations, never future values.
 
 **Forecast lead** selects a recorded lead in both charts together. Leads count
-updates, not seconds. **Latest forecast results** compares the latest available
+updates, not seconds. **Latest results** compares the latest available
 evaluation of each lead, including its timestamp, residual, interval and result;
 select a row to inspect that lead. Different detector/target/lead combinations
-remain separate. **Show detector scores** restores the score or sequential-evidence
+remain separate. **Scores** restores the score or sequential-evidence
 pane when needed. It is hidden initially for a forecast view.
 
 The interval is the pair of lower and upper bounds stored with that forecast,

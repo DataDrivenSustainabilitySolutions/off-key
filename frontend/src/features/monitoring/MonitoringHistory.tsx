@@ -92,6 +92,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   // The key names open dots only where the chart shows one.
   const anyMuted = useMemo(() => displayModel.secondarySeries.some(series =>
     series.data.some(point => point.observation?.alarmMuted)), [displayModel.secondarySeries]);
+  const anyAlarm = model.readings.some(reading => reading.alarmSpans?.length);
   const inspect = useCallback((startMs: number, endMs: number) => {
     if (!domain || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
     setInspection(current => current && Math.abs(current.startMs - startMs) < 1 && Math.abs(current.endMs - endMs) < 1
@@ -130,9 +131,9 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
         <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>
       </div>}
     </div>
-    <p className="mn-history-scope">{modelName && <strong>{modelName}</strong>}{inputs.length > 1
+    {!forecasts.length && <p className="mn-history-scope">{modelName && <strong>{modelName}</strong>}{inputs.length > 1
       ? `Joint result across all ${inputs.length} inputs. Display selection does not change detection.`
-      : forecasts.length ? "Observed values and the forecast on one timeline." : "Reading and detector result on one timeline."}</p>
+      : "Reading and detector result on one timeline."}</p>}
     {inputs.length > 1 && <details className="mn-history-readings"><summary>Displayed readings · {selectedInputs.length} of {inputs.length}</summary>
       <fieldset><legend>Choose up to {MAX_VISIBLE_READINGS} readings to display</legend>{inputs.map(input => {
         const checked = selectedInputs.some(selected => selected.stream.id === input.stream.id);
@@ -160,12 +161,12 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
       <strong>{loading ? "Loading recorded inputs…" : problem ? "History could not be loaded" : "Waiting for recorded inputs and detector results"}</strong>
       {!loading && <span>{problem || `Monitoring is ${stage}. The chart appears with the first recorded inputs.`}</span>}
     </div>}
-    {latest && <output className="mn-history-result" aria-label="Latest detector result">
+    {latest && (!forecasts.length || showScores) && <output className="mn-history-result" aria-label="Latest detector result">
       <span>Latest {inputs.length > 1 ? "joint " : ""}result · {formatChartTime(latest.timeMs, timeZone, "tooltip")}</span>
       {(!forecasts.length || showScores) && <strong>{completeModel.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>}
       <span>{(!forecasts.length || showScores) && <>Score threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · </>}Service alarm {alarmText(latest)}</span>
     </output>}
-    {model.extent && <p className="mn-history-key">{(!forecasts.length || showScores) && "Dashed red: score threshold · "}Red line and shading: a service alarm and how long it lasted{(!forecasts.length || showScores) && " · Red dot: where the selected detector's alarm begins"}{anyMuted ? ` · Open dots: ${service.shadow ? "alarms recorded in shadow, not raised" : "muted alarms"}` : ""}. Each reading keeps its own scale.</p>}
+    {model.extent && (!forecasts.length || showScores || anyAlarm) && <p className="mn-history-key">{(!forecasts.length || showScores) && "Dashed red: score threshold · "}Red line and shading: a service alarm and how long it lasted{(!forecasts.length || showScores) && " · Red dot: where the selected detector's alarm begins"}{anyMuted ? ` · Open dots: ${service.shadow ? "alarms recorded in shadow, not raised" : "muted alarms"}` : ""}. Each reading keeps its own scale.</p>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

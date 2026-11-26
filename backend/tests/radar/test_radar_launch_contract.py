@@ -45,7 +45,7 @@ NOT_READ_BY_RADAR = {"RADAR_RUNTIME_IMAGE", "RADAR_COLLECTION_FINGERPRINT"}
 GOLDEN_FINGERPRINTS = {
     "static": "9a82ad92cf50aedb3536f5afb85b22590f1cbb79c9c3a767bb0bff0422aec17e",
     # The explicit library version changes with every Aberrant upgrade.
-    "adaptive": "1da18028cad33b0fe066ffe868a47f770a22755e779bccd108805434c92bb440",
+    "adaptive": "b402f303f45a835b35dd5616e22ff49d47e7dce3db93342fc979fcbf901edef5",
     "pipeline": "c098ee2965ae0a3a0fe94581d083b14b999c814972788d8b1ae6c1ee33ddc6cf",
 }
 
@@ -76,7 +76,7 @@ def _adaptive_config():
         monitoring={
             "strategy": "adaptive_stream",
             "model_type": "aberrant_online_isolation_forest",
-            "model_params": {"num_trees": 2},
+            "model_params": {"n_trees": 2},
             "training_window_size": 1200,
             "calibration_window_size": 360,
         },

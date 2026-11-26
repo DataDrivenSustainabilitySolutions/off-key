@@ -182,15 +182,15 @@ describe("combining detectors in the graph", () => {
 
   it("counts a model's nested settings at their defaults as unchanged on its card", () => {
     const engine: Field = {
-      name: "similarity_engine", label: "Similarity engine", type: "component", has_default: true,
-      default: { id: "faiss", params: { warm_up: 20, window_size: 1000 } },
+      name: "window", label: "Window", type: "object", has_default: true,
+      default: { warm_up: 20, size: 1000 },
     };
     const knn = { ...components.find((item) => item.id === "detector:knn")!, fields: [engine] };
     const node = { id: "detector_2", kind: "detector" as const, component: "detector:knn",
-      params: { similarity_engine: { id: "faiss", params: { warm_up: 20, window_size: 1000 } } } };
+      params: { window: { warm_up: 20, size: 1000 } } };
 
     expect(nodeSummary(node, knn, design(2).definition).text).toBeUndefined();
-    const changed = { ...node, params: { similarity_engine: { id: "faiss", params: { warm_up: 50, window_size: 1000 } } } };
+    const changed = { ...node, params: { window: { warm_up: 50, size: 1000 } } };
     expect(nodeSummary(changed, knn, design(2).definition).text).toBe("1 more setting");
   });
 

@@ -75,7 +75,7 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                     "monitoring": {
                         "strategy": "adaptive_stream",
                         "model_type": "aberrant_online_isolation_forest",
-                        "model_params": {"num_trees": 4, "max_leaf_samples": 4},
+                        "model_params": {"n_trees": 4, "max_leaf_samples": 3},
                         "training_window_size": 4,
                         "calibration_window_size": 2,
                         "threshold_config": {

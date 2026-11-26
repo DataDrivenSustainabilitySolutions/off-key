@@ -19,9 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from aberrant.base import ConfigurationError, ConfigurationIssue
-from aberrant.base.forecast import Forecast
-from aberrant.base.protocols import FeatureMap
+from aberrant.base import FeatureMap, Readiness, ReadinessUnit
 from aberrant.catalog import (
     ComponentConfig,
     DetectorConfig,
@@ -31,10 +29,9 @@ from aberrant.catalog import (
     ModelCapabilities,
     ScoreKind,
     StateKind,
-    WarmupRequirement,
-    WarmupUnit,
 )
-from aberrant.forecast import ResidualDetector
+from aberrant.exceptions import ConfigurationError, ConfigurationIssue
+from aberrant.forecast import Forecast, ResidualDetector
 from off_key_core.schemas.forecast import (
     MAX_CONTEXT_LENGTH,
     MAX_HORIZON,
@@ -104,7 +101,8 @@ class ServiceForecaster:
     """A pretrained model in the forecast service, as an Aberrant forecaster.
 
     ``learn_one(y)`` keeps the latest ``context_length`` values and learns
-    nothing else: the model's weights are frozen. ``forecast_one()`` asks the
+    nothing else: the model's weights are frozen. ``learn_one(None)`` keeps a
+    missing value, which the model reads as a gap. ``forecast_one()`` asks the
     service to forecast leads ``1..horizon`` from those values, once at least
     ``minimum_context`` have arrived.
 
@@ -158,13 +156,17 @@ class ServiceForecaster:
         return self._horizon
 
     @property
-    def is_ready(self) -> bool:
-        return self.n_samples_seen >= self.minimum_context
+    def readiness(self) -> Readiness:
+        """Ready once ``minimum_context`` values have arrived."""
+        seen = min(self.n_samples_seen, self.minimum_context)
+        return Readiness(
+            self.n_samples_seen >= self.minimum_context, seen, self.minimum_context
+        )
 
     def reset(self) -> None:
         self.n_samples_seen = 0
         # Enough values to repeat any forecast a residual detector still holds.
-        self._values: deque[float] = deque(
+        self._values: deque[float | None] = deque(
             maxlen=self.context_length + self._horizon - 1
         )
         self.failures = 0
@@ -175,8 +177,8 @@ class ServiceForecaster:
         self._prepare_at = 0.0
         self._paused_until = 0.0
 
-    def learn_one(self, y: float) -> None:
-        self._values.append(float(y))
+    def learn_one(self, y: float | None) -> None:
+        self._values.append(None if y is None else float(y))
         self.n_samples_seen += 1
         if time.monotonic() >= self._prepare_at:
             self.prepare()
@@ -220,7 +222,7 @@ class ServiceForecaster:
                 ) from error
             raise
 
-    def context(self, back: int = 0) -> list[float]:
+    def context(self, back: int = 0) -> list[float | None]:
         """The values the model reads for a forecast made ``back`` values ago."""
         end = len(self._values) - back
         return list(self._values)[max(0, end - self.context_length) : end]
@@ -302,14 +304,22 @@ class ServiceResidualDetector(ResidualDetector):
     def __init__(
         self,
         model: ServiceForecaster,
-        target: str,
         *,
+        target: str,
         lead: int = 1,
         score: str = "scaled",
     ):
         if not isinstance(model, ServiceForecaster):
             raise TypeError("model must be a forecaster in the forecast service")
-        super().__init__(model, target, lead=lead, score=score)  # type: ignore[arg-type]
+        super().__init__(model, target=target, lead=lead, score=score)  # type: ignore[arg-type]
+
+    @property
+    def readiness(self) -> Readiness:
+        """Ready once a forecast is due for the next value, even one the service
+        missed: scoring asks for a missed forecast again."""
+        required = self.model.minimum_context + self.lead - 1
+        seen = self.model.n_samples_seen
+        return Readiness(seen >= required, min(seen, required), required)
 
     def explain_one(self, x: FeatureMap) -> tuple[float, float | None, float | None]:
         issued = self._issued
@@ -349,7 +359,7 @@ class ResolvedServiceDetector:
         forecaster = dict(params["model"]["params"])
         return ServiceResidualDetector(
             ServiceForecaster(forecaster.pop("checkpoint"), **forecaster),
-            params["target"],
+            target=params["target"],
             lead=params["lead"],
             score=params["score"],
         )
@@ -365,13 +375,9 @@ def resolve_service_detector(model: Mapping[str, Any]) -> ResolvedServiceDetecto
         feature_count=FeatureCount(1, 1),
         feature_schema=FeatureSchemaKind.FIXED,
         score_kind=ScoreKind.NON_NEGATIVE,
-        higher_is_more_anomalous=True,
-        warmup=WarmupRequirement(
-            params["model"]["params"]["minimum_context"] + params["lead"] - 1,
-            WarmupUnit.EVENTS,
-        ),
+        warmup=params["model"]["params"]["minimum_context"] + params["lead"] - 1,
+        warmup_unit=ReadinessUnit.EVENTS,
         state=StateKind.BOUNDED,
-        resettable=False,
         requires_unit_interval=False,
     )
     serialized = json.dumps(config.as_dict(), sort_keys=True, separators=(",", ":"))

@@ -24,8 +24,8 @@ const modelDefinition: ModelDefinition = {
 describe("monitoring configuration", () => {
   it("builds a strategy-discriminated adaptive request with preprocessing", () => {
     const draft = createDefaultAdaptiveDraft();
-    draft.modelType = "aberrant_gadget_svm";
-    draft.modelParams = { graph: { "0": [1], "1": [0] }, threshold: 0 };
+    draft.modelType = "aberrant_knn";
+    draft.modelParams = { k: 3, window_size: 50 };
     draft.scaler = "min_max_scaler";
     draft.projection = "random_projection";
     draft.projectionComponents = "2";
@@ -33,8 +33,8 @@ describe("monitoring configuration", () => {
       strategy: "adaptive_stream",
       parameters: {
         properties: {
-          graph: { type: "object" },
-          threshold: { type: "number" },
+          k: { type: "integer" },
+          window_size: { type: "integer" },
         },
       },
     };
@@ -53,8 +53,8 @@ describe("monitoring configuration", () => {
       performance_config: { hold_intervals: 3 },
       monitoring: {
         strategy: "adaptive_stream",
-        model_type: "aberrant_gadget_svm",
-        model_params: { graph: { "0": [1], "1": [0] }, threshold: 0 },
+        model_type: "aberrant_knn",
+        model_params: { k: 3, window_size: 50 },
         training_window_size: 1200,
         calibration_window_size: 360,
         threshold_config: { mode: "calibrated_quantile", quantile: 1 },
@@ -95,7 +95,7 @@ describe("monitoring configuration", () => {
 
   it("preserves explicit null adaptive model parameters", () => {
     const draft = createDefaultAdaptiveDraft();
-    draft.modelType = "aberrant_x_stream";
+    draft.modelType = "aberrant_xstream";
     draft.modelParams = { max_feature_cache_size: null };
     const result = buildAdaptiveMonitoringRequest({
       readingIds: ["L1"],

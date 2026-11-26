@@ -247,6 +247,7 @@ export const coverage = (component: PipelineComponent | undefined) =>
 const FAMILIES: Record<NonNullable<PipelineComponent["family"]>, string> = {
   conformal: "Conformal",
   bayesian: "Bayesian",
+  extreme_value: "Extreme value",
 };
 export const calibrationFamily = (component: PipelineComponent) =>
   component.family ? FAMILIES[component.family] : "Other";

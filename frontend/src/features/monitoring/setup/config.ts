@@ -242,7 +242,7 @@ export const buildAdaptiveMonitoringRequest = ({
       errors.projectionComponents = "Projection components cannot exceed selected readings.";
     }
     if (draft.projection === "incremental_pca") {
-      const n0 = parseNumber({
+      const warmUp = parseNumber({
         value: draft.projectionN0, label: "PCA initialization samples",
         field: "projectionN0", errors, integer: true, min: 2,
       });
@@ -260,15 +260,15 @@ export const buildAdaptiveMonitoringRequest = ({
             min: Number.MIN_VALUE,
             max: 0.999999,
           });
-      if (nComponents !== undefined && n0 !== undefined && tol !== undefined && forgettingFactor !== undefined) {
-        if (n0 < nComponents) errors.projectionN0 = "PCA initialization must cover every component.";
-        if (trainingWindow !== undefined && n0 > trainingWindow) {
+      if (nComponents !== undefined && warmUp !== undefined && tol !== undefined && forgettingFactor !== undefined) {
+        if (warmUp < nComponents) errors.projectionN0 = "PCA initialization must cover every component.";
+        if (trainingWindow !== undefined && warmUp > trainingWindow) {
           errors.projectionN0 = "PCA initialization must fit inside the warm-up window.";
         }
         preprocessingSteps.push({
           type: "incremental_pca",
           n_components: nComponents,
-          n0,
+          warm_up: warmUp,
           tol,
           forgetting_factor: forgettingFactor,
         });

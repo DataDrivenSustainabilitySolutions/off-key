@@ -15,8 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from aberrant.base import BaseModel
-from aberrant.base.protocols import FeatureMap
+from aberrant.base import BaseModel, FeatureMap, ReadinessUnit
 from aberrant.catalog import (
     ComponentConfig,
     DetectorConfig,
@@ -26,8 +25,6 @@ from aberrant.catalog import (
     ModelCapabilities,
     ScoreKind,
     StateKind,
-    WarmupRequirement,
-    WarmupUnit,
 )
 
 
@@ -45,9 +42,6 @@ class FeatureScore(BaseModel):
 
     def score_one(self, x: FeatureMap) -> float:
         return float(x[self.key])
-
-    def __repr__(self) -> str:
-        return f"FeatureScore(key={self.key!r})"
 
 
 @dataclass(frozen=True)
@@ -71,10 +65,9 @@ def resolve_rule_detector(model: Mapping[str, Any]) -> ResolvedRuleDetector:
         feature_schema=FeatureSchemaKind.FIXED,
         # A feature can be negative; only its order matters to calibration.
         score_kind=ScoreKind.SIGNED,
-        higher_is_more_anomalous=True,
-        warmup=WarmupRequirement(0, WarmupUnit.EVENTS),
+        warmup=0,
+        warmup_unit=ReadinessUnit.EVENTS,
         state=StateKind.STATELESS,
-        resettable=True,
         requires_unit_interval=False,
     )
     serialized = json.dumps(config.as_dict(), sort_keys=True, separators=(",", ":"))

@@ -173,6 +173,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(
         page.getByRole("heading", { name: "Configure adaptive monitoring", exact: true }),
       ).toBeVisible();
+      await page.getByRole("spinbutton", { name: "Max Leaf Samples", exact: true }).fill("8");
       await page.getByLabel("Warm-up samples").fill("32");
       await page.getByLabel("Calibration samples").fill("1");
 
@@ -416,7 +417,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect(
         l1Card.getByRole("button", { name: "Return to live" }),
       ).toBeVisible();
-      const scoreLabel = /^Anomaly score:/u;
+      // The chart summary, not the alarm table under it, names the threshold.
+      const scoreLabel = /^Anomaly score: .+ · Threshold: /u;
       await expect(l1Card.getByText(scoreLabel)).toBeVisible({
         timeout: 30_000,
       });

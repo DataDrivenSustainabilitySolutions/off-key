@@ -123,7 +123,7 @@ def test_incremental_pca_pipeline_warms_the_projection_before_the_model():
     keys, service = detector(
         adaptive_form(
             STANDARD,
-            {"type": "incremental_pca", "n_components": 2, "n0": n0, "tol": 1e-7},
+            {"type": "incremental_pca", "n_components": 2, "warm_up": n0, "tol": 1e-7},
         )
     )
     phases = [phase for phase, _, _ in trace(service, keys)]
@@ -193,7 +193,7 @@ def test_static_form_lowers_to_a_martingale_graph():
 
 
 def test_adaptive_form_lowers_steps_in_order_and_renames_incremental_pca():
-    pca = {"type": "incremental_pca", "n_components": 2, "n0": 30, "tol": 1e-7}
+    pca = {"type": "incremental_pca", "n_components": 2, "warm_up": 30, "tol": 1e-7}
     assert lowered(adaptive_form(STANDARD, pca)) == {
         "strategy": "adaptive_stream",
         "input_slots": SLOTS,
@@ -211,7 +211,7 @@ def test_adaptive_form_lowers_steps_in_order_and_renames_incremental_pca():
                 "component": "adaptive.uncentered_pca",
                 "params": {
                     "n_components": 2,
-                    "n0": 30,
+                    "warm_up": 30,
                     "tol": 1e-07,
                     "forgetting_factor": None,
                 },
@@ -224,8 +224,7 @@ def test_adaptive_form_lowers_steps_in_order_and_renames_incremental_pca():
                     "branching_factor": 2,
                     "max_leaf_samples": 32,
                     "metric": "axisparallel",
-                    "n_jobs": 1,
-                    "num_trees": 100,
+                    "n_trees": 100,
                     "seed": 7,
                     "subsample": 1.0,
                     "tree_type": "adaptive",

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from off_key_core.schemas.pipelines import PipelineDefinition
 
-MAD = "detector:aberrant_moving_average_absolute_deviation"
+MAD = "detector:aberrant_moving_mad"
 FOREST = "detector:pyod_iforest"
 TRAINING, CALIBRATION = 30, 20
 # Reading a goes scaled once into a PyOD detector, reading b scaled online into MAD.
 BRANCHES = {
     "forest": ("a", "static.standard_scaler", FOREST, {"n_estimators": 10}),
     "knn": ("a", "static.standard_scaler", "detector:pyod_knn", {}),
-    "mad": ("b", "adaptive.standard_scaler", MAD, {"window_size": 10}),
+    "mad": ("b", "adaptive.standard_scaler", MAD, {"window_size": 10, "warm_up": 2}),
 }
 
 

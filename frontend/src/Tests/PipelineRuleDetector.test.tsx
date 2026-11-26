@@ -36,7 +36,7 @@ const catalog = normalizeCatalog({
     component("adaptive.standard_scaler", "transform", "online"),
     component("rule.score", "detector", "none", "Rule detector"),
     component("detector:pyod_iforest", "detector", "batch"),
-    component("detector:aberrant_x_stream", "detector", "online"),
+    component("detector:aberrant_xstream", "detector", "online"),
     component("calibrate.fixed_split", "calibration", "none"),
     component("calibrate.aci", "calibration", "none"),
     component("policy.martingale", "policy", "none", "Conformal alarm policy"),
@@ -78,7 +78,7 @@ describe("a detector that follows a rule", () => {
     expect(detectorLearning(ruled(), components)).toEqual(["none"]);
     expect(learningSummary(ruled(), components)).toBe("No training");
     const beside = addDetector({ definition: ruled(), layout: { nodes: {} } }, "rule")!;
-    const mixed = changeDetector(beside.document.definition, beside.id, find("detector:aberrant_x_stream"), components).definition;
+    const mixed = changeDetector(beside.document.definition, beside.id, find("detector:aberrant_xstream"), components).definition;
     expect(learningSummary(mixed, components)).toBe("Detectors learn differently");
   });
 
@@ -89,7 +89,7 @@ describe("a detector that follows a rule", () => {
     expect(startupEstimate(ruled(), [1], 0, learningWindow(ruled(), components)).observations).toBe(360);
     // Beside a detector that learns, the design keeps its learning window.
     const beside = addDetector({ definition: ruled(), layout: { nodes: {} } }, "rule")!;
-    const learns = changeDetector(beside.document.definition, beside.id, find("detector:aberrant_x_stream"), components).definition;
+    const learns = changeDetector(beside.document.definition, beside.id, find("detector:aberrant_xstream"), components).definition;
     expect(learningWindow(learns, components)).toBe("continuous");
     const fitted = changeDetector(ruled(), "rule", find("detector:pyod_iforest"), components).definition;
     expect(learningWindow(fitted, components)).toBe("fitted");
@@ -122,7 +122,7 @@ describe("a detector that follows a rule", () => {
     expect(screen.getAllByRole<HTMLInputElement>("spinbutton").map((item) => item.labels?.[0]?.textContent))
       .toEqual(["Alarm budget", "Calibration observations", "Default random seed"]);
     expect(screen.queryByText(/Upstream steps initialize first/)).toBeNull();
-    const learns = changeDetector(ruled(), "rule", find("detector:aberrant_x_stream"), components).definition;
+    const learns = changeDetector(ruled(), "rule", find("detector:aberrant_xstream"), components).definition;
     view.rerender(<PipelineDesignSettings document={{ definition: learns, layout: { nodes: {} } }} catalog={catalog}
       readOnly={false} onChange={() => undefined} />);
     expect(screen.getByRole("spinbutton", { name: "Detector learning updates before calibration" })).toBeTruthy();

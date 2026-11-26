@@ -3,7 +3,8 @@
 import json
 
 import pytest
-from aberrant.compose import NodeState, Readiness
+from aberrant.base import Readiness
+from aberrant.compose import NodeState
 from backend.scripts.benchmark_pipeline_runtime import (
     StreamRunner,
     build_workload,
@@ -134,7 +135,7 @@ def test_readiness_reasons_and_dependencies_stay_bounded_at_graph_limits(charact
             NodeState(
                 identifier,
                 123,
-                Readiness(False, 123, 100_000, character * 10_000),
+                Readiness(False, 123, 100_000, reason=character * 10_000),
                 sources,
             )
             for identifier, sources in parents.items()

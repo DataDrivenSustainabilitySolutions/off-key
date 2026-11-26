@@ -5,7 +5,7 @@ import pickle
 
 import numpy as np
 import pytest
-from aberrant.base.protocols import ForecasterProtocol
+from aberrant.base import ForecasterProtocol
 from aberrant.forecast import ResidualDetector
 from fastapi.testclient import TestClient
 from off_key_core.schemas.forecast import QUANTILE_LEVELS
@@ -94,7 +94,7 @@ def test_service_forecaster_is_an_aberrant_forecaster(service):
 
     for index in range(7):
         forecaster.learn_one(_cycle(index))
-    assert not forecaster.is_ready and forecaster.forecast_one() is None
+    assert not forecaster.readiness.ready and forecaster.forecast_one() is None
     # The first value asks the service to have the model ready, and no more.
     assert service[1] == [("POST", "http://forecast/v1/downloads")]
 
@@ -119,12 +119,27 @@ def test_service_forecaster_is_an_aberrant_forecaster(service):
         forecaster.forecast_from(back=3)
 
 
+def test_a_missing_value_reaches_the_model_as_a_gap(service):
+    forecaster = ServiceForecaster(
+        MODEL, horizon=2, context_length=16, minimum_context=8, client=service[0]
+    )
+    values = [_cycle(index) for index in range(12)]
+    values[3] = None
+    for value in values:
+        forecaster.learn_one(value)
+
+    assert forecaster.context()[3] is None
+    forecast = forecaster.forecast_one()
+    assert forecast is not None and forecast.origin == 12
+    assert forecast.mean == pytest.approx((_cycle(12), _cycle(13)))
+
+
 def test_residual_detector_scores_a_break_in_the_cycle(service):
     detector = ResidualDetector(
         ServiceForecaster(
             MODEL, horizon=2, context_length=32, minimum_context=8, client=service[0]
         ),
-        "x",
+        target="x",
         lead=2,
     )
     scores = []
@@ -228,7 +243,7 @@ def test_detector_rejects_what_it_cannot_compare_and_recovers(
                 minimum_context=8,
                 client=_flaky_client,
             ),
-            "x",
+            target="x",
             lead=lead,
         )
 
@@ -278,7 +293,7 @@ def test_a_run_through_an_outage_scores_afterwards_as_an_undisturbed_run(
                 minimum_context=8,
                 client=_flaky_client,
             ),
-            "x",
+            target="x",
             lead=lead,
         )
 
@@ -318,7 +333,7 @@ def test_detector_scores_zero_before_the_forecaster_is_ready(service):
         ServiceForecaster(
             MODEL, horizon=2, context_length=16, minimum_context=8, client=service[0]
         ),
-        "x",
+        target="x",
         lead=2,
     )
     for index in range(9):
@@ -329,7 +344,7 @@ def test_detector_scores_zero_before_the_forecaster_is_ready(service):
         *[("POST", "http://forecast/v1/forecast")] * 2,
     ]
     with pytest.raises(TypeError, match="forecast service"):
-        ServiceResidualDetector(object(), "x")
+        ServiceResidualDetector(object(), target="x")
 
 
 class _Clock:
@@ -460,7 +475,7 @@ def test_preflight_of_a_timestral_design_names_the_service_without_calling_it(
     monkeypatch.setenv("FORECAST_API_URL", "http://127.0.0.1:9")
     report = preflight(execution)
     assert report["ok"]
-    assert report["capabilities"]["warmup"] == {"minimum": 17, "unit": "events"}
+    assert report["capabilities"]["warmup"] == {"required": 17, "unit": "events"}
 
     # A deployment without the service says so on the step, before a run starts.
     monkeypatch.delenv("FORECAST_API_URL")

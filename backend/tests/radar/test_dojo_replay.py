@@ -23,6 +23,7 @@ from off_key_core.models.dojo_runs import (
     calibration_comparison,
     series_topic,
 )
+from off_key_core.models.pipeline_calibration import CALIBRATORS
 from off_key_core.models.pipelines import compile_pipeline
 from off_key_core.schemas.dojo import RunAlignment, RunSteps
 from off_key_mqtt_radar import calibration_comparison as comparison_module
@@ -386,9 +387,9 @@ async def test_worker_stores_which_compared_methods_would_alarm(dojo_engine):
             )
         ).all()
     judged = [mask for phase, mask in rows if phase == "operational"]
-    # Every result after the calibration window is judged by all 15 methods.
+    # Every result after the calibration window is judged by every method.
     assert judged and all(mask is not None for mask in judged)
-    assert all(0 <= mask < 1 << 15 for mask in judged)
+    assert all(0 <= mask < 1 << len(CALIBRATORS) for mask in judged)
     assert all(mask is None for phase, mask in rows if phase != "operational")
 
 

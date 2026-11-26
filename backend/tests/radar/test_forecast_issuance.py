@@ -5,9 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from aberrant.base.forecast import Forecast
-from aberrant.forecast import ResidualDetector, SeasonalNaive
-from aberrant.forecast.scores import interval
+from aberrant.forecast import Forecast, ResidualDetector, SeasonalNaive, interval
 from off_key_mqtt_radar.detector_services import detector_service_class
 from off_key_mqtt_radar.forecast_issuance import ForecastTimeline, issued_forecast
 from off_key_mqtt_radar.forecast_records import (
@@ -78,7 +76,9 @@ def test_issued_trajectory_survives_runtime_timing_and_storage(calibration, smoo
 
 
 def test_evidence_does_not_request_another_forecast_or_use_an_older_origin(monkeypatch):
-    detector = ResidualDetector(SeasonalNaive(season_length=2, horizon=3), "x", lead=3)
+    detector = ResidualDetector(
+        SeasonalNaive(season_length=2, horizon=3), target="x", lead=3
+    )
     for value in range(12):
         detector.learn_one({"x": float(value)})
 
@@ -95,7 +95,7 @@ def test_evidence_does_not_request_another_forecast_or_use_an_older_origin(monke
 
 def test_long_horizons_store_bounded_real_points_including_the_calibrated_lead():
     detector = ResidualDetector(
-        SeasonalNaive(season_length=2, horizon=1024), "x", lead=511
+        SeasonalNaive(season_length=2, horizon=1024), target="x", lead=511
     )
     detector._issued.append(
         Forecast(

@@ -17,7 +17,7 @@ class DetectorGuide:
     # The settings listed first; every other one sits under More settings.
     key: tuple[str, ...]
     # Help where the shared text for a setting's name does not fit. A nested
-    # setting is named with its parent, such as similarity_engine.window_size.
+    # setting is named with its parent, such as threshold_config.value.
     settings: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -49,7 +49,7 @@ _TAILS = {
     "compression": "Detail of the sketch. More is closer and costs memory.",
     "tail": "Read the tails as they are, or fit a Pareto tail beyond a quantile.",
     "tail_quantile": "Where the fitted Pareto tail starts.",
-    "min_samples": "Observations before scores start.",
+    "warm_up": "Observations before scores start.",
     "aggregation": (
         "Combine the features' tail scores as the paper does, or as PyOD does."
     ),
@@ -61,7 +61,6 @@ SETTINGS: dict[str, str] = {
     "seed": "Seed for the random choices. Empty uses the design's seed.",
     "n_estimators": _TREES,
     "n_trees": _TREES,
-    "num_trees": _TREES,
     "bias": "Divide by the number of observations when on, by one less when off.",
     "lead": (
         "How many observations ahead a forecast is made. It is compared with "
@@ -97,15 +96,6 @@ SETTINGS: dict[str, str] = {
 
 _ONE = "For one feature"
 _MOVING = ("window_size",)
-
-
-def _moving(label: str, statistic: str, fit: str) -> DetectorGuide:
-    return DetectorGuide(
-        label,
-        f"Score how much a new value changes the {statistic} of a recent window. "
-        f"{fit}.",
-        _MOVING,
-    )
 
 
 DETECTORS: dict[str, DetectorGuide] = {
@@ -159,7 +149,7 @@ DETECTORS: dict[str, DetectorGuide] = {
         "Sliding-window isolation forest",
         "Retrain an isolation forest on a recent window at fixed intervals. "
         "Steady between retrains; follows a drift only at the next one.",
-        ("window_size", "retrain_interval", "n_estimators"),
+        ("window_size", "retrain_interval", "n_trees"),
         {
             "max_samples": "Observations from the window used to build each tree.",
             "window_size": (
@@ -169,25 +159,6 @@ DETECTORS: dict[str, DetectorGuide] = {
             "retrain_interval": (
                 "New observations between retrains. Empty retrains once per window."
             ),
-        },
-    ),
-    "aberrant_gadget_svm": DetectorGuide(
-        "Graph-gated one-class SVM",
-        "Pass each observation along a chain of small linear models, where "
-        "the next is asked only when the one before is surprised. Experimental.",
-        ("graph", "threshold", "learning_rate"),
-        {
-            "graph": (
-                "Which model passes on to which, by number. Empty uses the "
-                "chain 0, 1, 2."
-            ),
-            "threshold": (
-                "A model passes an observation on only when its own score is "
-                "above this."
-            ),
-            "learning_rate": "Step size of every model's update.",
-            "nu": "Weight of the bias update in every model.",
-            "lambda_reg": "Weight decay of every model. Larger values forget faster.",
         },
     ),
     "aberrant_half_space_trees": DetectorGuide(
@@ -210,7 +181,7 @@ DETECTORS: dict[str, DetectorGuide] = {
         "Forecast from a level, a trend and a repeating cycle, and score the miss.",
         ("season_length", "lead"),
     ),
-    "aberrant_incremental_one_class_svm_adaptive_kernel": DetectorGuide(
+    "aberrant_adaptive_one_class_svm": DetectorGuide(
         "Adaptive-kernel one-class SVM",
         "Keep a budget of support vectors and tune the kernel width to recent "
         "data. Follows curved shapes at a higher cost per observation. "
@@ -240,12 +211,10 @@ DETECTORS: dict[str, DetectorGuide] = {
         "k-nearest neighbors",
         "Score by the mean distance to the nearest recent observations. "
         "Simple and exact; the cost grows with the window.",
-        ("k", "similarity_engine"),
+        ("k", "window_size"),
         {
             "k": "Neighbors the distance is averaged over.",
-            "similarity_engine": "The index that holds the recent observations.",
-            "similarity_engine.window_size": ("Recent observations kept to search in."),
-            "similarity_engine.warm_up": "Observations before scoring starts.",
+            "window_size": "Recent observations kept to search in.",
         },
     ),
     "aberrant_local_outlier_factor": DetectorGuide(
@@ -261,27 +230,52 @@ DETECTORS: dict[str, DetectorGuide] = {
             ),
         },
     ),
-    "aberrant_mondrian_forest": DetectorGuide(
+    "aberrant_mondrian_isolation_forest": DetectorGuide(
         "Mondrian isolation forest",
         "Isolation scores from trees that grow with every observation. Adapts "
         "at once; set a window to bound its memory.",
-        ("n_estimators", "window_size"),
+        ("n_trees", "window_size"),
         {
             "subspace_size": "Features each tree samples.",
-            "lambda_": "Lifetime budget of the trees. Larger values allow more splits.",
+            "lifetime": (
+                "Lifetime budget of the trees. Larger values allow more splits."
+            ),
             "window_size": (
                 "Rebuild the trees from this many recent observations. Empty "
                 "learns for the whole run, and memory then keeps growing."
             ),
         },
     ),
-    "aberrant_moving_average": _moving(
-        "Moving average", "mean", f"{_ONE} with a stable level"
+    "aberrant_moving_zscore": DetectorGuide(
+        "Moving z-score",
+        "Score how many standard deviations a new value lies from the mean of "
+        f"a recent window. {_ONE} with a stable level; very fast.",
+        ("window_size", "warm_up"),
+        {
+            "warm_up": (
+                "Values learned before scores start. Empty waits for a full window."
+            ),
+            "min_std": (
+                "Smallest spread a value is divided by. It keeps a flat signal "
+                "from scoring every small change."
+            ),
+        },
     ),
-    "aberrant_moving_average_absolute_deviation": _moving(
-        "Moving absolute deviation",
-        "mean absolute deviation",
-        f"{_ONE} whose spread should stay steady",
+    "aberrant_moving_mad": DetectorGuide(
+        "Moving median deviation",
+        "Score how far a new value lies from the median of a recent window, "
+        f"measured in its median absolute deviation. {_ONE}; a few outliers "
+        "barely move it.",
+        ("window_size", "warm_up"),
+        {
+            "warm_up": (
+                "Values learned before scores start. Empty waits for a full window."
+            ),
+            "min_mad": (
+                "Smallest deviation a value is divided by. It keeps a flat "
+                "signal from scoring every small change."
+            ),
+        },
     ),
     "aberrant_moving_correlation_coefficient": DetectorGuide(
         "Moving correlation",
@@ -296,55 +290,12 @@ DETECTORS: dict[str, DetectorGuide] = {
         "features over a recent window. For exactly two features.",
         _MOVING,
     ),
-    "aberrant_moving_geometric_average": DetectorGuide(
-        "Moving geometric mean",
-        "Score how much a new value changes the geometric mean of a recent "
-        f"window. {_ONE} above zero, such as a ratio or a growth factor.",
-        _MOVING,
-        {
-            "absoluteValues": (
-                "On reads the values as levels and follows the average growth "
-                "between them. Off takes the geometric mean of the values."
-            ),
-        },
-    ),
-    "aberrant_moving_harmonic_average": _moving(
-        "Moving harmonic mean",
-        "harmonic mean",
-        f"{_ONE} that is a rate; zeros are left out",
-    ),
-    "aberrant_moving_interquartile_range": _moving(
-        "Moving interquartile range",
-        "quartile range",
-        f"{_ONE}; single outliers barely move it",
-    ),
-    "aberrant_moving_kurtosis": _moving(
-        "Moving kurtosis",
-        "weight of the tails",
-        f"{_ONE} where rare extremes matter",
-    ),
     "aberrant_moving_mahalanobis_distance": DetectorGuide(
         "Moving Mahalanobis distance",
         "Score the distance from the recent mean, measured in the spread and "
         "correlation of the features. A simple, strong baseline for several "
         "related features.",
         _MOVING,
-    ),
-    "aberrant_moving_median": _moving(
-        "Moving median", "median", f"{_ONE}; single outliers barely move it"
-    ),
-    "aberrant_moving_quantile": DetectorGuide(
-        "Moving quantile",
-        "Score how much a new value changes a chosen quantile of a recent "
-        f"window. {_ONE} where one tail matters.",
-        ("window_size", "quantile"),
-        {"quantile": "The quantile to follow, from 0 to 1. 0.5 is the median."},
-    ),
-    "aberrant_moving_skewness": _moving(
-        "Moving skewness", "asymmetry", f"{_ONE} that is normally balanced"
-    ),
-    "aberrant_moving_variance": _moving(
-        "Moving variance", "variance", f"{_ONE} whose spread should stay steady"
     ),
     "aberrant_multivariate_rolling_matrix_profile": DetectorGuide(
         "Matrix profile, several features",
@@ -358,7 +309,7 @@ DETECTORS: dict[str, DetectorGuide] = {
         "Online isolation forest",
         "Isolation trees that learn each observation and forget the oldest. A "
         "strong general choice for several features.",
-        ("num_trees", "window_size", "max_leaf_samples"),
+        ("n_trees", "window_size", "max_leaf_samples"),
         {
             "max_leaf_samples": "Observations a leaf holds before it may split.",
             "tree_type": (
@@ -373,9 +324,6 @@ DETECTORS: dict[str, DetectorGuide] = {
             ),
             "branching_factor": "Children created at each split.",
             "metric": "Geometry of the splits. Only axis-parallel is available.",
-            "n_jobs": (
-                "Worker threads for batches. Single observations always run on one."
-            ),
         },
     ),
     "aberrant_random_cut_forest": DetectorGuide(
@@ -390,16 +338,10 @@ DETECTORS: dict[str, DetectorGuide] = {
                 "Consecutive observations joined into one point, to score "
                 "short patterns. 1 scores single observations."
             ),
-            "warmup_samples": (
-                "Points before scores start. Empty waits for a full sample."
-            ),
-            "normalize_score": "Map the scores to 0 to 1.",
-            "score_scale": (
-                "Scale of that mapping. Larger values place typical scores lower."
-            ),
+            "warm_up": "Points before scores start. Empty waits for a full sample.",
         },
     ),
-    "aberrant_x_lag_damp": DetectorGuide(
+    "aberrant_damp": DetectorGuide(
         "DAMP discords",
         "Score how unlike the latest stretch of values is to its nearest match "
         "far back, fast. Finds odd shapes made of normal values in one feature.",
@@ -416,7 +358,7 @@ DETECTORS: dict[str, DetectorGuide] = {
             "start_index": (
                 "Value at which scoring starts. Empty starts four subsequences in."
             ),
-            "eps": "Smallest spread a stretch may have; flatter ones are skipped.",
+            "min_std": "Smallest spread a stretch may have; flatter ones are skipped.",
         },
     ),
     "aberrant_online_ecod": DetectorGuide(
@@ -424,21 +366,21 @@ DETECTORS: dict[str, DetectorGuide] = {
         "Score how far into the tails of each feature's own distribution the "
         "values fall. Has nothing to tune and suits many features; treats them "
         "as unrelated.",
-        ("memory", "min_samples"),
+        ("memory", "warm_up"),
         _TAILS,
     ),
     "aberrant_online_copod": DetectorGuide(
         "Online COPOD",
         "Like online ECOD, with the tails combined as a copula. Has nothing to "
         "tune and suits many features.",
-        ("memory", "min_samples"),
+        ("memory", "warm_up"),
         _TAILS,
     ),
-    "aberrant_streaming_loda": DetectorGuide(
+    "aberrant_loda": DetectorGuide(
         "LODA",
         "Score how rare an observation is in many random one-dimensional views, "
         "each with its own histogram. Fast on many features.",
-        ("n_projections", "warm_up_samples"),
+        ("n_projections", "warm_up"),
         {
             "n_projections": "Random views. More give steadier scores and cost time.",
             "n_bins": "Bins of each view's histogram.",
@@ -446,7 +388,7 @@ DETECTORS: dict[str, DetectorGuide] = {
                 "Share of features each view leaves out. Empty uses the paper's "
                 "choice for the number of features."
             ),
-            "warm_up_samples": (
+            "warm_up": (
                 "Observations that fix the histograms' bins before scores start."
             ),
             "decay": (
@@ -454,7 +396,6 @@ DETECTORS: dict[str, DetectorGuide] = {
                 "1 keeps everything."
             ),
             "pseudocount": "Count every bin starts with, so no bin is impossible.",
-            "eps": "Smallest density a score is taken of.",
         },
     ),
     "aberrant_rolling_matrix_profile": DetectorGuide(
@@ -470,29 +411,17 @@ DETECTORS: dict[str, DetectorGuide] = {
         ("season_length", "lead"),
         {"season_length": "Observations in one cycle. 1 repeats the last value."},
     ),
-    "aberrant_seasonal_residual_detector": DetectorGuide(
-        "Seasonal residual",
-        "Learn a level, a trend and a repeating cycle of one feature, and "
-        "score how far each value misses the forecast one step ahead.",
-        ("season_length",),
-        {
-            "normalize": (
-                "Divide the miss by the typical forecast error. Off reports "
-                "it in the feature's units."
-            ),
-        },
-    ),
-    "aberrant_stream_random_histogram_forest": DetectorGuide(
+    "aberrant_rhf": DetectorGuide(
         "Random histogram forest",
         "Trees that split where the values are most heavy-tailed, replaced "
         "with each new window. Good at rare extremes across several features.",
-        ("n_estimators", "window_size"),
+        ("n_trees", "window_size"),
         {
             "max_depth": "Deepest level of each tree.",
             "window_size": _REPLACED_WINDOW,
         },
     ),
-    "aberrant_x_stream": DetectorGuide(
+    "aberrant_xstream": DetectorGuide(
         "xStream",
         "Random projections and chains of half-space cuts over a rolling "
         "window. Handles many features, and features that come and go.",
@@ -501,12 +430,12 @@ DETECTORS: dict[str, DetectorGuide] = {
             "k": "Dimensions the features are projected to.",
             "n_chains": "Chains in the ensemble. More give steadier scores.",
             "depth": "Levels in each chain.",
-            "cms_width": (
+            "sketch_width": (
                 "Counters per row of each count sketch. More reduce collisions."
             ),
-            "cms_num_hashes": "Rows per count sketch.",
+            "n_hashes": "Rows per count sketch.",
             "window_size": _REPLACED_WINDOW,
-            "init_sample_size": (
+            "warm_up": (
                 "Observations used to set the chains' scales before scoring starts."
             ),
             "density": (
@@ -604,6 +533,15 @@ CALIBRATIONS: dict[str, str] = {
     "nig": (
         "Model the scores as a bell curve whose mean and spread follow the "
         "data, older scores counting less."
+    ),
+    "spot": (
+        "Fit the tail of the recent scores and read the boundary off it, so "
+        "it can sit above every score seen. For alarm rates rarer than one "
+        "in the window."
+    ),
+    "dspot": (
+        "SPOT on how far each score is from the recent average, for a score "
+        "level that drifts."
     ),
 }
 

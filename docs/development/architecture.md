@@ -154,13 +154,12 @@ See [Deployment modes](../operations/deployment-modes.md) for operational comman
 
 ## Aberrant catalog integration
 
-RADAR pins the `aberrant[faiss]` release in
+RADAR pins the `aberrant` release in
 `backend/services/mqtt/radar/pyproject.toml`. Shared configuration, Gateway, and TACTIC
 read `off_key_core/models/adaptive_catalog.json`; they do not import NumPy,
-SciPy, FAISS, or Aberrant. The snapshot is generated from the same installed
-library and optional dependencies as RADAR. `models/adaptive.py` owns only the
-supported-model policy, application defaults, resource limits, and compatibility
-translations. Constructor schemas and default capability descriptions come
+SciPy, or Aberrant. The snapshot is generated from the same installed
+library as RADAR. `models/adaptive.py` owns only the
+supported-model policy, application defaults and resource limits. Constructor schemas and default capability descriptions come
 from Aberrant. Algorithm family is separate from Offkey's `adaptive_aberrant`
 routing family. `off_key_core/models/calibration_catalog.json` is the same kind
 of snapshot for the calibration methods of `aberrant.calibration`, written and

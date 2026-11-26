@@ -1,8 +1,8 @@
 """Fail the RADAR image build when the trimmed environment misses a runtime import.
 
 backend/Dockerfile leaves matplotlib, and the packages only it needs, out of the
-RADAR image. This imports every RADAR module and every detector, transformer and
-similarity engine RADAR offers, so a change that needs them breaks the build
+RADAR image. This imports every RADAR module and every detector and transformer RADAR
+offers, so a change that needs them breaks the build
 instead of a running monitor.
 """
 
@@ -13,11 +13,7 @@ import sys
 
 def import_everything_radar_runs():
     import off_key_mqtt_radar
-    from aberrant.catalog import (
-        TRANSFORMER_CATALOG,
-        get_model_spec,
-        get_similarity_engine_spec,
-    )
+    from aberrant.catalog import TRANSFORMER_CATALOG, get_model_spec
     from off_key_core.models.adaptive import MODEL_IDS
     from off_key_core.models.static import STATIC_MODELS
 
@@ -39,7 +35,6 @@ def import_everything_radar_runs():
         get_model_spec(catalog_id).load()
     for spec in TRANSFORMER_CATALOG.values():
         spec.load()
-    get_similarity_engine_spec("faiss").load()
 
 
 if __name__ == "__main__":

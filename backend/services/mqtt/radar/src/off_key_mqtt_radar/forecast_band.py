@@ -13,8 +13,7 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
-from aberrant.forecast import ResidualDetector
-from aberrant.forecast.scores import interval
+from aberrant.forecast import ResidualDetector, interval
 
 from .pipelines.plan import ExecutionPlan
 

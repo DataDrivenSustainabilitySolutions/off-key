@@ -30,61 +30,28 @@ def detector_mapping(config: AdaptiveStreamConfig, features: list[str]) -> dict:
     params = bind_detector_parameters(
         definition["bound_parameters"], config.model_params, features
     )
-    return {"version": 1, "model": aberrant_model(definition, params)}
+    return {"version": 2, "model": aberrant_model(definition, params)}
 
 
 def test_generated_catalog_matches_pinned_runtime():
-    assert ABERRANT_VERSION == __version__ == "1.5.0"
+    assert ABERRANT_VERSION == __version__ == "2.0.0"
     assert generate_catalog() == CATALOG
 
 
 @pytest.mark.parametrize(
     ("model_type", "params"),
     [
-        ("aberrant_stream_random_histogram_forest", {"max_bins": 8}),
-        ("aberrant_moving_geometric_average", {"absolute_values": True}),
+        ("aberrant_rhf", {"max_bins": 8}),
         ("aberrant_knn", {"window_size": 20, "warm_up": 5}),
-        (
-            "aberrant_knn",
-            {"window_size": 20, "similarity_engine": {"id": "faiss", "params": {}}},
-        ),
-        (
-            "aberrant_knn",
-            {
-                "similarity_engine": {
-                    "id": "arbitrary_import",
-                    "params": {"window_size": 20, "warm_up": 5},
-                }
-            },
-        ),
-        (
-            "aberrant_knn",
-            {
-                "similarity_engine": {
-                    "id": "faiss",
-                    "params": {"window_size": 2_000_000, "warm_up": 5},
-                }
-            },
-        ),
-        ("aberrant_moving_average", {"abs_diff": False}),
-        ("aberrant_moving_average", {"key": "unsubscribed_sensor"}),
-        ("aberrant_online_isolation_forest", {"num_trees": 2001}),
-        ("aberrant_online_isolation_forest", {"num_trees": True}),
+        ("aberrant_knn", {"window_size": 20, "backend": "faiss"}),
+        ("aberrant_knn", {"k": 30, "window_size": 20}),
+        ("aberrant_knn", {"window_size": 2_000_000}),
+        ("aberrant_moving_zscore", {"abs_diff": False}),
+        ("aberrant_moving_zscore", {"key": "unsubscribed_sensor"}),
+        ("aberrant_online_isolation_forest", {"n_trees": 2001}),
+        ("aberrant_online_isolation_forest", {"n_trees": True}),
         ("aberrant_online_isolation_forest", {"subsample": float("nan")}),
         ("aberrant_half_space_trees", {"n_trees": 2000, "height": 20}),
-        ("aberrant_seasonal_residual_detector", {}),
-        ("aberrant_seasonal_residual_detector", {"season_length": 1}),
-        ("aberrant_seasonal_residual_detector", {"season_length": 24.5}),
-        ("aberrant_seasonal_residual_detector", {"season_length": 600_000}),
-        (
-            "aberrant_seasonal_residual_detector",
-            {"season_length": 24, "alpha": 0.8, "gamma": 0.3},
-        ),
-        (
-            "aberrant_seasonal_residual_detector",
-            {"season_length": 24, "residual_alpha": 0},
-        ),
-        ("aberrant_seasonal_residual_detector", {"season_length": 24, "key": "x"}),
         ("aberrant_holt_winters_forecaster", {}),
         ("aberrant_holt_winters_forecaster", {"season_length": 1}),
         ("aberrant_holt_winters_forecaster", {"season_length": 24, "lead": 0}),
@@ -126,34 +93,10 @@ def test_catalog_capabilities_reach_the_detector_listing():
     json.dumps(payload, allow_nan=False)
 
 
-def test_seasonal_forecast_detector_needs_its_season_and_one_feature():
-    model_type = "aberrant_seasonal_residual_detector"
-    definition = ADAPTIVE_MODELS_BY_TYPE[model_type]
-    assert definition["catalog_id"] == "seasonal_residual_detector"
-    assert definition["parameter_schema"]["required"] == ["season_length"]
-    assert "season_length" not in definition["default_parameters"]
-    assert definition["bound_parameters"] == ["key"]
-    assert definition["default_capabilities"]["feature_count"] == {
-        "minimum": 1,
-        "maximum": 1,
-    }
-    params = validate_adaptive_model_params(model_type, {"season_length": 24})
-    assert params["season_length"] == 24
-    assert params["normalize"] is True
-
-    config = AdaptiveStreamConfig(model_type=model_type, model_params=params)
-    assert config.validate_feature_schema(["x"]) == 1
-    with pytest.raises(ValueError, match="exactly one feature"):
-        config.validate_feature_schema(["x", "y"])
-    mapping = detector_mapping(config, ["x"])
-    assert mapping["model"]["params"]["key"] == "x"
-    assert DetectorConfig.from_mapping(mapping).capabilities().warmup.minimum == 48
-
-
 def test_seasonal_forecast_detector_in_a_design_checks_its_season_and_features():
     data = template("adaptive_stream").model_dump(mode="json")
     detector = next(node for node in data["nodes"] if node["kind"] == "detector")
-    detector["component"] = "detector:aberrant_seasonal_residual_detector"
+    detector["component"] = "detector:aberrant_holt_winters_forecaster"
     detector["params"] = {"season_length": 24}
     assert validate_pipeline(PipelineDefinition.model_validate(data)).valid
 
@@ -219,7 +162,7 @@ def test_forecaster_step_is_a_residual_detector_around_its_forecaster(
     capabilities = DetectorConfig.from_mapping(
         detector_mapping(config, ["x"])
     ).capabilities()
-    assert capabilities.warmup.minimum == warmup
+    assert capabilities.warmup == warmup
 
 
 def test_forecaster_step_in_a_design_checks_its_settings_and_features():

@@ -145,6 +145,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.goto(`/?create=monitoring&reading=${encodeURIComponent(stream.id)}`);
     await expect(page.getByRole("region", { name: "Create monitoring service", exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Service name", exact: true }).fill("Workspace monitor");
+    await page.getByRole("spinbutton", { name: "Max Leaf Samples", exact: true }).fill("1");
     await page.getByLabel("Warm-up samples", { exact: true }).fill("2");
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
     await page.getByRole("link", { name: "Review recording in Sources", exact: true }).click();

@@ -34,7 +34,7 @@ def _adaptive():
     return form_radar_config(
         AdaptiveStreamConfig(
             model_type="aberrant_online_isolation_forest",
-            model_params={"num_trees": 2},
+            model_params={"n_trees": 2},
             training_window_size=1200,
             calibration_window_size=360,
         ),
@@ -60,7 +60,7 @@ def test_static_detector_schema_signature_is_unchanged():
 def test_adaptive_detector_schema_signature_requires_relearning_on_upgrade():
     # Includes the installed Aberrant version: an upgrade invalidates states.
     assert AdaptiveStreamDetectionService._build_schema_signature(_adaptive()) == (
-        "b003fb768bd493a845e0155ea9b4e0765dfe65dbc1f00a0b7bc07ea96997268e"
+        "cc1ca247e4ab425bc0ca1605284c0f739b78390e282dab404189427bf420c34d"
     )
 
 
@@ -78,7 +78,7 @@ def test_checkpoint_fingerprints_preserve_static_and_upgrade_adaptive():
 
     assert fingerprints == {
         "static": "637ffafe60e52e798353308ea399d5212063dc73a7457ceaea6e76c66103340a",
-        # The explicit library version is the migration boundary: 1.4.0 -> 1.5.0.
-        "adaptive": "01319902a4cf80aef44ba730acb827273f7b04042053f7ebf47f8c36e0258921",
+        # The explicit library version is the migration boundary: 1.5.0 -> 2.0.0.
+        "adaptive": "b191f929f67ad9a1cdf9bce64f9fe987e8326275cfe02e07ebd58d7c3e254865",
         "pipeline": "2836dbeed6e86737c1b6a205d39947f3448a004d8ad3d1cb25a66cf737a7b909",
     }

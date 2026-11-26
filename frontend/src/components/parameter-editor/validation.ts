@@ -45,15 +45,14 @@ function validateParameters(fields: FieldDescriptor[], values: Parameters,
           if (typeof item !== "number" || !Number.isFinite(item)) error([...at, index], "Enter a number.");
         });
       }
-    } else if (["object", "object_list", "component"].includes(field.type)) {
+    } else if (field.type === "object" || field.type === "object_list") {
       const entries = field.type === "object_list" ? Array.isArray(value) ? value : [] : [value];
       entries.forEach((entry, index) => {
         const object = objectValue(entry);
         const entryPath = field.type === "object_list" ? [...at, index] : at;
         const selected = String(object[field.discriminator ?? ""] ?? "");
         const nested = field.variants ? field.variants[selected] ?? [] : field.fields ?? [];
-        issues.push(...validateParameters(nested, field.type === "component" ? objectValue(object.params) : object,
-          field.type === "component" ? [...entryPath, "params"] : entryPath));
+        issues.push(...validateParameters(nested, object, entryPath));
       });
     }
   }

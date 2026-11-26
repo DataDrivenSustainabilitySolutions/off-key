@@ -23,8 +23,8 @@ def test_saved_launch_normalization_preserves_history_and_execution():
         mqtt_topics=["telemetry/entity/x"],
         monitoring={
             "strategy": "adaptive_stream",
-            "model_type": "aberrant_moving_average",
-            "model_params": {"window_size": 8},
+            "model_type": "aberrant_moving_zscore",
+            "model_params": {"window_size": 8, "warm_up": 2},
             "training_window_size": 2,
             "calibration_window_size": 3,
         },
@@ -33,11 +33,11 @@ def test_saved_launch_normalization_preserves_history_and_execution():
     original = deepcopy(saved)
     normalized = normalize_saved_launch(saved)
     assert saved == original
-    assert normalized.monitoring.aberrant_version == "1.5.0"
+    assert normalized.monitoring.aberrant_version == "2.0.0"
     assert normalized.pipeline == launch.pipeline
     assert normalized.runtime_image is None
     # Launches saved before the schema baseline cannot exist; none is reviewed.
-    saved["monitoring"]["aberrant_version"] = "1.4.0"
+    saved["monitoring"]["aberrant_version"] = "1.5.0"
     with pytest.raises(ValueError, match="No reviewed release normalization"):
         normalize_saved_launch(saved)
 
@@ -74,13 +74,8 @@ def test_discovery_serves_the_graphs_actual_fields_without_numerical_imports():
             field.model_dump(mode="json")
             for field in components[detector_component(name)].fields
         ]
-    engine = next(
-        field
-        for field in models["aberrant_knn"]["fields"]
-        if field["name"] == "similarity_engine"
-    )
-    assert engine["type"] == "component"
-    assert {field["name"] for field in engine["fields"]} == {"window_size", "warm_up"}
+    knn = {field["name"] for field in models["aberrant_knn"]["fields"]}
+    assert {"k", "window_size"} <= knn
 
 
 def test_fields_distinguish_missing_default_explicit_null_and_exclusive_bounds():
@@ -143,24 +138,11 @@ def test_independent_missing_fields_are_reported_once_each():
     ]
 
 
-def test_nested_adaptive_form_and_graph_keep_all_field_locations():
-    params = {
-        "k": "many",
-        "similarity_engine": {
-            "id": "faiss",
-            "params": {
-                "window_size": False,
-                "warm_up": "many",
-            },
-        },
-    }
+def test_adaptive_form_and_graph_keep_all_field_locations():
+    params = {"k": "many", "window_size": False}
     with pytest.raises(ValidationError) as error:
         AdaptiveStreamConfig(model_type="aberrant_knn", model_params=params)
-    expected = {
-        ("k",),
-        ("similarity_engine", "params", "window_size"),
-        ("similarity_engine", "params", "warm_up"),
-    }
+    expected = {("k",), ("window_size",)}
     assert {issue["loc"] for issue in error.value.errors()} == {
         ("model_params", *path) for path in expected
     }

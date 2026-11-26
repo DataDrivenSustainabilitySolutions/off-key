@@ -618,7 +618,7 @@ that starts inside a label and outlasts it does not count.
 outside the labels. Only runs with status `succeeded` have metrics.
 
 A run created with `compare_calibration` also tries the other calibration
-methods on its own detector scores: the fixed split and the 15 methods that
+methods on its own detector scores: the fixed split and the 17 methods that
 adapt, without the run's own. Each gets the calibration window and then every
 scored observation, as the run's own calibration step does, and nothing a
 method decides reaches the run. All aim at one alarm rate, `alpha`, and alarm

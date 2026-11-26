@@ -134,8 +134,8 @@ def graph_definition(catalog):
         {"id": "raw", "label": "Raw temperature"},
     ]
     definition["nodes"][1]["params"] = {
-        "num_trees": 4,
-        "max_leaf_samples": 4,
+        "n_trees": 4,
+        "max_leaf_samples": 3,
         "window_size": 128,
         "seed": 42,
     }

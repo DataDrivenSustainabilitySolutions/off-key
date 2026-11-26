@@ -648,7 +648,7 @@ started afterwards.
 
 ## Numerical ownership
 
-Aberrant 1.3 supplies the standalone `aberrant.compose.GraphPipeline` numerical
+Aberrant supplies the standalone `aberrant.compose.GraphPipeline` numerical
 API. OFF-KEY compiles into that API and owns bindings, lifecycle, calibration,
 alarm policy, persistence and presentation. Aberrant has no dependency on these
 application services or wire formats. Existing linear Aberrant pipelines retain
@@ -1368,7 +1368,9 @@ taken while fitting.
 #### Calibration steps that adapt
 
 `calibrate.<method>` runs a method of `aberrant.calibration`: rolling split CP,
-ACI, DtACI, AgACI, the quantile tracker, conformal PID, NexCP and eight more.
+ACI, DtACI, AgACI, the quantile tracker, conformal PID, NexCP, eight more, and
+the extreme-value methods SPOT and DSPOT, whose boundary can sit above every
+score seen.
 `calibration_catalog.json` describes them (name, reference, family, coverage,
 parameters). RADAR generates it from the installed aberrant
 (`python -m off_key_mqtt_radar.catalog --write`, checked with `--check`), so the
@@ -1427,7 +1429,7 @@ the reason to `calibration_comparison.failed` when the run ends; such a method
 keeps the counts of what it found and gets no share or rate, which would be
 over results it never judged. TACTIC scores
 each method on read like a run of its own (`DojoMetrics.calibration`), so a
-moved label re-scores the methods too. All 15 adapting methods together cost
+moved label re-scores the methods too. All 17 adapting methods together cost
 about 2 ms per observation, mostly the Bayesian ones, which is why the
 comparison is asked for per run.
 
@@ -1445,7 +1447,8 @@ what replaced it:
   detector reads to their counterparts (the catalog's `counterpart`) and fits the
   policy.
 - The calibration step has its own card between the detectors and the detection
-  rule. **Calibration method** lists the methods by family (conformal, Bayesian)
+  rule. **Calibration method** lists the methods by family (conformal, Bayesian,
+  extreme value)
   and says what the chosen one holds (`coverage`), with its reference.
   `changeCalibration()` keeps `fusion`, takes the new method's defaults and fits
   the policy.

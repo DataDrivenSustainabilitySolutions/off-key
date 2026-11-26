@@ -249,7 +249,7 @@ async def test_a_run_that_compares_calibration_methods_is_scored_per_method(sess
             await metrics.calibration(plain.id)
     methods = comparison.methods
     assert [item.method for item in methods] == ["fixed_split", *CALIBRATORS]
-    assert [item.own for item in methods] == [True] + [False] * 15
+    assert [item.own for item in methods] == [True] + [False] * len(CALIBRATORS)
     assert (methods[0].name, methods[0].family) == ("Fixed split", "fixed")
     assert (methods[2].name, methods[2].family) == ("ACI", "conformal")
     assert all(item.failed is None for item in methods)

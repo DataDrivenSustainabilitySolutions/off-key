@@ -150,8 +150,6 @@ def test_steps_sit_where_an_operator_looks_for_them():
     assert of("forecaster") == {"forecast.timestral"}
     assert groups["detector:aberrant_holt_winters_forecaster"] == "forecaster"
     assert groups["detector:aberrant_seasonal_naive_forecaster"] == "forecaster"
-    # The seasonal residual detector has no lead to choose, so it stays a detector.
-    assert groups["detector:aberrant_seasonal_residual_detector"] == "detector"
 
 
 def test_learned_steps_name_the_step_that_learns_the_other_way():

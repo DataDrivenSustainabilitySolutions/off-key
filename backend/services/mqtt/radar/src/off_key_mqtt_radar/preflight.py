@@ -16,7 +16,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from aberrant import __version__ as aberrant_version
-from aberrant.base import ConfigurationError
+from aberrant.exceptions import ConfigurationError
 from off_key_core.config.resource_budget import DEFAULT_RADAR_MEMORY_MB
 from off_key_core.models.adaptive import ABERRANT_VERSION
 from off_key_core.models.pipelines import pipeline_catalog_id

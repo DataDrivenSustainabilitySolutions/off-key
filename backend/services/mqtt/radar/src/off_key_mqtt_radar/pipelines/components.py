@@ -9,11 +9,16 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any
 
-from aberrant.compose import Passthrough, Rename, Select
-from aberrant.transform.preprocessing import MinMaxScaler as OnlineMinMaxScaler
-from aberrant.transform.preprocessing import RollingRobustScaler
-from aberrant.transform.preprocessing import StandardScaler as OnlineStandardScaler
-from aberrant.transform.projection import IncrementalPCA, RandomProjection
+from aberrant.transform import (
+    IncrementalPCA,
+    Passthrough,
+    RandomProjection,
+    Rename,
+    RollingRobustScaler,
+    Select,
+)
+from aberrant.transform import MinMaxScaler as OnlineMinMaxScaler
+from aberrant.transform import StandardScaler as OnlineStandardScaler
 from off_key_core.models.pipeline_scope import (
     StepScope,
     is_scoped,
@@ -163,7 +168,7 @@ def _projection(constructor: Callable[..., Any]) -> OnlineBuilder:
         # The components are the step's last output names, after any kept features.
         components = plan.names(node.id)[len(scope.output_names()) :]
         return NamedProjection(
-            constructor(keys=list(scope.selected), **params), components
+            constructor(features=list(scope.selected), **params), components
         )
 
     return build

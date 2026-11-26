@@ -45,7 +45,7 @@ def timeless(definition):
     [
         "detector:aberrant_half_space_trees",
         "detector:aberrant_online_ecod",
-        "detector:aberrant_streaming_loda",
+        "detector:aberrant_loda",
     ],
 )
 def test_a_point_detector_on_raw_values_is_told_to_take_time_in(detector):
@@ -79,7 +79,7 @@ def test_a_step_that_carries_time_quiets_it(step):
     [
         "detector:aberrant_moving_median",
         "detector:aberrant_rolling_matrix_profile",
-        "detector:aberrant_x_lag_damp",
+        "detector:aberrant_damp",
     ],
 )
 def test_a_detector_that_reads_the_past_needs_no_step(detector):

@@ -71,7 +71,7 @@ const modelCatalog = {
     name: "Aberrant Online Isolation Forest",
     parameters: { properties: {} },
   },
-  aberrant_x_stream: {
+  aberrant_xstream: {
     fields: [{ name: "max_feature_cache_size", label: "Max Feature Cache Size", type: "integer", nullable: true, has_default: true, default: 10000 }],
     strategy: "adaptive_stream",
     name: "Aberrant XStream",
@@ -102,30 +102,17 @@ const modelCatalog = {
     parameters: { properties: {} },
   },
   aberrant_knn: {
-    fields: [{ name: "similarity_engine", label: "Similarity Engine", type: "component", required: true, fields: [
+    fields: [
+      { name: "k", label: "Neighbors", type: "integer", required: true, minimum: 1 },
       { name: "window_size", label: "Window Size", type: "integer", required: true, minimum: 1 },
-      { name: "warm_up", label: "Warm Up", type: "integer", required: true, minimum: 1 },
-    ] }],
+    ],
     strategy: "adaptive_stream",
     name: "Aberrant KNN",
-    default_parameters: {
-      similarity_engine: { id: "faiss", params: { window_size: 1000, warm_up: 20 } },
-    },
+    default_parameters: { k: 5, window_size: 1000 },
     parameters: {
       properties: {
-        similarity_engine: {
-          type: "object",
-          "x-aberrant-component-kind": "similarity_engine",
-          properties: {
-            params: {
-              type: "object",
-              properties: {
-                window_size: { type: "integer", minimum: 1 },
-                warm_up: { type: "integer", minimum: 1 },
-              },
-            },
-          },
-        },
+        k: { type: "integer", minimum: 1 },
+        window_size: { type: "integer", minimum: 1 },
       },
     },
   },
@@ -354,7 +341,7 @@ describe("monitoring setup forms", () => {
     await renderCreate({ strategy: "adaptive" });
 
     fireEvent.change(screen.getByLabelText("Model"), {
-      target: { value: "aberrant_x_stream" },
+      target: { value: "aberrant_xstream" },
     });
     const noneControl = screen.getByLabelText("Max Feature Cache Size automatic");
     expect((noneControl as HTMLInputElement).checked).toBe(false);
@@ -410,23 +397,21 @@ describe("monitoring setup forms", () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
 
-  it("validates and submits numeric parameters inside a catalog component", async () => {
+  it("validates and submits a model's numeric parameters", async () => {
     await renderCreate({ strategy: "adaptive" });
 
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_knn" },
     });
-    fireEvent.change(screen.getByLabelText("Warm Up"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Neighbors"), { target: { value: "1.5" } });
     fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
-    expect(await screen.findByText("Warm Up must be an integer.")).toBeTruthy();
+    expect(await screen.findByText("Neighbors must be an integer.")).toBeTruthy();
     expect(mockPost).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText("Warm Up"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("Neighbors"), { target: { value: "30" } });
     fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(getSubmittedPayload().monitoring.model_params.similarity_engine).toEqual({
-      id: "faiss", params: { window_size: 1000, warm_up: 30 },
-    });
+    expect(getSubmittedPayload().monitoring.model_params).toMatchObject({ k: 30, window_size: 1000 });
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {

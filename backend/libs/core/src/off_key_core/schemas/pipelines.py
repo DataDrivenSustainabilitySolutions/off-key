@@ -569,10 +569,8 @@ FieldType = Literal[
     "rename",
     "number_pair",
     "number_list",
-    "component",
     "object",
     "object_list",
-    "integer_adjacency",
 ]
 
 
@@ -682,7 +680,7 @@ class PipelineComponent(PipelineModel):
     input_type: PortType | None = "features"
     output_type: PortType = "features"
     # A calibration step's method: its family, what it holds, and its paper.
-    family: Literal["conformal", "bayesian"] | None = None
+    family: Literal["conformal", "bayesian", "extreme_value"] | None = None
     coverage: Literal["exchangeable", "long_run", "none"] | None = None
     reference: str | None = None
 
@@ -1572,7 +1570,7 @@ class RollingRobustScalerParameters(ElementwiseScopeParameters):
         le=3600,
         description="Recent observations per feature for the median and quartiles.",
     )
-    min_samples: int = Field(
+    warm_up: int = Field(
         default=32,
         ge=1,
         le=3600,
@@ -1580,9 +1578,9 @@ class RollingRobustScalerParameters(ElementwiseScopeParameters):
     )
 
     @model_validator(mode="after")
-    def window_holds_minimum(self) -> "RollingRobustScalerParameters":
-        if self.min_samples > self.window_size:
-            raise ValueError("min_samples must not exceed window_size")
+    def window_holds_warm_up(self) -> "RollingRobustScalerParameters":
+        if self.warm_up > self.window_size:
+            raise ValueError("warm_up must not exceed window_size")
         return self
 
 
@@ -1694,7 +1692,7 @@ class OnlinePCAParameters(ScopeParameters):
         le=100,
         description="Features that leave the step. No more than arrive.",
     )
-    n0: int = Field(
+    warm_up: int = Field(
         default=50,
         ge=2,
         le=1_000_000,
@@ -1723,8 +1721,8 @@ class OnlinePCAParameters(ScopeParameters):
 
     @model_validator(mode="after")
     def enough_initial_observations(self) -> "OnlinePCAParameters":
-        if self.n0 < self.n_components:
-            raise ValueError("n0 must be at least n_components")
+        if self.warm_up < self.n_components:
+            raise ValueError("warm_up must be at least n_components")
         return self
 
 

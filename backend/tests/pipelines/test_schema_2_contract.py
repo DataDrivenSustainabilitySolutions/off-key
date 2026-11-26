@@ -18,7 +18,7 @@ from tests.support.pipelines import template
 SOURCE = {"id": "input", "kind": "source", "component": "source.aligned"}
 OUTPUT = {"id": "output", "kind": "output", "component": "output.evidence"}
 IFOREST = "detector:pyod_iforest"
-MAD = "detector:aberrant_moving_average_absolute_deviation"
+MAD = "detector:aberrant_moving_mad"
 
 
 def design(*detectors, policy="policy.quantile", scaler=None):

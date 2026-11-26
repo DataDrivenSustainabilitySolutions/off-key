@@ -310,7 +310,7 @@ export type MethodComparison = {
 export type MethodMetrics = {
   method: string;
   name: string;
-  family: "fixed" | "conformal" | "bayesian";
+  family: "fixed" | "conformal" | "bayesian" | "extreme_value";
   own: boolean;
   failed: string | null;
   alarm_count: number;

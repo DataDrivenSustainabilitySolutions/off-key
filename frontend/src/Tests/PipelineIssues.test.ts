@@ -19,7 +19,7 @@ const { components } = normalizeCatalog({
     component("source.aligned", "source", "Aligned inputs"),
     component("features.passthrough", "transform", "Pass through"),
     component("features.merge", "merge", "Merge features"),
-    component("detector:aberrant_x_stream", "detector", "xStream"),
+    component("detector:aberrant_xstream", "detector", "xStream"),
     component("calibrate.fixed_split", "calibration", "Fixed split"),
     component("policy.quantile", "policy", "Calibrated score threshold"),
     component("sink.evidence", "output", "Evidence and alarms"),
@@ -29,7 +29,7 @@ const { components } = normalizeCatalog({
 
 const STEPS: Record<string, Wire.PipelineNode> = {
   input: { id: "input", kind: "source", component: "source.aligned" },
-  detector: { id: "detector", kind: "detector", component: "detector:aberrant_x_stream" },
+  detector: { id: "detector", kind: "detector", component: "detector:aberrant_xstream" },
   calibrate: { id: "calibrate", kind: "calibration", component: "calibrate.fixed_split" },
   policy: { id: "policy", kind: "policy", component: "policy.quantile" },
   output: { id: "output", kind: "output", component: "sink.evidence" },

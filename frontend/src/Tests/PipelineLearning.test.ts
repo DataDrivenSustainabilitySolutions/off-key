@@ -43,7 +43,7 @@ const catalog = normalizeCatalog({
     component("detector:pyod_iforest", "detector", "batch", [
       { name: "n_estimators", label: "Trees", type: "integer", default: 100, has_default: true },
     ]),
-    component("detector:aberrant_x_stream", "detector", "online"),
+    component("detector:aberrant_xstream", "detector", "online"),
     component("forecast.timestral", "detector", "pretrained"),
     component("calibrate.fixed_split", "calibration", "none", [fusion],
       { label: "Fixed split", family: "conformal", coverage: "exchangeable" }),
@@ -69,7 +69,7 @@ const continuous = () => normalizeDefinition({
     { id: "input", kind: "source", component: "source.aligned" },
     { id: "scale", kind: "transform", component: "adaptive.standard_scaler", params: { with_std: false } },
     { id: "extra", kind: "transform", component: "adaptive.only" },
-    { id: "model", kind: "detector", component: "detector:aberrant_x_stream" },
+    { id: "model", kind: "detector", component: "detector:aberrant_xstream" },
     { id: "calibrate", kind: "calibration", component: "calibrate.fixed_split" },
     { id: "alarm", kind: "policy", component: "policy.quantile" },
   ],
@@ -160,7 +160,7 @@ describe("changing how a detector learns", () => {
   });
 
   it("says nothing when only the model changed", () => {
-    const change = changeDetector(continuous(), "model", find("detector:aberrant_x_stream"), components);
+    const change = changeDetector(continuous(), "model", find("detector:aberrant_xstream"), components);
     expect(changeNotice(change, "online")).toBe("");
   });
 });

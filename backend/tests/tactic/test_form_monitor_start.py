@@ -110,7 +110,7 @@ async def test_setup_rejects_readings_of_two_devices(submitted):
 
 @pytest.mark.asyncio
 async def test_setup_reports_an_unsupported_feature_count_without_topics(submitted):
-    adaptive = {"strategy": "adaptive_stream", "model_type": "aberrant_moving_average"}
+    adaptive = {"strategy": "adaptive_stream", "model_type": "aberrant_moving_zscore"}
 
     with pytest.raises(ValidationError, match="exactly one feature") as error:
         await forms.start_form_monitor(None, setup(monitoring=adaptive))

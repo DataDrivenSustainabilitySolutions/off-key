@@ -1162,7 +1162,7 @@ class MethodMetrics(DojoModel):
 
     method: str = Field(description="'fixed_split', or an adapting method's id.")
     name: str
-    family: Literal["fixed", "conformal", "bayesian"]
+    family: Literal["fixed", "conformal", "bayesian", "extreme_value"]
     own: bool = Field(
         description="The run's own calibration step, with the settings of the "
         "design. Every other method ran with its defaults."

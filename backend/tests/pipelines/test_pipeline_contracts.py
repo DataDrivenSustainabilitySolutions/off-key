@@ -41,11 +41,6 @@ def test_complete_catalog_and_templates_have_bounded_controls():
             component.parameter_schema.get("properties", {})
         )
     assert pipeline_component("detector:unknown") is None
-    gadget = next(
-        item for item in catalog.components if item.id == "detector:aberrant_gadget_svm"
-    )
-    graph = next(field for field in gadget.fields if field.name == "graph")
-    assert graph.type == "integer_adjacency" and graph.nullable
     martingale = next(
         item for item in catalog.components if item.id == "policy.martingale"
     )
@@ -205,18 +200,6 @@ def test_transformed_unit_interval_model_requires_explicit_clipping():
     assert "explicitly clipped" in compile_error(scaled)
     next(node for node in scaled.nodes if node.id == "scale").params["clip"] = True
     assert compile_pipeline(scaled).valid
-
-
-@pytest.mark.parametrize(
-    ("params", "minimum"),
-    [({"window_size": 1}, 2), ({"window_size": 2, "absoluteValues": True}, 3)],
-)
-def test_impossible_retained_readiness_is_rejected(params, minimum):
-    graph = template()
-    detector = next(node for node in graph.nodes if node.kind == "detector")
-    detector.component = "detector:aberrant_moving_geometric_average"
-    detector.params = params
-    assert f"minimum of {minimum}" in compile_error(graph)
 
 
 def test_partial_inference_preserves_valid_upstream_and_independent_branches():

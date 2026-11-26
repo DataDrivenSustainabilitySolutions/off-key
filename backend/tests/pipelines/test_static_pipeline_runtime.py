@@ -254,7 +254,7 @@ def test_preflight_accounts_for_retained_python_collection_buffers():
         AnomalyDetectionConfig(pipeline=config, memory_limit_mb=128)
 
 
-def parallel_pca_execution(*, n0, width=1):
+def parallel_pca_execution(*, warm_up, width=1):
     nodes = [dict(id="input", kind="source", component="source.aligned")]
     edges = []
     for index in range(58):
@@ -264,7 +264,7 @@ def parallel_pca_execution(*, n0, width=1):
                 id=identifier,
                 kind="transform",
                 component="adaptive.uncentered_pca",
-                params={"n_components": 1, "n0": n0},
+                params={"n_components": 1, "warm_up": warm_up},
             )
         )
         edges.extend(
@@ -280,7 +280,7 @@ def parallel_pca_execution(*, n0, width=1):
                 id="model",
                 kind="detector",
                 component="detector:aberrant_online_isolation_forest",
-                params={"num_trees": 4, "max_leaf_samples": 4},
+                params={"n_trees": 4, "max_leaf_samples": 4},
             ),
             dict(id="policy", kind="policy", component="policy.quantile"),
             dict(id="output", kind="output", component="output.evidence"),
@@ -302,7 +302,7 @@ def parallel_pca_execution(*, n0, width=1):
                 input_slots=[dict(id=slot, label=slot) for slot in slots],
                 nodes=nodes,
                 edges=edges,
-                settings=dict(training_window_size=2, calibration_window_size=2),
+                settings=dict(training_window_size=5, calibration_window_size=2),
             )
         )
     ).definition
@@ -329,7 +329,7 @@ def parallel_pca_execution(*, n0, width=1):
 def test_parallel_pca_warmup_headers_and_transactional_lists_exceed_memory_limit(
     memory_limit_mb,
 ):
-    config = parallel_pca_execution(n0=100_000)
+    config = parallel_pca_execution(warm_up=100_000)
     plan = ExecutionPlan(config)
     report = estimate_resources(plan, 4096)
     # Numeric data alone fits 384 MiB, but the actual list of individual NumPy
@@ -343,7 +343,7 @@ def test_parallel_pca_warmup_headers_and_transactional_lists_exceed_memory_limit
 
 
 def test_preflight_honors_a_larger_explicit_worker_memory_budget():
-    config = parallel_pca_execution(n0=100_000)
+    config = parallel_pca_execution(warm_up=100_000)
     report = preflight(config, memory_limit_mb=4096)
     assert report["ok"]
     assert report["resources"]["memory_limit_mb"] == 4096
@@ -353,7 +353,7 @@ def test_preflight_honors_a_larger_explicit_worker_memory_budget():
 def test_ordinary_parallel_pca_and_boundary_graphs_fit_admission_budget():
     from backend.scripts.benchmark_pipeline_runtime import build_workload
 
-    configurations = [parallel_pca_execution(n0=50, width=100)] + [
+    configurations = [parallel_pca_execution(warm_up=50, width=100)] + [
         build_workload(name, trees=2) for name in ("maximum_edges", "maximum_width")
     ]
     for config in configurations:

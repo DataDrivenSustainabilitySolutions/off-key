@@ -59,7 +59,7 @@ def test_every_method_is_a_calibration_step_with_its_own_settings():
         fields = {item.name: item for item in component.fields}
         assert list(fields) == [
             "alpha",
-            *(parameter["key"] for parameter in spec["parameters"]),
+            *spec["parameters"]["properties"],
             "fusion",
         ]
         assert fields["alpha"].default == 0.01
@@ -314,12 +314,12 @@ def test_a_design_stored_with_a_strategy_can_take_a_step_that_adapts():
         (
             ("mad",),
             AdaptiveStreamConfig,
-            "aberrant_moving_average_absolute_deviation",
+            "aberrant_moving_mad",
         ),
         (
             ("forest", "mad"),
             AdaptiveStreamConfig,
-            "aberrant_moving_average_absolute_deviation",
+            "aberrant_moving_mad",
         ),
     ],
 )
@@ -348,7 +348,7 @@ def test_a_lane_follows_from_how_the_steps_learn():
 
     forest, mad = (
         "detector:pyod_iforest",
-        ("detector:aberrant_moving_average_absolute_deviation"),
+        ("detector:aberrant_moving_mad"),
     )
     assert lane(forest, "static.standard_scaler") == "static_baseline"
     assert lane(mad, "adaptive.standard_scaler") == "adaptive_stream"

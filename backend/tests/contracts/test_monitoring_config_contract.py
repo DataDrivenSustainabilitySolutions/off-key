@@ -77,7 +77,7 @@ async def test_invalid_start_returns_422_without_launching(invalid_config):
         },
         {
             "strategy": "adaptive_stream",
-            "model_params": {"num_trees": 2},
+            "model_params": {"n_trees": 2},
             "preprocessing_steps": [{"type": "standard_scaler"}],
             "threshold_config": {"quantile": 0.95},
         },

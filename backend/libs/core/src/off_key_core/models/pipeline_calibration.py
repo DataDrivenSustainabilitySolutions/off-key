@@ -99,18 +99,21 @@ def calibrator_id(component: str) -> str | None:
     return method if component != FIXED_SPLIT and method in CALIBRATORS else None
 
 
-def _parameter(parameter: dict[str, Any]) -> tuple[type, Any]:
-    bounds = {
-        ("gt" if parameter["exclusive_minimum"] else "ge"): parameter["minimum"],
-    }
-    if parameter["maximum"] is not None:
-        bounds["lt" if parameter["exclusive_maximum"] else "le"] = parameter["maximum"]
-    kind = int if parameter["integer"] else float
+_BOUNDS = {
+    "minimum": "ge",
+    "exclusiveMinimum": "gt",
+    "maximum": "le",
+    "exclusiveMaximum": "lt",
+}
+
+
+def _parameter(schema: dict[str, Any]) -> tuple[type, Any]:
+    kind = int if schema["type"] == "integer" else float
     return kind, Field(
-        default=kind(parameter["default"]),
-        title=parameter["label"],
-        description=parameter["help"],
-        **bounds,
+        default=kind(schema["default"]),
+        title=schema["title"],
+        description=schema.get("description") or None,
+        **{_BOUNDS[key]: value for key, value in schema.items() if key in _BOUNDS},
     )
 
 
@@ -118,7 +121,10 @@ def _calibrator_model(method: str) -> type[PipelineModel]:
     spec = CALIBRATORS[method]
     fields: dict[str, Any] = {"alpha": (AlarmRate, 0.01)}
     fields.update(
-        {parameter["key"]: _parameter(parameter) for parameter in spec["parameters"]}
+        {
+            name: _parameter(schema)
+            for name, schema in spec["parameters"]["properties"].items()
+        }
     )
     fields["fusion"] = (Fusion, "max")
     name = "".join(part.title() for part in method.split("_"))

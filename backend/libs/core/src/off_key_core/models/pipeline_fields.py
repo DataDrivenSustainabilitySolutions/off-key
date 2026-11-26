@@ -57,16 +57,12 @@ def _array_kind(schema: Schema, definitions: Schema) -> FieldType:
 
 
 def _field_kind(name: str, schema: Schema, definitions: Schema) -> FieldType:
-    if schema.get("x-aberrant-component-kind"):
-        return "component"
     if name in SPECIAL_TYPES:
         return SPECIAL_TYPES[name]
     if schema.get("enum") or "const" in schema:
         return "enum"
     if "oneOf" in schema and "discriminator" in schema:
         return "object"
-    if _integer_adjacency(schema):
-        return "integer_adjacency"
     kind = schema.get("type")
     if kind in SCALAR_TYPES:
         return kind
@@ -77,17 +73,6 @@ def _field_kind(name: str, schema: Schema, definitions: Schema) -> FieldType:
     ):
         return "object"
     raise ValueError(f"No bounded parameter control for {name!r}: {kind!r}")
-
-
-def _integer_adjacency(schema: Schema) -> bool:
-    values = schema.get("additionalProperties", {})
-    return (
-        schema.get("type") == "object"
-        and schema.get("x-python-key-type") == "builtins.int"
-        and isinstance(values, dict)
-        and values.get("type") == "array"
-        and values.get("items", {}).get("type") == "integer"
-    )
 
 
 def _variants(
@@ -134,11 +119,7 @@ def _describe(
         description=original.get("description", ""),
         advanced=bool(original.get("x-advanced", False)),
         shown_when=original.get("x-shown-when"),
-        fields=component_fields(
-            schema.get("properties", {}).get("params", {}), definitions
-        )
-        if kind == "component"
-        else component_fields(nested, definitions)
+        fields=component_fields(nested, definitions)
         if kind in {"object", "object_list"}
         else [],
         discriminator=discriminator,

@@ -41,13 +41,13 @@ const components = normalizeCatalog({
       { group: "normalize", counterpart: "static.standard_scaler" }),
     component("adaptive.only", "transform", "Online only", "online", [], { group: "normalize" }),
     component("detector:pyod_iforest", "detector", "Isolation Forest", "batch"),
-    component("detector:aberrant_x_stream", "detector", "xStream", "online"),
+    component("detector:aberrant_xstream", "detector", "xStream", "online"),
     component("policy.quantile", "policy", "Calibrated score threshold"),
   ],
 }).components;
 
 /** input → Power → scale → model, learning continuously. */
-const design = (detector = "detector:aberrant_x_stream"): GraphDocument => ({
+const design = (detector = "detector:aberrant_xstream"): GraphDocument => ({
   definition: normalizeDefinition({
     schema_version: 2,
     input_slots: [{ id: "value", label: "Value" }],

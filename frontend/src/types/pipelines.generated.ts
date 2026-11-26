@@ -78,7 +78,7 @@ export type CollectionPolicy = {
 export type ComponentField = {
   name: string;
   label: string;
-  type: "number" | "integer" | "boolean" | "string" | "enum" | "features" | "rename" | "number_pair" | "number_list" | "component" | "object" | "object_list" | "integer_adjacency";
+  type: "number" | "integer" | "boolean" | "string" | "enum" | "features" | "rename" | "number_pair" | "number_list" | "object" | "object_list";
   default?: unknown;
   required?: boolean;
   has_default?: boolean;
@@ -331,7 +331,7 @@ export type OnlinePCAParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   n_components?: number;
-  n0?: number;
+  warm_up?: number;
   tol?: number;
   forgetting_factor?: number | null;
 };
@@ -429,7 +429,7 @@ export type PipelineComponent = {
   fields?: Array<ComponentField>;
   input_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence" | null;
   output_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence";
-  family?: "conformal" | "bayesian" | null;
+  family?: "conformal" | "bayesian" | "extreme_value" | null;
   coverage?: "exchangeable" | "long_run" | "none" | null;
   reference?: string | null;
 };
@@ -954,7 +954,7 @@ export type RollingRobustScalerParameters = {
   result?: "replace" | "add";
   suffix?: string;
   window_size?: number;
-  min_samples?: number;
+  warm_up?: number;
 };
 
 export type ScopeParameters = {

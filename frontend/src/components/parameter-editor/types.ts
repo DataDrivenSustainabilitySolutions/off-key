@@ -42,13 +42,11 @@ export function hasParameterControl(fields: FieldDescriptor[], path: ParameterPa
   const field = fields.find(item => item.name === path[0]);
   if (!field) return false;
   if (path.length === 1) return true;
-  if (field.type === "component") return path[1] === "params" &&
-    hasParameterControl(field.fields ?? [], path.slice(2));
   if (field.type === "object" || field.type === "object_list") {
     const nested = field.variants ? Object.values(field.variants).flat() : field.fields ?? [];
     return hasParameterControl(nested, path.slice(field.type === "object_list" ? 2 : 1));
   }
-  return ["number_pair", "number_list", "features", "rename", "integer_adjacency"].includes(field.type);
+  return ["number_pair", "number_list", "features", "rename"].includes(field.type);
 }
 
 export function initialValue(field: FieldDescriptor): JsonValue {
@@ -59,8 +57,7 @@ export function initialValue(field: FieldDescriptor): JsonValue {
     case "integer": case "number": return 0;
     case "number_pair": return [0, 1];
     case "number_list": case "object_list": case "features": return [];
-    case "object": case "rename": case "integer_adjacency": return fieldDefaults(field.fields ?? []);
-    case "component": return { id: "", params: fieldDefaults(field.fields ?? []) };
+    case "object": case "rename": return fieldDefaults(field.fields ?? []);
     case "string": return "";
   }
 }

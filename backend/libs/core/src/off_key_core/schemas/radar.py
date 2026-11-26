@@ -246,14 +246,14 @@ class IncrementalPCAConfig(BaseModel):
 
     type: Literal["incremental_pca"] = "incremental_pca"
     n_components: int = Field(ge=1)
-    n0: int = Field(default=50, ge=2, le=1_000_000)
+    warm_up: int = Field(default=50, ge=2, le=1_000_000)
     tol: float = Field(default=1e-7, gt=0, allow_inf_nan=False)
     forgetting_factor: float | None = Field(default=None, gt=0, lt=1)
 
     @model_validator(mode="after")
     def validate_initialization(self) -> "IncrementalPCAConfig":
-        if self.n0 < self.n_components:
-            raise ValueError("n0 must be at least n_components")
+        if self.warm_up < self.n_components:
+            raise ValueError("warm_up must be at least n_components")
         return self
 
 
@@ -353,7 +353,7 @@ class AdaptiveStreamConfig(BaseModel):
         required_warmup = 0
         for step in self.preprocessing_steps:
             if isinstance(step, IncrementalPCAConfig):
-                required_warmup = max(required_warmup, step.n0)
+                required_warmup = max(required_warmup, step.warm_up)
         if self.training_window_size < required_warmup:
             raise ValueError(
                 "training_window_size must cover the configured model and "

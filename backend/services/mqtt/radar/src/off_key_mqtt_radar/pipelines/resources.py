@@ -68,7 +68,7 @@ def _adaptive_pca_allocations(
     vector_header = sys.getsizeof(np.empty(0))
     matrix_header = sys.getsizeof(np.empty((0, 0)))
     # The small fixed allowance covers replaced states, decomposition results
-    # and NumPy views in addition to the n0 independently owned row arrays.
+    # and NumPy views in addition to the warm_up independently owned row arrays.
     containers = lists + samples * vector_header + 10 * (vector_header + matrix_header)
     return numeric, containers
 
@@ -108,7 +108,7 @@ def _recursive_least_squares(_node, width: int, _outputs: int) -> tuple[int, int
 # Learned state as (numeric bytes, retained container bytes) per component.
 STATE_ESTIMATORS: dict[str, Callable[[Any, int, int], tuple[int, int]]] = {
     "adaptive.uncentered_pca": lambda node, width, outputs: _adaptive_pca_allocations(
-        node.params["n0"], width, outputs
+        node.params["warm_up"], width, outputs
     ),
     "static.pca": _dense_projection,
     "static.random_projection": _dense_projection,

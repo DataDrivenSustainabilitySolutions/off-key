@@ -70,7 +70,7 @@ from off_key_core.schemas.dojo import (
     SuiteSummary,
     SuiteView,
 )
-from sqlalchemy import Float, delete, extract, func, select, text
+from sqlalchemy import Float, delete, extract, func, select, text, update
 from sqlalchemy import cast as sql_cast
 
 from ...domain import ConflictError, ForbiddenError, NotFoundError, ValidationError
@@ -79,7 +79,7 @@ from .datasets import DojoDatasets
 from .faults import noise_sigma
 from .labels import dataset_labels, dataset_series
 from .metrics import DojoMetrics
-from .owners import made_by, require_no_evidence
+from .owners import evidence_runs, made_by
 from .runs import ACTIVE, DojoRuns, compile_design, request_cancel
 
 # Reading a study calculates the metrics of its finished runs for at most
@@ -532,7 +532,7 @@ class DojoSuites:
     async def remove_suite(
         self, suite_id: str, caller: User | Agent | None = None
     ) -> None:
-        """Delete a suite with its studies and their runs."""
+        """Delete a suite with its studies and their runs, keeping evidence runs."""
         await require_application_writes(self.session)
         row = await self._suite(suite_id)
         _require_made_by(caller, row.created_by_agent_id, "suites")
@@ -851,7 +851,10 @@ class DojoSuites:
     async def remove_study(
         self, study_id: str, caller: User | Agent | None = None
     ) -> None:
-        """Delete a study and its runs, once none of them waits or runs."""
+        """Delete a study and its runs, once none of them waits or runs.
+
+        A run a proposal or a monitor names as its test stays on its dataset.
+        """
         await require_application_writes(self.session)
         study = await self._study(study_id)
         _require_made_by(caller, study.created_by_agent_id, "studies")
@@ -896,8 +899,13 @@ class DojoSuites:
         ).all()
         if any(run.status in ACTIVE for run in runs):
             raise ConflictError("Cancel the study before deleting it")
-        run_ids = [run.id for run in runs]
-        await require_no_evidence(self.session, run_ids)
+        # A proposal's or a monitor's test outlives its study, on its dataset.
+        kept = await evidence_runs(self.session, [run.id for run in runs])
+        run_ids = [run.id for run in runs if run.id not in kept]
+        if kept:
+            await self.session.execute(
+                update(DojoRun).where(DojoRun.id.in_(kept)).values(study_id=None)
+            )
         # Results carry no foreign key (see DojoRunResult).
         await self.session.execute(
             delete(DojoRunResult).where(DojoRunResult.run_id.in_(run_ids))

@@ -113,27 +113,28 @@ omits detector inputs whose saved provenance identifies them as unchanged raw
 readings. Derived features, such as phase deviations, retain their separate scale.
 Unknown associations stay separate until the pipeline's reading bindings load.
 
-For forecasters, **Forecast and deviations** draws the dashed forecast and its
-recorded calibrated interval as a band on the original reading, at the exact
-input timestamp the forecast evaluated. A transformed target stays on its feature
-scale. The newly issued forecast continues from the latest observed value into
-the future. Amber rings mark observed values outside the interval, and the key
-above the chart counts them: "Outside 12 of 216 · 5.6 %". Outside the interval
-is not an anomaly by itself, so the rings are never red. Vertical red lines
-still mark the service's alarm decision, which depends on the pipeline's
-detection rule. Without a calibration step there is no interval: the chart and
-its key show the forecast alone.
+For forecasters, **Forecast** draws the dashed forecast and its recorded
+calibrated interval as a band on the original reading, at the exact input
+timestamp the forecast evaluated. A transformed target stays on its feature
+scale. The newly issued forecast continues from the latest observed value, right
+of the line that marks it, on a shaded stretch that is not yet observed.
 
-**Residuals** adds a panel with the signed residual (observed minus
-forecast) and the same interval shifted around zero, with the same rings. It is
-off at first and always uses evaluated observations, never future values.
+Three figures sit above the chart: the latest **Observed** value, the **Next
+forecast**, and **Outside interval**, how many checked values left the interval
+("12 of 216 · 5.6 %"). Amber rings mark those values. Outside the interval is
+not an anomaly by itself, so the rings are never red. Vertical red lines still
+mark the service's alarm decision, which depends on the pipeline's detection
+rule. Without a calibration step there is no interval, so there is no band, ring
+or count.
 
-**Forecast lead** selects a recorded lead in both charts together. Leads count
-updates, not seconds. **Latest results** compares the latest available
-evaluation of each lead, including its timestamp, residual, interval and result;
-select a row to inspect that lead. Different detector/target/lead combinations
-remain separate. **Scores** restores the score or sequential-evidence
-pane when needed. It is hidden initially for a forecast view.
+**Residuals** adds a panel with the signed residual (observed minus forecast)
+and the same interval shifted around zero, with the same rings. It is off at
+first and always uses evaluated observations, never future values.
+
+The lead selector shows one recorded lead at a time. Leads count updates, not
+seconds. Different detector/target/lead combinations remain separate.
+**Scores** adds the score or sequential-evidence pane, with the latest result
+and the alarm key below the chart.
 
 The interval is the pair of lower and upper bounds stored with that forecast,
 not the shaded region above a score threshold. Its label names NexCP or ACI when

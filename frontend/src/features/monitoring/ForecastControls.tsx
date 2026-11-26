@@ -1,7 +1,9 @@
-import { forecastLeadKey, formatForecastValue, intervalStatus, latestForecast, leadLabel, type ForecastEvidenceSeries } from "@/features/charts/forecast-evidence";
-import { formatChartTime } from "@/features/charts/telemetry-chart";
+import { forecastLeadKey, latestForecast, leadLabel, type ForecastEvidenceSeries } from "@/features/charts/forecast-evidence";
 
 const percent = (part: number, whole: number) => `${Number((part / whole * 100).toPrecision(2))} %`;
+const figure = (value: number) => String(Number(value.toPrecision(6)));
+const hasInterval = (forecasts: readonly ForecastEvidenceSeries[]) =>
+  forecasts.some(forecast => forecast.data.some(point => point.value[2] !== null && point.value[3] !== null));
 
 /** A swatch for each mark the chart draws; colours follow each reading, so they stay neutral here. */
 function Swatch({ kind, color }: { kind: "observed" | "forecast" | "interval" | "outside"; color?: string }) {
@@ -13,46 +15,43 @@ function Swatch({ kind, color }: { kind: "observed" | "forecast" | "interval" | 
   </svg>;
 }
 
-export function ForecastControls({ forecasts, lead, onLead, showScores, onScores, intervalLabel, timeZone,
-  coverage, outsideColor, showResiduals, onResiduals }: {
+/** The lead on show and the two extra panes, beside the chart's zoom controls. */
+export function ForecastOptions({ forecasts, lead, onLead, showResiduals, onResiduals, showScores, onScores }: {
   forecasts: ForecastEvidenceSeries[]; lead: string; onLead: (lead: string) => void;
-  showScores: boolean; onScores: (show: boolean) => void; intervalLabel: string; timeZone: string;
-  coverage: { checked: number; outside: number }; outsideColor?: string;
-  showResiduals: boolean; onResiduals: (show: boolean) => void;
+  showResiduals: boolean; onResiduals: (show: boolean) => void; showScores: boolean; onScores: (show: boolean) => void;
 }) {
   const leads = [...new Set(forecasts.map(forecast => forecast.lead))];
-  const shown = forecasts.filter(forecast => forecastLeadKey(forecast.lead) === lead);
-  const hasInterval = shown.some(forecast => forecast.data.some(point => point.value[2] !== null && point.value[3] !== null));
-  return <div className="mn-forecast-controls">
-    <div className="mn-forecast-toolbar">
-      {leads.length > 1 ? <select aria-label="Forecast lead" value={lead} onChange={event => onLead(event.target.value)}>
-        {leads.map(value => <option key={forecastLeadKey(value)} value={forecastLeadKey(value)}>{leadLabel(value)}</option>)}
-      </select> : <strong>{leadLabel(leads[0] ?? null)}</strong>}
-      <ul className="mn-forecast-legend" aria-label="Chart key">
-        <li><Swatch kind="observed" />Observed</li>
-        <li><Swatch kind="forecast" />Forecast</li>
-        {hasInterval && <li><Swatch kind="interval" />{intervalLabel}</li>}
-        {hasInterval && <li role="status" title="Outside the interval is not an anomaly by itself.">
-          <Swatch kind="outside" color={outsideColor} />Outside{coverage.checked > 0
-            && <strong>{coverage.outside} of {coverage.checked} · {percent(coverage.outside, coverage.checked)}</strong>}</li>}
-      </ul>
-      <label><input type="checkbox" checked={showResiduals} onChange={event => onResiduals(event.target.checked)} />Residuals</label>
-      <label><input type="checkbox" checked={showScores} onChange={event => onScores(event.target.checked)} />Scores</label>
-    </div>
-    <details className="mn-forecast-summary"><summary>Latest results</summary>
-      <div className="mn-forecast-table"><table><caption>Latest evaluated forecast for each recorded lead</caption>
-        <thead><tr><th scope="col">Forecast</th><th scope="col">Evaluated at</th><th scope="col">Residual</th><th scope="col">{intervalLabel}</th><th scope="col">Result</th></tr></thead>
-        <tbody>{forecasts.map(forecast => {
-          const point = latestForecast(forecast);
-          return <tr key={forecast.id} aria-current={forecastLeadKey(forecast.lead) === lead ? "true" : undefined}>
-            <th scope="row"><button type="button" onClick={() => onLead(forecastLeadKey(forecast.lead))}>{forecast.name}</button></th>
-            <td>{point ? formatChartTime(point.time, timeZone) : "No current forecast"}</td>
-            <td>{point?.observed == null ? "Unavailable" : formatForecastValue(point.observed - point.expected)}</td>
-            <td>{point?.lower == null || point.upper === null ? "Unavailable" : `${formatForecastValue(point.lower)} to ${formatForecastValue(point.upper)}`}</td>
-            <td>{point ? intervalStatus(point) : "Unavailable"}</td>
-          </tr>;
-        })}</tbody>
-      </table></div>
-    </details>
-  </div>;
+  return <>
+    {leads.length > 1 && <select aria-label="Forecast lead" value={lead} onChange={event => onLead(event.target.value)}>
+      {leads.map(value => <option key={forecastLeadKey(value)} value={forecastLeadKey(value)}>{leadLabel(value)}</option>)}
+    </select>}
+    <button type="button" className="ex-history-view" aria-pressed={showResiduals} onClick={() => onResiduals(!showResiduals)}>Residuals</button>
+    <button type="button" className="ex-history-view" aria-pressed={showScores} onClick={() => onScores(!showScores)}>Scores</button>
+  </>;
+}
+
+/** Where the reading is, where the forecast goes next, and how often values left the interval. */
+export function ForecastFigures({ forecasts, coverage, unit, outsideColor }: {
+  forecasts: ForecastEvidenceSeries[]; coverage: { checked: number; outside: number }; unit?: string; outsideColor?: string;
+}) {
+  const only = forecasts.length === 1 ? forecasts[0] : undefined;
+  const observed = only && latestForecast(only)?.observed;
+  const next = only?.future?.[0];
+  const checked = hasInterval(forecasts) && coverage.checked > 0;
+  if (observed == null && !next && !checked) return null;
+  return <dl className="mn-forecast-figures">
+    {observed != null && <div><dt>Observed</dt><dd>{figure(observed)}{unit && <small>{unit}</small>}</dd></div>}
+    {next && <div><dt>Next forecast</dt><dd>{figure(next.expected)}{unit && <small>{unit}</small>}</dd></div>}
+    {checked && <div role="status" title="Outside the interval is not an anomaly by itself.">
+      <dt><Swatch kind="outside" color={outsideColor} />Outside interval</dt>
+      <dd>{coverage.outside}<small>of {coverage.checked} · {percent(coverage.outside, coverage.checked)}</small></dd></div>}
+  </dl>;
+}
+
+export function ForecastKey({ forecasts, intervalLabel }: { forecasts: ForecastEvidenceSeries[]; intervalLabel: string }) {
+  return <ul className="mn-forecast-legend" aria-label="Chart key">
+    <li><Swatch kind="observed" />Observed</li>
+    <li><Swatch kind="forecast" />Forecast</li>
+    {hasInterval(forecasts) && <li><Swatch kind="interval" />{intervalLabel}</li>}
+  </ul>;
 }

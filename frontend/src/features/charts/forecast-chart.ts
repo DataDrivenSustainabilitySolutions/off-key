@@ -28,7 +28,7 @@ function outsideMarks(points: Array<{ value: [number, number | null]; point?: Fo
 }
 
 export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane: number, residualPane: number,
-  color: string, outsideColor: string, fill: string): LineSeriesOption[] {
+  color: string, outsideColor: string, fill: string, ink = color): LineSeriesOption[] {
   const common: LineSeriesOption = { type: "line", showSymbol: forecast.data.length === 1, symbolSize: 5,
     connectNulls: false, encode: { x: 0, y: 1 }, emphasis: { disabled: true }, animation: false };
   const residuals = forecast.data.map(({ value: [time], forecastObservation: point }) => ({
@@ -57,7 +57,7 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
   ];
   return [
     ...history,
-    ...buildFutureChartSeries(forecast, pane, color),
+    ...buildFutureChartSeries(forecast, pane, color, ink),
     ...(residualPane >= 0 ? residualSeries : []),
   ];
 }

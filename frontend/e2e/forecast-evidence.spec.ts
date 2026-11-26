@@ -70,11 +70,13 @@ for (const theme of ["light", "dark"] as const) {
     page.on("pageerror", error => errors.push(error.message));
     await page.setViewportSize({ width: 1440, height: 1200 });
     const history = await openForecastMonitor(page, theme);
-    await expect(history.getByRole("heading", { name: "Forecast and deviations" })).toBeVisible();
-    const key = history.getByRole("list", { name: "Chart key" });
-    await expect(key).toContainText("NexCP interval");
-    await expect(key.getByRole("status")).toHaveText("Outside12 of 216 · 5.6 %");
-    await expect(key.getByRole("status")).toHaveAttribute("title", "Outside the interval is not an anomaly by itself.");
+    await expect(history.getByRole("heading", { name: "Forecast", exact: true })).toBeVisible();
+    await expect(history.getByRole("list", { name: "Chart key" }).getByRole("listitem"))
+      .toHaveText(["Observed", "Forecast", "NexCP interval"]);
+    const outside = history.getByRole("status").filter({ hasText: "Outside interval" });
+    await expect(outside).toHaveText("Outside interval12of 216 · 5.6 %");
+    await expect(outside).toHaveAttribute("title", "Outside the interval is not an anomaly by itself.");
+    await expect(history.getByRole("term")).toHaveText(["Observed", "Next forecast", "Outside interval"]);
     await expect(history.getByText(/Service alarm|Red line/)).toHaveCount(0);
     const chart = history.getByRole("group", { name: "Chart navigation", exact: true });
     await expect(chart.locator("canvas")).toBeVisible();
@@ -87,36 +89,35 @@ for (const theme of ["light", "dark"] as const) {
     await history.screenshot({ path: testInfo.outputPath(`forecast-zoomed-${theme}.png`) });
     await selector.selectOption("12");
     await expect(selector).toHaveValue("12");
+    await expect(outside).toHaveText("Outside interval5of 216 · 2.3 %");
     await history.getByRole("button", { name: "Return to live", exact: true }).click();
+    await history.screenshot({ path: testInfo.outputPath(`forecast-lead-12-${theme}.png`) });
     const bounds = await chart.boundingBox();
     await page.mouse.move(bounds!.x + bounds!.width - 21, bounds!.y + 110);
     await chart.screenshot({ path: testInfo.outputPath(`forecast-tooltip-${theme}.png`) });
-    await history.getByRole("checkbox", { name: "Residuals" }).check();
+    const residuals = history.getByRole("button", { name: "Residuals", exact: true });
+    await residuals.click();
+    await expect(residuals).toHaveAttribute("aria-pressed", "true");
     await expect(chart).toHaveCSS("height", "416px");
     await history.screenshot({ path: testInfo.outputPath(`forecast-residuals-${theme}.png`) });
-    await history.getByRole("checkbox", { name: "Scores" }).check();
+    const scores = history.getByRole("button", { name: "Scores", exact: true });
+    await scores.click();
     await expect(chart).toHaveCSS("height", "564px");
-    await history.getByRole("checkbox", { name: "Scores" }).uncheck();
-    await history.getByText("Latest results", { exact: true }).click();
-    await expect(history.getByRole("table")).toBeVisible();
-    await history.getByRole("button", { name: "Frequency (Hz) · 1 update ahead", exact: true }).click();
-    await expect(selector).toHaveValue("1");
-    await history.getByText("Latest results", { exact: true }).click();
+    await scores.click();
+    await residuals.click();
+    await selector.selectOption("1");
     await page.setViewportSize({ width: 390, height: 844 });
-    await history.getByRole("checkbox", { name: "Residuals" }).uncheck();
-    await history.getByRole("list", { name: "Chart key" }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`forecast-${theme}-mobile.png`) });
-    await chart.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath(`forecast-${theme}-mobile-chart.png`) });
+    await history.getByRole("heading", { name: "Forecast", exact: true }).scrollIntoViewIfNeeded();
+    await history.screenshot({ path: testInfo.outputPath(`forecast-${theme}-mobile.png`) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
 }
 
-test("a forecast without an interval has no band or rings in its key", async ({ page }, testInfo) => {
+test("a forecast without an interval has no band, rings or count", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1200 });
   const history = await openForecastMonitor(page, "light", false);
-  const key = history.getByRole("list", { name: "Chart key" });
-  await expect(key.getByRole("listitem")).toHaveText(["Observed", "Forecast"]);
+  await expect(history.getByRole("list", { name: "Chart key" }).getByRole("listitem")).toHaveText(["Observed", "Forecast"]);
+  await expect(history.getByRole("term")).toHaveText(["Observed", "Next forecast"]);
   await history.screenshot({ path: testInfo.outputPath("forecast-no-interval-light.png") });
 });

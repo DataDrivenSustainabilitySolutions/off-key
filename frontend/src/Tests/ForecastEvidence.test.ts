@@ -42,6 +42,8 @@ describe("forecast evidence presentation", () => {
       accessibleDescription: "Forecast", viewport: { mode: "live" }, layout: "monitoring" });
     expect(option.grid).toHaveLength(2);
     expect(option.series).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "reading:reading", areaStyle: expect.objectContaining({ opacity: 0 }),
+        markPoint: expect.objectContaining({ data: [expect.objectContaining({ name: "Latest value", coord: [start + 925, 50.2] })] }) }),
       expect.objectContaining({ id: `forecast:${model.forecasts![0]!.id}`, xAxisIndex: 0, yAxisIndex: 0 }),
       expect.objectContaining({ id: `residual:${model.forecasts![0]!.id}`, xAxisIndex: 1, yAxisIndex: 1 }),
     ]));
@@ -139,6 +141,8 @@ describe("forecast evidence presentation", () => {
     expect(future.data).toHaveLength(4); // Exact observed origin plus three real predictions.
     expect((future.data as Array<{ value: number[] }>)[0]!.value).toEqual([start + 925, 50.2]);
     expect(future.markLine?.data).toHaveLength(2); // Origin boundary and the calibrated lead's interval.
+    // Everything after the latest observation sits on a wash: not yet observed.
+    expect(future.markArea?.data).toEqual([[{ xAxis: start + 925 }, { xAxis: start + 3925 }]]);
     expect(chart.find(line => line.id === `future-bounds:${series.id}:upper`)?.data)
       .toEqual([[start + 1925, null], [start + 2925, null], [start + 3925, 50.5]]);
   });

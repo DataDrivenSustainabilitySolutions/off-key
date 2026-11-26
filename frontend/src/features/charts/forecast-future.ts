@@ -1,14 +1,6 @@
 import type { MonitoringIssuedForecast } from "@/types/monitoring";
 import { epochMilliseconds } from "@/lib/timestamps";
 
-export type ForecastView = "overlay" | "ahead" | "data";
-const FORECAST_VIEWS: readonly ForecastView[] = ["overlay", "ahead", "data"];
-export const FORECAST_VIEW_LABELS: Record<ForecastView, string> = {
-  overlay: "Overlay", ahead: "Forecast ahead", data: "Data only",
-};
-export const nextForecastView = (view: ForecastView): ForecastView =>
-  FORECAST_VIEWS[(FORECAST_VIEWS.indexOf(view) + 1) % FORECAST_VIEWS.length]!;
-
 export interface FutureForecastPoint {
   time: number;
   originTime: number;

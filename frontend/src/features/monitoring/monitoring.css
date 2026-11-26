@@ -91,11 +91,16 @@
 .mn-history-empty.is-error strong { color: hsl(var(--destructive)); }
 .mn-history-problem { margin: 8px 0 0; font-size: var(--text-caption); color: hsl(var(--destructive)); }
 .mn-forecast-controls { margin: 16px 0 24px; font-size: var(--text-caption); }
-.mn-forecast-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.mn-forecast-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
 .mn-forecast-toolbar label { display: flex; align-items: center; gap: 8px; min-height: 36px; }
 .mn-forecast-toolbar select { background: var(--ex-panel); color: var(--ex-ink); border: 1px solid var(--ex-line); border-radius: var(--radius-control); padding: 6px 10px; }
 .mn-forecast-toolbar input { accent-color: var(--ex-accent); }
-.mn-forecast-summary { margin-top: 12px; }
+.mn-forecast-legend { display: flex; flex: 1; flex-wrap: wrap; gap: 6px 18px; list-style: none; padding: 0; margin: 0; }
+.mn-forecast-legend li { display: flex; align-items: center; gap: 7px; }
+.mn-forecast-legend svg { flex-shrink: 0; color: var(--ex-muted); }
+.mn-forecast-legend strong { font-weight: 500; white-space: nowrap; }
+@media (max-width: 760px) { .mn-forecast-legend { flex-basis: 100%; order: 1; } }
+.mn-forecast-summary { margin-top: 4px; color: var(--ex-muted); }
 .mn-forecast-summary summary { cursor: pointer; padding: 6px 0; }
 .mn-forecast-table { overflow-x: auto; margin-top: 8px; }
 .mn-forecast-table table { width: 100%; border-collapse: collapse; text-align: left; }

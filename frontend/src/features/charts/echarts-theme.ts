@@ -69,6 +69,7 @@ export const resolveChartThemeColors = (
     alarmFill: resolvedTheme === "dark"
       ? "rgba(248, 113, 113, 0.14)"
       : "rgba(185, 28, 28, 0.10)",
+    outsideInterval: resolvedTheme === "dark" ? "#fbbf24" : "#b45309",
   };
 };
 

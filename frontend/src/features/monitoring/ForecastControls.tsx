@@ -1,7 +1,6 @@
-import { forecastLeadKey, latestForecast, leadLabel, type ForecastEvidenceSeries } from "@/features/charts/forecast-evidence";
+import { forecastLeadKey, leadLabel, type ForecastEvidenceSeries } from "@/features/charts/forecast-evidence";
 
 const percent = (part: number, whole: number) => `${Number((part / whole * 100).toPrecision(2))} %`;
-const figure = (value: number) => String(Number(value.toPrecision(6)));
 const hasInterval = (forecasts: readonly ForecastEvidenceSeries[]) =>
   forecasts.some(forecast => forecast.data.some(point => point.value[2] !== null && point.value[3] !== null));
 
@@ -29,22 +28,15 @@ export function ForecastOptions({ forecasts, lead, onLead, showResiduals, onResi
   </>;
 }
 
-/** Where the reading is, where the forecast goes next, and how often values left the interval. */
-export function ForecastFigures({ forecasts, coverage, unit }: {
-  forecasts: ForecastEvidenceSeries[]; coverage: { checked: number; outside: number }; unit?: string;
+/** How often the interval held, folded away: the share at rest, the count behind it on demand. */
+export function ForecastCoverage({ forecasts, coverage }: {
+  forecasts: ForecastEvidenceSeries[]; coverage: { checked: number; outside: number };
 }) {
-  const only = forecasts.length === 1 ? forecasts[0] : undefined;
-  const observed = only && latestForecast(only)?.observed;
-  const next = only?.future?.[0];
-  const checked = hasInterval(forecasts) && coverage.checked > 0;
-  if (observed == null && !next && !checked) return null;
-  return <dl className="mn-forecast-figures">
-    {observed != null && <div><dt>Observed</dt><dd>{figure(observed)}{unit && <small>{unit}</small>}</dd></div>}
-    {next && <div><dt>Next forecast</dt><dd>{figure(next.expected)}{unit && <small>{unit}</small>}</dd></div>}
-    {checked && <div role="status" title="Outside the interval is not an anomaly by itself.">
-      <dt>Outside interval</dt>
-      <dd>{coverage.outside}<small>of {coverage.checked} · {percent(coverage.outside, coverage.checked)}</small></dd></div>}
-  </dl>;
+  if (!hasInterval(forecasts) || !coverage.checked) return null;
+  return <details className="mn-forecast-coverage">
+    <summary>Coverage {percent(coverage.checked - coverage.outside, coverage.checked)}</summary>
+    <p>{coverage.outside} of {coverage.checked} checked values were outside the interval. A value outside the interval is not an anomaly by itself.</p>
+  </details>;
 }
 
 export function ForecastKey({ forecasts, intervalLabel }: { forecasts: ForecastEvidenceSeries[]; intervalLabel: string }) {

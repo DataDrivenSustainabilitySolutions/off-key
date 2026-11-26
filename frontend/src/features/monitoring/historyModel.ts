@@ -5,6 +5,7 @@ import type { MonitoringChartModel } from "@/features/charts/telemetry-chart";
 import { normalizeTelemetry } from "@/features/charts/telemetry-data";
 import { buildDetectorInputSeries } from "@/features/charts/detector-inputs";
 import { buildForecastEvidence, latestForecast, leadLabel } from "@/features/charts/forecast-evidence";
+import { alarmSpans } from "@/features/charts/anomaly-strip";
 import { futureForecastPoints } from "@/features/charts/forecast-future";
 import type { HistoryPresentation } from "./historyPresentation";
 import { buildSelectedDetectorSeries, collectMonitoringChartDetectors, type SelectedDetectorIds } from "@/features/charts/telemetry-detectors";
@@ -44,20 +45,11 @@ export function buildServiceHistoryModel({
   const readings = inputs.map(input => {
     const { stream } = input;
     const data = normalizeTelemetry(histories.get(stream.id) ?? []);
-    // One parse per evidence row yields both the latest scored time and the alarm episodes:
-    // results in a row that all alarm are one episode, ended by the next quiet result.
     const scored = rows.flatMap(row => {
       const time = epochMilliseconds(row.input_timestamps[stream.id] ?? "");
       return Number.isFinite(time) ? [{ time, alarm: row.alarm }] : [];
     }).sort((left, right) => left.time - right.time);
     const lastScore = scored[scored.length - 1]?.time;
-    const alarmSpans: Array<[number, number]> = [];
-    let open: [number, number] | undefined;
-    for (const { time, alarm } of scored) {
-      if (!alarm) open = undefined;
-      else if (open) open[1] = time;
-      else alarmSpans.push(open = [time, time]);
-    }
     const index = allInputs.findIndex(item => item.stream.id === stream.id);
     const duplicate = inputs.some(other => other.stream.id !== stream.id && other.stream.label === stream.label);
     return { id: `reading:${stream.id}`, inputKey: stream.id,
@@ -65,7 +57,7 @@ export function buildServiceHistoryModel({
       unit: stream.unit, color: palette[index % palette.length]!, data,
       pendingTelemetry: !operational || lastScore === undefined ? [] : data.filter(([time]) => time > lastScore),
       anomalyMarkers: [],
-      alarmSpans,
+      alarmSpans: alarmSpans(scored),
     };
   });
   // Detector times and normalized telemetry are sorted, so their ends bound the extent

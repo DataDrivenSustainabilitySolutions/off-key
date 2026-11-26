@@ -90,15 +90,13 @@
 .mn-history-empty strong { color: var(--ex-ink); font-size: var(--text-body); font-weight: 500; }
 .mn-history-empty.is-error strong { color: hsl(var(--destructive)); }
 .mn-history-problem { margin: 8px 0 0; font-size: var(--text-caption); color: hsl(var(--destructive)); }
-.mn-forecast-figures { display: flex; flex-wrap: wrap; gap: 14px 44px; margin: 18px 0 20px; }
 .mn-history .ex-history-tools select { font-size: var(--text-caption); min-height: 32px; padding: 0 8px; }
-.mn-forecast-figures dt { display: flex; align-items: center; gap: 6px; color: var(--ex-muted); font-size: var(--text-caption); }
-.mn-forecast-figures dd { margin: 4px 0 0; font-size: 26px; line-height: 1.15; font-weight: 500; letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--ex-ink); }
-.mn-forecast-figures small { margin-left: 6px; font-size: var(--text-caption); font-weight: 400; letter-spacing: 0; color: var(--ex-muted); }
 .mn-forecast-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; padding: 0; margin: 4px 0 0; color: var(--ex-muted); font-size: var(--text-caption); }
 .mn-forecast-legend li { display: flex; align-items: center; gap: 7px; }
 .mn-forecast-legend svg { flex-shrink: 0; }
-@media (max-width: 760px) { .mn-forecast-figures { gap: 12px 28px; } .mn-forecast-figures dd { font-size: 22px; } }
+.mn-forecast-coverage { margin: 10px 0 0; font-size: var(--text-caption); color: var(--ex-muted); }
+.mn-forecast-coverage summary { width: fit-content; cursor: pointer; font-variant-numeric: tabular-nums; }
+.mn-forecast-coverage p { margin: 6px 0 0; max-width: 60ch; }
 .ex-shell .mn-target-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; background: hsl(var(--card)); border: 1px solid hsl(var(--input)); border-radius: var(--radius-control); width: 100%; min-width: 0; text-align: left; }
 .mn-target-trigger > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mn-target-trigger svg { flex-shrink: 0; }

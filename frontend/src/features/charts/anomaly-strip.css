@@ -1,0 +1,14 @@
+.an-strip { min-width: 0; }
+.an-strip svg { display: block; width: 100%; overflow: visible; padding-block: 14px; margin-block: -10px -8px; box-sizing: content-box; touch-action: none; }
+.an-strip svg.an-strip--aim { cursor: pointer; }
+.an-strip__track { fill: var(--ex-line, hsl(var(--border))); opacity: .7; }
+
+/* The view of a reading: its raw data, or one of the monitors that watch it. */
+.an-views { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--ex-line); border-radius: var(--radius-control); background: hsl(var(--card)); }
+.an-views button { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 9px; border: 0; border-radius: var(--radius-control); background: none; color: var(--ex-muted); font: inherit; font-size: var(--text-caption); cursor: pointer; white-space: nowrap; }
+.an-views button[aria-pressed="true"], .an-views button.is-aimed { color: var(--ex-ink); background: var(--ex-active); }
+.an-views button[aria-pressed="true"] { font-weight: 550; }
+.an-views i, .an-aimed i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.an-views-select { min-height: 30px; max-width: 100%; padding: 0 8px; border: 1px solid var(--ex-line); border-radius: var(--radius-control); background: hsl(var(--card)); color: var(--ex-ink); font: inherit; font-size: var(--text-caption); }
+.an-aimed { display: flex; align-items: center; gap: 7px; height: 18px; margin: 6px 0 0; line-height: 18px; font-size: var(--text-caption); color: var(--ex-ink); }
+@media (pointer: coarse) { .an-views button { min-height: 44px; } .an-views-select { min-height: 44px; } }

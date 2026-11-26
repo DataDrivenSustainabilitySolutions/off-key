@@ -119,14 +119,22 @@ timestamp the forecast evaluated. A transformed target stays on its feature
 scale. The newly issued forecast continues from the latest observed value, right
 of the line that marks it, on a shaded stretch that is not yet observed.
 
-Three figures sit above the chart: the latest **Observed** value, the **Next
-forecast**, and **Outside interval**, how many checked values left the interval
-("12 of 216 · 5.6 %"). An amber fill between the interval's edge and those
-values shows how far they went. Outside the interval is not an anomaly by
-itself, so the fill is never red. Vertical red lines still
-mark the service's alarm decision, which depends on the pipeline's detection
-rule. Without a calibration step there is no interval, so there is no band, fill
-or count.
+No figures sit on the chart at rest; values appear under the pointer. A dot marks
+each observed value outside the interval. That alone is not an anomaly: an
+interval that covers 90 % of values leaves one in ten outside by design.
+**Coverage**, folded under the chart, gives the share of checked values the
+interval held and opens to the count behind it. Vertical red lines still mark
+the service's alarm decision, which depends on the pipeline's detection rule.
+Without a calibration step there is no interval, so there is no band, dot or
+coverage.
+
+Under the time axis, the anomaly strip shows when the monitor raised an anomaly
+across the whole visible history. On a reading's page under Sources the chart
+switches between **Raw data** and each monitor that watches the reading. Raw
+data puts every monitor's anomalies on one strip, each in its monitor's colour;
+where monitors agree the strip is striped. The pointer works as a lens that
+spreads a crowded stretch apart, and pressing a colour opens that monitor's
+view.
 
 **Residuals** adds a panel with the signed residual (observed minus forecast)
 and the same interval shifted around zero, with the same fill. It is off at

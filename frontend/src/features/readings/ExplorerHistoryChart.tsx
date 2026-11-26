@@ -1,6 +1,6 @@
 import { epochMilliseconds, isoTimestamp } from "@/lib/timestamps";
 import { useNow } from "@/hooks/use-now";
-import { useCallback, useMemo, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import { Minus, Plus, Radio, RotateCcw } from "lucide-react";
 import { EChart } from "@/features/charts/EChart";
 import { TelemetryChartSummary } from "@/features/charts/TelemetryChartSummary";
@@ -28,6 +28,11 @@ import { useHistoryWidth } from "@/features/charts/use-history-width";
 import { combineHistory, DEFAULT_HISTORY_PREFERENCE, historyInterval, intervalLabel, presentHistory } from "@/features/charts/history-presentation";
 import { summarizeDetection } from "@/features/charts/detection-summary";
 import type { HistoryPreference } from "@/types/telemetry-history";
+import { AnomalyStrip } from "@/features/charts/AnomalyStrip";
+import { alarmSpans } from "@/features/charts/anomaly-strip";
+import { MonitorViews, RAW_VIEW } from "@/features/charts/MonitorViews";
+import { monitorColors } from "@/features/charts/monitor-colors";
+import { CHART_INSETS } from "@/features/charts/telemetry-chart";
 
 type Inspection = { startMs: number; endMs: number; windowStartMs: number };
 type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache };
@@ -87,10 +92,33 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const partial = meanShown || Boolean(visibleHistory?.column_ms);
   // Evidence and alarms name the catalogue reading the chart draws.
   const readingId = stream.id;
-  // The services already watch this reading; the first running one owns the chart.
-  const service = useMemo(() => monitoring.services.find((item) => item.active), [monitoring.services]);
-  const evidence = useMemo(() => monitoring.evidence.filter((item) => item.reading_ids.includes(readingId)
-    && (!service || item.monitor_id === service.id)), [monitoring.evidence, service, readingId]);
+  // The chart shows the reading's raw data or one of its monitors. Until one is chosen, the first running monitor.
+  const [chosenView, setView] = useNavigationDraft<string | undefined>(viewKey && `${viewKey}:view`, undefined);
+  const service = useMemo(() => chosenView === RAW_VIEW ? undefined
+    : monitoring.services.find(item => item.id === chosenView) ?? monitoring.services.find(item => item.active),
+  [monitoring.services, chosenView]);
+  const [aimed, setAimed] = useState<string>();
+  const [gutter, setGutter] = useState<number>(CHART_INSETS.compact.left);
+  const monitors = useMemo(() => {
+    const colors = monitorColors(monitoring.services.map(item => item.id), resolvedTheme === "dark");
+    return monitoring.services.map(item => ({ id: item.id, name: item.display_name || item.id, color: colors.get(item.id)! }));
+  }, [monitoring.services, resolvedTheme]);
+  // Raw data shows the reading alone; a monitor's view adds what that monitor recorded.
+  const evidence = useMemo(() => !service && monitors.length ? [] : monitoring.evidence.filter((item) => item.reading_ids.includes(readingId)
+    && (!service || item.monitor_id === service.id)), [monitoring.evidence, service, monitors.length, readingId]);
+  // Raw data carries every monitor's anomalies on the strip; a monitor's view only its own.
+  const stripRows = useMemo(() => {
+    const results = new Map<string, Array<{ time: number; alarm: boolean }>>();
+    for (const row of monitoring.evidence) {
+      const time = getEvidenceTimeForSensor(row, readingId);
+      if (time === undefined) continue;
+      const own = results.get(row.monitor_id);
+      if (own) own.push({ time, alarm: row.alarm });
+      else results.set(row.monitor_id, [{ time, alarm: row.alarm }]);
+    }
+    return monitors.filter(monitor => !service || monitor.id === service.id)
+      .map(monitor => ({ ...monitor, spans: alarmSpans(results.get(monitor.id) ?? []) }));
+  }, [monitoring.evidence, readingId, monitors, service]);
   const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, readingId),
     [service?.id, monitoring.anomalies, evidence, readingId]);
   // Means and thinned readings stand for samples that are not loaded, so a detector result
@@ -186,6 +214,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     <div className="ex-preview-section-heading">
       <h3>{title}</h3>
       <div className="ex-history-tools" role="group" aria-label="Chart controls">
+        <MonitorViews monitors={monitors} value={service?.id ?? RAW_VIEW} onChange={setView} aimed={aimed} />
         {numeric && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={visibleHistory?.interval_ms} />}
         <button type="button" aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
@@ -209,7 +238,11 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     {hasValues ? <div className="ex-history-navigation" role="group" aria-label="Chart navigation" tabIndex={0}
       onKeyDown={navigate}>
       <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description}
-        onViewportChange={inspect} className={`ex-preview-chart ex-preview-chart--${paneCount}`} />
+        onViewportChange={inspect} onGutter={setGutter} className={`ex-preview-chart ex-preview-chart--${paneCount}`} />
+      {monitors.length > 0 && <AnomalyStrip rows={stripRows} domain={inspection ? [inspection.startMs, inspection.endMs] : domain}
+        inset={{ ...CHART_INSETS.compact, left: gutter }} onPick={service ? undefined : setView} onAim={setAimed} />}
+      {monitors.length > 0 && <p className="an-aimed" aria-hidden="true">{monitors.filter(monitor => monitor.id === aimed)
+        .map(monitor => <Fragment key={monitor.id}><i style={{ background: monitor.color }} />{monitor.name}</Fragment>)}</p>}
     </div> : <div className="ex-preview-chart-empty" aria-busy={monitoring.loading || stored.loading || undefined}><Radio size={24} strokeWidth={1.3} /><strong>{monitoring.loading || stored.loading ? "Loading history…"
       : history.length ? "No values in selected range" : binding?.policy.mode !== undefined && binding.policy.mode !== "off" ? "Waiting for recorded values" : "Waiting for live values"}</strong></div>}
     {model.secondarySeries.length > 0 && <TelemetryChartSummary model={model} timeZone={timeZone} showTelemetry={false} />}

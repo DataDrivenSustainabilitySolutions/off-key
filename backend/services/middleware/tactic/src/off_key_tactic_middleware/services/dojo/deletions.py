@@ -11,7 +11,6 @@ from ...domain import DomainError
 from .datasets import DojoDatasets
 from .suites import DojoSuites
 
-
 Kind = Literal["suite", "study", "dataset"]
 
 

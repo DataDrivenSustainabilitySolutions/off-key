@@ -5,6 +5,9 @@ release, so each one is a literal here. They last changed when last-known-value
 alignment replaced the strict barrier, which changes every monitor's input.
 """
 
+import json
+from importlib import metadata
+
 from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
@@ -82,3 +85,31 @@ def test_checkpoint_fingerprints_preserve_static_and_upgrade_adaptive():
         "adaptive": "b191f929f67ad9a1cdf9bce64f9fe987e8326275cfe02e07ebd58d7c3e254865",
         "pipeline": "2836dbeed6e86737c1b6a205d39947f3448a004d8ad3d1cb25a66cf737a7b909",
     }
+
+
+def test_a_new_commit_of_a_git_installed_library_invalidates_checkpoints(monkeypatch):
+    installed = metadata.distribution
+
+    def pinned(commit):
+        class Pinned:
+            version = installed("aberrant").version
+
+            def read_text(self, name):
+                return (
+                    json.dumps(
+                        {
+                            "url": "https://example.invalid/aberrant.git",
+                            "vcs_info": {"vcs": "git", "commit_id": commit},
+                        }
+                    )
+                    if name == "direct_url.json"
+                    else None
+                )
+
+        def distribution(name):
+            return Pinned() if name == "aberrant" else installed(name)
+
+        monkeypatch.setattr(metadata, "distribution", distribution)
+        return RuntimeCheckpointCodec("svc", _pipeline(), b"secret").runtime_fingerprint
+
+    assert pinned("a" * 40) != pinned("b" * 40)

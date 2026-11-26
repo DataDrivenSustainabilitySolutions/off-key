@@ -126,7 +126,7 @@ def _runtime_config(
         warmup = model_capabilities(
             definition["catalog_id"],
             aberrant_model(definition, validated_params)["params"] | bound,
-        ).warmup
+        ).warm_up
     minimum = max(2, warmup or 0)
     if preprocessing_steps is None and model_type == "aberrant_half_space_trees":
         preprocessing_steps = [{"type": "min_max_scaler"}]
@@ -404,7 +404,7 @@ def test_timestral_step_scores_a_break_in_the_cycle_through_the_service(
         ("POST", "http://forecast/v1/downloads"),
         *[("POST", "http://forecast/v1/forecast")] * 26,
     ]
-    assert detector.model_capabilities["warmup"] == {
+    assert detector.model_capabilities["warm_up"] == {
         "required": 16 + lead - 1,
         "unit": "events",
     }

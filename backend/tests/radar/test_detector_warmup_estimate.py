@@ -38,7 +38,7 @@ def test_the_estimate_matches_what_aberrant_requires(model_type, params):
     config = DetectorConfig.from_mapping(
         {"version": 2, "model": {"id": definition["catalog_id"], "params": settings}}
     ).resolve()
-    assert detector_warmup(model_type, params) == config.capabilities.warmup
+    assert detector_warmup(model_type, params) == config.capabilities.warm_up
 
 
 def test_an_unknown_warmup_is_left_to_radar():

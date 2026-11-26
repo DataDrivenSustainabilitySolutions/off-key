@@ -475,7 +475,7 @@ def test_preflight_of_a_timestral_design_names_the_service_without_calling_it(
     monkeypatch.setenv("FORECAST_API_URL", "http://127.0.0.1:9")
     report = preflight(execution)
     assert report["ok"]
-    assert report["capabilities"]["warmup"] == {"required": 17, "unit": "events"}
+    assert report["capabilities"]["warm_up"] == {"required": 17, "unit": "events"}
 
     # A deployment without the service says so on the step, before a run starts.
     monkeypatch.delenv("FORECAST_API_URL")

@@ -375,8 +375,8 @@ def resolve_service_detector(model: Mapping[str, Any]) -> ResolvedServiceDetecto
         feature_count=FeatureCount(1, 1),
         feature_schema=FeatureSchemaKind.FIXED,
         score_kind=ScoreKind.NON_NEGATIVE,
-        warmup=params["model"]["params"]["minimum_context"] + params["lead"] - 1,
-        warmup_unit=ReadinessUnit.EVENTS,
+        warm_up=params["model"]["params"]["minimum_context"] + params["lead"] - 1,
+        warm_up_unit=ReadinessUnit.EVENTS,
         state=StateKind.BOUNDED,
         requires_unit_interval=False,
     )

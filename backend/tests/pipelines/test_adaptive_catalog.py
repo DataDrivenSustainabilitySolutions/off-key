@@ -241,7 +241,7 @@ def test_forecaster_step_is_a_residual_detector_around_its_forecaster(
     capabilities = DetectorConfig.from_mapping(
         detector_mapping(config, ["x"])
     ).capabilities()
-    assert capabilities.warmup == warmup
+    assert capabilities.warm_up == warmup
 
 
 def test_forecaster_step_in_a_design_checks_its_settings_and_features():

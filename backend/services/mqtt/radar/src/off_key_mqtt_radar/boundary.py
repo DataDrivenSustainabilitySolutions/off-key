@@ -96,7 +96,7 @@ class ScoreBoundary:
 
     def _calibrator(self) -> ScoreCalibrator:
         return ScoreCalibrator(
-            self.method, alpha=self.alpha, window=self.window, **self.params
+            self.method, alpha=self.alpha, window_size=self.window, **self.params
         )
 
     def start(self, calibration: list[list[float]]) -> None:

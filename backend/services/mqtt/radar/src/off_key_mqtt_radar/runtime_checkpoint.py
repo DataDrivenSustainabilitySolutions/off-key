@@ -6,7 +6,7 @@ import json
 import pickle
 import platform
 from datetime import UTC, datetime
-from importlib.metadata import version
+from importlib import metadata
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
@@ -14,6 +14,15 @@ from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 from .config.config import AnomalyDetectionConfig
 
 _DOMAIN = b"OFFKEY-RADAR-RUNTIME-CHECKPOINT-V2\x00"
+
+
+def _installed(package: str) -> str:
+    """A package's version, with its commit when it is installed from git, as
+    unreleased commits share one version but not one pickle layout."""
+    distribution = metadata.distribution(package)
+    origin = distribution.read_text("direct_url.json")
+    commit = json.loads(origin).get("vcs_info", {}).get("commit_id") if origin else None
+    return f"{distribution.version}+{commit}" if commit else distribution.version
 
 
 class ProcessorCheckpoint(BaseModel):
@@ -87,7 +96,7 @@ class RuntimeCheckpointCodec:
             "checkpoint_format": 2,
             "python": platform.python_version(),
             **{
-                package: version(package)
+                package: _installed(package)
                 for package in (
                     "numpy",
                     "scipy",

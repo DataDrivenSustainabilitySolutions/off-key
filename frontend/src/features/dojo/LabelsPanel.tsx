@@ -100,11 +100,11 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     await act(() => dojoApi.deleteLabel(dataset.id, label.id));
   };
   return <div className="dj-section">
-    <div className="dj-series-picker" role="group" aria-label="Series shown">
+    {dataset.series.length > SHOWN_SERIES && <div className="dj-series-picker" role="group" aria-label="Series shown">
       {dataset.series.map(item => <label key={item.id}><input type="checkbox" checked={shown.includes(item.id)}
         onChange={event => setShown(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />
         {item.name}{item.unit ? ` (${item.unit})` : ""}</label>)}
-    </div>
+    </div>}
     {loadError && <p className="ex-banner ex-error" role="alert">{loadError}</p>}
     {loading && <p className="dj-loading" role="status">Loading values…</p>}
     <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart"

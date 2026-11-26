@@ -161,7 +161,7 @@ export function formatShortDate(value: string, now = Date.now(), locale?: string
 export const runName = (run: Pick<RunSummary, "name" | "created_at">) => run.name || `Run of ${formatInstant(run.created_at)}`;
 
 export const DATASET_TABS = [
-  { id: "values", label: "Values and labels" },
+  { id: "values", label: "Labels" },
   { id: "runs", label: "Runs" },
   { id: "compare", label: "Compare" },
 ] as const;

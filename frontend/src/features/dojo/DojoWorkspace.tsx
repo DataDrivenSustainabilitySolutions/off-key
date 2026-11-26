@@ -62,7 +62,7 @@ export function DojoWorkspace() {
         ? <div className="dj-empty"><h2>The run could not be opened</h2><p>{runError.message}</p></div>
         : <p className="dj-help" role="status">Opening the run…</p>
       : datasetId ? <DatasetDetail key={datasetId} id={datasetId} tab={datasetTab(params.get("tab"))} run={runId ?? undefined}
-        listHref={href({ dataset: null, tab: null, run: null })}
+        listHref={next => href({ view: next === "datasets" ? null : next, dataset: null, tab: null, run: null })}
         onTab={(tab: DatasetTab) => setParams(previous => { const next = new URLSearchParams(previous); next.set("tab", tab); return next; },
           { replace: true })}
         onDeleted={() => navigate(href({ dataset: null, tab: null, run: null }), { replace: true })} />

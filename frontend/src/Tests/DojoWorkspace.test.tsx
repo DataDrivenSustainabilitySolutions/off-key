@@ -105,7 +105,8 @@ describe("Dojo workspace", () => {
     expect(screen.queryByRole("button", { name: "Add label" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete label" })).toBeNull();
     expect(screen.getByText("Bearing")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "Runs" }));
+    expect(screen.queryByRole("button", { name: "Delete dataset" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /^Runs/ }));
     expect(screen.queryByRole("button", { name: "New run" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
@@ -135,9 +136,9 @@ describe("Dojo workspace", () => {
     expect(document.title).toBe("Pump trips — Runs · Dojo · Aberration");
     fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
     expect(document.title).toBe("Pump trips — Compare · Dojo · Aberration");
-    fireEvent.click(screen.getByRole("tab", { name: "Values and labels" }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Labels/ }));
     expect(document.title).toBe("Pump trips · Dojo · Aberration");
-    fireEvent.click(screen.getByRole("link", { name: "All datasets" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", { name: "Datasets" }));
     await screen.findByRole("link", { name: "Pump trips" });
     expect(document.title).toBe("Datasets · Dojo · Aberration");
   });

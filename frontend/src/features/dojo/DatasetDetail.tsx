@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { ArrowLeft, ListChecks, Trash2 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { ListChecks, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { InlineName } from "@/components/InlineName";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useDetailDocumentTitle } from "@/hooks/use-document-title";
@@ -11,15 +12,19 @@ import { loadOffsetPages } from "@/lib/offset-pages";
 import type { DatasetView, LabelView, RunSummary } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
 import { ComparePanel } from "./ComparePanel";
+import type { DojoView } from "./DatasetList";
 import { LabelsPanel } from "./LabelsPanel";
 import { RunsPanel } from "./RunsPanel";
 import { FaultSuiteDialog } from "./SuiteDialogs";
-import { DATASET_TABS as TABS, formatSpan, injectedFaults, isActive, type DatasetTab } from "./model";
+import { DATASET_TABS as TABS, formatShortSpan, injectedFaults, isActive, type DatasetTab } from "./model";
 
 const RUN_POLL_MS = 3000;
+const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Public series" } as const;
 
 export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
-  id: string; tab: DatasetTab; listHref: string; onTab: (tab: DatasetTab) => void; onDeleted: () => void;
+  id: string; tab: DatasetTab; onTab: (tab: DatasetTab) => void; onDeleted: () => void;
+  /** The front page's view the dataset belongs to: public series sit under Benchmarks. */
+  listHref: (view: DojoView) => string;
   /** A run to pick out among the runs, such as the test a proposal was handed in with. */
   run?: string;
 }) {
@@ -80,34 +85,33 @@ export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
   };
 
   if (!dataset) return <section className="dj-page">
-    <Link className="dj-back" to={listHref}><ArrowLeft size={14} />All datasets</Link>
+    <Breadcrumb steps={[{ label: "Dojo", onClick: () => navigate("/dojo") }]} current="Dataset" />
     {error ? <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => void datasetLoop.reload()}>Retry</button></p>
       : <p className="dj-loading" role="status">Loading dataset…</p>}
   </section>;
   const faults = injectedFaults(dataset.source);
+  const view: DojoView = dataset.origin === "benchmark" ? "benchmarks" : "datasets";
+  const meta = [ORIGIN[dataset.origin], `${dataset.point_count.toLocaleString()} values`,
+    ...(dataset.series.length > 1 ? [`${dataset.series.length} series`] : []),
+    ...(dataset.origin === "benchmark" ? [] : [formatShortSpan(dataset.start_at, dataset.end_at)]),
+    ...(faults ? [`injected faults ${faults}`] : [])];
   return <section className="dj-page dj-detail" aria-label={`Dataset ${dataset.name}`}>
-    <Link className="dj-back" to={listHref}><ArrowLeft size={14} />All datasets</Link>
+    <Breadcrumb steps={[{ label: "Dojo", onClick: () => navigate("/dojo") },
+      { label: view === "benchmarks" ? "Benchmarks" : "Datasets", onClick: () => navigate(listHref(view)) }]} current={dataset.name} />
     <div className="dj-detail-header">
       <div><h1><InlineName value={dataset.name} onSave={rename} editable={editable} ariaLabel="Rename dataset" /></h1>
-        {dataset.description && <small>{dataset.description}</small>}</div>
+        <p className="dj-meta">{dataset.description && <>{dataset.description}<br /></>}{meta.join(" · ")}</p></div>
       {editable && <div className="dj-detail-actions">
-        <button type="button" className="dj-action" onClick={() => setFaulting(true)}><ListChecks size={15} />Fault suite</button>
-        <button type="button" className="dj-action" onClick={() => void remove()}><Trash2 size={15} />Delete</button>
+        <button type="button" className="dj-action" aria-label="Delete dataset" title="Delete dataset" onClick={() => void remove()}><Trash2 size={15} /></button>
+        <button type="button" className="dj-action" onClick={() => setFaulting(true)}><ListChecks size={15} />Test with injected faults</button>
       </div>}
     </div>
     {deleteError && <p className="dj-error" role="alert">{deleteError}</p>}
     {error && <p className="ex-banner ex-error" role="alert">{error}</p>}
-    <dl className="dj-summary">
-      <div><dt>Values</dt><dd>{dataset.point_count.toLocaleString()}</dd></div>
-      <div><dt>Series</dt><dd>{dataset.series.length}</dd></div>
-      <div><dt>Time span</dt><dd>{formatSpan(dataset.start_at, dataset.end_at)}</dd></div>
-      <div><dt>Labels</dt><dd>{labels.length}</dd></div>
-      {faults && <div><dt>Injected faults</dt><dd title="Written into this copy and labelled, to test what a design catches">{faults}</dd></div>}
-      <div><dt>Runs</dt><dd>{runs.length}{moreRuns ? "+" : ""}</dd></div>
-    </dl>
     <div className="dj-tabs" role="tablist" aria-label="Dataset sections">
       {TABS.map(item => <button key={item.id} type="button" role="tab" id={`dj-tab-${item.id}`} aria-selected={tab === item.id}
-        aria-controls="dj-tab-panel" onClick={() => onTab(item.id)}>{item.label}</button>)}
+        aria-controls="dj-tab-panel" onClick={() => onTab(item.id)}>{item.label}
+        {item.id !== "compare" && <span className="dj-tab-count">{item.id === "values" ? labels.length : `${runs.length}${moreRuns ? "+" : ""}`}</span>}</button>)}
     </div>
     <div id="dj-tab-panel" role="tabpanel" aria-labelledby={`dj-tab-${tab}`}>
       {tab === "values" && <LabelsPanel dataset={dataset} labels={labels} onLabelsChange={reloadLabels} />}

@@ -37,13 +37,6 @@ TRAFFIC_SENSORS = {
     "speed_1": 5122,
     "speed_2": 5125,
 }
-MOSQUITTO_ENTITY = "test-mosquitto-org"
-MOSQUITTO_SENSORS = {
-    "clients": "$SYS/broker/clients/connected",
-    "messages_received": "$SYS/broker/load/messages/received/1min",
-    "messages_sent": "$SYS/broker/load/messages/sent/1min",
-    "bytes_received": "$SYS/broker/load/bytes/received/1min",
-}
 
 # (field in normalized message, visible label, unit)
 FIELDS = {
@@ -59,12 +52,6 @@ FIELDS = {
         ("speed_1", "Average speed, direction 1", "km/h"),
         ("speed_2", "Average speed, direction 2", "km/h"),
     ],
-    "mosquitto": [
-        ("clients", "Connected clients", "clients"),
-        ("messages_received", "Messages received, 1-minute average", "messages/min"),
-        ("messages_sent", "Messages sent, 1-minute average", "messages/min"),
-        ("bytes_received", "Bytes received, 1-minute average", "B/min"),
-    ],
 }
 
 
@@ -72,7 +59,6 @@ def entities(selection: FeedSelection) -> dict[str, list[str]]:
     return {
         "weather": [str(selection.weather_station)],
         "traffic": [str(selection.traffic_station)],
-        "mosquitto": [MOSQUITTO_ENTITY],
     }
 
 

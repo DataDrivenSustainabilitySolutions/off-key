@@ -5,11 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from off_key_core.demo.catalogue import MOSQUITTO_SENSORS, FeedSelection, catalogue
+from off_key_core.demo.catalogue import FeedSelection, catalogue
 from off_key_core.demo.sources import public_sources
 from off_key_core.schemas.system import SystemDocument
 from off_key_mqtt_proxy.demo import probe as live_probe
-from off_key_mqtt_proxy.demo.normalize import DEFAULT_MAX_AGE, MAX_AGE, Normalizer
+from off_key_mqtt_proxy.demo.normalize import MAX_AGE, Normalizer
 from off_key_mqtt_proxy.demo.relay import feeds
 
 NOW = 1_794_475_800.0
@@ -59,8 +59,7 @@ def test_retained_old_and_future_observations_never_appear_live(
     assert (
         normalizer.messages(source, topic, wire, received_at=NOW, retained=True) == []
     )
-    max_age = MAX_AGE.get(source, DEFAULT_MAX_AGE)
-    assert normalizer.messages(source, topic, wire, received_at=NOW + max_age + 1) == []
+    assert normalizer.messages(source, topic, wire, received_at=NOW + MAX_AGE + 1) == []
     assert normalizer.messages(source, topic, wire, received_at=NOW - 11) == []
 
 
@@ -85,46 +84,6 @@ def test_road_feeds_take_only_the_selected_station_and_known_sensors():
         "traffic", "tms-v2/23438/5116", reading, received_at=NOW + 300
     )
     assert destination == "demo/traffic/23438/volume_1"
-
-
-@pytest.mark.parametrize("field,mqtt_topic", MOSQUITTO_SENSORS.items())
-def test_broker_metrics_record_only_fresh_numeric_updates(field, mqtt_topic):
-    normalizer = Normalizer(SELECTION)
-    assert (
-        normalizer.messages(
-            "mosquitto", mqtt_topic, b"12606", received_at=NOW, retained=True
-        )
-        == []
-    )
-    [(destination, encoded)] = normalizer.messages(
-        "mosquitto", mqtt_topic, b"12606", received_at=NOW
-    )
-    assert destination == f"demo/mosquitto/test-mosquitto-org/{field}"
-    message = json.loads(encoded)
-    assert message["value"] == 12606
-    assert message["observed_at"] is None
-    assert message["received_at"] == NOW
-    assert message["simulated"] is False
-    assert normalizer.messages("mosquitto", mqtt_topic, b"12606", received_at=NOW) == []
-    assert normalizer.messages("mosquitto", mqtt_topic, b"12607", received_at=NOW + 10)
-
-
-@pytest.mark.parametrize(
-    "wire", [b"true", b"null", b"{}", b"[]", b'"12"', b"-1", b"NaN", b"Infinity"]
-)
-def test_broker_metrics_reject_invalid_values_and_unknown_topics(wire):
-    normalizer = Normalizer(SELECTION)
-    assert (
-        normalizer.messages(
-            "mosquitto", "$SYS/broker/clients/connected", wire, received_at=NOW
-        )
-        == []
-    )
-    assert (
-        normalizer.messages("mosquitto", "someone/clients", b"12", received_at=NOW)
-        == []
-    )
-    assert normalizer.latest == {}
 
 
 def test_discovery_uses_supported_network_topics_then_pins_the_fresh_station(
@@ -181,13 +140,12 @@ def test_catalogue_roundtrips_and_changed_entities_get_new_reading_ids():
         == document
     )
     assert (
-        len(document.connections) == len(public_sources()) == len(feeds(SELECTION)) == 3
+        len(document.connections) == len(public_sources()) == len(feeds(SELECTION)) == 2
     )
-    assert len(document.streams) == 12
+    assert len(document.streams) == 8
     assert {source["id"] for source in public_sources()} == {
         "weather",
         "traffic",
-        "mosquitto",
     }
     before = {
         reading.id

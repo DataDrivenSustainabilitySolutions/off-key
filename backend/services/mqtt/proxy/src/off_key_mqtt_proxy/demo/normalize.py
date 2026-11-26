@@ -5,8 +5,6 @@ import math
 from datetime import datetime
 
 from off_key_core.demo.catalogue import (
-    MOSQUITTO_ENTITY,
-    MOSQUITTO_SENSORS,
     TRAFFIC_SENSORS,
     WEATHER_SENSORS,
     FeedSelection,
@@ -15,9 +13,8 @@ from off_key_core.demo.catalogue import (
 
 MAX_PAYLOAD = 65_536
 # Seconds an observation may be old on arrival. Road stations measure, then
-# publish about a minute later, so they get a wider window than the live feeds.
-MAX_AGE = {"weather": 600, "traffic": 600}
-DEFAULT_MAX_AGE = 120
+# publish about a minute later.
+MAX_AGE = 600
 
 
 def timestamp(value) -> float:
@@ -50,18 +47,9 @@ def _traffic(mqtt_topic: str, data: dict, selection: FeedSelection):
     return _road(TRAFFIC_SENSORS, selection.traffic_station, mqtt_topic, data)
 
 
-def _mosquitto(mqtt_topic: str, data, _selection: FeedSelection):
-    field = {value: key for key, value in MOSQUITTO_SENSORS.items()}.get(mqtt_topic)
-    if field is None or type(data) not in (int, float) or data < 0:
-        return None
-    # $SYS values have no observation timestamp. Never invent one for the source.
-    return MOSQUITTO_ENTITY, None, {field: data}
-
-
 _DECODERS = {
     "weather": _weather,
     "traffic": _traffic,
-    "mosquitto": _mosquitto,
 }
 
 
@@ -92,16 +80,14 @@ class Normalizer:
             return []
         try:
             data = json.loads(payload)
-            if source != "mosquitto" and not isinstance(data, dict):
+            if not isinstance(data, dict):
                 return []
             decoded = decode(source, mqtt_topic, data, self.selection)
             if decoded is None:
                 return []
             entity, source_time, fields = decoded
-            observed_at = None if source == "mosquitto" else timestamp(source_time)
-            event_time = received_at if observed_at is None else observed_at
-            max_age = MAX_AGE.get(source, DEFAULT_MAX_AGE)
-            if not received_at - max_age <= event_time <= received_at + 10:
+            observed_at = event_time = timestamp(source_time)
+            if not received_at - MAX_AGE <= event_time <= received_at + 10:
                 return []
         except (
             ValueError,

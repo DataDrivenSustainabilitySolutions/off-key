@@ -7,11 +7,11 @@
 .rationale-card > summary::before { content: ""; width: 6px; height: 6px; flex: none; border: solid hsl(var(--muted-foreground)); border-width: 0 1.5px 1.5px 0;
   transform: rotate(-45deg); transition: transform 120ms ease; }
 .rationale-card[open] > summary::before { transform: rotate(45deg); }
-.rationale-card > summary:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; border-radius: 4px; }
+.rationale-card > summary:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; border-radius: var(--radius); }
 .rationale-watches { flex: 1 1 320px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rationale-card[open] .rationale-watches { white-space: normal; overflow-wrap: anywhere; }
 .rationale-label { color: hsl(var(--muted-foreground)); font-weight: 550; }
-.rationale-author { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; flex: none;
+.rationale-author { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: var(--radius); flex: none;
   background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); font-size: var(--text-caption); line-height: 1.6; }
 .rationale-body { padding: 0 0 14px 18px; }
 .rationale-fields { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr); gap: 8px 16px; margin: 4px 0 0; font-size: var(--text-body); }

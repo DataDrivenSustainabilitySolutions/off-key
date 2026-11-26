@@ -71,7 +71,7 @@
 .dj-compare-picker { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 16px; font-size: var(--text-caption); }
 .dj-compare-picker label { display: inline-flex; gap: 6px; align-items: center; }
 .dj-check { display: flex; gap: 8px; align-items: center; margin-top: 14px; font-size: var(--text-caption); font-weight: 500; }
-.dj-method-own { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--ex-line); border-radius: 999px; font-size: var(--text-caption); font-weight: 400; color: var(--ex-muted); }
+.dj-method-own { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--ex-line); border-radius: var(--radius); font-size: var(--text-caption); font-weight: 400; color: var(--ex-muted); }
 @media (max-width: 760px) {
   .ex-shell .dj-action,.ex-shell .dj-primary,.dj-back { min-height: 44px; }
   .dj-field :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea) { min-height: 44px; }

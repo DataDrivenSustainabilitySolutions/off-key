@@ -58,7 +58,7 @@
 .mn-input-list small { display: block; color: var(--ex-muted); font-size: var(--text-caption); overflow-wrap: anywhere; margin-top: 3px; }
 .mn-input-list button { color: var(--ex-accent) !important; font-size: var(--text-caption) !important; }
 .mn-section { margin-top: 28px; }
-.mn-progress { max-width: 340px; height: 4px; background: var(--ex-side); border-radius: 4px; margin-top: 12px; overflow: hidden; }
+.mn-progress { max-width: 340px; height: 4px; background: var(--ex-side); border-radius: var(--radius); margin-top: 12px; overflow: hidden; }
 .mn-progress > div { background: var(--ex-accent); height: 100%; }
 .mn-configuration { display: grid; gap: 12px; margin: 0; max-width: 720px; }
 .mn-configuration > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; border-bottom: 1px solid var(--ex-line); padding: 10px 0; }

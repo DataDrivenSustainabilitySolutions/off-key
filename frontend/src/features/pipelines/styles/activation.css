@@ -1,6 +1,6 @@
 .pl-activation {
   border: 1px solid hsl(var(--primary));
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 20px;
   margin: 24px 0;
   background: hsl(var(--card));

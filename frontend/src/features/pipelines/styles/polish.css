@@ -19,7 +19,7 @@
 /* Cards: a clean surface with a soft wash of the step's colour along the top. */
 .pl-canvas-wrap .pl-node {
   border: 1px solid color-mix(in srgb, var(--pl-node-accent) 20%, hsl(var(--border)));
-  border-radius: 14px;
+  border-radius: var(--radius);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--pl-node-accent) 9%, transparent), transparent 64px),
     hsl(var(--card));
@@ -75,7 +75,7 @@
   letter-spacing: -0.01em;
 }
 .pl-canvas-wrap .pl-node-chips > span {
-  border-radius: 999px;
+  border-radius: var(--radius);
 }
 
 /* Connection dots: crisp, ringed in the card's surface, a touch larger on approach. */
@@ -108,7 +108,7 @@
   gap: 2px;
   padding: 4px;
   border: 1px solid hsl(var(--border) / 0.8);
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: color-mix(in srgb, hsl(var(--card)) 86%, transparent);
   backdrop-filter: blur(12px) saturate(1.4);
   box-shadow: var(--pl-float-shadow, var(--pl-card-shadow));
@@ -117,7 +117,7 @@
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: transparent;
   transition: background-color 120ms ease, color 120ms ease;
 }
@@ -135,7 +135,7 @@
   opacity: 0.6;
 }
 .pl-canvas-wrap .pl-canvas-feedback {
-  border-radius: 12px;
+  border-radius: var(--radius);
   backdrop-filter: blur(12px);
 }
 
@@ -170,7 +170,7 @@
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading button {
   border-color: transparent;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: transparent;
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading button:hover {
@@ -214,7 +214,7 @@
   padding: 10px 12px;
   gap: 3px;
   border: 1.5px dashed hsl(var(--muted-foreground) / 0.55);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: hsl(var(--card) / 0.6);
   color: hsl(var(--muted-foreground));
   font: inherit;
@@ -259,7 +259,7 @@
   margin: 0;
   padding: 8px 10px;
   border: 1px solid hsl(var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: hsl(var(--background) / 0.92);
   color: hsl(var(--muted-foreground));
   font-size: var(--text-body);
@@ -320,7 +320,7 @@
   margin: 12px 0;
   padding: 10px 14px;
   border: 1px dashed hsl(var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius);
   color: hsl(var(--muted-foreground));
   font-size: var(--text-caption);
   line-height: 1.6;

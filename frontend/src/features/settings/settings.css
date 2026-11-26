@@ -152,10 +152,10 @@ dl.app-settings-list .app-settings-row { min-height: 40px; padding-block: 8px; }
   --preview-card: linear-gradient(90deg, #fff 32%, #242b34 32%);
 }
 .app-settings-preview-sidebar { display: flex; flex-direction: column; gap: 6px; padding: 15px 6px; background: var(--preview-side); }
-.app-settings-preview-sidebar i { height: 3px; border-radius: 2px; background: #b4bec8; }
+.app-settings-preview-sidebar i { height: 3px; border-radius: var(--radius-control); background: #b4bec8; }
 .app-settings-preview-content { display: flex; flex-direction: column; gap: 8px; padding: 15px 9px 10px; }
-.app-settings-preview-content i:first-child { width: 68%; height: 4px; border-radius: 2px; background: var(--preview-line); }
-.app-settings-preview-content i:not(:first-child) { flex: 1; border: 1px solid rgb(127 127 127 / .18); border-radius: 3px; background: var(--preview-card); }
+.app-settings-preview-content i:first-child { width: 68%; height: 4px; border-radius: var(--radius-control); background: var(--preview-line); }
+.app-settings-preview-content i:not(:first-child) { flex: 1; border: 1px solid rgb(127 127 127 / .18); border-radius: var(--radius-control); background: var(--preview-card); }
 .app-settings-theme-label { display: flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 3px 3px; font-size: var(--text-caption); font-weight: 500; }
 .app-settings-theme-label > svg { flex-shrink: 0; color: hsl(var(--muted-foreground)); }
 .app-settings-theme-check { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 16px; margin-left: auto; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); visibility: hidden; }

@@ -14,7 +14,7 @@
   max-height: min(440px, calc(100dvh - 16px));
   padding: 5px;
   border: 1px solid hsl(var(--border) / 0.85);
-  border-radius: 14px;
+  border-radius: var(--radius);
   background: color-mix(in srgb, hsl(var(--popover, var(--background))) 88%, transparent);
   color: hsl(var(--popover-foreground, var(--foreground)));
   box-shadow: 0 1px 2px hsl(220 30% 20% / 0.06), 0 16px 40px -12px hsl(220 30% 20% / 0.3);
@@ -31,7 +31,7 @@
   margin: 2px 2px 4px;
   padding: 6px 9px;
   border: 1px solid hsl(var(--border));
-  border-radius: 9px;
+  border-radius: var(--radius);
   background: hsl(var(--card) / 0.7);
   color: inherit;
   font: inherit;
@@ -66,7 +66,7 @@
   height: 22px;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -80,7 +80,7 @@
   gap: 9px;
   min-height: 32px;
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: default;
   user-select: none;
   transition: background-color 80ms ease;

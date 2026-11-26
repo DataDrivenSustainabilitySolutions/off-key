@@ -32,7 +32,7 @@
   justify-content: flex-start;
   padding: 18px;
   text-align: left;
-  border-radius: 10px;
+  border-radius: var(--radius);
   transition: border-color 0.15s;
 }
 
@@ -66,7 +66,7 @@
   text-align: center;
   color: hsl(var(--muted-foreground));
   border: 1px dashed hsl(var(--border));
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-size: var(--text-body);
 }
 
@@ -77,7 +77,7 @@
   margin: 16px 0 0;
   padding: 0;
   border: 1px solid hsl(var(--border));
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 .pl-block-list li { display: flex; align-items: center; gap: 16px; padding: 12px 16px; }
 .pl-block-list li + li { border-top: 1px solid hsl(var(--border)); }
@@ -94,7 +94,7 @@
   overflow: auto;
   padding: 20px;
   border: 1px solid hsl(var(--border));
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: hsl(var(--card));
   box-shadow: 0 12px 36px hsl(var(--foreground) / 0.14);
 }

@@ -8,7 +8,7 @@
 .ex-shell .pl-proposals .mn-filters button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-side); }
 .pl-capacity { display: inline-flex; align-items: center; gap: 10px; font-size: var(--text-control); color: var(--ex-muted); }
 .pl-capacity-meter { display: inline-flex; gap: 3px; }
-.pl-capacity-meter i { width: 6px; height: 14px; border-radius: 2px; background: var(--ex-line); }
+.pl-capacity-meter i { width: 6px; height: 14px; border-radius: var(--radius-control); background: var(--ex-line); }
 .pl-capacity-meter i.is-taken { background: var(--ex-accent); }
 .pl-capacity.is-full { color: hsl(var(--destructive)); }
 .pl-capacity.is-full .pl-capacity-meter i.is-taken { background: hsl(var(--destructive)); }
@@ -116,7 +116,7 @@
 
 /* A decision is made in a small dialog at its button: the page under it does not move. */
 .pl-decision { width: min(340px, calc(100vw - 24px)); max-height: var(--radix-popover-content-available-height); overflow: auto; padding: 16px;
-  background: hsl(var(--card)); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border)); border-radius: 10px;
+  background: hsl(var(--card)); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border)); border-radius: var(--radius);
   box-shadow: 0 10px 30px #0002; z-index: 50; font-size: var(--text-body); line-height: var(--leading-body); }
 .pl-decision h3 { margin: 0 0 12px; font-size: var(--text-body); font-weight: 600; }
 .pl-decision .pl-field { margin: 0 0 8px; }

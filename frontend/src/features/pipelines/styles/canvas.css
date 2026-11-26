@@ -387,7 +387,7 @@
   border-radius: 9px;
   color: hsl(var(--card));
   font-size: var(--text-caption);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }

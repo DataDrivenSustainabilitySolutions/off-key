@@ -182,9 +182,9 @@
   border-radius: 2px;
   background: hsl(var(--background) / 0.8);
   color: hsl(var(--muted-foreground));
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
-  line-height: 14px;
+  line-height: 16px;
   pointer-events: none;
 }
 .dj-test-rule span:first-of-type {

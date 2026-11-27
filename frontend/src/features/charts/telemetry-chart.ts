@@ -14,6 +14,7 @@ import { buildForecastChartSeries, formatForecastTooltip } from "./forecast-char
 import { formatForecastValue, type ForecastEvidenceSeries } from "./forecast-evidence";
 
 import type { AnomalyMarker } from "@/lib/anomaly-utils";
+import { dateTimeFormat } from "@/lib/locale";
 import { getPauseLimit, type TimeValue } from "./telemetry-data";
 import type { MonitoringChartReading, TelemetryChartSeries } from "./types";
 import {
@@ -31,7 +32,7 @@ import type { HistoryPoint, TelemetryHistory } from "@/types/telemetry-history";
 import {
   groupTelemetryEvents,
   buildTelemetryEventMarkPoints,
-  getNumberFormatter,
+  telemetryNumber,
   type TelemetryEventGroup,
 } from "./telemetry-events";
 
@@ -152,7 +153,6 @@ interface BuildTelemetryChartOptionInput {
   timeZone: string;
   colors: ChartThemeColors;
   accessibleDescription: string;
-  locale?: string;
   layout?: "standard" | "compact";
   valueType?: "number" | "boolean";
 }
@@ -162,16 +162,12 @@ const DEFAULT_SERIES_PALETTE = ["#2f6db3", "#c0562e", "#7a4fb0", "#2e8a57", "#a0
 
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
-const getDateTimeFormatter = (
-  timeZone: string,
-  locale: string | undefined,
-  detail: "axis" | "tooltip",
-): Intl.DateTimeFormat => {
-  const key = `${locale ?? "default"}\u0000${timeZone}\u0000${detail}`;
+const getDateTimeFormatter = (timeZone: string, detail: "axis" | "tooltip"): Intl.DateTimeFormat => {
+  const key = `${timeZone}\u0000${detail}`;
   const cached = dateTimeFormatters.get(key);
   if (cached) return cached;
 
-  const formatter = new Intl.DateTimeFormat(locale, {
+  const formatter = dateTimeFormat({
     timeZone,
     month: "short",
     day: "2-digit",
@@ -206,16 +202,15 @@ export const formatChartTime = (
   epochMilliseconds: number,
   timeZone: string,
   detail: "axis" | "tooltip" = "axis",
-  locale?: string,
 ): string =>
-  getDateTimeFormatter(timeZone, locale, detail).format(epochMilliseconds);
+  getDateTimeFormatter(timeZone, detail).format(epochMilliseconds);
 
 type RangeFormat = Intl.DateTimeFormat & { formatRange?: (startMs: number, endMs: number) => string };
 
-/** A span of time: the parts both ends share are named once where the locale can, and so is the zone. */
-const formatChartInterval = (startMs: number, endMs: number, timeZone: string, locale?: string): string => {
-  const plain: RangeFormat = getDateTimeFormatter(timeZone, locale, "axis");
-  const zone = getDateTimeFormatter(timeZone, locale, "tooltip").formatToParts(endMs)
+/** A span of time: the parts both ends share are named once, and so is the zone. */
+const formatChartInterval = (startMs: number, endMs: number, timeZone: string): string => {
+  const plain: RangeFormat = getDateTimeFormatter(timeZone, "axis");
+  const zone = getDateTimeFormatter(timeZone, "tooltip").formatToParts(endMs)
     .find((part) => part.type === "timeZoneName")?.value;
   const span = plain.formatRange?.(startMs, endMs) ?? `${plain.format(startMs)} – ${plain.format(endMs)}`;
   return zone ? `${span} ${zone}` : span;
@@ -313,7 +308,6 @@ export const formatTelemetryTooltip = (
   params: unknown,
   timeZone: string,
   units: ReadonlyMap<string, string>,
-  locale?: string,
   reach?: ReadonlyMap<string, number>,
   means?: ReadonlySet<string>,
 ): string => {
@@ -333,9 +327,8 @@ export const formatTelemetryTooltip = (
   // Means share their interval, so it heads the tooltip once instead of following each reading.
   const interval = entries.map((entry) => readSummary(entry.data)).find((summary) => summary?.start && summary.end);
   const lines = [interval
-    ? formatChartInterval(Date.parse(interval.start!), Date.parse(interval.end!), timeZone, locale)
-    : formatChartTime(firstValue[0], timeZone, "tooltip", locale)];
-  const numberFormatter = getNumberFormatter(locale);
+    ? formatChartInterval(Date.parse(interval.start!), Date.parse(interval.end!), timeZone)
+    : formatChartTime(firstValue[0], timeZone, "tooltip")];
   for (const entry of entries) {
     const value = readTimeValue(entry.value);
     if (!value || typeof entry.seriesName !== "string") continue;
@@ -346,7 +339,7 @@ export const formatTelemetryTooltip = (
     const observation = readObservationDetails(entry.data);
     // A score drawn against its threshold still reads as the score the detector gave.
     const shown = observation?.value ?? value[1];
-    const formattedValue = unit && !summary ? numberFormatter.format(shown) : formatNumber(shown);
+    const formattedValue = unit && !summary ? telemetryNumber.format(shown) : formatNumber(shown);
     const forecast = seriesId.startsWith("forecast:") ? forecastIntervalText(entry.value, formatNumber) : "";
     const peak = readPeakCount(entry.data);
     lines.push(`${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}${summary || means?.has(seriesId) ? " (mean)" : ""}${peak > 1 ? ` (highest of ${peak})` : ""}${forecast}`);
@@ -444,7 +437,6 @@ export const buildMonitoringChartOption = ({
   timeZone,
   colors,
   accessibleDescription,
-  locale,
   layout = "standard",
 }: BuildMonitoringChartOptionInput): TelemetryChartOption => {
   const monitoring = layout === "monitoring";
@@ -469,7 +461,7 @@ export const buildMonitoringChartOption = ({
   const units = new Map<string, string>();
   for (const reading of model.readings) if (reading.unit) units.set(reading.name, reading.unit);
 
-  const formatTick = (compact = true) => (value: number) => formatAxisValue(Number(value), locale, compact);
+  const formatTick = (compact = true) => (value: number) => formatAxisValue(Number(value), compact);
   const grid: GridComponentOption[] = monitoring
     ? panes.map((_, index) => ({ ...CHART_INSETS.monitoring,
         top: 28 + index * 148 + (forecasts.length ? 60 * Math.min(index, model.readings.length) : 0),
@@ -495,7 +487,7 @@ export const buildMonitoringChartOption = ({
   const axisLabel = {
     color: colors.mutedForeground,
     fontSize: 12,
-    formatter: timeAxisLabelFormatter(timeZone, locale, visibleSpan, !compact),
+    formatter: timeAxisLabelFormatter(timeZone, visibleSpan, !compact),
     rich: { day: { color: colors.foreground, fontSize: 12, fontWeight: 600 } },
     hideOverlap: true,
     alignMinLabel: "left" as const,
@@ -514,7 +506,7 @@ export const buildMonitoringChartOption = ({
     splitLine: { show: false },
     // One hairline crosses every pane; only the time axis under the last one names its time.
     axisPointer: { show: true, snap: false, label: { show: index === panes.length - 1,
-      ...(compact ? { formatter: (params: { value: number | string | Date }) => formatChartTime(Number(params.value), timeZone, "axis", locale) } : {}) } },
+      ...(compact ? { formatter: (params: { value: number | string | Date }) => formatChartTime(Number(params.value), timeZone, "axis") } : {}) } },
     name:
       !compact && index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
     nameLocation: "middle" as const,
@@ -599,7 +591,7 @@ export const buildMonitoringChartOption = ({
         symbol: "circle",
         label: { show: false },
         data: [...buildTelemetryEventMarkPoints(reading.anomalyMarkers, {
-          timeZone, locale, colors,
+          timeZone, colors,
           extent: viewport.mode === "absolute" ? [viewport.startMs, viewport.endMs] : domain,
           unit: reading.unit, telemetryValueExtent,
         }), ...(valueType === "number" ? latestValueMark(display?.map(point => point.value) ?? reading.data, reading.color, colors.popover) : [])],
@@ -738,7 +730,7 @@ export const buildMonitoringChartOption = ({
       series,
       paneIndex,
       colors,
-      (time) => formatChartTime(time, timeZone, "tooltip", locale),
+      (time) => formatChartTime(time, timeZone, "tooltip"),
       formatNumber,
     );
     reach.set(series.id, getPauseLimit(series.data.flatMap(point => point.observation ? [point.value[0]] : [])));
@@ -804,10 +796,10 @@ export const buildMonitoringChartOption = ({
       axisPointer: { type: "line" },
       formatter: (params: unknown) => withRationale(
         (forecasts.length ? formatForecastTooltip(params,
-          time => formatChartTime(time, timeZone, "tooltip", locale), formatForecastValue, model.intervalLabel ?? "Calibrated interval") : undefined)
+          time => formatChartTime(time, timeZone, "tooltip"), formatForecastValue, model.intervalLabel ?? "Calibrated interval") : undefined)
           ?? (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
-          time => formatChartTime(time, timeZone, "tooltip", locale), formatNumber) : undefined)
-          ?? formatTelemetryTooltip(params, timeZone, units, locale, reach, means), model.rationale),
+          time => formatChartTime(time, timeZone, "tooltip"), formatNumber) : undefined)
+          ?? formatTelemetryTooltip(params, timeZone, units, reach, means), model.rationale),
     },
     xAxis,
     yAxis: [

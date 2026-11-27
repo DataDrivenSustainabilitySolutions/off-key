@@ -8,13 +8,14 @@ import {
 } from "./scope";
 import { coverage, FIXED_THRESHOLD } from "./learning";
 import { fusionChoice } from "./steps";
+import { LOCALE } from "@/lib/locale";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
 export type NodeSummary = { text?: string; chips?: string[] };
 
-const count = (value: number, noun: string) => `${value.toLocaleString()} ${noun}${value === 1 ? "" : "s"}`;
+const count = (value: number, noun: string) => `${value.toLocaleString(LOCALE)} ${noun}${value === 1 ? "" : "s"}`;
 // Four digits that count, so that a small rate does not read as 0.
-const number = (value: number) => value.toLocaleString(undefined, { maximumSignificantDigits: Number.isInteger(value) ? 21 : 4 });
+const number = (value: number) => value.toLocaleString(LOCALE, { maximumSignificantDigits: Number.isInteger(value) ? 21 : 4 });
 const strings = (value: JsonValue | undefined) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 const sentence = (label: string) => label.charAt(0) + label.slice(1).toLowerCase();
@@ -274,14 +275,14 @@ function settingsSummary(
       return { text: `Expects ${params.target} from ${from.length ? listed(from) : "the other features"}` };
     }
     case FIXED_THRESHOLD:
-      return { text: `At or above ${typeof params.value === "number" ? params.value.toLocaleString() : 1}` };
+      return { text: `At or above ${typeof params.value === "number" ? params.value.toLocaleString(LOCALE) : 1}` };
     case "policy.quantile": {
       // The threshold freezes at this quantile of the calibration scores.
       const quantile = typeof params.quantile === "number" ? params.quantile : 1;
       if (quantile === 1) return { text: "Above the calibration maximum" };
       // As many digits as tell the quantile from 1.
       const digits = quantile > 0 && quantile < 1 ? Math.min(Math.max(Math.ceil(-Math.log10(1 - quantile)) + 1, 3), 12) : 3;
-      return { text: `Above calibration quantile ${quantile.toLocaleString(undefined, { maximumFractionDigits: digits })}` };
+      return { text: `Above calibration quantile ${quantile.toLocaleString(LOCALE, { maximumFractionDigits: digits })}` };
     }
   }
   return component ? { text: changedSettings(node, component) } : {};

@@ -7,6 +7,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { RelativeTime } from "@/components/RelativeTime";
 import type { StorageStatus } from "@/types/collection";
 import { CollectionHealth } from "./CollectionHealth";
+import { LOCALE } from "@/lib/locale";
 
 const retentionLabels = {
   telemetry: "Telemetry retention",
@@ -16,7 +17,7 @@ const retentionLabels = {
 
 function formatBytes(bytes: number) {
   const gigabytes = bytes >= 1_000_000_000;
-  const value = (bytes / (gigabytes ? 1_000_000_000 : 1_000_000)).toLocaleString(undefined, {
+  const value = (bytes / (gigabytes ? 1_000_000_000 : 1_000_000)).toLocaleString(LOCALE, {
     maximumFractionDigits: 1,
   });
   return `${value} ${gigabytes ? "GB" : "MB"}`;
@@ -95,7 +96,7 @@ export default function SystemStatusSettings() {
               >
                 {policy.retention_days === null
                   ? "Not configured"
-                  : `${policy.retention_days.toLocaleString()} ${policy.retention_days === 1 ? "day" : "days"}`}
+                  : `${policy.retention_days.toLocaleString(LOCALE)} ${policy.retention_days === 1 ? "day" : "days"}`}
               </SettingsRow>
             ))}
           </>

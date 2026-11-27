@@ -1,12 +1,14 @@
 /** Local calendar arithmetic for time axes: day breaks and span-aware tick labels. */
 
+import { dateTimeFormat } from "@/lib/locale";
+
 type LocalParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
 
 const partFormatters = new Map<string, Intl.DateTimeFormat>();
 const localParts = (time: number, timeZone: string): LocalParts => {
   let formatter = partFormatters.get(timeZone);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23",
+    formatter = dateTimeFormat({ timeZone,
       year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
     partFormatters.set(timeZone, formatter);
   }
@@ -55,16 +57,16 @@ const labelFormatters = new Map<string, (value: number) => string>();
  * hours and minutes beyond. A tick on a local midnight names its day instead,
  * styled through the axis label's `day` rich-text style.
  */
-export function timeAxisLabelFormatter(timeZone: string, locale: string | undefined, spanMs: number,
+export function timeAxisLabelFormatter(timeZone: string, spanMs: number,
   withDate = false): (value: number) => string {
   const seconds = spanMs <= 20 * 60_000;
-  const key = `${timeZone}\u0000${locale ?? "\u0000"}\u0000${seconds}\u0000${withDate}`;
+  const key = `${timeZone}\u0000${seconds}\u0000${withDate}`;
   const cached = labelFormatters.get(key);
   if (cached) return cached;
-  const time = new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  const time = dateTimeFormat({ timeZone, hour: "2-digit", minute: "2-digit",
     ...(seconds ? { second: "2-digit" as const } : {}) });
-  const date = new Intl.DateTimeFormat(locale, { timeZone, month: "short", day: "2-digit" });
-  const day = new Intl.DateTimeFormat(locale, { timeZone, weekday: "short", month: "short", day: "numeric" });
+  const date = dateTimeFormat({ timeZone, month: "short", day: "2-digit" });
+  const day = dateTimeFormat({ timeZone, weekday: "short", month: "short", day: "numeric" });
   const formatter = (value: number) => {
     const instant = Number(value);
     if (isLocalMidnight(instant, timeZone)) return `{day|${day.format(instant)}}${withDate ? `\n${time.format(instant)}` : ""}`;

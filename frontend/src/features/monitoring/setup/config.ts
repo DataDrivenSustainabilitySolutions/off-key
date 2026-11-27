@@ -10,6 +10,7 @@ import type {
   AdaptiveMonitorSetup,
   StaticMonitorSetup,
 } from "@/types/monitoring";
+import { LOCALE } from "@/lib/locale";
 
 // A deliberate floor, stricter than the server: a smaller betting tolerance is
 // almost certainly a typo.
@@ -399,7 +400,7 @@ export const buildStaticMonitoringRequest = ({
       Math.ceil(automaticTrackerCount / automaticFalseAlarmProbability) - 1;
     if (automaticThresholdSimulations < requiredSimulations) {
       errors.automaticThresholdSimulations =
-        `Use at least ${requiredSimulations.toLocaleString()} simulations for ` +
+        `Use at least ${requiredSimulations.toLocaleString(LOCALE)} simulations for ` +
         `${automaticTrackerCount} automatic tracker${automaticTrackerCount === 1 ? "" : "s"} ` +
         "at this false-alarm probability.";
     }

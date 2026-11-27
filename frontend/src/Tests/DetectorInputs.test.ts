@@ -190,9 +190,9 @@ describe("forecasts of a forecaster step", () => {
       { seriesId: "forecast-band::load:lower", seriesName: "series\u00003", value: [start, 9.5] },
       { seriesId: "forecast-band::load:width", seriesName: "series\u00004", value: [start, 2] },
     ];
-    expect(formatTelemetryTooltip(hovered, "UTC", new Map(), "en-US").split("\n").slice(1))
+    expect(formatTelemetryTooltip(hovered, "UTC", new Map()).split("\n").slice(1))
       .toEqual(["load: 11", "load forecast: 10.5 (9.5 to 11.5)"]);
-    expect(formatTelemetryTooltip([{ ...hovered[1], value: [start, 10.5, null, null] }], "UTC", new Map(), "en-US"))
+    expect(formatTelemetryTooltip([{ ...hovered[1], value: [start, 10.5, null, null] }], "UTC", new Map()))
       .toContain("load forecast: 10.5");
     // A service's history names the same in the hover of an evaluated observation.
     const input: MonitoringInput = {

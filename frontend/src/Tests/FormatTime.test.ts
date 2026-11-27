@@ -24,12 +24,12 @@ describe("shared time format", () => {
     expect(format(now - 12_000, now, "elapsed")).toBe("12 seconds ago");
   });
 
-  it("reads recent times relative and older ones as one absolute style", () => {
+  it("reads recent times relative and older ones as one absolute style on a 24-hour clock", () => {
     expect(formatRelativeTime(now - 20_000, now)).toBe("just now");
     expect(formatRelativeTime(now - 5 * 60_000, now)).toBe(relative.format(-5, "minute"));
     expect(formatRelativeTime(now - 3 * 3_600_000, now)).toBe(relative.format(-3, "hour"));
     const older = new Date(now - 2 * 86_400_000);
-    expect(formatRelativeTime(older, now)).toBe(new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(older));
+    expect(formatRelativeTime(older, now)).toBe("Oct 19, 2026, 15:00");
     expect(formatRelativeTime("not a time", now)).toBe("");
   });
 

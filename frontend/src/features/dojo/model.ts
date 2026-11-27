@@ -2,6 +2,7 @@ import type { InputSlot, PipelineDefinition } from "@/types/pipelines.generated"
 import type { DatasetSeriesView, LabelSuggestion, MethodMetrics, RunPromotion, RunSummary } from "@/types/dojo.generated";
 import { templateHref } from "@/domain/monitoring/monitoringView";
 import { featureName } from "../pipelines/slots";
+import { dateTimeFormat, LOCALE } from "@/lib/locale";
 
 export type ChartPoint = [number, number];
 
@@ -68,7 +69,7 @@ export const resultKindLabel = (kind: string) =>
 /** A duration in the largest unit that keeps it readable: 45 s, 12 min, 3.5 h, 2.1 d. */
 export function formatDuration(seconds: number | null | undefined) {
   if (seconds == null) return "–";
-  const round = (value: number) => (value >= 10 ? Math.round(value) : Math.round(value * 10) / 10).toLocaleString();
+  const round = (value: number) => (value >= 10 ? Math.round(value) : Math.round(value * 10) / 10).toLocaleString(LOCALE);
   if (seconds < 60) return `${round(seconds)} s`;
   if (seconds < 3600) return `${round(seconds / 60)} min`;
   if (seconds < 86_400) return `${round(seconds / 3600)} h`;
@@ -80,7 +81,7 @@ export const formatRate = (value: number | null | undefined) =>
 
 /** A share that is often below one percent: 0.25 %, 3.1 %, 42 %. */
 export const formatShare = (value: number | null | undefined) =>
-  value == null ? "–" : `${(value * 100).toLocaleString(undefined, { maximumSignificantDigits: 2 })} %`;
+  value == null ? "–" : `${(value * 100).toLocaleString(LOCALE, { maximumSignificantDigits: 2 })} %`;
 
 /** A design that alarms on a conformal martingale has no boundary on its scores to try other methods on. */
 export function comparesCalibration(definition: Pick<PipelineDefinition, "nodes">) {
@@ -102,7 +103,7 @@ export function rankMethods(methods: MethodMetrics[]) {
 }
 
 export const formatPerDay = (value: number | null | undefined) =>
-  value == null ? "–" : (value >= 10 ? Math.round(value) : Math.round(value * 100) / 100).toLocaleString();
+  value == null ? "–" : (value >= 10 ? Math.round(value) : Math.round(value * 100) / 100).toLocaleString(LOCALE);
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
@@ -120,9 +121,9 @@ export function fromLocalInput(value: string) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
-export function formatInstant(value: string | number | null | undefined, locale?: string) {
+export function formatInstant(value: string | number | null | undefined) {
   if (value == null) return "–";
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return dateTimeFormat({ dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 export function formatSpan(start: string | null | undefined, end: string | null | undefined) {
@@ -133,27 +134,27 @@ export function formatSpan(start: string | null | undefined, end: string | null 
 const DAY_MS = 86_400_000;
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 
-/** "Nov 16 – 23", "Dec 2, 2013 – Feb 19, 2014" or "Nov 23, 8:00 AM – 12:00 PM": a span that fits a table cell. */
-export function formatShortSpan(start: string | null | undefined, end: string | null | undefined, now = Date.now(), locale?: string) {
+/** "Nov 16 – 23", "Dec 2, 2013 – Feb 19, 2014" or "Nov 23, 08:00 – 12:00": a span that fits a table cell. */
+export function formatShortSpan(start: string | null | undefined, end: string | null | undefined, now = Date.now()) {
   if (!start || !end) return "–";
   const from = new Date(start), to = new Date(end), year = new Date(now).getFullYear();
   const withYear = from.getFullYear() !== year || to.getFullYear() !== year;
-  return new Intl.DateTimeFormat(locale, {
+  return dateTimeFormat({
     month: "short", day: "numeric", ...(withYear && { year: "numeric" }),
     ...(sameDay(from, to) && { hour: "numeric", minute: "2-digit" }),
   }).formatRange(from, to);
 }
 
 /** "2 hours ago" within a day, then "Nov 16", with the year once it is not this year's. */
-export function formatShortDate(value: string, now = Date.now(), locale?: string) {
+export function formatShortDate(value: string, now = Date.now()) {
   const date = new Date(value);
   const elapsed = now - date.getTime();
   if (elapsed >= 0 && elapsed < DAY_MS) {
-    const relative = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    const relative = new Intl.RelativeTimeFormat(LOCALE, { numeric: "auto" });
     const minutes = Math.floor(elapsed / 60_000);
     return minutes < 1 ? "just now" : minutes < 60 ? relative.format(-minutes, "minute") : relative.format(-Math.floor(minutes / 60), "hour");
   }
-  return new Intl.DateTimeFormat(locale, {
+  return dateTimeFormat({
     month: "short", day: "numeric", ...(date.getFullYear() !== new Date(now).getFullYear() && { year: "numeric" }),
   }).format(date);
 }
@@ -175,7 +176,7 @@ export const monitoringHandOff = (promotion: RunPromotion) => templateHref(promo
 
 /** The note a suggested label gets when it is added as it is. */
 export function suggestionNote(item: Pick<LabelSuggestion, "alarm_count">) {
-  return item.alarm_count === 1 ? "Recorded alarm" : `${item.alarm_count.toLocaleString()} recorded alarms`;
+  return item.alarm_count === 1 ? "Recorded alarm" : `${item.alarm_count.toLocaleString(LOCALE)} recorded alarms`;
 }
 
 const FAULT_KINDS = ["step", "drift", "gain", "noise", "spike", "freeze", "gap", "out_of_range"] as const;

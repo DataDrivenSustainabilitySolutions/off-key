@@ -174,7 +174,7 @@ describe("a summarised chart", () => {
       { seriesId: "adaptive-score:svc", seriesName: "Anomaly score", value: peak.value, data: peak, axisValue: START + 5000 },
       { seriesId: "far", seriesName: "Stale", value: [START - 600_000, 1], axisValue: START + 5000 },
     ];
-    const tooltip = formatTelemetryTooltip(params, "UTC", new Map([["Voltage", "V"]]), "en-US",
+    const tooltip = formatTelemetryTooltip(params, "UTC", new Map([["Voltage", "V"]]),
       new Map([["telemetry", 500], ["adaptive-score:svc", 5000], ["far", 500]]), new Set(["input::dev"]));
     expect(tooltip.split("\n").slice(1)).toEqual(["Voltage: 403.686636 V", "dev: 0.6144 (mean)",
       "Anomaly score: 0.82 (highest of 15)", "Alarm threshold: 0.6 · score 1.4× threshold", "Alarm: active"]);

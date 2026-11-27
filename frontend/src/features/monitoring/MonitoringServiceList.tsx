@@ -6,6 +6,7 @@ import { Pin, Search } from "lucide-react";
 import type { ActiveService } from "@/types/monitoring";
 import { RelativeTime } from "@/components/RelativeTime";
 import { serviceName, serviceState, type MonitoringIndex } from "@/domain/monitoring/serviceModel";
+import { LOCALE } from "@/lib/locale";
 
 type Props = {
   draftKey?: string; services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;
@@ -53,7 +54,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
         {filters.map(item => {
           const total = count(item.id);
           return <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); scroll.current?.scrollTo?.(0, 0); }}>
-            {item.label} <span className={`mn-filter-count${item.id === "attention" && total > 0 ? " is-alert" : ""}`}>{total.toLocaleString()}</span></button>;
+            {item.label} <span className={`mn-filter-count${item.id === "attention" && total > 0 ? " is-alert" : ""}`}>{total.toLocaleString(LOCALE)}</span></button>;
         })}
       </div><label className="mn-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search monitors" placeholder="Find a monitor…" value={query}
         onChange={event => { setQuery(event.target.value); scroll.current?.scrollTo?.(0, 0); }} /></label></div>
@@ -77,7 +78,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
                   <small className="mn-mobile-scope" title={row.scope}>{row.scope}</small></div>
                 <div role="cell" className="mn-service-inputs" title={row.scope}><span>{row.scope}</span><small>{service.reading_ids.length} {service.reading_ids.length === 1 ? "reading" : "readings"}</small></div>
                 <div role="cell" className="mn-service-state"><span className={`mn-state mn-state--${row.state.tone}`}>{row.state.label}</span>
-                  {progress && <small>{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples</small>}
+                  {progress && <small>{progress.current.toLocaleString(LOCALE)} of {progress.target.toLocaleString(LOCALE)} samples</small>}
                   {service.operational_status.updated_at && <small className="mn-service-time">Reported <RelativeTime value={service.operational_status.updated_at} /></small>}</div>
                 <div role="cell"><button className="mn-favourite ex-icon-button" aria-pressed={favourites.has(service.id)} aria-label={`${favourites.has(service.id) ? "Unpin" : "Pin"} ${row.name}`}
                   onClick={() => onFavourite(service.id)}><Pin size={15} aria-hidden="true" /></button></div>

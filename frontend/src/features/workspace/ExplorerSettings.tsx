@@ -5,6 +5,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { MAX_SYSTEM_BYTES, parseSystemDocument } from "@/domain/system/systemDocument";
 import type { SystemDocument, SystemEntityKind } from "@/types/system";
 import { CatalogueImportReview } from "./CatalogueImportReview";
+import { LOCALE } from "@/lib/locale";
 
 type Props = {
   document: SystemDocument;
@@ -19,7 +20,7 @@ type Props = {
 };
 type Candidate = { document: SystemDocument; revision: number; fileName: string };
 const itemCount = (count: number, singular: string) =>
-  count.toLocaleString() + " " + (count === 1 ? singular : singular + "s");
+  count.toLocaleString(LOCALE) + " " + (count === 1 ? singular : singular + "s");
 const catalogueSummary = (document: SystemDocument, includeGroups = false) => [
   itemCount(document.brokers.length, "broker"),
   itemCount(document.devices.length, "device"),

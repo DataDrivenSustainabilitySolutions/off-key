@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 import { useNow } from "@/hooks/use-now";
 import { DAY, mutedAlarms, shadowSince } from "@/domain/monitoring/shadowReview";
+import { LOCALE } from "@/lib/locale";
 
 /**
  * A shadow run under review: how long it has run, the alarms it held back, how often against what
@@ -59,9 +60,9 @@ export function ShadowReview({ service, canEdit, onTakeLive, onStopped }: {
     <dl className="mn-configuration">
       <div><dt>Running since</dt><dd><RelativeTime value={since} fallback="Not recorded" /></dd></div>
       <div><dt>Muted alarms</dt><dd>{error ? <span role="alert">{error}</span> : !alarms ? "Counting…"
-        : `${alarms.episodes.toLocaleString()} ${alarms.episodes === 1 ? "alarm" : "alarms"}`
-          + (alarms.observations !== alarms.episodes ? ` over ${alarms.observations.toLocaleString()} observations` : "")}</dd></div>
-      <div><dt>Per day</dt><dd>{perDay !== undefined ? perDay.toLocaleString(undefined, { maximumFractionDigits: 1 })
+        : `${alarms.episodes.toLocaleString(LOCALE)} ${alarms.episodes === 1 ? "alarm" : "alarms"}`
+          + (alarms.observations !== alarms.episodes ? ` over ${alarms.observations.toLocaleString(LOCALE)} observations` : "")}</dd></div>
+      <div><dt>Per day</dt><dd>{perDay !== undefined ? perDay.toLocaleString(LOCALE, { maximumFractionDigits: 1 })
         : alarms ? "After its first day" : "…"}</dd></div>
       {expected && <div><dt>The test said</dt><dd>{expected}</dd></div>}
     </dl>

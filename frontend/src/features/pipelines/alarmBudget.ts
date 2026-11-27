@@ -3,6 +3,7 @@ import type { PipelineComponent, PipelineDefinition } from "./contracts";
 import { setNodeParams, type GraphDocument } from "./model";
 import { componentFor } from "./semantics";
 import { roughDuration } from "./startup";
+import { LOCALE } from "@/lib/locale";
 
 /** How often a design's scores lie above its boundary, as its own settings state it. */
 export type AlarmBudget = {
@@ -95,10 +96,10 @@ export function budgetSentence(
   const { share, consecutive, finest } = budget;
   return [
     interval
-      ? `That is one score in ${scoresPerAlarm(share).toLocaleString()} above the boundary, at one observation every ${roughDuration(interval)}.`
+      ? `That is one score in ${scoresPerAlarm(share).toLocaleString(LOCALE)} above the boundary, at one observation every ${roughDuration(interval)}.`
       : "A count per hour appears once the chosen readings report how often they arrive.",
     consecutive > 1
-      ? `An alarm takes ${consecutive.toLocaleString()} in a row, so alarms come less often.`
+      ? `An alarm takes ${consecutive.toLocaleString(LOCALE)} in a row, so alarms come less often.`
       : "While nothing is wrong, each is a false alarm.",
     budget.promise && !short ? PROMISE[budget.promise] : "",
     // The boundary is the largest calibration score already.

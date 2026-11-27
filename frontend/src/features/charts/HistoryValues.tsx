@@ -1,17 +1,18 @@
 import { useState } from "react";
 import type { TelemetryHistory } from "@/types/telemetry-history";
 import { intervalLabel } from "./history-presentation";
+import { dateTimeFormat, LOCALE } from "@/lib/locale";
 
 const PAGE = 50;
-const TIME = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
-const PRECISE = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
+const TIME = dateTimeFormat({ month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+const PRECISE = dateTimeFormat({ month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
   fractionalSecondDigits: 3, hourCycle: "h23" });
 /** Readable, yet exact: milliseconds appear whenever a reading carries them. */
 const formatTime = (value: string) => {
   const date = new Date(value);
   return (date.getTime() % 1000 ? PRECISE : TIME).format(date);
 };
-const MEAN = new Intl.NumberFormat("en", { maximumFractionDigits: 3, useGrouping: false });
+const MEAN = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 3, useGrouping: false });
 
 /**
  * The values behind the chart, newest first. Original samples keep their exact timestamps
@@ -28,7 +29,7 @@ export function HistoryValues({ history, unit }: { history: TelemetryHistory; un
   const readings = means ? history.sample_count : points.length;
   const thinned = !means && !!history.column_ms;
   const suffix = unit ? ` (${unit})` : "";
-  const count = new Intl.NumberFormat("en");
+  const count = new Intl.NumberFormat(LOCALE);
   return <section className="ex-history-values" aria-label="Values"><p>
     {means ? `${intervalLabel(history.interval_ms)} means of ${count.format(readings)} readings`
       : thinned ? `${count.format(readings)} of ${count.format(history.sample_count)} readings: first, last, lowest and highest per ${intervalLabel(history.column_ms!)}. Zoom in for every reading.`

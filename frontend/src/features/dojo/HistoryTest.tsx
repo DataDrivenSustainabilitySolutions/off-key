@@ -12,6 +12,7 @@ import {
   testSpans, testStatus, useFollowTest, useHistoryTest, type RuleShape, type TestedRun,
 } from "./historyTest";
 import "./history-test.css";
+import { LOCALE } from "@/lib/locale";
 
 type Spans = NonNullable<ReturnType<typeof testSpans>>;
 
@@ -179,7 +180,7 @@ export function HistoryTestPanel({ session: key, definition, readings, name, sco
     </label>
     <p className="pl-help">{copies
       ? "The values are copied into a Dojo dataset first. Later tests run on that copy, so their results compare."
-      : dataset ? `${formatSpan(dataset.start_at, dataset.end_at)} · ${dataset.point_count.toLocaleString()} values`
+      : dataset ? `${formatSpan(dataset.start_at, dataset.end_at)} · ${dataset.point_count.toLocaleString(LOCALE)} values`
         : test.error ? "" : "Loading the dataset…"}</p>
     {dataset && !matched && <fieldset className="dj-test-inputs"><legend>Inputs</legend>
       {slots.map((slot) => <label key={slot.id} className="pl-field">

@@ -14,6 +14,7 @@ import type { SystemDocument, SystemEntityKind, SystemRuntime } from "@/types/sy
 import { ExplorerHistoryChart } from "./ExplorerHistoryChart";
 import { readingHistoryKey, useReadingHistorySnapshot, type ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "@/domain/system/navigationIndex";
+import { LOCALE } from "@/lib/locale";
 
 type Props = {
   node: ExplorerNode;
@@ -46,7 +47,7 @@ const phases: Record<LiveStatus["phase"], string> = {
   waiting: "Waiting", reconnecting: "Reconnecting", blocked: "Unavailable",
   error: "Unavailable", paused: "Paused",
 };
-const number = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
+const number = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 3 });
 
 function Binding({ label, value }: { label: string; value: string }) {
   const [result, setResult] = useState<"copied" | "failed" | null>(null);

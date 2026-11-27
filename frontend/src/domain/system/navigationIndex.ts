@@ -1,5 +1,6 @@
 import type { SystemDocument } from "@/types/system";
 import type { SourceAppearance } from "@/types/source-appearance";
+import { LOCALE } from "@/lib/locale";
 
 export type ExplorerNode = {
   appearance?: SourceAppearance;
@@ -37,7 +38,7 @@ export type NavigationRow = {
   trailKeys: string[];
 };
 
-const naturalOrder = new Intl.Collator(undefined, {
+const naturalOrder = new Intl.Collator(LOCALE, {
   numeric: true,
   sensitivity: "base",
 });

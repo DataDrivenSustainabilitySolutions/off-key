@@ -28,15 +28,15 @@ describe("local day breaks", () => {
 
 describe("time axis labels", () => {
   it("shows seconds only over a few minutes and names the day at midnight", () => {
-    const minutes = timeAxisLabelFormatter("UTC", "en-US", 5 * 60_000);
-    const hours = timeAxisLabelFormatter("UTC", "en-US", 24 * 3_600_000);
+    const minutes = timeAxisLabelFormatter("UTC", 5 * 60_000);
+    const hours = timeAxisLabelFormatter("UTC", 24 * 3_600_000);
     expect(minutes(at("2026-10-28T14:03:12Z"))).toBe("14:03:12");
     expect(hours(at("2026-10-28T14:03:12Z"))).toBe("14:03");
     expect(hours(at("2026-10-28T00:00:00Z"))).toBe("{day|Wed, Oct 28}");
   });
 
   it("keeps the date line on the standard layout", () => {
-    const standard = timeAxisLabelFormatter("UTC", "en-US", 24 * 3_600_000, true);
+    const standard = timeAxisLabelFormatter("UTC", 24 * 3_600_000, true);
     expect(standard(at("2026-10-28T14:00:00Z"))).toBe("Oct 28\n14:00");
     expect(standard(at("2026-10-28T00:00:00Z"))).toBe("{day|Wed, Oct 28}\n00:00");
   });
@@ -47,7 +47,7 @@ describe("day breaks on the chart", () => {
   const option = (times: string[]) => buildTelemetryChartOption({
     model: buildTelemetryChartModel({ telemetryName: "Voltage", telemetryColor: "#2563eb", anomalyMarkers: [], detectors: [],
       telemetry: times.map((time, index) => [at(time), index]) }),
-    viewport: { mode: "live" }, timeZone: "UTC", colors, accessibleDescription: "Voltage", locale: "en-US", layout: "compact",
+    viewport: { mode: "live" }, timeZone: "UTC", colors, accessibleDescription: "Voltage", layout: "compact",
   }) as unknown as { series: Array<{ markLine?: { data: Array<{ xAxis: number }> } }>;
     xAxis: Array<{ axisLabel: { rich?: Record<string, unknown>; formatter: (value: number) => string } }> };
 

@@ -6,6 +6,7 @@ import { PIPELINE_LIMITS, type GraphDocument } from "./model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "./slots";
 import { observationCount, roughDuration, startupSummary, type Startup } from "./startup";
 import type { HistoryMode } from "./types";
+import { LOCALE } from "@/lib/locale";
 
 /** Learning and calibration as one bar, with their lengths and durations. */
 function StartupTimeline({ startup }: { startup: Startup }) {
@@ -23,7 +24,7 @@ function StartupTimeline({ startup }: { startup: Startup }) {
       <dl>
         {phases.map((phase) => <div key={phase.id} className={`is-${phase.id}`}>
           <dt>{phase.label}</dt>
-          <dd>{phase.observations.toLocaleString()}{interval ? ` · ≈ ${roughDuration(phase.observations * interval)}` : ""}</dd>
+          <dd>{phase.observations.toLocaleString(LOCALE)}{interval ? ` · ≈ ${roughDuration(phase.observations * interval)}` : ""}</dd>
         </div>)}
       </dl>
       <p className="pl-help">
@@ -57,8 +58,8 @@ function NumberSetting({
   const error = parsed === null
     ? nullable ? "" : "Enter a number."
     : !Number.isInteger(parsed) ? "Enter a whole number."
-      : min !== undefined && parsed < min ? `Use at least ${min.toLocaleString()}.`
-        : max !== undefined && parsed > max ? `Use at most ${max.toLocaleString()}.` : "";
+      : min !== undefined && parsed < min ? `Use at least ${min.toLocaleString(LOCALE)}.`
+        : max !== undefined && parsed > max ? `Use at most ${max.toLocaleString(LOCALE)}.` : "";
   return (
     <label className="pl-field">
       <span>{label}</span>

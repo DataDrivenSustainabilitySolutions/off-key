@@ -155,8 +155,8 @@ export default function ExplorerPreview({
     : isReading && status.phase === "idle" && savedBinding?.policy.mode === "off" ? "Recording off" : liveLabel;
   const active = connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected";
   const tone = active ? "positive" : label === "Unavailable" || label === "Unreachable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
-  // A recorded reading is stale once it has missed several of its usual arrivals.
-  const typicalSeconds = stream ? runtime?.ingress?.readings?.[stream.id]?.typical_interval_seconds : undefined;
+  // A reading is stale once it has missed several of its usual arrivals, recorded or previewed.
+  const typicalSeconds = (stream ? runtime?.ingress?.readings?.[stream.id]?.typical_interval_seconds : undefined) ?? snapshot?.typicalInterval;
   const staleAfterMs = Math.max(60_000, 5 * 1000 * (typicalSeconds ?? 60));
   const now = useNow(1_000, isReading && receivedAt != null);
   const stale = isReading && active && receivedAt != null && now - receivedAt > staleAfterMs;

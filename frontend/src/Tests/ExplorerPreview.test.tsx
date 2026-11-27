@@ -463,6 +463,24 @@ describe("explorer selected-object preview", () => {
     expect(view.container.querySelector(".ex-preview-feed.is-stale")).not.toBeNull();
   });
 
+  it("judges a live preview by its own cadence before calling it stale", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const { telemetry, props } = fixture();
+    const slow = batch();
+    slow.readings[0] = { ...slow.readings[0]!, typical_interval_seconds: 600 };
+    telemetry.accept(slow, false);
+    const view = render(<ExplorerPreview {...props} />);
+    const feed = () => view.container.querySelector(".ex-preview-feed")!;
+    vi.mocked(Date.now).mockReturnValue(NOW + 20 * 60_000);
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(feed().classList.contains("is-stale")).toBe(false);
+    vi.mocked(Date.now).mockReturnValue(NOW + 51 * 60_000);
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(feed().classList.contains("is-stale")).toBe(true);
+    vi.mocked(Date.now).mockReturnValue(NOW);
+    vi.useRealTimers();
+  });
+
   it("uses a step chart for booleans and leaves identifiers as readable text", () => {
     const boolean = fixture(node("switch"));
     boolean.telemetry.accept(batch("switch", false), false);

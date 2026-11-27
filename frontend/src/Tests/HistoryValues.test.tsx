@@ -18,6 +18,16 @@ describe("values behind a chart", () => {
     expect(within(table).getByText("Measured at", { exact: true })).toBeTruthy();
   });
 
+  it("keeps sub-second readings apart and the original timestamp on hover", () => {
+    const early = "2026-11-27T14:29:59.001Z";
+    const late = "2026-11-27T14:29:59.999Z";
+    render(<HistoryValues history={{ representation: "raw", interval_ms: 0, sample_count: 2, extent: null,
+      points: [{ timestamp: early, value: 1 }, { timestamp: late, value: 2 }] }} />);
+    const times = screen.getAllByText(/:29:59/, { selector: "time" });
+    expect(times.map(time => time.textContent)).toEqual([expect.stringMatching(/:29:59\.999$/), expect.stringMatching(/:29:59\.001$/)]);
+    expect(times.map(time => time.getAttribute("title"))).toEqual([late, early]);
+  });
+
   it("says what averaged rows summarise", () => {
     render(<HistoryValues history={{ representation: "mean", interval_ms: 30_000, sample_count: 3600, extent: null,
       points: [{ timestamp: at(29), start: at(29), value: 12.34567, minimum: 10, maximum: 15, count: 1200 }] }} />);

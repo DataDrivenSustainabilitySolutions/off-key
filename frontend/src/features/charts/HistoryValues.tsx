@@ -4,6 +4,13 @@ import { intervalLabel } from "./history-presentation";
 
 const PAGE = 50;
 const TIME = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+const PRECISE = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  fractionalSecondDigits: 3, hourCycle: "h23" });
+/** Readable, yet exact: milliseconds appear whenever a reading carries them. */
+const formatTime = (value: string) => {
+  const date = new Date(value);
+  return (date.getTime() % 1000 ? PRECISE : TIME).format(date);
+};
 const MEAN = new Intl.NumberFormat("en", { maximumFractionDigits: 3, useGrouping: false });
 
 /**
@@ -30,7 +37,7 @@ export function HistoryValues({ history, unit }: { history: TelemetryHistory; un
       <th scope="col">Interval from</th><th scope="col">Mean{suffix}</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Readings</th>
     </> : <><th scope="col">Measured at</th><th scope="col">Value{suffix}</th></>}</tr></thead>
       <tbody>{visible.map(point => <tr key={point.timestamp}>
-        <td><time dateTime={point.start ?? point.timestamp}>{TIME.format(new Date(point.start ?? point.timestamp))}</time></td>
+        <td><time dateTime={point.start ?? point.timestamp} title={point.start ?? point.timestamp}>{formatTime(point.start ?? point.timestamp)}</time></td>
         {/* A mean is calculated, so its trailing digits say nothing; a sample is shown as recorded. */}
         <td>{means && typeof point.value === "number" ? MEAN.format(point.value) : String(point.value)}</td>
         {means && <><td>{point.minimum ?? "—"}</td><td>{point.maximum ?? "—"}</td><td>{point.count === undefined ? "—" : count.format(point.count)}</td></>}

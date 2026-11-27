@@ -291,3 +291,25 @@ button.ex-disclosure:hover { color: var(--ex-ink); background: color-mix(in srgb
 }
 .mn-state.is-headline { gap: 9px; font-size: var(--text-body); font-weight: 500; }
 .mn-state.is-headline::before { width: 8px; height: 8px; }
+/* Mock: status as a dot by the title, the latest value in the header, a faded chart when stale. */
+.ex-preview-title { display: flex; align-items: center; gap: 10px; }
+.ex-status-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ex-muted); }
+.ex-status-dot--positive { background: var(--ex-accent); }
+.ex-status-dot--positive::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ex-accent); animation: ex-status-pulse 2.4s ease-out infinite; }
+.ex-status-dot--danger { background: hsl(var(--destructive)); }
+.ex-status-dot--warning { background: hsl(var(--warning)); }
+.ex-status-dot--stale { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ex-muted); }
+@keyframes ex-status-pulse { from { transform: scale(1); opacity: .55; } to { transform: scale(2.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ex-status-dot--positive::after { animation: none; } }
+.ex-preview-state--danger { color: hsl(var(--destructive)); }
+.ex-preview-state--warning,.ex-preview-state--stale { color: hsl(var(--warning)); }
+.ex-history-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; min-width: 0; }
+.ex-history-latest { display: inline-flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; }
+.ex-history-latest strong { font-size: var(--text-title3, 1.25rem); font-weight: 450; color: var(--ex-ink); letter-spacing: -.01em; }
+.ex-history-latest small { font-size: var(--text-caption); color: var(--ex-muted); font-weight: 400; }
+.ex-history-latest > span { font-size: var(--text-caption); color: var(--ex-muted); }
+.ex-history-latest.is-stale strong { color: var(--ex-muted); }
+.ex-history-latest.is-stale > span { color: hsl(var(--warning)); }
+.ex-preview-header--reading { margin-bottom: 20px; }
+.ex-history-values > p { margin: 12px 0 0; }
+.ex-preview-feed.is-stale canvas { opacity: .45; transition: opacity .3s; }

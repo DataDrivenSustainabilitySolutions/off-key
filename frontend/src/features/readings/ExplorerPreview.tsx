@@ -6,6 +6,8 @@ import { IconPicker } from "@/components/source-icons/IconPicker";
 import type { SourceAppearance } from "@/types/source-appearance";
 import { InlineName } from "@/components/InlineName";
 import { RelativeTime } from "@/components/RelativeTime";
+import { useNow } from "@/hooks/use-now";
+import { formatRelativeTime } from "@/lib/format-time";
 import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { LiveStatus } from "@/types/system-live";
 import type { SystemDocument, SystemEntityKind, SystemRuntime } from "@/types/system";
@@ -44,7 +46,7 @@ const phases: Record<LiveStatus["phase"], string> = {
   waiting: "Waiting", reconnecting: "Reconnecting", blocked: "Unavailable",
   error: "Unavailable", paused: "Paused",
 };
-const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
+const number = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 
 function Binding({ label, value }: { label: string; value: string }) {
   const [result, setResult] = useState<"copied" | "failed" | null>(null);
@@ -153,6 +155,13 @@ export default function ExplorerPreview({
     : isReading && status.phase === "idle" && savedBinding?.policy.mode === "off" ? "Recording off" : liveLabel;
   const active = connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected";
   const tone = active ? "positive" : label === "Unavailable" || label === "Unreachable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
+  // A recorded reading is stale once it has missed several of its usual arrivals.
+  const typicalSeconds = stream ? runtime?.ingress?.readings?.[stream.id]?.typical_interval_seconds : undefined;
+  const staleAfterMs = Math.max(60_000, 5 * 1000 * (typicalSeconds ?? 60));
+  const now = useNow(1_000, isReading && receivedAt != null);
+  const stale = isReading && active && receivedAt != null && now - receivedAt > staleAfterMs;
+  const dotTone = stale ? "stale" : tone;
+  const dotLabel = stale ? "No new values" : label;
   const showStatusDetail = connectionStatusOnly || !isReading || (!recording && status.phase !== "idle");
   const statusDetail = connectionStatusOnly ? "Broker connection"
     : recording ? stream && stream.value_type !== "number" ? "Recorded state" : "Recorded history"
@@ -165,6 +174,13 @@ export default function ExplorerPreview({
   const problem = brokerProblem ? brokerProblem : recording ? recordProblem?.message : status.phase === "error" ? status.message
     : connection && ["blocked", "error", "reconnecting"].includes(connection.state)
       ? connection.message : status.phase === "blocked" ? status.message : null;
+  const latestValue = stream && <div className={`ex-history-latest${stale ? " is-stale" : ""}`}>
+          <strong>{latest == null ? "—" : typeof latest === "number" ? number.format(latest) : String(latest)}
+            {latest != null && stream.unit && <small> {stream.unit}</small>}</strong>
+          <span>{!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained value"
+            : receivedAt == null ? "No value yet" : stale ? `Last value ${formatRelativeTime(receivedAt, now, "elapsed")}`
+              : <RelativeTime value={receivedAt} mode="elapsed" fallback="No value yet" />}</span>
+</div>;
   const edit = canEdit && node.entityKind && node.objectId && <button type="button" disabled={saving}
     onClick={() => onEdit(node.entityKind!, node.objectId!)}><Pencil size={14} /> Edit structure</button>;
   const details = <>
@@ -204,15 +220,18 @@ export default function ExplorerPreview({
                 onSave={(name) => onRename(node.entityKind!, node.objectId!, name)}
                 editable={editable} disabledReason={saving ? "Saving changes…" : undefined}
                 saveError={error} ariaLabel={`Rename ${kind.toLowerCase()}`} /> : title}
+              {isReading && <span className={`ex-status-dot ex-status-dot--${dotTone}`} role="status" aria-label={dotLabel} title={dotLabel} />}
             </h1>
-            {isReading && parent && <p className="ex-preview-parent">{parent.label}</p>}
+            {isReading && (parent || !active) && <p className="ex-preview-parent">
+              {parent?.label}{!active && <span className={`ex-preview-state ex-preview-state--${dotTone}`}>{parent ? " · " : ""}{dotLabel}</span>}
+            </p>}
           </div>
         </div>
         <div className="mn-detail-actions">{actions}{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Unpin reading" : "Pin reading"} onClick={() => onFavourite(stream.id)}><Pin size={17} /></button>}</div>
       </header>
       {!isReading && trail}
       {/* What is happening now, in one row: the latest value, the connection and the recording. */}
-      <div className="ex-preview-facts">
+      {!isReading && <div className="ex-preview-facts">
         {stream && <div className="ex-preview-fact ex-preview-value">
           <span>Latest value · {!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained"
             : <RelativeTime value={receivedAt} mode="elapsed" fallback="No value received yet" />}</span>
@@ -229,14 +248,15 @@ export default function ExplorerPreview({
           <div className="ex-preview-fact"><span>{addresses}</span><strong>{number.format(topicCount)}</strong></div>
           {snapshot?.isAggregate && <div className="ex-preview-fact"><span>Arrivals / second</span><strong>{number.format(snapshot.rate)}</strong></div>}
         </>}
-      </div>
+      </div>}
       {problem && <p className="ex-preview-error" role="alert">{problem}</p>}
-      {stream && <>
+      {stream && <div className={`ex-preview-feed${stale ? " is-stale" : ""}`}>
         {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
             readingConnection?.host, readingConnection?.port, readingConnection?.tls, readingConnection?.transport])}
-          stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache} />}
-      </>}
+          stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache}
+          latest={latestValue} />}
+      </div>}
       {children && <div className="ex-preview-host">{children}</div>}
       <section className="ex-preview-details is-collapsible" aria-label="Source details">
         <details><summary>Source details</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{isReading && trail}{details}</details>

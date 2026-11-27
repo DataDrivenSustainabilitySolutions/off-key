@@ -3,7 +3,8 @@ import type { TelemetryHistory } from "@/types/telemetry-history";
 import { intervalLabel } from "./history-presentation";
 
 const PAGE = 50;
-const MEAN = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3, useGrouping: false });
+const TIME = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+const MEAN = new Intl.NumberFormat("en", { maximumFractionDigits: 3, useGrouping: false });
 
 /**
  * The values behind the chart, newest first. Original samples keep their exact timestamps
@@ -20,22 +21,24 @@ export function HistoryValues({ history, unit }: { history: TelemetryHistory; un
   const readings = means ? history.sample_count : points.length;
   const thinned = !means && !!history.column_ms;
   const suffix = unit ? ` (${unit})` : "";
-  return <details className="ex-history-values"><summary>Values · {readings.toLocaleString()} {readings === 1 ? "reading" : "readings"}
-    {means && ` · ${intervalLabel(history.interval_ms)} means`}
-    {thinned && ` of ${history.sample_count.toLocaleString()} · first, last, lowest and highest per ${intervalLabel(history.column_ms!)}; zoom in for every reading`}</summary>
+  const count = new Intl.NumberFormat("en");
+  return <section className="ex-history-values" aria-label="Values"><p>
+    {means ? `${intervalLabel(history.interval_ms)} means of ${count.format(readings)} readings`
+      : thinned ? `${count.format(readings)} of ${count.format(history.sample_count)} readings: first, last, lowest and highest per ${intervalLabel(history.column_ms!)}. Zoom in for every reading.`
+        : `${count.format(readings)} ${readings === 1 ? "reading" : "readings"}`}, newest first</p>
     <table><thead><tr>{means ? <>
-      <th scope="col">Interval from (UTC)</th><th scope="col">Mean{suffix}</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Readings</th>
-    </> : <><th scope="col">Measured at (UTC)</th><th scope="col">Value{suffix}</th></>}</tr></thead>
+      <th scope="col">Interval from</th><th scope="col">Mean{suffix}</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Readings</th>
+    </> : <><th scope="col">Measured at</th><th scope="col">Value{suffix}</th></>}</tr></thead>
       <tbody>{visible.map(point => <tr key={point.timestamp}>
-        <td><time dateTime={point.start ?? point.timestamp}>{point.start ?? point.timestamp}</time></td>
+        <td><time dateTime={point.start ?? point.timestamp}>{TIME.format(new Date(point.start ?? point.timestamp))}</time></td>
         {/* A mean is calculated, so its trailing digits say nothing; a sample is shown as recorded. */}
         <td>{means && typeof point.value === "number" ? MEAN.format(point.value) : String(point.value)}</td>
-        {means && <><td>{point.minimum ?? "—"}</td><td>{point.maximum ?? "—"}</td><td>{point.count?.toLocaleString() ?? "—"}</td></>}
+        {means && <><td>{point.minimum ?? "—"}</td><td>{point.maximum ?? "—"}</td><td>{point.count === undefined ? "—" : count.format(point.count)}</td></>}
       </tr>)}</tbody></table>
     {pages > 1 && <div className="ex-history-tools" role="group" aria-label="Values pages">
       <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}>Newer</button>
       <span>{current + 1} / {pages}</span>
       <button type="button" disabled={current === pages - 1} onClick={() => setPage(current + 1)}>Older</button>
     </div>}
-  </details>;
+  </section>;
 }

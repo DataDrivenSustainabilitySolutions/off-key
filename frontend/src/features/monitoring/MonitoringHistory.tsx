@@ -5,7 +5,7 @@ import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorCo
 import { useChartColors } from "@/features/charts/use-chart-colors";
 import { useDetectorSelection } from "@/features/charts/use-detector-selection";
 import { useNavigationDraft } from "@/lib/navigation-draft";
-import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTimeZone } from "@/features/charts/telemetry-chart";
+import { buildMonitoringChartOption, formatChartTime, getLocalTimeZone } from "@/features/charts/telemetry-chart";
 import { alarmText } from "@/features/charts/telemetry-detectors";
 import { getChartDomain } from "@/features/charts/telemetry-thresholds";
 import type { ActiveService } from "@/types/monitoring";
@@ -22,6 +22,7 @@ import { useHistoryWidth } from "@/features/charts/use-history-width";
 import type { HistoryPreference } from "@/types/telemetry-history";
 import { useHistoryPresentation } from "./useHistoryPresentation";
 import { forecastKeyEntries } from "@/features/charts/forecast-key";
+import { latestScoreText } from "@/features/charts/latest-score";
 import { ForecastCoverage, ForecastOptions } from "./ForecastControls";
 import { ChartKey, type KeyEntry } from "@/features/charts/ChartKey";
 import { AnomalyStrip } from "@/features/charts/AnomalyStrip";
@@ -138,7 +139,9 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const stage = service.operational_status.stage.replace(/_/g, " ");
   const panes = model.readings.length + Number(Boolean(model.detectorInputs?.length) || Boolean(model.forecasts?.some(forecast => !forecast.readingId)))
     + (showResiduals ? model.forecasts?.length ?? 0 : 0) + new Set(model.secondarySeries.map(series => series.pane)).size;
-  const latest = completeModel.secondarySeries[0]?.latestObservation;
+  const latestSeries = completeModel.secondarySeries[0];
+  const latest = latestSeries?.latestObservation;
+  const latestScore = latestSeries && latestScoreText(latestSeries);
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
   return <section ref={chartWidthRef} className="ex-preview-history mn-history" aria-label="Monitoring history">
     <div className="ex-preview-section-heading"><h3>{forecasts.length ? "Forecast" : "Inputs and detection"}</h3>
@@ -186,9 +189,8 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </div>}
     {latest && (!forecasts.length || showScores) && <output className="mn-history-result" aria-label="Latest detector result">
       <span>Latest {inputs.length > 1 ? "joint " : ""}result · {formatChartTime(latest.timeMs, timeZone, "tooltip")}</span>
-      <strong>{latest.value !== null && latest.threshold ? `Now ${formatNumber(Number((latest.value / latest.threshold).toPrecision(2)))}× threshold`
-        : `${completeModel.secondarySeries[0]!.name}: ${latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}`}</strong>
-      <span>{latest.value !== null && latest.threshold ? `Score ${formatNumber(latest.value)}, threshold ${formatNumber(latest.threshold)} · ` : ""}Service alarm {alarmText(latest)}</span>
+      <strong>{latestScore!.headline}</strong>
+      <span>{latestScore!.detail} · Service alarm {alarmText(latest)}</span>
     </output>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;

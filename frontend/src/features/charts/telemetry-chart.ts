@@ -931,7 +931,7 @@ export const buildMonitoringChartOption = ({
         filterMode: "none",
         ...(domain ? { rangeMode: ["value", "value"] as ["value", "value"] } : {}),
         bottom: 8,
-        height: compact ? 20 : 18,
+        height: compact ? 26 : 18,
         showDetail: false,
         brushSelect: false,
         borderColor: "transparent",

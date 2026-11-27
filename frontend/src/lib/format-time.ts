@@ -4,11 +4,11 @@
  */
 
 const DAY_MS = 86_400_000;
-const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-const exactDateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
-const timeOfDay = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-const elapsedDays = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
+const dateTime = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" });
+const exactDateTime = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "medium" });
+const timeOfDay = new Intl.DateTimeFormat("en", { timeStyle: "short" });
+const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const elapsedDays = new Intl.RelativeTimeFormat("en", { numeric: "always" });
 
 export type RelativeTimeMode = "recent" | "elapsed";
 
@@ -64,7 +64,7 @@ export function formatDay(value: string | number | Date, now = Date.now()) {
   if (!date) return "";
   const days = Math.round((startOfDay(now) - startOfDay(date.getTime())) / DAY_MS);
   if (days === 0 || days === 1) return relative.format(-days, "day").replace(/^./, letter => letter.toLocaleUpperCase());
-  return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric",
+  return date.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric",
     ...(date.getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) });
 }
 

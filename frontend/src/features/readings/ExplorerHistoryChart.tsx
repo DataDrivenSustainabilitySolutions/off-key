@@ -1,7 +1,8 @@
 import { epochMilliseconds, isoTimestamp } from "@/lib/timestamps";
 import { useNow } from "@/hooks/use-now";
 import { Fragment, useCallback, useMemo, useState, type KeyboardEvent } from "react";
-import { Minus, Plus, Radio, RotateCcw } from "lucide-react";
+import { Minus, Plus, Radio, RotateCcw, Table2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { EChart } from "@/features/charts/EChart";
 import { TelemetryChartSummary } from "@/features/charts/TelemetryChartSummary";
 import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorControls";
@@ -36,9 +37,12 @@ import { CHART_INSETS } from "@/features/charts/telemetry-chart";
 import { ChartKey } from "@/features/charts/ChartKey";
 
 type Inspection = { startMs: number; endMs: number; windowStartMs: number };
-type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache };
+type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache;
+  /** The latest value, shown beside the heading. */
+  latest?: ReactNode };
 
-export function ExplorerHistoryChart({ stream, connection, snapshot, binding, historyCache }: Props) {
+export function ExplorerHistoryChart({ stream, connection, snapshot, binding, historyCache, latest }: Props) {
+  const [valuesOpen, setValuesOpen] = useState(false);
   const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
   const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding)}` : undefined;
@@ -213,13 +217,15 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const hasValues = Boolean(presentation?.points.length || model.telemetry.data.length);
   return <section ref={chartWidthRef} className="ex-preview-history" aria-label={title}>
     <div className="ex-preview-section-heading">
-      <h3>{title}</h3>
+      <div className="ex-history-heading">{latest}</div>
       <div className="ex-history-tools" role="group" aria-label="Chart controls">
         <MonitorViews monitors={monitors} value={service?.id ?? RAW_VIEW} onChange={setView} aimed={aimed} />
         {numeric && <HistoryViewControls value={preference} onChange={setPreference} intervalMs={visibleHistory?.interval_ms} />}
         <button type="button" aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
         <button type="button" aria-label="Reset zoom" title="Reset zoom" disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={14} /></button>
+        <button type="button" aria-label="Show values" title="Show values" aria-pressed={valuesOpen} disabled={!visibleHistory?.points.length}
+          onClick={() => setValuesOpen(open => !open)}><Table2 size={15} /></button>
         <div className="ex-history-ranges" role="group" aria-label="Chart time range">
           {RANGE_PRESETS.map((preset) => <button key={preset.id} type="button" title={preset.title}
             aria-pressed={preset.id === range.id} onClick={() => { setRangeId(preset.id); setInspection(undefined); }}>
@@ -257,7 +263,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     {model.secondarySeries.length > 0 && <TelemetryChartSummary model={model} timeZone={timeZone} showTelemetry={false} />}
     <TelemetryEventDetails groups={events} timeZone={timeZone} unit={stream.unit} />
     {hasValues && stored.loading && <p className="ex-preview-note" role="status">Loading {preference.mode === "raw" ? "raw readings" : "history"}…</p>}
-    {!stored.loading && visibleHistory && visibleHistory.points.length > 0 && <HistoryValues key={visibleHistory.representation}
+    {valuesOpen && !stored.loading && visibleHistory && visibleHistory.points.length > 0 && <HistoryValues key={visibleHistory.representation}
       history={visibleHistory} unit={stream.unit} />}
     {stored.error && <p className="ex-preview-note" role="status">{stored.error}</p>}
     {monitoring.error && <p className="ex-preview-note" role="status">{monitoring.error}</p>}

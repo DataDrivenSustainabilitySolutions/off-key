@@ -117,10 +117,10 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await publisher.publishAsync(`tests/${localId}/temperature`, "27", { qos: 1 });
     await expect.poll(async () => (await measured(stream.id)).some(point => point.value === 27)).toBe(true);
     await page.goto(`/?reading=${encodeURIComponent(stream.id)}`);
-    await expect(preview.locator(".ex-preview-value strong")).toHaveText("27");
+    await expect(preview.locator(".ex-history-latest strong")).toHaveText("27");
     await expect(preview.getByText("Reading preview", { exact: true })).toHaveCount(0);
     await expect(preview.getByRole("status").filter({ hasText: "Recording" })).toHaveText("Recording");
-    await expect(preview.locator(".ex-preview-value time")).toHaveText(/^(just now|\d+ (seconds?|minutes?) ago)$/);
+    await expect(preview.locator(".ex-history-latest time")).toHaveText(/^(just now|\d+ (seconds?|minutes?) ago)$/);
     await expect(preview.getByRole("navigation", { name: "Catalogue ancestry" })).toBeHidden();
     await preview.getByText("Source details", { exact: true }).click();
     await expect(preview.getByRole("navigation", { name: "Catalogue ancestry" })).toBeVisible();

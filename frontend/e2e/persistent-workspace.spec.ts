@@ -180,7 +180,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await expect(page.locator(".sp-live-indicator")).toHaveText("Live preview");
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884");
     await publisher.publishAsync(fixture.streams[29]!.topic, "42", { qos: 1 });
-    await expect(page.locator(".ex-preview-value strong")).toHaveText("42");
+    await expect(page.locator(".ex-history-latest strong")).toHaveText("42");
     const source = new URL(page.url()).searchParams.get("source");
     const resize = page.getByRole("separator", { name: "Resize sidebar", exact: true });
     const initialWidth = Number(await resize.getAttribute("aria-valuenow"));
@@ -247,7 +247,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await expect(page.getByRole("button", { name: "Show sidebar", exact: true })).toBeFocused();
     await page.screenshot({ path: testInfo.outputPath("workspace-mobile.png") });
     expect(catalogueReads).toBe(readsBeforeNavigation);
-    await expect(page.locator(".ex-preview-value strong")).toHaveText("42");
+    await expect(page.locator(".ex-history-latest strong")).toHaveText("42");
     expect(previewStarts).toBe(1); expect(previewStops).toBe(0);
     await page.getByRole("button", { name: "Stop live view", exact: true }).click();
     await expect.poll(() => previewStops).toBe(1);

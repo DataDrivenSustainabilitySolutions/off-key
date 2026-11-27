@@ -228,8 +228,9 @@ result, so they are identical in both modes.
 The waveform button beside the zoom controls switches automatic averaging on or
 off without changing the selected time range. It applies to every pane of the
 chart. Its highlight indicates automatic
-mode; hover or focus it for the current averaging interval. In Raw mode, a
-reading's **Values** disclosure also exposes exact timestamps and values. Raw
+mode; hover or focus it for the current averaging interval. The table button
+beside it, **Show values**, lists the values behind the chart, newest first. In
+Raw mode those are the exact readings, to the millisecond. Raw
 always covers the whole selected range. Where it holds more readings than the
 chart has pixels, each pixel column keeps its first, last, lowest and highest
 reading, so the line looks the same and every spike stays; zoom in far enough

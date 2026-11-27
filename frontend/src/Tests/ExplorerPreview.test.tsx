@@ -93,9 +93,9 @@ describe("workspace chart navigation and monitoring", () => {
       telemetry: [{ timestamp: new Date(NOW - 1000).toISOString(), value: 24 }],
     } }));
     const view = render(<ExplorerPreview {...props} historyCache={historyCache} />);
-    expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("24 °C");
+    expect(view.container.querySelector(".ex-history-latest strong")?.textContent).toBe("24 °C");
     expect(screen.queryByText("No value received yet")).toBeNull();
-    const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+    const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
     const observed = screen.getByText(relative.format(-1, "second"), { selector: "time" });
     expect(observed.getAttribute("datetime")).toBe(new Date(NOW - 1000).toISOString());
     expect(observed.getAttribute("title")).toBeTruthy();
@@ -107,10 +107,10 @@ describe("workspace chart navigation and monitoring", () => {
     act(() => historyCache.update(key, entry => ({ ...entry, data: { ...entry.data,
       telemetry: [...entry.data.telemetry, { timestamp: new Date(NOW).toISOString(), value: 25 }],
     } })));
-    expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("25 °C");
+    expect(view.container.querySelector(".ex-history-latest strong")?.textContent).toBe("25 °C");
     expect(observed.textContent).toBe("just now");
     view.rerender(<ExplorerPreview {...props} node={node("switch")} historyCache={historyCache} />);
-    expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("—");
+    expect(view.container.querySelector(".ex-history-latest strong")?.textContent).toBe("—");
   });
   it("fits the actual data span, renders a single point, and provides an overview", () => {
     const { telemetry, props } = fixture();
@@ -401,7 +401,7 @@ describe("explorer selected-object preview", () => {
     telemetry.accept(batch(), false);
     const view = render(<ExplorerPreview {...props} />);
     expect(screen.getByRole("img").getAttribute("data-theme")).toBe("dark");
-    expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("22 °C");
+    expect(view.container.querySelector(".ex-history-latest strong")?.textContent).toBe("22 °C");
     const first = lastChartProps();
     expect(first.option.backgroundColor).toBe("transparent");
     expect(first.option.series).toMatchObject([{ data: [[NOW, 22]] }]);
@@ -413,7 +413,7 @@ describe("explorer selected-object preview", () => {
       next.samples[0]!.sequence = 2;
       telemetry.accept(next, false);
     });
-    expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("26 °C");
+    expect(view.container.querySelector(".ex-history-latest strong")?.textContent).toBe("26 °C");
     expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW, 26]] }]);
   });
 
@@ -437,6 +437,30 @@ describe("explorer selected-object preview", () => {
       temperature: { ...binding, policy: { mode: "off", interval_seconds: 10 } },
     } }} />);
     expect(screen.getByRole("status").textContent).toBe("Recording off");
+  });
+
+  it("marks a recorded reading stale once it misses several of its usual arrivals, without recolouring it", () => {
+    const { props } = fixture();
+    const binding = { broker_id: "broker", policy: { mode: "original" as const, interval_seconds: 1 } };
+    const recordedAt = (age: number) => ({ mode: "collection" as const, message: "", bindings: { temperature: binding },
+      collection: { status: "applied" }, ingress: { sources: { broker: { state: "connected" } },
+        readings: { temperature: { fresh_received_at: new Date(NOW - age).toISOString(), typical_interval_seconds: 6 } } },
+      latest_readings: { temperature: { value: 1234.5, received_at: new Date(NOW - age).toISOString(), is_snapshot: false } } });
+    const view = render(<ExplorerPreview {...props} runtime={recordedAt(1000)} />);
+    const latest = () => view.container.querySelector(".ex-history-latest")!;
+    expect(screen.getByRole("status").textContent).toBe("Recording");
+    expect(latest().querySelector("strong")?.textContent).toBe("1,234.5 °C");
+    expect(latest().classList.contains("is-stale")).toBe(false);
+    expect(view.container.querySelector(".ex-preview-feed.is-stale")).toBeNull();
+    expect(screen.queryByText("Recording", { selector: ".ex-preview-state" })).toBeNull();
+    // Five missed arrivals of a six-second reading is still under the one-minute floor.
+    view.rerender(<ExplorerPreview {...props} runtime={recordedAt(45_000)} />);
+    expect(screen.getByRole("status").textContent).toBe("Recording");
+    view.rerender(<ExplorerPreview {...props} runtime={recordedAt(12 * 60_000)} />);
+    expect(screen.getByRole("status").textContent).toBe("No new values");
+    expect(latest().classList.contains("is-stale")).toBe(true);
+    expect(latest().textContent).toContain("Last value 12 minutes ago");
+    expect(view.container.querySelector(".ex-preview-feed.is-stale")).not.toBeNull();
   });
 
   it("uses a step chart for booleans and leaves identifiers as readable text", () => {

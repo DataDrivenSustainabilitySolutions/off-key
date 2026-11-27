@@ -348,9 +348,9 @@ test("dense source history offers automatic means and immediate raw readings", a
   await expect.poll(() => requests.at(-1)?.searchParams.get("view")).toBe("raw");
   expect(requests.at(-1)!.searchParams.get("start")).toBe(inspectedStart);
   expect(requests.at(-1)!.searchParams.get("end")).toBe(inspectedEnd);
-  await history.getByText(/^Values ·/).click();
+  await history.getByRole("button", { name: "Show values", exact: true }).click();
   await expect(history.getByRole("table")).toBeVisible();
-  await expect(history.getByText("Measured at (UTC)", { exact: true })).toBeVisible();
+  await expect(history.getByText("Measured at", { exact: true })).toBeVisible();
   await averaging.click();
   await expect(averaging).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => requests.at(-1)?.searchParams.get("view")).toBe("auto");

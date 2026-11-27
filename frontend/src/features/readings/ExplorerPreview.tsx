@@ -175,12 +175,13 @@ export default function ExplorerPreview({
     : connection && ["blocked", "error", "reconnecting"].includes(connection.state)
       ? connection.message : status.phase === "blocked" ? status.message : null;
   const latestValue = stream && <div className={`ex-history-latest${stale ? " is-stale" : ""}`}>
-          <strong>{latest == null ? "—" : typeof latest === "number" ? number.format(latest) : String(latest)}
-            {latest != null && stream.unit && <small> {stream.unit}</small>}</strong>
-          <span>{!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained value"
-            : receivedAt == null ? "No value yet" : stale ? `Last value ${formatRelativeTime(receivedAt, now, "elapsed")}`
-              : <RelativeTime value={receivedAt} mode="elapsed" fallback="No value yet" />}</span>
-</div>;
+    <strong>{latest == null ? "—" : typeof latest === "number" ? number.format(latest) : String(latest)}
+      {latest != null && stream.unit && <small> {stream.unit}</small>}</strong>
+    <span>{!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained value"
+      : stale ? `Last value ${formatRelativeTime(receivedAt!, now, "elapsed")}`
+        : <RelativeTime value={receivedAt} mode="elapsed" fallback="No value received yet" />}</span>
+  </div>;
+  const charted = !!stream && ["number", "boolean"].includes(stream.value_type);
   const edit = canEdit && node.entityKind && node.objectId && <button type="button" disabled={saving}
     onClick={() => onEdit(node.entityKind!, node.objectId!)}><Pencil size={14} /> Edit structure</button>;
   const details = <>
@@ -215,13 +216,14 @@ export default function ExplorerPreview({
               badge disabled={saving || !canEdit} onChange={onAppearanceChange} />
             : <span className="ex-preview-icon"><SourceIcon kind={iconKind} appearance={node.appearance} color={node.color} size={22} /></span>}
           <div>{!isReading && <span className="ex-preview-kind">{kind}</span>}
-            <h1 className="ex-preview-title">
+            <div className="ex-preview-title-row"><h1 className="ex-preview-title">
               {canEdit && node.entityKind && node.objectId ? <InlineName key={node.key} value={title}
                 onSave={(name) => onRename(node.entityKind!, node.objectId!, name)}
                 editable={editable} disabledReason={saving ? "Saving changes…" : undefined}
                 saveError={error} ariaLabel={`Rename ${kind.toLowerCase()}`} /> : title}
-              {isReading && <span className={`ex-status-dot ex-status-dot--${dotTone}`} role="status" aria-label={dotLabel} title={dotLabel} />}
             </h1>
+            {isReading && <span className={`ex-status-dot ex-status-dot--${dotTone}`} role="status" title={dotLabel}>
+              <span className="ex-sr-only">{dotLabel}</span></span>}</div>
             {isReading && (parent || !active) && <p className="ex-preview-parent">
               {parent?.label}{!active && <span className={`ex-preview-state ex-preview-state--${dotTone}`}>{parent ? " · " : ""}{dotLabel}</span>}
             </p>}
@@ -230,7 +232,7 @@ export default function ExplorerPreview({
         <div className="mn-detail-actions">{actions}{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Unpin reading" : "Pin reading"} onClick={() => onFavourite(stream.id)}><Pin size={17} /></button>}</div>
       </header>
       {!isReading && trail}
-      {/* What is happening now, in one row: the latest value, the connection and the recording. */}
+      {/* Brokers, devices and topics: what is happening now, in one row. A reading shows this by its name and chart. */}
       {!isReading && <div className="ex-preview-facts">
         {stream && <div className="ex-preview-fact ex-preview-value">
           <span>Latest value · {!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained"
@@ -251,11 +253,11 @@ export default function ExplorerPreview({
       </div>}
       {problem && <p className="ex-preview-error" role="alert">{problem}</p>}
       {stream && <div className={`ex-preview-feed${stale ? " is-stale" : ""}`}>
-        {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
+        {charted ? <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
             readingConnection?.host, readingConnection?.port, readingConnection?.tls, readingConnection?.transport])}
           stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache}
-          latest={latestValue} />}
+          latest={latestValue} /> : <div className="ex-preview-latest-row">{latestValue}</div>}
       </div>}
       {children && <div className="ex-preview-host">{children}</div>}
       <section className="ex-preview-details is-collapsible" aria-label="Source details">

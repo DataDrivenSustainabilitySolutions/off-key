@@ -11,7 +11,7 @@ import { useChartColors } from "@/features/charts/use-chart-colors";
 import { useDetectorPanes } from "@/features/charts/use-detector-panes";
 import { createAnomalyMarkers, filterAnomalies } from "@/lib/anomaly-utils";
 import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
-import { buildDetectorInputSeries } from "@/features/charts/detector-inputs";
+import { buildDetectorInputSeries, withoutReadingCopies } from "@/features/charts/detector-inputs";
 import { buildTelemetryChartModel, buildTelemetryChartOption, getLocalTimeZone } from "@/features/charts/telemetry-chart";
 import { normalizeTelemetry } from "@/features/charts/telemetry-data";
 import { getChartDomain } from "@/features/charts/telemetry-thresholds";
@@ -33,6 +33,7 @@ import { alarmSpans } from "@/features/charts/anomaly-strip";
 import { MonitorViews, RAW_VIEW } from "@/features/charts/MonitorViews";
 import { monitorColors } from "@/features/charts/monitor-colors";
 import { CHART_INSETS } from "@/features/charts/telemetry-chart";
+import { ChartKey } from "@/features/charts/ChartKey";
 
 type Inspection = { startMs: number; endMs: number; windowStartMs: number };
 type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache };
@@ -139,8 +140,8 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const detectorInputs = useMemo(() => {
     const first = meanShown ? cutoff : telemetry[0]?.[0], last = meanShown ? Infinity : telemetry[telemetry.length - 1]?.[0];
     return service && first !== undefined && last !== undefined
-      ? buildDetectorInputSeries(evidence, row => getEvidenceTimeForSensor(row, readingId), [first, last]) : [];
-  }, [service, evidence, readingId, telemetry, meanShown, cutoff]);
+      ? withoutReadingCopies(buildDetectorInputSeries(evidence, row => getEvidenceTimeForSensor(row, readingId), [first, last]), normalizedHistory) : [];
+  }, [service, evidence, readingId, telemetry, meanShown, cutoff, normalizedHistory]);
   const model = useMemo(() => buildTelemetryChartModel({
     telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,
     telemetry, presentation, detectionTimes, detectors, selectedDetectorIds,
@@ -203,7 +204,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
       inspect(nextStart, nextStart + width);
     }
   };
-  const paneCount = 1 + Number(Boolean(model.detectorInputs?.length)) + Number(model.secondarySeries.some((item) => item.pane === "static"))
+  const paneCount = 1 + Number(Boolean(model.detectorInputs?.some(series => !series.reading))) + Number(model.secondarySeries.some((item) => item.pane === "static"))
     + Number(model.secondarySeries.some((item) => item.pane === "adaptive"));
   const events = model.anomalyMarkers.filter((event) => !inspection
     || (event.timeMs >= inspection.startMs && event.timeMs <= inspection.endMs));
@@ -245,6 +246,14 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
         .map(monitor => <Fragment key={monitor.id}><i style={{ background: monitor.color }} />{monitor.name}</Fragment>)}</p>}
     </div> : <div className="ex-preview-chart-empty" aria-busy={monitoring.loading || stored.loading || undefined}><Radio size={24} strokeWidth={1.3} /><strong>{monitoring.loading || stored.loading ? "Loading history…"
       : history.length ? "No values in selected range" : binding?.policy.mode !== undefined && binding.policy.mode !== "off" ? "Waiting for recorded values" : "Waiting for live values"}</strong></div>}
+    {hasValues && model.secondarySeries.length > 0 && <ChartKey entries={[
+      ...(model.detectorInputs?.some(series => series.reading) ? [{ kind: "observed" as const, label: "Observed", color: colors.primary },
+        { kind: "forecast" as const, label: "Forecast" },
+        { kind: "interval" as const, label: "Forecast interval" },
+        { kind: "outside" as const, label: "Outside interval", color: colors.outsideInterval }] : []),
+      { kind: "above", label: "Above threshold, no alarm", color: colors.foreground },
+      ...(model.secondarySeries.some(series => series.data.some(point => point.observation?.alarmActive))
+        ? [{ kind: "alarm" as const, label: "Alarm", color: colors.alarmBoundary }] : [])]} />}
     {model.secondarySeries.length > 0 && <TelemetryChartSummary model={model} timeZone={timeZone} showTelemetry={false} />}
     <TelemetryEventDetails groups={events} timeZone={timeZone} unit={stream.unit} />
     {hasValues && stored.loading && <p className="ex-preview-note" role="status">Loading {preference.mode === "raw" ? "raw readings" : "history"}…</p>}

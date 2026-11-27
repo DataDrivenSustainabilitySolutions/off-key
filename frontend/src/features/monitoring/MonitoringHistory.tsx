@@ -21,7 +21,9 @@ import { summarizeDetection } from "@/features/charts/detection-summary";
 import { useHistoryWidth } from "@/features/charts/use-history-width";
 import type { HistoryPreference } from "@/types/telemetry-history";
 import { useHistoryPresentation } from "./useHistoryPresentation";
-import { ForecastCoverage, ForecastKey, ForecastOptions } from "./ForecastControls";
+import { forecastKeyEntries } from "@/features/charts/forecast-key";
+import { ForecastCoverage, ForecastOptions } from "./ForecastControls";
+import { ChartKey, type KeyEntry } from "@/features/charts/ChartKey";
 import { AnomalyStrip } from "@/features/charts/AnomalyStrip";
 import { monitorColors } from "@/features/charts/monitor-colors";
 import { CHART_INSETS } from "@/features/charts/telemetry-chart";
@@ -99,6 +101,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     series.data.some(point => point.observation?.alarmMuted)), [displayModel.secondarySeries]);
   const [gutter, setGutter] = useState<number>(CHART_INSETS.monitoring.left);
   const anyAlarm = model.readings.some(reading => reading.alarmSpans?.length);
+  const scoreKey: KeyEntry[] = [{ kind: "above", label: "Above threshold, no alarm", color: colors.foreground }];
   // The monitor keeps the colour it has on its reading's page, among the monitors that share that reading.
   const { services } = useMonitoringServices(true);
   const stripReading = initialReading ?? inputs[0]?.stream.id;
@@ -172,7 +175,10 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
           className="mn-history-chart" />
       </div>
       <AnomalyStrip rows={stripRows} domain={inspection ? [inspection.startMs, inspection.endMs] : domain} inset={{ ...CHART_INSETS.monitoring, left: gutter }} />
-      {shownForecasts.length > 0 && <ForecastKey forecasts={shownForecasts} intervalLabel={intervalLabel} />}
+      <ChartKey entries={[...(shownForecasts.length ? forecastKeyEntries(shownForecasts, intervalLabel, colors.outsideInterval, colors.primary) : []),
+        ...(!forecasts.length || showScores ? scoreKey : []),
+        ...(anyAlarm ? [{ kind: "alarm" as const, label: "Alarm", color: colors.alarmBoundary }] : []),
+        ...(anyMuted ? [{ kind: "muted" as const, label: service.shadow ? "Recorded in shadow, not raised" : "Muted alarm", color: colors.alarmBoundary }] : [])]} />
       <ForecastCoverage forecasts={shownForecasts} coverage={coverage} />
     </> : <div className={`mn-history-empty${problem && !loading ? " is-error" : ""}`} role="status">
       <strong>{loading ? "Loading recorded inputs…" : problem ? "History could not be loaded" : "Waiting for recorded inputs and detector results"}</strong>
@@ -180,10 +186,10 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </div>}
     {latest && (!forecasts.length || showScores) && <output className="mn-history-result" aria-label="Latest detector result">
       <span>Latest {inputs.length > 1 ? "joint " : ""}result · {formatChartTime(latest.timeMs, timeZone, "tooltip")}</span>
-      {(!forecasts.length || showScores) && <strong>{completeModel.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>}
-      <span>{(!forecasts.length || showScores) && <>Score threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · </>}Service alarm {alarmText(latest)}</span>
+      <strong>{latest.value !== null && latest.threshold ? `Now ${formatNumber(Number((latest.value / latest.threshold).toPrecision(2)))}× threshold`
+        : `${completeModel.secondarySeries[0]!.name}: ${latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}`}</strong>
+      <span>{latest.value !== null && latest.threshold ? `Score ${formatNumber(latest.value)}, threshold ${formatNumber(latest.threshold)} · ` : ""}Service alarm {alarmText(latest)}</span>
     </output>}
-    {model.extent && (!forecasts.length || showScores || anyAlarm) && <p className="mn-history-key">{(!forecasts.length || showScores) && "Dashed red: score threshold · "}Red line and shading: a service alarm and how long it lasted{(!forecasts.length || showScores) && " · Red dot: where the selected detector's alarm begins"}{anyMuted ? ` · Open dots: ${service.shadow ? "alarms recorded in shadow, not raised" : "muted alarms"}` : ""}. Each reading keeps its own scale.</p>}
     {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

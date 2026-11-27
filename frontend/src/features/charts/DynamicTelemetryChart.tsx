@@ -30,7 +30,7 @@ import { getTelemetryExtent, normalizeTelemetry } from "./telemetry-data";
 import { getChartDomain } from "./telemetry-thresholds";
 import { useChartColors } from "./use-chart-colors";
 import { useDetectorPanes } from "./use-detector-panes";
-import { buildDetectorInputSeries } from "./detector-inputs";
+import { buildDetectorInputSeries, withoutReadingCopies } from "./detector-inputs";
 import { DetectorNotices } from "./DetectorNotices";
 import {
   buildTelemetryChartModel,
@@ -264,7 +264,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     const first = filteredData[0]?.[0], last = filteredData[filteredData.length - 1]?.[0];
     const singleMonitor = monitoringService || (historical && new Set(serviceEvidence.map(row => row.monitor_id)).size === 1);
     return singleMonitor && first !== undefined && last !== undefined
-      ? buildDetectorInputSeries(serviceEvidence, row => getEvidenceTimeForSensor(row, telemetryData.type), [first, last]) : [];
+      ? withoutReadingCopies(buildDetectorInputSeries(serviceEvidence, row => getEvidenceTimeForSensor(row, telemetryData.type), [first, last]), filteredData) : [];
   }, [monitoringService, historical, serviceEvidence, telemetryData.type, filteredData]);
   const presentation = useMemo(() => {
     const view: HistoryPreference = numeric ? preference : { mode: "raw" };
@@ -396,7 +396,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const hasAdaptivePane = chartModel.secondarySeries.some(
     (series) => series.pane === "adaptive",
   );
-  const paneCount = 1 + (chartModel.detectorInputs?.length ? 1 : 0) + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
+  const paneCount = 1 + (chartModel.detectorInputs?.some(series => !series.reading) ? 1 : 0) + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
   const chartHeightClass =
     paneCount >= 4
       ? "h-[842px]"

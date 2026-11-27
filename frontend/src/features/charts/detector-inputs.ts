@@ -13,6 +13,8 @@ export interface DetectorInputSeries {
   forecast?: ForecastPoint[];
   /** Set when `data` holds interval means: each interval's lowest and highest value. */
   range?: Array<[time: number, minimum: number | null, maximum: number | null]>;
+  /** The reading itself, as recorded: only its forecast is drawn, over the reading. */
+  reading?: boolean;
 }
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -80,4 +82,19 @@ export const buildDetectorInputSeries = (
     previous = time;
   }
   return [...series.values()].filter((line) => line.data.some(([, value]) => value !== null));
+};
+
+/**
+ * Inputs the detector took exactly as the reading recorded them. Beside the reading they
+ * would draw the same line twice, so only features a step changed, and forecasts, keep a pane.
+ */
+export const withoutReadingCopies = (inputs: readonly DetectorInputSeries[], reading: ReadonlyArray<readonly [number, number]>):
+  DetectorInputSeries[] => {
+  const recorded = new Map(reading.map(([time, value]) => [time, value]));
+  const same = (left: number, right: number) => Math.abs(left - right) <= 1e-9 * Math.max(1, Math.abs(left), Math.abs(right));
+  return inputs.flatMap(series => {
+    const compared = series.data.filter(([time, value]) => value !== null && recorded.has(time));
+    const copy = compared.length > 0 && compared.every(([time, value]) => same(value!, recorded.get(time)!));
+    return !copy ? [series] : series.forecast?.length ? [{ ...series, reading: true }] : [];
+  });
 };

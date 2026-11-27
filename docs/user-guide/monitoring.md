@@ -105,12 +105,18 @@ p-value or score, sensor set, aggregate alarm flag, and bounded
 combines detectors also records each detector's score and surprise beside the
 combined value, and every inference keeps the features its detectors scored.
 Charts draw each selected alarm statistic on a logarithmic secondary axis with
-its threshold, shaded above it from each evaluation to the next. Evidence more
+its threshold as a dashed line. An adaptive score is drawn as a share of the
+threshold it was scored against, on an axis that doubles at each step, so its
+threshold is one flat line at 1× however often it was recalibrated. Red means an
+alarm and nothing else: where the score passes its threshold without an alarm,
+because the detection rule waits for more results, the line only turns a darker
+grey; where the monitor alarmed it turns red, and a band marks the alarm on every
+pane. Evidence more
 than four decades above the threshold is marked at the top edge instead of
 stretching the axis. The line joins consecutive evaluations and breaks only
-across a pause, such as one a Gate holds back. The monitor's **Evidence** tab
-omits detector inputs whose saved provenance identifies them as unchanged raw
-readings. Derived features, such as phase deviations, retain their separate scale.
+across a pause, such as one a Gate holds back. Detector inputs that only repeat
+a reading are left out; a forecast made for such an input is drawn over the
+reading. Derived features, such as phase deviations, retain their separate scale.
 Unknown associations stay separate until the pipeline's reading bindings load.
 
 For forecasters, **Forecast** draws the dashed forecast and its recorded
@@ -119,13 +125,16 @@ timestamp the forecast evaluated. A transformed target stays on its feature
 scale. The newly issued forecast continues from the latest observed value, right
 of the line that marks it, on a shaded stretch that is not yet observed.
 
-No figures sit on the chart at rest; values appear under the pointer. A dot marks
-each observed value outside the interval. That alone is not an anomaly: an
-interval that covers 90 % of values leaves one in ten outside by design.
+No figures sit on the chart at rest; values appear under the pointer. Where the
+observed line leaves the interval, that stretch of the line is coloured and the
+gap to the interval's edge is filled, so a stray value is a sliver and a lasting
+departure a wedge. That alone is not an anomaly: an interval that covers 90 % of
+values leaves one in ten outside by design, and inside an alarm the alarm band
+tells it instead.
 **Coverage**, folded under the chart, gives the share of checked values the
 interval held and opens to the count behind it. Vertical red lines still mark
 the monitor's alarm decision, which depends on the pipeline's detection rule.
-Without a calibration step there is no interval, so there is no band, dot or
+Without a calibration step there is no interval, so there is no band, fill or
 coverage.
 
 Under the time axis, the anomaly strip shows when the monitor raised an anomaly
@@ -146,7 +155,7 @@ seconds. Different detector/target/lead combinations remain separate.
 and the alarm key below the chart.
 
 The interval is the pair of lower and upper bounds stored with that forecast,
-not the shaded region above a score threshold. Its label names NexCP or ACI when
+not a score threshold. Its label names NexCP or ACI when
 the saved calibration step identifies that method; otherwise it says **Calibrated
 interval**. No nominal confidence percentage is inferred. Missing bounds remain
 unavailable, including configurations where a combined policy has no boundary for
@@ -419,11 +428,11 @@ panel: the **Test** button fills a line along its lower edge, and a notice says
 when the test has finished.
 
 The result starts with a strip over the time span of the values: the time the
-design spent learning is hatched, every alarm is a line and every label a band,
+design spent learning is hatched, every alarm is a red line and every label a band,
 outlined where the design missed it. Under the strip, over the same span, is
 what the design scored: each stretch of time is a bar from its lowest to its
-highest score, the boundary is a line, and a stretch that alarmed is drawn in
-the foreground colour, so it shows how far above the boundary an alarm went and
+highest score, the boundary is a dashed line, and a stretch that alarmed is drawn
+in red, so it shows how far above the boundary an alarm went and
 how close the rest came. A design that alarms on conformal p-values has no
 boundary; its p-values are drawn rarer upward, and an alarm follows a run of
 rare values, not a single one. The numbers at the left edge are the values at

@@ -8,8 +8,8 @@ import type {
   TooltipComponentOption,
 } from "echarts/components";
 import { color as chartColor, type ComposeOption } from "echarts/core";
-import { buildDetectionSeriesOption, buildThresholdSeriesOption } from "./telemetry-detection-series";
-import { formatMonitoringObservationTooltip } from "./monitoring-tooltip";
+import { buildDetectionSeriesOption, buildExcursionSeries, buildThresholdSeriesOption } from "./telemetry-detection-series";
+import { formatMonitoringObservationTooltip, observationLines } from "./monitoring-tooltip";
 import { buildForecastChartSeries, formatForecastTooltip } from "./forecast-chart";
 import { formatForecastValue, type ForecastEvidenceSeries } from "./forecast-evidence";
 
@@ -17,7 +17,6 @@ import type { AnomalyMarker } from "@/lib/anomaly-utils";
 import { getPauseLimit, type TimeValue } from "./telemetry-data";
 import type { MonitoringChartReading, TelemetryChartSeries } from "./types";
 import {
-  alarmText,
   buildSelectedDetectorSeries,
   type TelemetryChartDetector,
   type SecondaryChartSeries,
@@ -238,7 +237,7 @@ export const buildTelemetryChartModel = ({
 }: BuildTelemetryChartModelInput): TelemetryChartModel => {
   const telemetryTimes = telemetry.map(([time]) => time);
   const pendingTimes = new Set(pendingTelemetryTimestamps);
-  const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes: detectionTimes ?? telemetryTimes, selectedDetectorIds, range });
+  const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes: detectionTimes ?? telemetryTimes, selectedDetectorIds });
   const startMs = telemetryTimes[0];
   const endMs = telemetryTimes[telemetryTimes.length - 1];
 
@@ -282,7 +281,7 @@ const readTimeValue = (value: unknown): TimeValue | undefined => {
   return [Number(value[0]), Number(value[1])];
 };
 
-const readObservationDetails = (data: unknown): { threshold: number | null; alarmActive: boolean; alarmMuted: boolean } | undefined => {
+const readObservationDetails = (data: unknown): { value: number | null; threshold: number | null; alarmActive: boolean; alarmMuted: boolean } | undefined => {
   if (typeof data !== "object" || data === null || !("observation" in data)) return undefined;
   const { observation } = data;
   if (typeof observation !== "object" || observation === null ||
@@ -290,7 +289,8 @@ const readObservationDetails = (data: unknown): { threshold: number | null; alar
       typeof observation.alarmActive !== "boolean") return undefined;
   const { threshold, alarmActive } = observation;
   if (threshold !== null && (typeof threshold !== "number" || !Number.isFinite(threshold))) return undefined;
-  return { threshold, alarmActive, alarmMuted: "alarmMuted" in observation && observation.alarmMuted === true };
+  const value = "value" in observation && typeof observation.value === "number" && Number.isFinite(observation.value) ? observation.value : null;
+  return { value, threshold, alarmActive, alarmMuted: "alarmMuted" in observation && observation.alarmMuted === true };
 };
 
 const readSummary = (data: unknown): HistoryPoint | undefined =>
@@ -322,7 +322,7 @@ export const formatTelemetryTooltip = (
   ).filter((entry) => {
     const seriesId = String(entry.seriesId);
     // Bands and lone-sample dots only draw what their own line names.
-    if (["forecast-band:", "history-band:", "history-dot:"].some((prefix) => seriesId.startsWith(prefix))) return false;
+    if (["forecast-band:", "history-band:", "history-dot:", "excursion:", "threshold:", "outside:"].some((prefix) => seriesId.startsWith(prefix))) return false;
     const value = readTimeValue(entry.value), limit = reach?.get(seriesId);
     const pointer = entry.axisValue === undefined ? NaN : Number(entry.axisValue);
     return !value || limit === undefined || !Number.isFinite(pointer) || Math.abs(value[0] - pointer) <= limit;
@@ -343,27 +343,55 @@ export const formatTelemetryTooltip = (
     const unit = units.get(entry.seriesName);
     const summary = readSummary(entry.data);
     // A recorded value keeps its digits; a mean has none of its own to keep.
-    const formattedValue = unit && !summary ? numberFormatter.format(value[1]) : formatNumber(value[1]);
+    const observation = readObservationDetails(entry.data);
+    // A score drawn against its threshold still reads as the score the detector gave.
+    const shown = observation?.value ?? value[1];
+    const formattedValue = unit && !summary ? numberFormatter.format(shown) : formatNumber(shown);
     const forecast = seriesId.startsWith("forecast:") ? forecastIntervalText(entry.value, formatNumber) : "";
     const peak = readPeakCount(entry.data);
     lines.push(`${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}${summary || means?.has(seriesId) ? " (mean)" : ""}${peak > 1 ? ` (highest of ${peak})` : ""}${forecast}`);
     if (summary) lines.push(`Min–max: ${formatRange(summary.minimum!, summary.maximum!)}${unit ? ` ${unit}` : ""} · ${summary.count} readings`);
-    const observation = readObservationDetails(entry.data);
     if (observation) {
-      lines.push(`Alarm threshold: ${observation.threshold !== null ? formatNumber(observation.threshold) : "unavailable"}`);
-      lines.push(`Alarm: ${alarmText(observation)}`);
+      lines.push(...observationLines(observation, formatNumber));
     }
   }
   return lines.join("\n");
 };
 
+/** Where the shown detector held an alarm, so the reading carries the same red as the monitor's own page. */
+const alarmEpisodes = (series: readonly SecondaryChartSeries[]): Array<[number, number]> => {
+  const spans: Array<[number, number]> = [];
+  let open: [number, number] | undefined;
+  for (const point of series[0]?.data ?? []) {
+    if (!point.observation) continue;
+    if (point.observation.alarmActive) {
+      if (open) open[1] = point.value[0];
+      else spans.push(open = [point.value[0], point.value[0]]);
+    } else open = undefined;
+  }
+  return spans;
+};
+
+/** A forecast of the reading itself, as the monitor's own chart draws it: over the reading. */
+const readingForecast = (series: DetectorInputSeries, alarms: ReadonlyArray<readonly [number, number]>): ForecastEvidenceSeries => {
+  const observed = new Map(series.data.map(([time, value]) => [time, value]));
+  const alarmed = (time: number) => alarms.some(([start, end]) => time >= start && time <= end);
+  return { id: series.id, detectorId: series.id, inputId: series.id, name: series.name, lead: null, readingId: READING_KEY, slot: null,
+    data: (series.forecast ?? []).map(([time, expected, lower, upper]) => ({ value: [time, expected, lower, upper],
+      ...(expected === null ? {} : { forecastObservation: { time, evaluationTime: time, observed: observed.get(time) ?? null,
+        expected, lower, upper, alarm: alarmed(time) } }) })) };
+};
+const READING_KEY = "reading";
+
 export const buildTelemetryChartOption = ({
   model, valueType = "number", ...options
 }: BuildTelemetryChartOptionInput): TelemetryChartOption => buildMonitoringChartOption({
   ...options,
-  model: { readings: [{ ...model.telemetry, valueType, pendingTelemetry: model.pendingTelemetry,
-    anomalyMarkers: model.anomalyMarkers }], detectorInputs: model.detectorInputs, secondarySeries: model.secondarySeries,
-    range: model.range, extent: model.extent },
+  model: { readings: [{ ...model.telemetry, valueType, pendingTelemetry: model.pendingTelemetry, inputKey: READING_KEY,
+    anomalyMarkers: model.anomalyMarkers, alarmSpans: alarmEpisodes(model.secondarySeries) }],
+    detectorInputs: model.detectorInputs?.filter(series => !series.reading),
+    forecasts: model.detectorInputs?.filter(series => series.reading).map(series => readingForecast(series, alarmEpisodes(model.secondarySeries))), showResiduals: false,
+    secondarySeries: model.secondarySeries, range: model.range, extent: model.extent },
 });
 
 /** The padded ends of a detection pane are room around its values, not values to read. */
@@ -422,6 +450,7 @@ export const buildMonitoringChartOption = ({
   const compact = layout !== "standard";
   const hasStaticPane = model.secondarySeries.some((series) => series.pane === "static");
   const hasAdaptivePane = model.secondarySeries.some((series) => series.pane === "adaptive");
+  const relativeScore = model.secondarySeries.some((series) => series.pane === "adaptive" && series.relative);
   const detectorInputs = model.detectorInputs ?? [];
   const forecasts = model.forecasts ?? [];
   const residualForecasts = model.showResiduals === false ? [] : forecasts;
@@ -558,7 +587,7 @@ export const buildMonitoringChartOption = ({
       // A reading alone in its pane rests on a fade of its own colour; a forecast band needs the pane clear.
       // Options merge into the live chart, so the fade is switched off by opacity, not by leaving it out.
       areaStyle: { origin: "start" as const,
-        opacity: valueType === "number" && !forecasts.some(forecast => forecast.readingId === reading.inputKey) ? 1 : 0,
+        opacity: 0,
         color: { type: "linear" as const, x: 0, y: 0, x2: 0, y2: 1, colorStops: [
           { offset: 0, color: chartColor.modifyAlpha(reading.color, 0.16) ?? reading.color },
           { offset: 1, color: chartColor.modifyAlpha(reading.color, 0) ?? "transparent" }] } },
@@ -578,8 +607,8 @@ export const buildMonitoringChartOption = ({
         itemStyle: { color: colors.alarmFill ?? "rgba(220, 38, 38, 0.12)" },
         data: episodes.map(([start, end]) => [{ xAxis: start }, { xAxis: end }]) } } : {}),
       ...(alarmSpans.length || dayBreaks.length || (index === 0 && markerLines.length) ? { markLine: { ...dayBreakLine,
-        lineStyle: { color: alarmColor, width: 1, opacity: 0.55 },
-        data: [...alarmSpans.map(([start]) => ({ xAxis: start })), ...dayBreaks, ...(index === 0 ? markerLines : [])],
+        data: [...alarmSpans.map(([start]) => ({ xAxis: start,
+          lineStyle: { color: alarmColor, width: 1, opacity: 0.55, type: "solid" as const } })), ...dayBreaks, ...(index === 0 ? markerLines : [])],
       } } : {}),
     };
   });
@@ -707,36 +736,30 @@ export const buildMonitoringChartOption = ({
     const line = buildDetectionSeriesOption(
       series,
       paneIndex,
-      domain,
       colors,
       (time) => formatChartTime(time, timeZone, "tooltip", locale),
       formatNumber,
     );
     reach.set(series.id, getPauseLimit(series.data.flatMap(point => point.observation ? [point.value[0]] : [])));
-    dots.push(...loneDots(series.id, series.name, series.data.map(point => point.value), colors.primary, paneIndex, 5, true));
+    dots.push(...loneDots(series.id, series.name, series.data.map(point => point.value), colors.mutedForeground, paneIndex, 5, true));
     if (dayBreaks.length && !ruledPanes.has(paneIndex)) {
       ruledPanes.add(paneIndex);
       line.markLine = dayBreakLine;
     }
-    if (!monitoring) return [line];
-    // A dot where an alarm begins; the results that keep it up already sit above the threshold.
-    let alarmed = false;
-    const onsets = series.data.flatMap(point => {
-      if (!point.observation) return [];
-      const began = Boolean(point.observation.alarmFired) && !alarmed;
-      alarmed = Boolean(point.observation.alarmFired);
-      return began && point.value[1] !== null ? [{
-        name: "Alarm decision", coord: [point.value[0], point.value[1]], symbol: "circle", symbolSize: 6,
-        itemStyle: { color: alarmColor },
-      }] : [];
-    });
-    // An alarm a Mute alarms step held back: the same dot, left open over the line.
+    // An alarm a Mute alarms step held back: an open dot over the line.
     const muted = series.data.flatMap(point => point.observation?.alarmMuted && point.value[1] !== null ? [{
       name: "Muted alarm", coord: [point.value[0], point.value[1]], symbol: "circle", symbolSize: 6,
       itemStyle: { color: colors.popover, borderColor: alarmColor, borderWidth: 1 },
     }] : []);
-    line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []), ...onsets, ...muted] };
-    return [line, buildThresholdSeriesOption(series, paneIndex, alarmColor)];
+    line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []), ...muted] };
+    // The alarm runs through every pane as the same band, so the score and the reading line up by eye.
+    const episodes = alarmEpisodes([series]).filter(([start, end]) => end > start);
+    if (episodes.length) line.markLine = { ...dayBreakLine, data: [...(line.markLine ? dayBreaks : []),
+      ...episodes.map(([start]) => ({ xAxis: start, lineStyle: { color: alarmColor, width: 1, opacity: 0.55, type: "solid" as const } }))] };
+    if (episodes.length) line.markArea = { silent: true, animation: false, label: { show: false }, z: 0,
+      itemStyle: { color: colors.alarmFill ?? "rgba(220, 38, 38, 0.12)" }, data: episodes.map(([start, end]) => [{ xAxis: start }, { xAxis: end }]) };
+    return [line, buildThresholdSeriesOption(series, paneIndex, colors.mutedForeground),
+      ...buildExcursionSeries(series, paneIndex, colors)];
   });
 
   return {
@@ -867,15 +890,15 @@ export const buildMonitoringChartOption = ({
         ? [
             {
               id: "adaptive-score-values",
-              type: "value" as const,
-              scale: true,
+              // Measured against its threshold, half and double the threshold lie equally far from it.
+              ...(relativeScore ? { type: "log" as const, logBase: 2 } : { type: "value" as const, scale: true }),
               min: boundsByPane.get("adaptive")?.minimum,
               max: boundsByPane.get("adaptive")?.maximum,
               gridIndex: panes.indexOf("adaptive"),
-              name: monitoring ? model.secondarySeries.find(series => series.pane === "adaptive")?.name : "Adaptive anomaly score",
+              name: relativeScore ? "Anomaly score, relative to its threshold" : monitoring ? model.secondarySeries.find(series => series.pane === "adaptive")?.name : "Adaptive anomaly score",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
               axisLabel: { color: colors.mutedForeground, fontSize: 12,
-                formatter: labelWithin(boundsByPane.get("adaptive"), formatTick()), hideOverlap: true },
+                formatter: relativeScore ? (value: number) => value === 1 ? "Threshold" : `${formatNumber(value)}×` : labelWithin(boundsByPane.get("adaptive"), formatTick()), hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },
               splitLine: quietRule,
@@ -911,7 +934,7 @@ export const buildMonitoringChartOption = ({
         borderColor: "transparent",
         borderRadius: 4,
         backgroundColor: colors.muted,
-        fillerColor: chartColor.modifyAlpha(colors.primary, 0.12) ?? colors.muted,
+        fillerColor: chartColor.modifyAlpha(colors.primary, 0.07) ?? colors.muted,
         handleIcon: "path://M-1,-8h2a1,1 0 0 1 1,1v14a1,1 0 0 1 -1,1h-2a1,1 0 0 1 -1,-1v-14a1,1 0 0 1 1,-1z",
         handleSize: "70%",
         handleStyle: { color: colors.primary, borderColor: colors.primary, borderWidth: 0 },
@@ -925,8 +948,8 @@ export const buildMonitoringChartOption = ({
           areaStyle: { color: colors.mutedForeground, opacity: 0.08 },
         },
         selectedDataBackground: {
-          lineStyle: { color: model.readings[0]?.color ?? colors.primary },
-          areaStyle: { color: model.readings[0]?.color ?? colors.primary, opacity: 0.15 },
+          lineStyle: { color: model.readings[0]?.color ?? colors.primary, opacity: 0.6, width: 1 },
+          areaStyle: { color: model.readings[0]?.color ?? colors.primary, opacity: 0.06 },
         },
         ...dataZoomRange,
       },

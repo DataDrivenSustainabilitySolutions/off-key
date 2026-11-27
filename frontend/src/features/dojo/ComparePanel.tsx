@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
+import { ChartKey } from "../charts/ChartKey";
 import { EChart } from "../charts/EChart";
 import { useChartColors } from "../charts/use-chart-colors";
 import { dojoApi } from "./api";
@@ -134,7 +135,9 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     {(error || points.error || alarms.error) && <p className="ex-banner ex-error" role="alert">{error || points.error || alarms.error}</p>}
     {chosen.length > 0 && <div style={{ "--dj-alarm-rows": chosen.length } as CSSProperties}>
       <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart dj-chart--alarms"
-        accessibleDescription={`Values with labels and the alarms of ${chosen.length} runs`} /></div>}
+        accessibleDescription={`Values with labels and the alarms of ${chosen.length} runs`} />
+      <ChartKey entries={[...labels.length ? [{ kind: "label" as const, label: "Label", color: colors.foreground }] : [],
+        { kind: "alarm-bar", label: "Alarm", color: colors.alarmBoundary }]} /></div>}
     {shown && <>
       <div className="dj-table-scroll dj-section"><table className="dj-table" aria-label="Run metrics">
         <thead><tr><th>Metric</th>{shown.runs.map(item => <th key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>

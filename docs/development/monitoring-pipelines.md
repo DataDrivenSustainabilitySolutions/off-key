@@ -581,13 +581,14 @@ calibration step that runs inside it, and a sentence where a step gave nothing.
 ## Monitoring history
 
 The service Evidence tab presents one timeline for its recorded inputs and joint
-detector result. Readings retain independent scales and units; the raw anomaly
-score (or logarithmic static evidence) appears once below them. A dashed line
-shows the threshold. On the inputs, a red line marks where a service alarm began
-and red shading how long it lasted: consecutive alarm results are one episode,
+detector result. Readings retain independent scales and units; the anomaly
+score, as a share of its threshold (or logarithmic static evidence), appears once
+below them. A dashed line shows the threshold. `exceedance.ts` cuts the stretches
+past it out of the line at the exact crossing: grey where the rule did not alarm,
+red where it did. On every pane a red line marks where a service alarm began
+and a red band how long it lasted: consecutive alarm results are one episode,
 which the next quiet result ends, and episodes the chart is too narrow to
-separate are drawn as one. A dot on the score marks where the selected detector's
-alarm begins. An alarm a Mute alarms step held back is an
+separate are drawn as one. An alarm a Mute alarms step held back is an
 open dot, and the key names open dots only when the chart shows one. The view works with multivariate models such
 as online isolation forest and does not infer per-sensor attribution or a baseline.
 

@@ -23,7 +23,7 @@ const observed = (offsetMs: number, value: number | null, alarm = false): Detect
 const score = (observations: DetectionObservation[], overrides: Partial<SecondaryChartSeries> = {}): SecondaryChartSeries => ({
   id: "adaptive-score:svc", serviceId: "svc", name: "Anomaly score", pane: "adaptive",
   data: observations.map(observation => ({ value: [observation.timeMs, observation.value], observation })),
-  thresholdRegions: [], overflow: [], latestObservation: observations[observations.length - 1]!,
+  overflow: [], latestObservation: observations[observations.length - 1]!,
   bounds: { minimum: 0, maximum: 1 }, ...overrides,
 });
 /** One result every 100 ms for ten seconds; `special` replaces the ones a test is about. */
@@ -37,8 +37,8 @@ const option = (model: Partial<MonitoringChartModel>, layout: "monitoring" | "co
   model: { readings: [reading()], secondarySeries: [], range: {}, extent: [START, START + 10_000], ...model },
   colors, timeZone: "UTC", accessibleDescription: "Chart", layout, viewport: { mode: "live" },
 });
-type Marks = { markArea: { data: unknown; itemStyle: { color: string } }; markLine: { data: unknown };
-  markPoint: { data: Array<{ name: string; coord: number[] }> } };
+type Marks = { markArea: { data: unknown; itemStyle: { color: string } }; markLine: { data: Array<{ xAxis: number }> };
+  markPoint: { data: Array<{ name: string; coord: number[] }> }; lineStyle: { color: string }; data: Array<[number, number | null]> };
 const seriesOf = (built: ReturnType<typeof option>, id: string) =>
   (built.series as Array<{ id?: string }>).find(series => series.id === id) as Marks | undefined;
 
@@ -54,7 +54,7 @@ describe("detection follows a reading into its intervals", () => {
     expect(summary!.data[0]!.value).toEqual([START + 900, 0.39]);
     expect(summary!.data[3]!.observation).toBe(alarmed);
     // The scale and the alarm zone are those of every result, so Auto and Raw share them.
-    expect(summary).toMatchObject({ bounds: series.bounds, thresholdRegions: series.thresholdRegions, latestObservation: series.latestObservation });
+    expect(summary).toMatchObject({ bounds: series.bounds, latestObservation: series.latestObservation });
   });
 
   it("breaks the line across an empty interval and leaves sparse series and Raw as recorded", () => {
@@ -114,15 +114,18 @@ describe("a summarised chart", () => {
     expect(line.markArea.data).toEqual([[{ xAxis: START + 4000 }, { xAxis: START + 5000 }], [{ xAxis: START + 8000 }, { xAxis: START + 8600 }]]);
     expect(line.markArea.itemStyle.color).toBe(colors.alarmFill);
     // One line where each episode began; a single alarm result is that line alone.
-    expect(line.markLine.data).toEqual([{ xAxis: START + 1000 }, { xAxis: START + 4000 }, { xAxis: START + 8000 }]);
+    expect(line.markLine.data.map(rule => rule.xAxis)).toEqual([START + 1000, START + 4000, START + 8000]);
   });
 
-  it("marks where a detector's alarm begins, not every result that keeps it up", () => {
+  it("draws an alarm as the score line turning red, with no dot on the results that keep it up", () => {
     const observations = steady({ 40: observed(4000, 0.8, true), 41: observed(4100, 0.9, true), 42: observed(4200, 0.85, true),
       80: observed(8000, 0.7, true) });
     const built = option({ secondarySeries: [score(observations)] });
-    const dots = seriesOf(built, "adaptive-score:svc")!.markPoint.data.filter(point => point.name === "Alarm decision");
-    expect(dots.map(point => point.coord)).toEqual([[START + 4000, 0.8], [START + 8000, 0.7]]);
+    expect(seriesOf(built, "adaptive-score:svc")!.markPoint.data.filter(point => point.name === "Alarm decision")).toEqual([]);
+    const alarm = seriesOf(built, "excursion:alarm:adaptive-score:svc")!;
+    expect(alarm.lineStyle.color).toBe(colors.alarmBoundary);
+    expect(alarm.data.filter(([, value]) => value !== null).map(([time]) => time))
+      .toEqual(expect.arrayContaining([START + 4000, START + 4100, START + 4200, START + 8000]));
   });
 
   it("gives a value with no line to either side a dot, and a single value none of its own", () => {
@@ -174,7 +177,7 @@ describe("a summarised chart", () => {
     const tooltip = formatTelemetryTooltip(params, "UTC", new Map([["Voltage", "V"]]), "en-US",
       new Map([["telemetry", 500], ["adaptive-score:svc", 5000], ["far", 500]]), new Set(["input::dev"]));
     expect(tooltip.split("\n").slice(1)).toEqual(["Voltage: 403.686636 V", "dev: 0.6144 (mean)",
-      "Anomaly score: 0.82 (highest of 15)", "Alarm threshold: 0.6", "Alarm: active"]);
+      "Anomaly score: 0.82 (highest of 15)", "Alarm threshold: 0.6 · score 1.4× threshold", "Alarm: active"]);
     // The exact-input tooltip of the Evidence tab steps aside: a peak is not the result under the pointer.
     expect(formatMonitoringObservationTooltip([{ seriesName: "Anomaly score", data: peak }], [reading()], String, String)).toBeUndefined();
   });

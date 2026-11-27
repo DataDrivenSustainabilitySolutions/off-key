@@ -8,11 +8,9 @@ import type {
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { getPauseLimit } from "./telemetry-data";
 import {
-  buildThresholdRegions,
   getDetectionValueBounds,
   type DetectionTimeValue,
   type DetectionValueBounds,
-  type ThresholdRegion,
 } from "./telemetry-thresholds";
 
 export type DetectionPane = "static" | "adaptive";
@@ -59,10 +57,11 @@ interface DetectionOverflow {
 
 export interface SecondaryChartSeries extends ChartDetector {
   data: DetectionChartPoint[];
-  thresholdRegions: ThresholdRegion[];
   overflow: DetectionOverflow[];
   latestObservation: DetectionObservation;
   bounds: DetectionValueBounds;
+  /** Values are each score divided by its own threshold, so the threshold is the line at 1. */
+  relative?: boolean;
 }
 
 export type SelectedDetectorIds = Partial<Record<DetectionPane, string>>;
@@ -169,6 +168,14 @@ function collectChartDetectors(
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
+/** Results this far under the threshold all sit on the floor of the log scale. */
+const RELATIVE_FLOOR = 1 / 8;
+const relativeBounds = (ratios: readonly number[]): DetectionValueBounds => ({
+  // Half the threshold is low enough to see a score settle; only a real share of results lower widens the view.
+  minimum: ratios.filter(ratio => ratio < 0.5).length > ratios.length * 0.05 ? 2 ** Math.floor(Math.log2(Math.min(...ratios))) : 0.5,
+  maximum: 2 ** Math.ceil(Math.log2(Math.max(1.5, ...ratios) * 1.05)),
+});
+
 /** How far above the highest alarm threshold the evidence pane reaches: four decades. */
 const EVIDENCE_HEADROOM = 1e4;
 
@@ -189,12 +196,10 @@ export const buildSelectedDetectorSeries = ({
   detectors,
   telemetryTimes,
   selectedDetectorIds = {},
-  range = {},
 }: {
   detectors: readonly TelemetryChartDetector[];
   telemetryTimes: readonly number[];
   selectedDetectorIds?: SelectedDetectorIds;
-  range?: { fromMs?: number; toMs?: number };
 }): SecondaryChartSeries[] => {
   const times = new Set(telemetryTimes);
   return (["static", "adaptive"] as const).flatMap((pane) => {
@@ -227,6 +232,23 @@ export const buildSelectedDetectorSeries = ({
       const before = data[index - 1]!.value[0], after = data[index]!.value[0];
       if (after - before > pauseLimit) data.splice(index, 0, { value: [(before + after) / 2, null] });
     }
+    // An adaptive threshold moves with every recalibration. Measured against its own threshold,
+    // each score answers the one question the pane is for: how close it came to an alarm.
+    const relative = pane === "adaptive" && observations.some(observation => observation.value !== null && (observation.threshold ?? 0) > 0)
+      && observations.every(observation => observation.value === null || observation.threshold === null || observation.threshold > 0);
+    if (relative) {
+      for (const point of data) {
+        const observation = point.observation;
+        if (observation && point.value[1] !== null) point.value = [point.value[0],
+          observation.threshold ? Math.max(RELATIVE_FLOOR, point.value[1] / observation.threshold) : null];
+      }
+      return [{
+        id: detector.id, serviceId: detector.serviceId, trackerId: detector.trackerId, name: detector.name, pane,
+        data, overflow, latestObservation, relative,
+        // Half steps around what was scored, always with the threshold in view and room above the highest result.
+        bounds: relativeBounds(data.flatMap(({ value }) => value[1] === null ? [] : [value[1]])),
+      }];
+    }
     const thresholds: DetectionTimeValue[] = observations.map((observation) => [
       observation.timeMs,
       isEvaluatedObservation(observation, pane) ? observation.threshold : null,
@@ -234,7 +256,6 @@ export const buildSelectedDetectorSeries = ({
     return [{
       id: detector.id, serviceId: detector.serviceId, trackerId: detector.trackerId, name: detector.name, pane,
       data, overflow, latestObservation,
-      thresholdRegions: buildThresholdRegions(thresholds, telemetryTimes, range),
       bounds: getDetectionValueBounds(pane === "static" ? "log" : "linear", data.map(({ value }) => value), thresholds),
     }];
   });

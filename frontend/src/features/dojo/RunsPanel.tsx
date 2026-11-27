@@ -8,6 +8,7 @@ import { dojoApi } from "./api";
 import { PromoteRunDialog } from "./PromoteRunDialog";
 import { RunCreateDialog } from "./RunCreateDialog";
 import { formatInstant, isActive, resultKindLabel, runName, runState } from "./model";
+import { LOCALE } from "@/lib/locale";
 
 export function RunsPanel({ dataset, runs, current, onRunsChange }: {
   dataset: DatasetView; runs: RunSummary[]; onRunsChange: () => Promise<void>;
@@ -53,8 +54,8 @@ export function RunsPanel({ dataset, runs, current, onRunsChange }: {
             <td>{runName(run)}<small>{resultKindLabel(run.strategy)}{run.compares_calibration && " · compares calibration methods"}{run.created_by_agent && ` · Agent · ${run.created_by_agent}`}</small></td>
             <td><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
               {run.error && <small title={run.error}>{run.error}</small>}</td>
-            <td>{run.result_count.toLocaleString()}<small>{run.points_read.toLocaleString()} of {run.points_total.toLocaleString()} values</small></td>
-            <td>{run.alarm_count.toLocaleString()}</td>
+            <td>{run.result_count.toLocaleString(LOCALE)}<small>{run.points_read.toLocaleString(LOCALE)} of {run.points_total.toLocaleString(LOCALE)} values</small></td>
+            <td>{run.alarm_count.toLocaleString(LOCALE)}</td>
             <td>{formatInstant(run.started_at ?? run.created_at)}</td>
             <td><div className="dj-row-actions">
               {run.status === "succeeded" && can("manage_monitors") && <button type="button" className="dj-link"

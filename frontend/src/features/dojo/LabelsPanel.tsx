@@ -15,6 +15,7 @@ import { CHART_POINTS, useSeriesPoints } from "./hooks";
 import { LabelSuggestions } from "./LabelSuggestions";
 import { formatInstant, fromLocalInput, suggestionNote, toLocalInput } from "./model";
 import { PendingLabels, type RuleRequest } from "./PendingLabels";
+import { LOCALE } from "@/lib/locale";
 
 const SHOWN_SERIES = 4;
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -112,7 +113,7 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
       accessibleDescription={`Values of ${series.map(item => item.name).join(", ") || "no series"} with ${labels.length} labels`}
       onViewportChange={(from, to) => setViewport([from, to])} />
     {labels.length > 0 && <ChartKey entries={[{ kind: "label", label: "Label", color: colors.foreground }]} />}
-    {truncated.length > 0 && <p className="dj-help">Showing the first {CHART_POINTS.toLocaleString()} values of{" "}
+    {truncated.length > 0 && <p className="dj-help">Showing the first {CHART_POINTS.toLocaleString(LOCALE)} values of{" "}
       {truncated.map(item => item.name).join(", ")}. Runs and metrics always use every value.</p>}
 
     <div className="dj-section-head dj-section-head--spaced">

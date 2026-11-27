@@ -14,7 +14,6 @@ type Input = {
   alarms?: ChartAlarms[];
   colors: ChartThemeColors;
   timeZone: string;
-  locale?: string;
 };
 
 const ALARM_ROW = 22;
@@ -62,7 +61,7 @@ export function alarmEpisodes(times: readonly number[], cadence?: number): Array
  * right, any further ones on the left. The legend names each series' unit. Alarm rows share the time axis, so a
  * mark sits under the value it belongs to.
  */
-export function datasetChartOption({ series, labels, alarms = [], colors, timeZone, locale }: Input): TelemetryChartOption {
+export function datasetChartOption({ series, labels, alarms = [], colors, timeZone }: Input): TelemetryChartOption {
   const range = extent(series, labels, alarms);
   const span = range ? range[1] - range[0] : 0;
   const palette = colors.seriesPalette ?? [colors.primary];
@@ -72,7 +71,7 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
   const left = alarms.length ? Math.min(180, Math.max(56, 16 + longest * 7)) : 56;
   const right = twoAxes ? 56 : 24;
   const alarmHeight = alarms.length ? alarms.length * ALARM_ROW + 18 : 0;
-  const axisLabel = { formatter: timeAxisLabelFormatter(timeZone, locale, span), hideOverlap: true,
+  const axisLabel = { formatter: timeAxisLabelFormatter(timeZone, span), hideOverlap: true,
     rich: { day: { fontWeight: 600 } } };
   const bounds = range ? { min: range[0], max: range[1] } : {};
   const timeAxis = (id: string, gridIndex: number, labelled: boolean) => ({ id, type: "time" as const, gridIndex, ...bounds,

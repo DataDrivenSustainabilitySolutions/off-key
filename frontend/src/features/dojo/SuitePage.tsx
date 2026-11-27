@@ -15,6 +15,7 @@ import { formatPerDay, formatRate, formatShortDate } from "./model";
 import { ProtocolPanel } from "./ProtocolPanel";
 import { StudyCreateDialog } from "./SuiteDialogs";
 import { STUDY_METRICS, describePValue, formatScore, studyProgress, type StudyMetric } from "./suites";
+import { LOCALE } from "@/lib/locale";
 
 const POLL_MS = 5000;
 const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Public series" } as const;
@@ -140,7 +141,7 @@ export function SuitePage({ id, study, tab, listHref, datasetHref, onStudy, onTa
         <tbody>{suite.items.map(item => <tr key={item.dataset_id}>
           <td className="dj-name"><Link to={datasetHref(item.dataset_id)}>{item.name}</Link>
             <small>{item.series_names.length > 1 ? `${item.series_names.length} series: ${item.series_names.join(", ")}` : ORIGIN[item.origin]}</small></td>
-          <td className="dj-fit dj-num">{item.point_count.toLocaleString()}<span className="dj-narrow-unit"> values</span></td>
+          <td className="dj-fit dj-num">{item.point_count.toLocaleString(LOCALE)}<span className="dj-narrow-unit"> values</span></td>
           <td className="dj-fit dj-num">{item.labels}<span className="dj-narrow-unit"> {item.labels === 1 ? "label" : "labels"}</span></td>
         </tr>)}</tbody>
       </table></div>}

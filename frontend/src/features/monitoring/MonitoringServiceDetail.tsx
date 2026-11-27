@@ -21,6 +21,7 @@ import { modelName, serviceName, serviceState, strategyName, type MonitoringInpu
 import type { PipelineState } from "../pipelines/PipelineDiagnostics";
 import { RationaleCard } from "../workspace/RationaleCard";
 import { ShadowReview } from "./ShadowReview";
+import { LOCALE } from "@/lib/locale";
 
 const PipelineRun = lazy(() => import("../pipelines/PipelineRunView"));
 
@@ -28,7 +29,7 @@ type Configuration = { monitoring: Record<string, JsonValue>; performance_config
 type Props = { service: ActiveService; inputs: MonitoringInput[]; document: SystemDocument; historyCache?: ReadingHistoryCache; canEdit: boolean; favourite: boolean;
   pipelineState?: PipelineState;
   onFavourite: () => void; onRename: (name: string) => Promise<void>; onBack: () => void; onDeleted: () => Promise<void>; onStopped?: () => void | Promise<void> };
-const formatSetting = (value: JsonValue) => typeof value === "number" ? value.toLocaleString() : String(value);
+const formatSetting = (value: JsonValue) => typeof value === "number" ? value.toLocaleString(LOCALE) : String(value);
 const tabs = [{ id: "overview", label: "Overview" }, { id: "evidence", label: "Evidence" }, { id: "pipeline", label: "Pipeline" }, { id: "configuration", label: "Configuration" }];
 
 export default function MonitoringServiceDetail({ service, inputs, document, historyCache, canEdit, favourite, pipelineState, onFavourite, onRename, onBack, onDeleted, onStopped }: Props) {
@@ -82,12 +83,12 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     {service.origin && <RationaleCard author={service.origin.author} authorKind={service.origin.author_kind}
       rationale={service.origin.rationale} history={service.origin.history} />}
     <dl className="mn-summary"><div><dt>Status</dt><dd><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
-      {progress && <>{" · "}{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples
+      {progress && <>{" · "}{progress.current.toLocaleString(LOCALE)} of {progress.target.toLocaleString(LOCALE)} samples
         <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>
           <div style={{ width: `${Math.min(100, Math.max(0, progress.current / Math.max(1, progress.target) * 100))}%` }} />
         </div></>}</dd></div>
       <div><dt>Inputs</dt><dd>{service.reading_ids.length} {service.reading_ids.length === 1 ? "reading" : "readings"}</dd></div>
-      <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString()}</dd></div>
+      <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString(LOCALE)}</dd></div>
       <div><dt>Last update</dt><dd><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" /></dd></div></dl>
     <div className="mn-tabs" role="tablist" aria-label="Monitor sections">{tabs.map((item, index) => <button key={item.id} id={`monitor-tab-${item.id}`} role="tab"
       aria-selected={tab === item.id} aria-controls={`monitor-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => chooseTab(item.id)} onKeyDown={event => {
@@ -113,13 +114,13 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         <section className="mn-section"><h3>Coverage</h3>
           <p className="ex-muted">Delivery is best effort. Missing observations cannot be replayed.</p>
           {coverage ? <>
-            <dl className="mn-configuration"><div><dt>Received observations</dt><dd>{coverage.received_message_count.toLocaleString()}</dd></div>
-              <div><dt>Dropped observations</dt><dd>{coverage.dropped_message_count.toLocaleString()}</dd></div>
-              <div><dt>Possible interruptions</dt><dd>{coverage.possible_gap_count.toLocaleString()}</dd></div></dl>
+            <dl className="mn-configuration"><div><dt>Received observations</dt><dd>{coverage.received_message_count.toLocaleString(LOCALE)}</dd></div>
+              <div><dt>Dropped observations</dt><dd>{coverage.dropped_message_count.toLocaleString(LOCALE)}</dd></div>
+              <div><dt>Possible interruptions</dt><dd>{coverage.possible_gap_count.toLocaleString(LOCALE)}</dd></div></dl>
             {coverage.has_gaps && <p className="ex-preview-error" role="alert">Monitoring coverage has gaps.
               {coverage.last_gap_at && <> Last gap: <RelativeTime value={coverage.last_gap_at} />.</>}</p>}
             {Object.keys(coverage.dropped_by_reason).length > 0 && <ul>{Object.entries(coverage.dropped_by_reason).map(([reason, count]) =>
-              <li key={reason}>{reason.replace(/_/g, " ")}: {count.toLocaleString()}</li>)}</ul>}
+              <li key={reason}>{reason.replace(/_/g, " ")}: {count.toLocaleString(LOCALE)}</li>)}</ul>}
           </> : <p className="ex-muted">Coverage has not been reported by this workload.</p>}
         </section>
         <section className="mn-section"><h3>Monitored readings</h3><ul className="mn-input-list">

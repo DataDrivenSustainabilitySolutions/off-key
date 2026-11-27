@@ -118,7 +118,6 @@ const buildOption = (
     timeZone,
     colors,
     accessibleDescription: "Voltage telemetry chart",
-    locale: "en-US",
   });
 
 type InspectableOption = {
@@ -783,7 +782,6 @@ describe("chart time and tooltip formatting", () => {
       [{ seriesName: "Voltage", value: [timestamp, 230.125] }],
       "America/New_York",
       new Map([["Voltage", "V"]]),
-      "en-US",
     );
 
     expect(result).toContain("EDT");
@@ -796,13 +794,11 @@ describe("chart time and tooltip formatting", () => {
       Date.parse("2026-03-08T06:30:00Z"),
       "America/New_York",
       "tooltip",
-      "en-US",
     );
     const after = formatChartTime(
       Date.parse("2026-03-08T07:30:00Z"),
       "America/New_York",
       "tooltip",
-      "en-US",
     );
 
     expect(before).toContain("01:30");

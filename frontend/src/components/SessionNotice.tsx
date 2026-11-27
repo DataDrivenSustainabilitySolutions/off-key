@@ -4,12 +4,13 @@ import { useAuth } from "@/auth/AuthContext";
 import { loginHref } from "@/auth/login-navigation";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
+import { dateTimeFormat } from "@/lib/locale";
 
 // Warn this long before a sign-in ends, so nobody is signed out mid-task.
 const SESSION_WARNING_MS = 5 * 60_000;
 
 const clockTime = (time: number) =>
-  new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  dateTimeFormat({ hour: "2-digit", minute: "2-digit" }).format(new Date(time));
 
 /**
  * Says when the sign-in is about to end, or that renewal is retrying after an

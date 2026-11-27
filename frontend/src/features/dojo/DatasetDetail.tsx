@@ -17,6 +17,7 @@ import { LabelsPanel } from "./LabelsPanel";
 import { RunsPanel } from "./RunsPanel";
 import { FaultSuiteDialog } from "./SuiteDialogs";
 import { DATASET_TABS as TABS, formatShortSpan, injectedFaults, isActive, type DatasetTab } from "./model";
+import { LOCALE } from "@/lib/locale";
 
 const RUN_POLL_MS = 3000;
 const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Public series" } as const;
@@ -91,7 +92,7 @@ export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
   </section>;
   const faults = injectedFaults(dataset.source);
   const view: DojoView = dataset.origin === "benchmark" ? "benchmarks" : "datasets";
-  const meta = [ORIGIN[dataset.origin], `${dataset.point_count.toLocaleString()} values`,
+  const meta = [ORIGIN[dataset.origin], `${dataset.point_count.toLocaleString(LOCALE)} values`,
     ...(dataset.series.length > 1 ? [`${dataset.series.length} series`] : []),
     ...(dataset.origin === "benchmark" ? [] : [formatShortSpan(dataset.start_at, dataset.end_at)]),
     ...(faults ? [`injected faults ${faults}`] : [])];

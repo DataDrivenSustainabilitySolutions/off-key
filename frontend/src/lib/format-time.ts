@@ -3,12 +3,14 @@
  * day. Reading freshness uses elapsed time even for older observations.
  */
 
+import { dateTimeFormat, LOCALE } from "@/lib/locale";
+
 const DAY_MS = 86_400_000;
-const dateTime = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" });
-const exactDateTime = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "medium" });
-const timeOfDay = new Intl.DateTimeFormat("en", { timeStyle: "short" });
-const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-const elapsedDays = new Intl.RelativeTimeFormat("en", { numeric: "always" });
+const dateTime = dateTimeFormat({ dateStyle: "medium", timeStyle: "short" });
+const exactDateTime = dateTimeFormat({ dateStyle: "medium", timeStyle: "medium" });
+const timeOfDay = dateTimeFormat({ timeStyle: "short" });
+const relative = new Intl.RelativeTimeFormat(LOCALE, { numeric: "auto" });
+const elapsedDays = new Intl.RelativeTimeFormat(LOCALE, { numeric: "always" });
 
 export type RelativeTimeMode = "recent" | "elapsed";
 
@@ -18,19 +20,19 @@ export function parseTime(value: string | number | Date | null | undefined): Dat
   return Number.isFinite(date.getTime()) ? date : undefined;
 }
 
-/** "Oct 21, 2026, 6:37 PM" */
+/** "Oct 21, 2026, 18:37" */
 export const formatDateTime = (value: string | number | Date) => {
   const date = parseTime(value);
   return date ? dateTime.format(date) : "";
 };
 
-/** "Oct 21, 2026, 6:37:29 PM", for tooltips and places that need seconds. */
+/** "Oct 21, 2026, 18:37:29", for tooltips and places that need seconds. */
 export const formatExactDateTime = (value: string | number | Date) => {
   const date = parseTime(value);
   return date ? exactDateTime.format(date) : "";
 };
 
-/** "6:37 PM", for rows that already sit under a day heading. */
+/** "18:37", for rows that already sit under a day heading. */
 export const formatTimeOfDay = (value: string | number | Date) => {
   const date = parseTime(value);
   return date ? timeOfDay.format(date) : "";
@@ -64,8 +66,8 @@ export function formatDay(value: string | number | Date, now = Date.now()) {
   if (!date) return "";
   const days = Math.round((startOfDay(now) - startOfDay(date.getTime())) / DAY_MS);
   if (days === 0 || days === 1) return relative.format(-days, "day").replace(/^./, letter => letter.toLocaleUpperCase());
-  return date.toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric",
-    ...(date.getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) });
+  return dateTimeFormat({ weekday: "long", month: "long", day: "numeric",
+    ...(date.getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) }).format(date);
 }
 
 /** A stable key for grouping times by local calendar day. */

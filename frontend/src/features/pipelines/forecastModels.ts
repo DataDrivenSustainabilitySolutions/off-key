@@ -3,6 +3,7 @@ import { getErrorMessage } from "@/lib/errors";
 import type { ForecastModelCatalog, ForecastModelInfo } from "@/types/pipelines.generated";
 import { pipelinesApi } from "./api";
 import type { PipelineComponent } from "./contracts";
+import { LOCALE } from "@/lib/locale";
 
 /** A step whose model lives in the deployment's forecast service, not in the monitor. */
 export const usesForecastService = (component: string) => component.startsWith("forecast.");
@@ -37,7 +38,7 @@ export function sizeText(bytes: number) {
   if (!bytes) return "";
   const gigabytes = bytes >= 1_000_000_000;
   const value = bytes / (gigabytes ? 1_000_000_000 : 1_000_000);
-  return `${value.toLocaleString("en", { maximumFractionDigits: gigabytes ? 1 : 0 })} ${gigabytes ? "GB" : "MB"}`;
+  return `${value.toLocaleString(LOCALE, { maximumFractionDigits: gigabytes ? 1 : 0 })} ${gigabytes ? "GB" : "MB"}`;
 }
 
 /** A checkpoint's state in words; a download says how far it is. */

@@ -14,6 +14,7 @@ import { useSelection } from "./listing";
 import { ListTable, type ListColumn } from "./ListTable";
 import { formatInstant, formatShortDate, formatShortSpan, formatSpan } from "./model";
 import { SuiteCreateDialog } from "./SuiteDialogs";
+import { LOCALE } from "@/lib/locale";
 
 const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Public benchmark" } as const;
 
@@ -27,7 +28,7 @@ const created = <Row extends { created_at: string }>(): ListColumn<Row> => ({
   cell: row => <time dateTime={row.created_at} title={formatInstant(row.created_at)}>{formatShortDate(row.created_at)}</time>,
 });
 const values: ListColumn<DatasetSummary> = { id: "values", label: "Values", numeric: true, sort: row => row.point_count,
-  cell: row => row.point_count.toLocaleString(), unit: () => "values" };
+  cell: row => row.point_count.toLocaleString(LOCALE), unit: () => "values" };
 const DATASET_COLUMNS: ListColumn<DatasetSummary>[] = [values,
   { id: "span", label: "Time span", sort: row => row.start_at ?? "",
     cell: row => <span title={formatSpan(row.start_at, row.end_at)}>{formatShortSpan(row.start_at, row.end_at)}</span> },

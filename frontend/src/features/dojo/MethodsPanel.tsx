@@ -3,6 +3,7 @@ import { getErrorMessage } from "@/lib/errors";
 import type { MethodComparison, MethodMetrics, RunSummary } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
 import { formatDuration, formatInstant, formatPerDay, formatRate, formatShare, rankMethods, runName } from "./model";
+import { LOCALE } from "@/lib/locale";
 
 const FAMILY = {
   fixed: "Fixed",
@@ -22,7 +23,7 @@ const COLUMNS: Column[] = [
     best: { score: item => item.detection_rate, prefer: "high" } },
   { label: "Median delay", value: item => formatDuration(item.median_delay_seconds),
     best: { score: item => item.median_delay_seconds, prefer: "low" } },
-  { label: "False alarms", value: item => item.false_alarms.toLocaleString() },
+  { label: "False alarms", value: item => item.false_alarms.toLocaleString(LOCALE) },
   { label: "False alarms per day", value: item => formatPerDay(item.false_alarms_per_day),
     best: { score: item => item.false_alarms_per_day, prefer: "low" } },
   { label: "Results with an alarm", value: item => formatShare(item.alarm_share) },
@@ -68,7 +69,7 @@ export function MethodsPanel({ runs, labelsKey }: { runs: RunSummary[]; labelsKe
     {error && <p className="ex-banner ex-error" role="alert">{error}</p>}
     {shown && <>
       <p className="dj-help">{compared.length === 1 && `${runName(compared[0]!)}: `}every method judged the same{" "}
-        {shown.results.toLocaleString()} results from {formatInstant(shown.scored_from)}, aiming at an alarm rate
+        {shown.results.toLocaleString(LOCALE)} results from {formatInstant(shown.scored_from)}, aiming at an alarm rate
         of {formatShare(shown.alpha)}{shown.consecutive > 1
           && ` and alarming after ${shown.consecutive} scores in a row above its boundary`}. Best first: most labels detected,
         then fewest false alarms per day, then the shortest delay.</p>

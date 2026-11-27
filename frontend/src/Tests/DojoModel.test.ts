@@ -42,13 +42,13 @@ describe("Dojo model", () => {
   it("keeps dataset spans and creation dates short enough for a table cell", () => {
     const at = (...parts: [number, number, number, number?, number?]) => new Date(...parts).toISOString();
     const now = new Date(2026, 10, 23, 17, 0).getTime();
-    expect(formatShortSpan(at(2026, 10, 16, 15, 1), at(2026, 10, 23, 14, 29), now, "en-US")).toMatch(/^Nov 16\s–\s23$/u);
-    expect(formatShortSpan(at(2013, 11, 2), at(2014, 1, 19), now, "en-US")).toMatch(/^Dec 2, 2013\s–\sFeb 19, 2014$/u);
-    expect(formatShortSpan(at(2026, 10, 23, 8), at(2026, 10, 23, 12), now, "en-US")).toMatch(/^Nov 23, 8:00\sAM\s–\s12:00\sPM$/u);
+    expect(formatShortSpan(at(2026, 10, 16, 15, 1), at(2026, 10, 23, 14, 29), now)).toMatch(/^Nov 16\s–\s23$/u);
+    expect(formatShortSpan(at(2013, 11, 2), at(2014, 1, 19), now)).toMatch(/^Dec 2, 2013\s–\sFeb 19, 2014$/u);
+    expect(formatShortSpan(at(2026, 10, 23, 8), at(2026, 10, 23, 12), now)).toMatch(/^Nov 23, 08:00\s–\s12:00$/u);
     expect(formatShortSpan(null, at(2026, 10, 23), now)).toBe("–");
-    expect(formatShortDate(at(2026, 10, 23, 14, 30), now, "en-US")).toBe("2 hours ago");
-    expect(formatShortDate(at(2026, 9, 2, 9), now, "en-US")).toBe("Oct 2");
-    expect(formatShortDate(at(2025, 9, 2, 9), now, "en-US")).toBe("Oct 2, 2025");
+    expect(formatShortDate(at(2026, 10, 23, 14, 30), now)).toBe("2 hours ago");
+    expect(formatShortDate(at(2026, 9, 2, 9), now)).toBe("Oct 2");
+    expect(formatShortDate(at(2025, 9, 2, 9), now)).toBe("Oct 2, 2025");
   });
 
   it("shows a running run's progress", () => {

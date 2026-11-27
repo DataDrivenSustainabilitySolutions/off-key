@@ -334,7 +334,7 @@ test("dense source history offers automatic means and immediate raw readings", a
   await averaging.hover();
   await expect(page.getByRole("tooltip")).toContainText("30s mean · min–max");
   await page.keyboard.press("Escape");
-  await history.getByRole("heading", { name: "History", exact: true }).hover();
+  await preview.getByRole("heading", { level: 1 }).hover();
   await expect(page.getByRole("tooltip")).toHaveCount(0);
   await capture(page, testInfo, "timeline-minimal-light");
   await preview.screenshot({ path: testInfo.outputPath("timeline-minimal-detail.png"), animations: "disabled" });

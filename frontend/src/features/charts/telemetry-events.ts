@@ -7,6 +7,7 @@ import {
   type AnomalyMarker,
   type AnomalySample,
 } from "@/lib/anomaly-utils";
+import { dateTimeFormat, LOCALE } from "@/lib/locale";
 
 export interface TelemetryEventGroup {
   timeMs: number;
@@ -30,7 +31,6 @@ export const groupTelemetryEvents = (
 
 interface TelemetryEventDisplayOptions {
   timeZone: string;
-  locale?: string;
   unit?: string;
   telemetryValueExtent?: readonly [minimum: number, maximum: number];
 }
@@ -47,35 +47,24 @@ const getContextualSampleEdge = (
   return undefined;
 };
 
-const numberFormatters = new Map<string, Intl.NumberFormat>();
-
-/** A telemetry value with up to six decimals, one formatter per locale. */
-export const getNumberFormatter = (locale?: string): Intl.NumberFormat => {
-  const key = locale ?? "default";
-  let formatter = numberFormatters.get(key);
-  if (!formatter) {
-    formatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 6 });
-    numberFormatters.set(key, formatter);
-  }
-  return formatter;
-};
+/** A telemetry value with up to six decimals. */
+export const telemetryNumber = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 6 });
 
 const eventCount = (group: TelemetryEventGroup) =>
   `${group.events.length} anomaly event${group.events.length === 1 ? "" : "s"}`;
 
 const eventTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
-export const formatTelemetryEventTime = (timeMs: number, timeZone: string, locale?: string): string => {
-  const key = `${timeZone}\u0000${locale ?? "default"}`;
-  let formatter = eventTimeFormatters.get(key);
+export const formatTelemetryEventTime = (timeMs: number, timeZone: string): string => {
+  let formatter = eventTimeFormatters.get(timeZone);
   if (!formatter) {
     const options: Intl.DateTimeFormatOptions & { fractionalSecondDigits: 3 } = {
       timeZone, year: "numeric", month: "short", day: "2-digit",
       hour: "2-digit", minute: "2-digit", second: "2-digit",
       fractionalSecondDigits: 3, timeZoneName: "short",
     };
-    formatter = new Intl.DateTimeFormat(locale, options);
-    eventTimeFormatters.set(key, formatter);
+    formatter = dateTimeFormat(options);
+    eventTimeFormatters.set(timeZone, formatter);
   }
   return formatter.format(timeMs);
 };
@@ -91,9 +80,9 @@ export const formatEventSampleOffset = (offsetMs: number): string => {
 
 export const formatTelemetryEventTooltip = (
   group: TelemetryEventGroup,
-  { timeZone, locale, unit, telemetryValueExtent }: TelemetryEventDisplayOptions,
+  { timeZone, unit, telemetryValueExtent }: TelemetryEventDisplayOptions,
 ): string => {
-  const formatTime = (time: number) => formatTelemetryEventTime(time, timeZone, locale);
+  const formatTime = (time: number) => formatTelemetryEventTime(time, timeZone);
   const lines = [
     eventCount(group),
     `Anomaly recorded at: ${formatTime(group.timeMs)}`,
@@ -108,7 +97,7 @@ export const formatTelemetryEventTooltip = (
   if (group.sample) {
     lines.push(
       `Nearest telemetry sample at: ${formatTime(group.sample.time)}`,
-      `Telemetry value: ${getNumberFormatter(locale).format(group.sample.value)}${unit ? ` ${unit}` : ""}`,
+      `Telemetry value: ${telemetryNumber.format(group.sample.value)}${unit ? ` ${unit}` : ""}`,
       `Sample offset: ${formatEventSampleOffset(group.sample.time - group.timeMs)}`,
     );
     const sampleEdge = getContextualSampleEdge(group, telemetryValueExtent);

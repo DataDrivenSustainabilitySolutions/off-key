@@ -7,6 +7,7 @@ import { DOJO_LIMITS } from "@/types/dojo.generated";
 import type { SystemStream } from "@/types/system";
 import { dojoApi } from "./api";
 import { fromLocalInput, toLocalInput } from "./model";
+import { LOCALE } from "@/lib/locale";
 
 type Layout = CsvImportQuery["layout"];
 type Delimiter = NonNullable<CsvImportQuery["delimiter"]>;
@@ -77,7 +78,7 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
   };
   return <ImportDialog open={open} onOpenChange={reset} title="Upload CSV" busy={busy} error={error}
     description={`Values are copied into the Dojo once; editing the file later changes nothing. At most ${
-      megabytes(DOJO_LIMITS.uploadBytes)} MB, ${DOJO_LIMITS.series} series and ${DOJO_LIMITS.points.toLocaleString()} values.`}
+      megabytes(DOJO_LIMITS.uploadBytes)} MB, ${DOJO_LIMITS.series} series and ${DOJO_LIMITS.points.toLocaleString(LOCALE)} values.`}
     submitLabel="Upload" canSubmit={!!file && !tooLarge && !!name.trim()} onSubmit={() => void submit()}>
     <label className="dj-field">File
       <input type="file" accept=".csv,.tsv,.txt,text/csv" disabled={busy} onChange={event => {
@@ -199,8 +200,8 @@ export function BenchmarkImportDialog({ open, onOpenChange, onImported }: {
             <input type="checkbox" checked={on} disabled={busy || (!on && full)}
               onChange={event => toggle(item.id, event.target.checked)} />
             <span><b>{String(item.number).padStart(3, "0")} · {item.name}</b>
-              <small>{item.domain}{item.variant === "original" ? "" : `, ${item.variant}`} · {item.points.toLocaleString()} values ·
-                anomaly at {item.anomaly_first.toLocaleString()}{item.anomaly_last > item.anomaly_first ? `–${item.anomaly_last.toLocaleString()}` : ""}</small></span>
+              <small>{item.domain}{item.variant === "original" ? "" : `, ${item.variant}`} · {item.points.toLocaleString(LOCALE)} values ·
+                anomaly at {item.anomaly_first.toLocaleString(LOCALE)}{item.anomaly_last > item.anomaly_first ? `–${item.anomaly_last.toLocaleString(LOCALE)}` : ""}</small></span>
             {item.dataset_id && <small>Imported</small>}
           </label></li>;
         })}</ul>}
@@ -301,7 +302,7 @@ export function HistoryImportDialog({ open, onOpenChange, onCreated, scope, read
       {!windowValid && <p className="dj-error">The end must be after the start.</p>}
     </> : <p className="dj-help">{windowId === "all"
       ? "From the first value still stored up to now. Retention decides how far back that reaches."
-      : "Ends now."} A dataset holds at most {DOJO_LIMITS.points.toLocaleString()} values; choose a shorter window if the
+      : "Ends now."} A dataset holds at most {DOJO_LIMITS.points.toLocaleString(LOCALE)} values; choose a shorter window if the
       copy is refused.</p>}
   </ImportDialog>;
 }

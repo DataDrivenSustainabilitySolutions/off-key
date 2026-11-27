@@ -4,6 +4,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { previewAlarmDeletion, deleteAlarmSelection } from '@/lib/charger-api';
 import { getErrorMessage } from '@/lib/errors';
 import type { AlarmDeletionPreview, AlarmSelection } from '@/types/charger';
+import { LOCALE } from "@/lib/locale";
 
 export function useAlarmDeletion(onDeleted: () => Promise<void>) {
   const [request, setRequest] = useState<{ preview: AlarmDeletionPreview; description: string }>();
@@ -25,17 +26,17 @@ export function useAlarmDeletion(onDeleted: () => Promise<void>) {
     try {
       const result = await deleteAlarmSelection(request.preview.token);
       setRequest(undefined);
-      toast.success(`${result.count.toLocaleString()} ${result.count === 1 ? 'anomaly' : 'anomalies'} deleted`);
+      toast.success(`${result.count.toLocaleString(LOCALE)} ${result.count === 1 ? 'anomaly' : 'anomalies'} deleted`);
       await onDeleted();
     } catch (error) { setError(getErrorMessage(error)); }
     finally { setBusy(false); }
   };
   const count = request?.preview.count ?? 0;
   return { prepare, busy, pending: !!request, confirmation: request && <ConfirmDialog open
-    title={count === 1 ? 'Delete this anomaly?' : `Delete ${count.toLocaleString()} anomalies?`}
-    description={<>{request.description} Only the {count.toLocaleString()} reviewed {count === 1 ? 'record' : 'records'} will be deleted.
+    title={count === 1 ? 'Delete this anomaly?' : `Delete ${count.toLocaleString(LOCALE)} anomalies?`}
+    description={<>{request.description} Only the {count.toLocaleString(LOCALE)} reviewed {count === 1 ? 'record' : 'records'} will be deleted.
       {' '}New arrivals are excluded. This cannot be undone.</>}
-    confirmLabel={count === 1 ? 'Delete anomaly' : `Delete ${count.toLocaleString()} anomalies`}
+    confirmLabel={count === 1 ? 'Delete anomaly' : `Delete ${count.toLocaleString(LOCALE)} anomalies`}
     busyLabel="Deleting…" destructive busy={busy} error={error}
     onConfirm={() => void commit()} onCancel={() => { setRequest(undefined); setError(''); }} /> };
 }

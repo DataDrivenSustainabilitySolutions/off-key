@@ -2,6 +2,7 @@ import type { PipelineComponent, PipelineDefinition, PipelineValidation } from "
 import { learningBlocker } from "./learning";
 import { detectorIds, incomingEdges, insertOnEdge, type GraphDocument, type Link } from "./model";
 import { stepFamily } from "./steps";
+import { LOCALE } from "@/lib/locale";
 
 /** One feature the detector receives, with the steps that made it. */
 export type FeatureRow = {
@@ -189,7 +190,7 @@ export function addForFeature(
   };
 }
 
-const amount = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 4 });
+const amount = new Intl.NumberFormat(LOCALE, { maximumSignificantDigits: 4 });
 /** The check writes "above 0" as the smallest positive number, as for the seconds between
  * observations, and what is computed from it can stay as close to 0. Written out it would
  * be hundreds of zeros, so an end this close to 0 reads as the side of 0 it is on. */
@@ -229,7 +230,7 @@ export function afterGate(definition: PipelineDefinition, id: string) {
 export function readyText(observation: number, gated: boolean) {
   if (observation <= 1)
     return gated ? "Ready from the first observation a Gate lets through" : "Ready from the first observation";
-  return `Ready after ${gated ? "at least " : ""}${observation.toLocaleString()} observations`;
+  return `Ready after ${gated ? "at least " : ""}${observation.toLocaleString(LOCALE)} observations`;
 }
 
 /** Why the features arriving at a step are unknown: the nearest step before it whose

@@ -3,13 +3,15 @@
  * ticks never read the same, and a gutter that fits the widest label drawn.
  */
 
+import { LOCALE } from "@/lib/locale";
+
 const numberFormatters = new Map<string, Intl.NumberFormat>();
 
-const numberFormatter = (locale: string | undefined, compact: boolean, significantDigits: number): Intl.NumberFormat => {
-  const key = `${locale ?? "default"}\u0000${compact}\u0000${significantDigits}`;
+const numberFormatter = (compact: boolean, significantDigits: number): Intl.NumberFormat => {
+  const key = `${compact}\u0000${significantDigits}`;
   const cached = numberFormatters.get(key);
   if (cached) return cached;
-  const formatter = new Intl.NumberFormat(locale, {
+  const formatter = new Intl.NumberFormat(LOCALE, {
     notation: compact ? "compact" : "standard", maximumSignificantDigits: significantDigits });
   numberFormatters.set(key, formatter);
   return formatter;
@@ -29,19 +31,19 @@ const significantDigits = (value: number): number =>
   value.toExponential(11).split("e")[0]!.replace(/^-/, "").replace(".", "").replace(/0+$/, "").length || 1;
 
 /**
- * A tick value for a value axis, in the reader's locale: in full, such as 10,120 or 0.0025,
+ * A tick value for a value axis, in English: in full, such as 10,120 or 0.0025,
  * or on a compact axis abbreviated, such as 5.01M. Ticks are round numbers, so every digit
  * a tick has is kept: neighbours such as 5,010,000 and 5,020,000 stay 5.01M and 5.02M
  * rather than collapsing into one label.
  */
-export const formatAxisValue = (value: number, locale?: string, compact = true): string => {
+export const formatAxisValue = (value: number, compact = true): string => {
   if (!Number.isFinite(value)) return String(value);
   const rounded = Number(value.toPrecision(12));
   if (rounded === 0) return "0";
   const magnitude = Math.abs(rounded);
   // Beyond what compact names, or so small that zeros would fill the gutter.
   if (magnitude >= 1e15 || magnitude < 1e-4) return rounded.toExponential().replace("e+", "e");
-  return numberFormatter(locale, compact, significantDigits(rounded)).format(rounded);
+  return numberFormatter(compact, significantDigits(rounded)).format(rounded);
 };
 
 /** Room between the plot and its value labels: ECharts' axisLabel.margin. */

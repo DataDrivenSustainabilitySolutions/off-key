@@ -12,6 +12,7 @@ import { useRunAlarms, useSeriesPoints } from "./hooks";
 import { MethodsPanel } from "./MethodsPanel";
 import { formatScore } from "./suites";
 import { formatDuration, formatInstant, formatPerDay, formatRate, runName } from "./model";
+import { LOCALE } from "@/lib/locale";
 
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const CHART_SERIES = 2;
@@ -33,7 +34,7 @@ const ROWS: Row[] = [
   { label: "Median delay", value: item => formatDuration(item.median_delay_seconds),
     best: { score: item => item.median_delay_seconds, prefer: "low" } },
   { label: "Longest delay", value: item => formatDuration(item.max_delay_seconds) },
-  { label: "False alarms", value: item => item.false_alarms.toLocaleString(),
+  { label: "False alarms", value: item => item.false_alarms.toLocaleString(LOCALE),
     best: { score: item => item.false_alarms, prefer: "low" } },
   { label: "False alarms per day", value: item => formatPerDay(item.false_alarms_per_day),
     best: { score: item => item.false_alarms_per_day, prefer: "low" } },
@@ -67,7 +68,7 @@ const ROWS: Row[] = [
     return value == null ? "–" : `${formatRate(value)}${value > 0.5 ? " · flaps" : ""}`;
   } },
   // Where designs disagree is where to look, and label, first.
-  { label: "Alarms no other run raised", value: item => item.diagnostics?.alarms_alone?.toLocaleString() ?? "–" },
+  { label: "Alarms no other run raised", value: item => item.diagnostics?.alarms_alone?.toLocaleString(LOCALE) ?? "–" },
   { label: "Scored from", value: item => formatInstant(item.scored_from) },
 ];
 

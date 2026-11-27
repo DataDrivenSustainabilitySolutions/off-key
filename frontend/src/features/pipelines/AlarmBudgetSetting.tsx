@@ -6,6 +6,7 @@ import {
 import type { PipelineComponent } from "./contracts";
 import type { GraphDocument } from "./model";
 import type { HistoryMode } from "./types";
+import { LOCALE } from "@/lib/locale";
 
 /** How often the design may alarm, as a count in a period. The design keeps it as the alarm
  * rate of its calibration step, or as the quantile of its threshold, so the steps and this
@@ -46,7 +47,7 @@ export function AlarmBudgetSetting({
     : shown.trim() === "" || Number.isNaN(Number(shown)) ? "Enter a number."
       : interval && period
         ? Number(shown) <= 0 ? "Use a number above 0."
-          : `Use fewer than ${budgetNumber(period.seconds / interval).toLocaleString()}, which is every score.`
+          : `Use fewer than ${budgetNumber(period.seconds / interval).toLocaleString(LOCALE)}, which is every score.`
         : Number.isInteger(Number(shown)) ? "Use at least 2." : "Enter a whole number.";
   return (
     <>

@@ -1,5 +1,6 @@
 import type { PipelineDefinition } from "./contracts";
 import { FIXED_THRESHOLD, type LearningWindow } from "./learning";
+import { LOCALE } from "@/lib/locale";
 
 export type StartupPhase = {
   id: "preparing" | "learning" | "calibration";
@@ -79,7 +80,7 @@ export function startupEstimate(
 }
 
 export const observationCount = (observations: number) =>
-  `${observations.toLocaleString()} ${observations === 1 ? "observation" : "observations"}`;
+  `${observations.toLocaleString(LOCALE)} ${observations === 1 ? "observation" : "observations"}`;
 
 /** "≈ 26 min" with an interval, otherwise the observation count; "≥" when a Gate can make it longer. */
 export const startupSummary = ({ observations, interval, gated }: Startup) =>
@@ -88,7 +89,7 @@ export const startupSummary = ({ observations, interval, gated }: Startup) =>
 
 /** The estimate in one sentence, for the status popover and accessible names. */
 export function startupSentence(startup: Startup) {
-  const items = startup.phases.map((phase) => `${phase.observations.toLocaleString()} to ${phase.verb}`);
+  const items = startup.phases.map((phase) => `${phase.observations.toLocaleString(LOCALE)} to ${phase.verb}`);
   const parts = items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}` : items.join("");
   const time = startup.interval
     ? ` At one observation every ${roughDuration(startup.interval)}, that is about ${roughDuration(startup.observations * startup.interval)}.`

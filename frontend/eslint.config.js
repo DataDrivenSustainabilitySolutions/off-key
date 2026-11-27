@@ -48,6 +48,23 @@ export default tseslint.config(
     rules: { 'layers/allowed-imports': 'error' },
   },
   {
+    // Numbers, dates and times read in English with a 24-hour clock whatever the browser's language.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/locale.ts', 'src/Tests/**'],
+    rules: {
+      'no-restricted-syntax': ['error',
+        { selector: "NewExpression[callee.object.name='Intl'][callee.property.name='DateTimeFormat']",
+          message: 'Format dates and times with dateTimeFormat from lib/locale.' },
+        { selector: "NewExpression[callee.object.name='Intl'][callee.property.name!='DateTimeFormat']:not([arguments.0.name='LOCALE'])",
+          message: 'Pass LOCALE from lib/locale as the locale.' },
+        { selector: "CallExpression[callee.property.name='toLocaleString']:not([arguments.0.name='LOCALE'])",
+          message: 'Pass LOCALE from lib/locale as the locale.' },
+        { selector: "CallExpression[callee.property.name=/^toLocale(Date|Time)String$/]",
+          message: 'Format dates and times with dateTimeFormat from lib/locale.' },
+      ],
+    },
+  },
+  {
     // Application code logs through clientLogger, which redacts and gates by environment.
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/lib/logger.ts', 'src/Tests/**'],

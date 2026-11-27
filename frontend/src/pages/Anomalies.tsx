@@ -19,6 +19,7 @@ import { useAlarmDeletion } from '@/features/reporting/useAlarmDeletion';
 import { compactRecency } from '@/features/reporting/model';
 import type { Alarm, AlarmQuery } from '@/types/charger';
 import '@/features/reporting/reporting.css';
+import { LOCALE } from "@/lib/locale";
 
 const ranges = [{ id: 'any', label: 'Any time', ms: undefined }, { id: '24h', label: 'Last 24 hours', ms: 86_400_000 },
   { id: '7d', label: 'Last 7 days', ms: 7 * 86_400_000 }, { id: '30d', label: 'Last 30 days', ms: 30 * 86_400_000 }];
@@ -118,15 +119,15 @@ export default function AnomalyTable() {
         <ReportingFilter label="Time range" value={range.id} options={ranges} active={range.id !== 'any'} disabled={locked} onChange={value => setFilter('range', value)} />
         <ReportingFilter label="p-value" value={probability.id} options={probabilities} active={probability.id !== 'any'} disabled={locked} onChange={value => setFilter('p', value)} />
         {filtering && <Button variant="ghost" size="sm" className="rp-clear-filters" disabled={locked} onClick={clearFilters}><X size={12} />Clear filters</Button>}
-        <span className="rp-count" role="status">{page && `${count.toLocaleString()} ${count === 1 ? 'event' : 'events'}`}</span>
+        <span className="rp-count" role="status">{page && `${count.toLocaleString(LOCALE)} ${count === 1 ? 'event' : 'events'}`}</span>
         {canDelete && count > 0 && selectionCount === 0 && <Button variant="ghost" size="sm" className="rp-delete-all" aria-label="Delete all matching" title="Delete all events matching this scope and these filters"
           disabled={busy || locked || !!error} onClick={() => result && void deletion.prepare({ query: result.query }, description)}><Trash2 size={13} />Delete all</Button>}
       </div>
       {probability.id !== 'any' && <p className="rp-note">This filter includes probability results only; adaptive scores are excluded.</p>}
       {selectionCount > 0 && <div className="rp-selection" role="region" aria-label="Selected anomalies">
-        <strong>{selectionCount.toLocaleString()} selected{chosen.all ? ' across all pages' : ''}</strong>
+        <strong>{selectionCount.toLocaleString(LOCALE)} selected{chosen.all ? ' across all pages' : ''}</strong>
         {!chosen.all && count > chosen.ids.size && <Button variant="link" size="sm" disabled={busy || locked}
-          onClick={() => setSelection({ key: events.key, all: true, ids: new Set() })}>Select all {count.toLocaleString()} matching events</Button>}
+          onClick={() => setSelection({ key: events.key, all: true, ids: new Set() })}>Select all {count.toLocaleString(LOCALE)} matching events</Button>}
         <Button variant="ghost" size="sm" className="rp-clear-selection" aria-label="Clear selection" title="Clear selection" disabled={locked} onClick={() => setSelection(EMPTY_SELECTION)}><X size={14} /></Button>
         <Button variant="default" size="sm" className="rp-delete-selected" disabled={busy || locked || !!error} onClick={() => result && void deletion.prepare(
           chosen.all ? { query: result.query, exclude_ids: [...chosen.ids] } : { alarm_ids: [...chosen.ids] }, description)}>
@@ -155,7 +156,7 @@ export default function AnomalyTable() {
           </tbody>)}
       </table>
       {page?.next && <div className="rp-more"><Button variant="outline" size="sm" disabled={busy || loadingOlder || locked}
-        onClick={() => void events.loadOlder()}>{loadingOlder ? 'Loading older events…' : `Load older events (${Math.max(0, count - items.length).toLocaleString()} more)`}</Button></div>}
+        onClick={() => void events.loadOlder()}>{loadingOlder ? 'Loading older events…' : `Load older events (${Math.max(0, count - items.length).toLocaleString(LOCALE)} more)`}</Button></div>}
     </section>
     {deletion.confirmation}
   </PageShell>;

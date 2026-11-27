@@ -14,7 +14,6 @@ const anomaly = alarm({ alarm_id: "event-a", alarm_type: "threshold_exceeded" })
 const time = Date.parse(anomaly.timestamp);
 const options = {
   timeZone: "UTC",
-  locale: "en-GB",
   unit: "V",
   colors: { foreground: "#111", mutedForeground: "#666", popover: "#fff" },
 };

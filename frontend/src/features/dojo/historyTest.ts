@@ -8,6 +8,7 @@ import type { PipelineDefinition } from "../pipelines/contracts";
 import type { DesignEvidence } from "../pipelines/designTest";
 import { dojoApi } from "./api";
 import { formatDuration, formatInstant, isActive, suggestBindings } from "./model";
+import { dateTimeFormat, LOCALE } from "@/lib/locale";
 
 const DAY_MS = 86_400_000;
 
@@ -292,10 +293,10 @@ export function testStatus(test: Pick<HistoryTest, "step" | "current">) {
 export type TestFigure = { label: string; value: string; before?: string; help?: string };
 
 const perDay = (value: number | null | undefined) =>
-  value == null ? "" : ` · ${(value >= 10 ? Math.round(value) : Math.round(value * 100) / 100).toLocaleString()} per day`;
+  value == null ? "" : ` · ${(value >= 10 ? Math.round(value) : Math.round(value * 100) / 100).toLocaleString(LOCALE)} per day`;
 
 function figures(metrics: RunMetrics): TestFigure[] {
-  const alarms = `${metrics.false_alarms.toLocaleString()}${perDay(metrics.false_alarms_per_day)}`;
+  const alarms = `${metrics.false_alarms.toLocaleString(LOCALE)}${perDay(metrics.false_alarms_per_day)}`;
   const once = "Observations that alarm one after the other count as one alarm.";
   if (!metrics.labels_total) return [{ label: "Alarms", value: alarms, help: once }];
   return [
@@ -327,8 +328,7 @@ export function testSpans(tested: Pick<TestedRun, "dataset">, metrics: Pick<RunM
 }
 
 /** A moment of the tested values without its year: they lie days or weeks back, not years. */
-export const shortInstant = (time: number | string) => new Intl.DateTimeFormat(undefined,
-  { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(time));
+export const shortInstant = (time: number | string) => dateTimeFormat({ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(time));
 
 /** How many stretches of time a test is summed up in to be drawn: one per half percent of its span. */
 export const TEST_STRETCHES = 200;
@@ -339,7 +339,7 @@ const hundredths = (value: number) => Math.round(value * 100) / 100;
 /** A score or a p-value in a few characters, whatever its size. */
 const figure = (value: number) => value !== 0 && Math.abs(value) < 0.001
   ? value.toExponential(1).replace(".0e", "e")
-  : value.toLocaleString(undefined, { maximumSignificantDigits: 3, notation: "compact" });
+  : value.toLocaleString(LOCALE, { maximumSignificantDigits: 3, notation: "compact" });
 
 /** Where on the span of the values the design alarmed, in percent: one place per stretch of time. */
 export function alarmMarks(outline: RunOutline, spans: { start: number; end: number }) {
@@ -423,7 +423,7 @@ export function ruleShape(outline: RunOutline, spans: { start: number; end: numb
 /** A value of a step in a few digits: enough to tell two values apart, short enough for a narrow column. */
 export const stepValue = (value: number | string) => typeof value === "string" ? value
   : value !== 0 && Math.abs(value) < 0.0001 ? value.toExponential(2)
-    : value.toLocaleString(undefined, { maximumSignificantDigits: 5 });
+    : value.toLocaleString(LOCALE, { maximumSignificantDigits: 5 });
 
 type Named = Array<[string, number | string]>;
 

@@ -5,6 +5,7 @@ import { incomingEdges, nodeLabel, type GraphDocument } from "./model";
 import { plural } from "./scope";
 import { componentFor, shownComponent, switchedOff } from "./semantics";
 import { sameSetting } from "./summaries";
+import { LOCALE } from "@/lib/locale";
 
 /** How one step differs from what a service runs now: the running design lacks it, or holds it differently. */
 export type StepChange = { kind: "new" | "changed"; detail: string };
@@ -30,11 +31,11 @@ const SETTINGS = [
 /** A number with as many significant digits as it holds, up to 15, so a small rate or a quantile
  * near one keeps the digits that set it apart. */
 function digits(value: number) {
-  if (Number.isInteger(value)) return value.toLocaleString(undefined, { maximumSignificantDigits: 21 });
+  if (Number.isInteger(value)) return value.toLocaleString(LOCALE, { maximumSignificantDigits: 21 });
   const held = Number(value.toPrecision(15));
   let shown = 1;
   while (shown < 15 && Number(value.toPrecision(shown)) !== held) shown++;
-  return value.toLocaleString(undefined, { maximumSignificantDigits: shown });
+  return value.toLocaleString(LOCALE, { maximumSignificantDigits: shown });
 }
 
 /** A setting's value in a word or two, or nothing where it takes more than a line. */

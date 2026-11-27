@@ -5,6 +5,7 @@ import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import { formatExactDateTime, formatRelativeTime } from "@/lib/format-time";
 import type { CollectionStatus } from "@/types/collection";
+import { LOCALE } from "@/lib/locale";
 
 const date = (value: string | null, now: number) =>
   value ? formatRelativeTime(value, now) : "None since worker start";
@@ -16,9 +17,9 @@ const notRefreshing = {
   explanation: "The latest status is more than 15 seconds old. Retrying automatically.",
 };
 const rate = (value: number | null) =>
-  value === null ? "Measuring…" : `${value.toLocaleString()} /s`;
+  value === null ? "Measuring…" : `${value.toLocaleString(LOCALE)} /s`;
 const queueUsage = (size: number, capacity: number) =>
-  `${size.toLocaleString()} / ${capacity.toLocaleString()} (${Math.round(100 * size / capacity)}%)`;
+  `${size.toLocaleString(LOCALE)} / ${capacity.toLocaleString(LOCALE)} (${Math.round(100 * size / capacity)}%)`;
 
 export function CollectionHealth() {
   const [snapshot, setSnapshot] = useState<CollectionStatus | null>(null);
@@ -75,7 +76,7 @@ function CollectionMeasurements({ snapshot, now, stale }: {
     ["Numeric rows written", rate(data.rates.written)],
     ["Original-rate queue", queueUsage(data.original_queue, data.original_capacity)],
     ["Database queue", queueUsage(data.database_queue, data.database_capacity)],
-    ["Pending latest samples", data.sample_slots.toLocaleString()],
+    ["Pending latest samples", data.sample_slots.toLocaleString(LOCALE)],
     ["Last incoming message", date(data.last_received_at, now), data.last_received_at],
     ["Last telemetry/state commit", date(data.last_database_write_at, now), data.last_database_write_at],
   ] : [];
@@ -101,16 +102,16 @@ function CollectionMeasurements({ snapshot, now, stale }: {
         <div className="app-settings-group-note">
           {data && (
             <p>
-              Rates cover the last {data.window_seconds.toLocaleString()} seconds.
+              Rates cover the last {data.window_seconds.toLocaleString(LOCALE)} seconds.
               Incoming counts selected MQTT subscriptions. Accepted includes state and
               retained snapshots. Numeric history uses fresh messages. Samples wait for the next interval.
             </p>
           )}
           <p>
-            Since worker start: {(snapshot.collection.records_written ?? 0).toLocaleString()} numeric
-            rows written · {(snapshot.collection.counters?.overload_dropped ?? 0).toLocaleString()}{" "}
+            Since worker start: {(snapshot.collection.records_written ?? 0).toLocaleString(LOCALE)} numeric
+            rows written · {(snapshot.collection.counters?.overload_dropped ?? 0).toLocaleString(LOCALE)}{" "}
             observations dropped at queue capacity ·{" "}
-            {(snapshot.collection.counters?.invalid ?? 0).toLocaleString()} invalid observations rejected.
+            {(snapshot.collection.counters?.invalid ?? 0).toLocaleString(LOCALE)} invalid observations rejected.
           </p>
         </div>
       </details>

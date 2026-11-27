@@ -271,19 +271,6 @@ def _pushed(values: array, value: float, size: int) -> array:
     return window
 
 
-def _window_state(state: State, size: int, count: int) -> bool:
-    if len(state) != count or not all(
-        isinstance(item, array) and item.typecode == "d" for item in state
-    ):
-        return False
-    values = state[0]
-    return (
-        len(values) <= size
-        and all(math.isfinite(item) for item in values)
-        and all(list(item) == sorted(values) for item in state[1:])
-    )
-
-
 class Exponential(Kernel):
     """y = y' + alpha (x - y') with alpha = 2 / (n + 1), from the first value on.
 

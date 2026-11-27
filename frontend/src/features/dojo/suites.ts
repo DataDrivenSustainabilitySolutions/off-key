@@ -1,4 +1,4 @@
-import type { StudyComparison, StudySummary, StudyTotals, SuiteDataset, ProtocolFamily } from "@/types/dojo.generated";
+import type { StudyComparison, StudySummary, SuiteDataset, ProtocolFamily } from "@/types/dojo.generated";
 
 export type StudyMetric = StudyComparison["metric"];
 
@@ -22,10 +22,6 @@ export function studyProgress(study: Pick<StudySummary, "runs" | "complete" | "m
   if (!waiting && study.metrics_pending) parts.push(`metrics for ${study.metrics_pending} still to calculate`);
   return parts.length ? parts.join(", ") : study.complete ? "Complete" : "Incomplete";
 }
-
-/** "3 of 4" for a metric that only some runs could score. */
-export const scoredOf = (totals: StudyTotals, runs: number) =>
-  runs < totals.runs_scored ? ` (${runs} of ${totals.runs_scored})` : "";
 
 /** The series names every dataset of a suite has, which a study can bind a slot to for all of them. */
 export function sharedSeriesNames(items: Pick<SuiteDataset, "series_names">[]) {

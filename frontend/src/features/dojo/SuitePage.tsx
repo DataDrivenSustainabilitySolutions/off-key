@@ -1,34 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
-import { ArrowLeft, BadgeCheck, Play, Square, Trash2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { BadgeCheck, CircleStop, GitCompareArrows, Play, Trash2, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useDetailDocumentTitle } from "@/hooks/use-document-title";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { getErrorMessage } from "@/lib/errors";
-import type { StudyComparison, StudySummary, StudyView, SuiteView } from "@/types/dojo.generated";
+import type { StudyComparison, StudySummary, StudyTotals, StudyView, SuiteView } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
-import { formatInstant, formatPerDay, formatRate } from "./model";
+import { useSelection } from "./listing";
+import { formatPerDay, formatRate, formatShortDate } from "./model";
 import { ProtocolPanel } from "./ProtocolPanel";
 import { StudyCreateDialog } from "./SuiteDialogs";
-import { STUDY_METRICS, describePValue, formatScore, scoredOf, studyProgress, type StudyMetric } from "./suites";
+import { STUDY_METRICS, describePValue, formatScore, studyProgress, type StudyMetric } from "./suites";
 
 const POLL_MS = 5000;
-const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Benchmark" } as const;
+const ORIGIN = { csv: "CSV upload", history: "Recorded readings", benchmark: "Public series" } as const;
 
-/** One suite: its datasets, its studies ranked, two studies compared, and one study dataset by dataset. */
-export function SuitePage({ id, study, listHref, datasetHref, onStudy, onDeleted }: {
-  id: string; study?: string; listHref: string; datasetHref: (id: string) => string;
-  onStudy: (id: string | null) => void; onDeleted: () => void;
+export type SuiteTab = "studies" | "datasets";
+
+/** One suite: its studies ranked in one list, two of them compared, and its datasets. A study opens as a page of its own. */
+export function SuitePage({ id, study, tab, listHref, datasetHref, onStudy, onTab, onDeleted }: {
+  id: string; study?: string; tab: SuiteTab; listHref: string; datasetHref: (id: string) => string;
+  onStudy: (id: string | null) => void; onTab: (tab: SuiteTab) => void; onDeleted: () => void;
 }) {
   const { can, isGuest } = useAuth();
   const editable = can("use_dojo");
+  const navigate = useNavigate();
   const [suite, setSuite] = useState<SuiteView | null>(null);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [comparing, setComparing] = useState<[string, string] | null>(null);
   const [confirm, confirmation] = useConfirm();
-  useDetailDocumentTitle(suite?.name ?? "Benchmark suite", "Dojo");
+  const opened = study ? [...suite?.leaderboard ?? [], ...suite?.unfinished ?? []].find(item => item.id === study) : undefined;
+  useDetailDocumentTitle(opened ? opened.name || "Untitled study" : suite?.name ?? "Benchmark suite", "Dojo");
   const load = useCallback(async (signal: AbortSignal) => {
     try {
       const view = await dojoApi.suite(id, signal);
@@ -42,6 +50,8 @@ export function SuitePage({ id, study, listHref, datasetHref, onStudy, onDeleted
     startImmediately: true, intervalMs: waiting ? POLL_MS : undefined,
     schedule: "after-completion", pauseWhenHidden: true, resumeOnVisible: true,
   });
+  const studies = suite ? [...suite.leaderboard, ...suite.unfinished] : [];
+  const selection = useSelection(studies.map(item => item.id));
   const act = async (action: () => Promise<unknown>) => {
     setActionError("");
     try { await action(); await reload(); } catch (reason) { setActionError(getErrorMessage(reason)); }
@@ -53,105 +63,145 @@ export function SuitePage({ id, study, listHref, datasetHref, onStudy, onDeleted
     try { await dojoApi.deleteSuite(id); onDeleted(); }
     catch (reason) { setActionError(getErrorMessage(reason)); }
   };
+  const back = [{ label: "Dojo", onClick: () => navigate("/dojo") }, { label: "Benchmarks", onClick: () => navigate(listHref) }];
 
   if (!suite) return <section className="dj-page">
-    <Link className="dj-back" to={listHref}><ArrowLeft size={14} />All datasets and suites</Link>
+    <Breadcrumb steps={back} current="Suite" />
     {error ? <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => void reload()}>Retry</button></p>
       : <p className="dj-loading" role="status">Loading suite…</p>}
   </section>;
-  const studies = [...suite.leaderboard, ...suite.unfinished];
+  if (study && opened) return <section className="dj-page dj-detail" aria-label={`Study ${opened.name}`}>
+    <Breadcrumb steps={[...back, { label: suite.name, onClick: () => onStudy(null) }]} current={opened.name || "Untitled study"} />
+    <StudyDetail key={study} id={study} datasetHref={datasetHref} />
+  </section>;
+
+  const chosen = studies.filter(item => selection.chosen.has(item.id));
+  const ranked = new Set(suite.leaderboard.map(item => item.id));
+  const pair = chosen.length === 2 && chosen.every(item => ranked.has(item.id)) ? chosen : null;
+  const active = (item: StudySummary) => (item.runs.queued ?? 0) + (item.runs.running ?? 0) > 0;
+  const running = chosen.filter(active);
+  const cancelChosen = () => act(async () => { for (const item of running) await dojoApi.cancelStudy(item.id); });
+  const removeChosen = async () => {
+    if (!await confirm({ title: chosen.length === 1 ? `Delete ${chosen[0]!.name || "this study"}?` : `Delete ${chosen.length} studies?`,
+      description: "Their runs and results go with them. This cannot be undone.", confirmLabel: "Delete", destructive: true })) return;
+    let refused = "";
+    await act(async () => {
+      const result = await dojoApi.deleteItems({ study_ids: chosen.map(item => item.id) });
+      const names = new Map(chosen.map(item => [item.id, item.name || "Untitled study"]));
+      refused = result.refused.map(item => `${names.get(item.id) ?? item.id}: ${item.reason}`).join(" ");
+    });
+    if (refused) setActionError(`Some studies could not be deleted. ${refused}`);
+    selection.clear();
+  };
+  const meta = [`${suite.items.length} ${suite.items.length === 1 ? "dataset" : "datasets"}`,
+    suite.created_by_agent ? `made by agent ${suite.created_by_agent}` : "made by a member",
+    ...(suite.reviewed ? [] : ["not yet reviewed"]), `created ${formatShortDate(suite.created_at)}`];
   return <section className="dj-page dj-detail" aria-label={`Suite ${suite.name}`}>
-    <Link className="dj-back" to={listHref}><ArrowLeft size={14} />All datasets and suites</Link>
+    <Breadcrumb steps={back} current={suite.name} />
     <div className="dj-detail-header">
-      <div><h1>{suite.name}</h1>{suite.description && <small>{suite.description}</small>}</div>
+      <div><h1>{suite.name}</h1>
+        <p className="dj-meta">{suite.description && <>{suite.description}<br /></>}{meta.join(" · ")}</p></div>
       <div className="dj-detail-actions">
-        {editable && <button type="button" className="dj-primary" onClick={() => setCreating(true)}><Play size={15} />New study</button>}
         {editable && !isGuest && !suite.reviewed && <button type="button" className="dj-action"
           onClick={() => void act(() => dojoApi.reviewSuite(id))}><BadgeCheck size={15} />Mark reviewed</button>}
-        {editable && <button type="button" className="dj-action" onClick={() => void remove()}><Trash2 size={15} />Delete</button>}
+        {editable && <button type="button" className="dj-action" aria-label="Delete suite" title="Delete suite"
+          onClick={() => void remove()}><Trash2 size={15} /></button>}
+        {editable && <button type="button" className="dj-primary" onClick={() => setCreating(true)}><Play size={15} />New study</button>}
       </div>
     </div>
     {actionError && <p className="dj-error" role="alert">{actionError}</p>}
     {error && <p className="ex-banner ex-error" role="alert">{error}</p>}
-    <dl className="dj-summary">
-      <div><dt>Datasets</dt><dd>{suite.items.length}</dd></div>
-      <div><dt>Studies</dt><dd>{suite.studies}</dd></div>
-      <div><dt>Made by</dt><dd>{suite.created_by_agent ? `Agent ${suite.created_by_agent}` : "A member"}</dd></div>
-      <div><dt>Reviewed</dt><dd>{suite.reviewed ? "Yes" : "Not yet: an agent made it"}</dd></div>
-      <div><dt>Created</dt><dd>{formatInstant(suite.created_at)}</dd></div>
-    </dl>
-
-    <h2 className="dj-section-head">Leaderboard</h2>
-    <p className="dj-help">Only studies with every run finished and scored are ranked: by VUS-PR, then PR-AUC, then detection rate,
-      each averaged over the datasets.</p>
-    {suite.leaderboard.length === 0 ? <p className="dj-muted">No complete study yet.</p>
-      : <StudyTable studies={suite.leaderboard} ranked current={study} onStudy={onStudy} />}
-    {suite.unfinished.length > 0 && <>
-      <h3 className="dj-section-head">Not yet ranked</h3>
-      <StudyTable studies={suite.unfinished} current={study} onStudy={onStudy}
-        onCancel={editable ? item => void act(() => dojoApi.cancelStudy(item.id)) : undefined}
-        onDelete={editable ? item => void act(async () => {
-          if (await confirm({ title: `Delete ${item.name || "this study"}?`, description: "Its runs and results go with it.",
-            confirmLabel: "Delete study", destructive: true })) await dojoApi.deleteStudy(item.id);
-        }) : undefined} />
-    </>}
-
-    {suite.leaderboard.length >= 2 && <StudyCompare suite={suite} />}
-    {study && studies.some(item => item.id === study) && <StudyDetail key={study} id={study} datasetHref={datasetHref} />}
-
-    <h2 className="dj-section-head">Datasets</h2>
-    <div className="dj-table-scroll"><table className="dj-table" aria-label="Suite datasets">
-      <thead><tr><th>Dataset</th><th>Origin</th><th>Series</th><th>Values</th><th>Labels</th></tr></thead>
-      <tbody>{suite.items.map(item => <tr key={item.dataset_id}>
-        <td><Link to={datasetHref(item.dataset_id)}>{item.name}</Link></td>
-        <td>{ORIGIN[item.origin]}</td>
-        <td>{item.series_names.join(", ")}</td>
-        <td>{item.point_count.toLocaleString()}</td>
-        <td>{item.labels}</td>
-      </tr>)}</tbody>
-    </table></div>
+    <div className="dj-tabs" role="tablist" aria-label="Suite sections">
+      {(["studies", "datasets"] as const).map(item => <button key={item} type="button" role="tab" id={`dj-suite-tab-${item}`}
+        aria-selected={tab === item} aria-controls="dj-suite-panel" onClick={() => onTab(item)}>
+        {item === "studies" ? "Studies" : "Datasets"}<span className="dj-tab-count">{item === "studies" ? studies.length : suite.items.length}</span>
+      </button>)}
+    </div>
+    <div id="dj-suite-panel" role="tabpanel" aria-labelledby={`dj-suite-tab-${tab}`} className="dj-tab-panel">
+      {tab === "studies" ? <>
+        {chosen.length > 0 && <div className="dj-selection" role="region" aria-label="Selection">
+          <strong>{chosen.length} selected</strong>
+          <Button variant="ghost" size="sm" className="dj-clear-selection" aria-label="Clear selection" onClick={selection.clear}><X size={14} /></Button>
+          <span className="dj-selection-hint">{editable && running.length ? "Cancel running studies to delete them."
+            : chosen.length === 1 ? "Choose one more ranked study to compare." : !pair ? "Only two ranked studies can be compared." : ""}</span>
+          {editable && (running.length
+            ? <Button variant="outline" size="sm" onClick={() => void cancelChosen()}><CircleStop size={14} />Cancel</Button>
+            : <Button variant="outline" size="sm" className="dj-delete-selected" onClick={() => void removeChosen()}><Trash2 size={14} />Delete</Button>)}
+          <Button variant="default" size="sm" disabled={!pair} onClick={() => pair && setComparing([pair[1]!.id, pair[0]!.id])}>
+            <GitCompareArrows size={14} />Compare</Button>
+        </div>}
+        {studies.length === 0 ? <div className="dj-empty"><h2>No studies yet</h2>
+          <p>A study runs one design over every dataset of this suite. Complete studies are ranked here.</p></div>
+          : <StudyTable studies={studies} ranked={ranked} onStudy={onStudy} selection={editable || studies.length > 1 ? selection : undefined} />}
+        {comparing && suite.leaderboard.length >= 2 && <StudyCompare key={comparing.join()} suite={suite} initial={comparing}
+          onClose={() => setComparing(null)} />}
+      </> : <div className="dj-table-scroll"><table className="dj-table dj-table--stack dj-list" aria-label="Suite datasets">
+        <thead><tr><th>Dataset</th><th className="dj-fit dj-num">Values</th><th className="dj-fit dj-num">Labels</th></tr></thead>
+        <tbody>{suite.items.map(item => <tr key={item.dataset_id}>
+          <td className="dj-name"><Link to={datasetHref(item.dataset_id)}>{item.name}</Link>
+            <small>{item.series_names.length > 1 ? `${item.series_names.length} series: ${item.series_names.join(", ")}` : ORIGIN[item.origin]}</small></td>
+          <td className="dj-fit dj-num">{item.point_count.toLocaleString()}<span className="dj-narrow-unit"> values</span></td>
+          <td className="dj-fit dj-num">{item.labels}<span className="dj-narrow-unit"> {item.labels === 1 ? "label" : "labels"}</span></td>
+        </tr>)}</tbody>
+      </table></div>}
+    </div>
     <StudyCreateDialog open={creating} suite={suite} onOpenChange={setCreating}
       onCreated={created => { void reload(); onStudy(created.id); }} />
     {confirmation}
   </section>;
 }
 
-function StudyTable({ studies, ranked, current, onStudy, onCancel, onDelete }: {
-  studies: StudySummary[]; ranked?: boolean; current?: string; onStudy: (id: string | null) => void;
-  onCancel?: (study: StudySummary) => void; onDelete?: (study: StudySummary) => void;
+const RANK_HELP = "Only studies with every run finished and scored are ranked: by VUS-PR, then PR-AUC, then detection rate, each averaged over the datasets.";
+
+/** Every study of a suite in one list: ranked ones first, then the ones still running, which show their progress instead of scores. */
+function StudyTable({ studies, ranked, onStudy, selection }: {
+  studies: StudySummary[]; ranked: ReadonlySet<string>; onStudy: (id: string | null) => void;
+  selection?: { chosen: ReadonlySet<string>; toggle: (id: string, on: boolean) => void; setAll: (ids: string[], on: boolean) => void };
 }) {
-  return <div className="dj-table-scroll"><table className="dj-table" aria-label={ranked ? "Ranked studies" : "Unfinished studies"}>
-    <thead><tr>{ranked && <th>Rank</th>}<th>Study</th><th>VUS-PR</th><th>PR-AUC</th><th>AUROC</th><th>Detected</th>
-      <th>False alarms per day</th><th>{ranked ? "Made" : "Progress"}</th>{(onCancel || onDelete) && <th />}</tr></thead>
+  const ids = studies.map(item => item.id);
+  const count = ids.filter(id => selection?.chosen.has(id)).length;
+  const score = (value: number | null | undefined, totals: StudyTotals, runs: number) =>
+    <>{formatScore(value)}{runs < totals.runs_scored && <small>{runs} of {totals.runs_scored}</small>}</>;
+  return <div className="dj-table-scroll"><table className={`dj-table dj-table--stack dj-list dj-studies${selection ? " dj-list--select" : ""}`} aria-label="Studies">
+    <thead><tr>
+      {selection && <th scope="col" className="dj-select"><label className="dj-check-box"><input type="checkbox" aria-label="Select all studies"
+        checked={count > 0 && count === ids.length} ref={element => { if (element) element.indeterminate = count > 0 && count < ids.length; }}
+        onChange={event => selection.setAll(ids, event.target.checked)} /><span className="dj-narrow-only">Select all</span></label></th>}
+      <th scope="col" className="dj-fit dj-num dj-wide-only"><abbr title={RANK_HELP}>Rank</abbr></th>
+      <th scope="col">Study</th>
+      <th scope="col" className="dj-fit dj-num">VUS-PR</th>
+      <th scope="col" className="dj-fit dj-num dj-wide-only">PR-AUC</th>
+      <th scope="col" className="dj-fit dj-num dj-wide-only">AUROC</th>
+      <th scope="col" className="dj-fit dj-num">Detected</th>
+      <th scope="col" className="dj-fit dj-num"><abbr title="Median over the datasets">False alarms / day</abbr></th>
+    </tr></thead>
     <tbody>{studies.map((item, index) => {
       const { totals } = item;
-      const active = (item.runs.queued ?? 0) + (item.runs.running ?? 0) > 0;
-      return <tr key={item.id} aria-current={item.id === current || undefined}>
-        {ranked && <td>{index + 1}</td>}
-        <td><button type="button" className="dj-link" onClick={() => onStudy(item.id === current ? null : item.id)}>
-          {item.name || "Untitled study"}</button>
-          {item.created_by_agent && <small>by agent {item.created_by_agent}</small>}</td>
-        <td>{formatScore(totals.vus_pr)}<small>{scoredOf(totals, totals.vus_pr_runs)}</small></td>
-        <td>{formatScore(totals.pr_auc)}<small>{scoredOf(totals, totals.pr_auc_runs)}</small></td>
-        <td>{formatScore(totals.auroc)}<small>{scoredOf(totals, totals.auroc_runs)}</small></td>
-        <td>{formatRate(totals.detection_rate)}<small>{totals.labels_detected} of {totals.labels_scored} labels</small></td>
-        <td>{formatPerDay(totals.median_false_alarms_per_day)}<small>median</small></td>
-        <td>{ranked ? formatInstant(item.created_at) : studyProgress(item)}</td>
-        {(onCancel || onDelete) && <td className="dj-row-actions">
-          {onCancel && active && <button type="button" className="dj-link" onClick={() => onCancel(item)}>
-            <Square size={13} />Cancel</button>}
-          {onDelete && !active && <button type="button" className="dj-link" onClick={() => onDelete(item)}>
-            <Trash2 size={13} />Delete</button>}
-        </td>}
+      const done = ranked.has(item.id);
+      const on = !!selection?.chosen.has(item.id);
+      return <tr key={item.id} className={[on && "dj-row-chosen", !done && "dj-row-pending"].filter(Boolean).join(" ") || undefined}>
+        {selection && <td className="dj-select"><label className="dj-check-box"><input type="checkbox" checked={on}
+          aria-label={`Select ${item.name || "Untitled study"}`} onChange={event => selection.toggle(item.id, event.target.checked)} /></label></td>}
+        <td className="dj-fit dj-num dj-wide-only">{done ? index + 1 : ""}</td>
+        <td className="dj-name"><button type="button" className="dj-row-link" onClick={() => onStudy(item.id)}>{item.name || "Untitled study"}</button>
+          {(!done || item.created_by_agent) && <small>{[!done && studyProgress(item), item.created_by_agent && `by agent ${item.created_by_agent}`].filter(Boolean).join(" · ")}</small>}</td>
+        {done ? <>
+          <td className="dj-fit dj-num">{score(totals.vus_pr, totals, totals.vus_pr_runs)}<span className="dj-narrow-unit"> VUS-PR</span></td>
+          <td className="dj-fit dj-num dj-wide-only">{score(totals.pr_auc, totals, totals.pr_auc_runs)}</td>
+          <td className="dj-fit dj-num dj-wide-only">{score(totals.auroc, totals, totals.auroc_runs)}</td>
+          <td className="dj-fit dj-num"><span title={`${totals.labels_detected} of ${totals.labels_scored} labels`}>{formatRate(totals.detection_rate)}</span>
+            <span className="dj-narrow-unit"> detected</span></td>
+          <td className="dj-fit dj-num">{formatPerDay(totals.median_false_alarms_per_day)}<span className="dj-narrow-unit"> false alarms a day</span></td>
+        </> : <td className="dj-fit dj-wide-only" colSpan={5} />}
       </tr>;
     })}</tbody>
   </table></div>;
 }
 
 /** Two complete studies paired dataset by dataset, with a Wilcoxon signed-rank test over the differences. */
-function StudyCompare({ suite }: { suite: SuiteView }) {
-  const [baseline, setBaseline] = useState(suite.leaderboard[1]?.id ?? "");
-  const [challenger, setChallenger] = useState(suite.leaderboard[0]?.id ?? "");
+function StudyCompare({ suite, initial, onClose }: { suite: SuiteView; initial: [string, string]; onClose: () => void }) {
+  const [baseline, setBaseline] = useState(initial[0]);
+  const [challenger, setChallenger] = useState(initial[1]);
   const [metric, setMetric] = useState<StudyMetric>("vus_pr");
   // A read belongs to the choice it answered, so a changed choice never shows an older answer.
   const asked = `${baseline}|${challenger}|${metric}`;
@@ -175,7 +225,8 @@ function StudyCompare({ suite }: { suite: SuiteView }) {
     </select></label>;
   const metricLabel = STUDY_METRICS.find(item => item.id === metric)!.label;
   return <section className="dj-section" aria-label="Compare two studies">
-    <h2 className="dj-section-head">Compare two studies</h2>
+    <div className="dj-section-head"><h2>Compare two studies</h2>
+      <button type="button" className="dj-link" onClick={onClose}>Close</button></div>
     <div className="dj-field-row">
       {picker("Baseline", baseline, setBaseline)}
       {picker("Challenger", challenger, setChallenger)}
@@ -216,10 +267,9 @@ function StudyDetail({ id, datasetHref }: { id: string; datasetHref: (id: string
   usePollingLoop(load, { startImmediately: true, intervalMs: pending ? POLL_MS : undefined,
     schedule: "after-completion", pauseWhenHidden: true, resumeOnVisible: true });
   if (!study) return error ? <p className="dj-error" role="alert">{error}</p> : <p className="dj-loading" role="status">Loading study…</p>;
-  return <section className="dj-section" aria-label={`Study ${study.name}`}>
-    <h2 className="dj-section-head">{study.name || "Untitled study"}</h2>
-    <p className="dj-help">{studyProgress(study)}. Top-1 hits: {study.totals.top1_hits} of {study.totals.top1_runs} datasets
-      with one label.</p>
+  return <section aria-label={`Study ${study.name}`}>
+    <div className="dj-detail-header"><div><h1>{study.name || "Untitled study"}</h1>
+      <p className="dj-meta">{studyProgress(study)} · top score at the label on {study.totals.top1_hits} of {study.totals.top1_runs} datasets with one label</p></div></div>
     {error && <p className="dj-error" role="alert">{error}</p>}
     {study.protocol && <ProtocolPanel report={study.protocol} />}
     <div className="dj-table-scroll"><table className="dj-table" aria-label="Study runs">

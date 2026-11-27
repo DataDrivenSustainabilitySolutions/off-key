@@ -11,7 +11,6 @@ import { getErrorMessage } from "@/lib/errors";
 import { loadOffsetPages } from "@/lib/offset-pages";
 import type { DatasetView, LabelView, RunSummary } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
-import { ComparePanel } from "./ComparePanel";
 import type { DojoView } from "./DatasetList";
 import { LabelsPanel } from "./LabelsPanel";
 import { RunsPanel } from "./RunsPanel";
@@ -112,14 +111,13 @@ export function DatasetDetail({ id, tab, run, listHref, onTab, onDeleted }: {
     <div className="dj-tabs" role="tablist" aria-label="Dataset sections">
       {TABS.map(item => <button key={item.id} type="button" role="tab" id={`dj-tab-${item.id}`} aria-selected={tab === item.id}
         aria-controls="dj-tab-panel" onClick={() => onTab(item.id)}>{item.label}
-        {item.id !== "compare" && <span className="dj-tab-count">{item.id === "values" ? labels.length : `${runs.length}${moreRuns ? "+" : ""}`}</span>}</button>)}
+        <span className="dj-tab-count">{item.id === "values" ? labels.length : `${runs.length}${moreRuns ? "+" : ""}`}</span></button>)}
     </div>
     <div id="dj-tab-panel" role="tabpanel" aria-labelledby={`dj-tab-${tab}`}>
       {tab === "values" && <LabelsPanel dataset={dataset} labels={labels} onLabelsChange={reloadLabels} />}
-      {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} current={run} onRunsChange={runLoop.reload} />}
-      {tab === "compare" && <ComparePanel dataset={dataset} runs={runs} labels={labels} />}
-      {tab !== "values" && moreRuns && <button type="button" className="dj-action" disabled={loadingRuns}
-        onClick={() => setRunPages(count => count + 1)}>{loadingRuns ? "Loading runs…" : "Load more runs"}</button>}
+      {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} labels={labels} current={run} onRunsChange={runLoop.reload}
+        more={moreRuns && <button type="button" className="dj-action" disabled={loadingRuns}
+          onClick={() => setRunPages(count => count + 1)}>{loadingRuns ? "Loading runs…" : "Load more runs"}</button>} />}
     </div>
     {editable && <FaultSuiteDialog open={faulting} dataset={dataset} onOpenChange={setFaulting}
       onCreated={suite => navigate(`/dojo?suite=${encodeURIComponent(suite.id)}`)} />}

@@ -93,7 +93,7 @@ function Result({ tested, previous, stale }: { tested: TestedRun; previous?: Tes
       Test on a longer window, or shorten the learning in the service settings.</p>
       : !metrics.labels_total && <p className="pl-help">These values have no labels yet. Mark the known faults in the Dojo
         to see how many of them the design detects, and how fast.</p>}
-    <Link className="dj-test-link" to={metrics.labels_total ? `${dojo}&tab=compare` : dojo}>
+    <Link className="dj-test-link" to={metrics.labels_total ? `${dojo}&tab=runs` : dojo}>
       {metrics.labels_total ? "Compare runs in the Dojo" : "Open in the Dojo"}</Link>
   </section>;
 }

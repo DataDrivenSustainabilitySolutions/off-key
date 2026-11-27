@@ -86,6 +86,9 @@
   .dj-table--stack td.dj-fit small { display: inline; margin: 0; }
   .dj-table--stack td.dj-fit small::before { content: " · "; }
   .dj-table td .dj-narrow-unit { display: inline; }
+  .dj-runs tr { position: relative; padding-left: 30px; }
+  .dj-runs td.dj-pick { position: absolute; left: 0; top: 12px; }
+  .dj-runs td:nth-child(2), .dj-runs td:last-child { flex-basis: 100%; }
   .dj-chart { height: 340px; }
   .dj-chart--alarms { height: calc(300px + var(--dj-alarm-rows, 3) * 22px); }
 }
@@ -191,3 +194,8 @@
   .dj-detail-header { flex-wrap: wrap; }
   .dj-detail-header > div:first-child { flex: 1 1 100%; }
 }
+.dj-metric-name { text-decoration: underline dotted var(--ex-line); text-underline-offset: 3px; cursor: help; }
+.dj-metrics-toggle { margin-top: 8px; }
+.dj-chart-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: flex-end; gap: 10px 16px; margin-bottom: 4px; }
+.dj-chart-bar .dj-series-picker { flex: 1 1 auto; margin: 0; }
+.ex-shell .dj-action[aria-pressed="true"] { border-color: var(--ex-accent); color: var(--ex-accent); }

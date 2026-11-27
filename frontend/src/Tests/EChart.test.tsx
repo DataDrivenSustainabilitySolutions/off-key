@@ -7,6 +7,7 @@ import type { TelemetryChartOption } from "@/features/charts/telemetry-chart";
 const echartsMock = vi.hoisted(() => {
   const instances: Array<{
     setOption: ReturnType<typeof vi.fn>;
+    dispatchAction: ReturnType<typeof vi.fn>;
     setTheme: ReturnType<typeof vi.fn>;
     resize: ReturnType<typeof vi.fn>;
     getWidth: ReturnType<typeof vi.fn>;
@@ -22,6 +23,7 @@ const echartsMock = vi.hoisted(() => {
     const handlers = new Map<string, (payload: unknown) => void>();
     const instance = {
       setOption: vi.fn(),
+      dispatchAction: vi.fn(),
       setTheme: vi.fn(),
       resize: vi.fn(),
       getWidth: vi.fn(() => 800),
@@ -53,6 +55,7 @@ vi.mock("echarts/charts", () => ({ LineChart: {}, ScatterChart: {} }));
 vi.mock("echarts/components", () => ({
   AriaComponent: {},
   AxisPointerComponent: {},
+  BrushComponent: {},
   DataZoomInsideComponent: {},
   DataZoomSliderComponent: {},
   GridComponent: {},
@@ -60,6 +63,7 @@ vi.mock("echarts/components", () => ({
   MarkAreaComponent: {},
   MarkLineComponent: {},
   MarkPointComponent: {},
+  ToolboxComponent: {},
   TooltipComponent: {},
 }));
 vi.mock("echarts/renderers", () => ({ CanvasRenderer: {} }));
@@ -156,6 +160,26 @@ describe("EChart lifecycle", () => {
       silent: true,
     });
     expect(echartsMock.init).toHaveBeenCalledTimes(1);
+  });
+
+  it("picks a time range by dragging while range selection is on", () => {
+    const picked = vi.fn();
+    const { rerender } = render(<EChart option={option("telemetry")} resolvedTheme="light" accessibleDescription="Values"
+      onRangeSelect={picked} />);
+    const instance = echartsMock.instances[0]!;
+    expect(instance.dispatchAction).toHaveBeenLastCalledWith(expect.objectContaining({ type: "takeGlobalCursor",
+      brushOption: { brushType: false } }));
+    rerender(<EChart option={option("telemetry")} resolvedTheme="light" accessibleDescription="Values" rangeSelect
+      onRangeSelect={picked} />);
+    expect(instance.dispatchAction).toHaveBeenLastCalledWith({ type: "takeGlobalCursor", key: "brush",
+      brushOption: { brushType: "lineX", brushMode: "single" } });
+    // Dragged right to left, the range still runs forward, and the drawn band goes.
+    act(() => instance.handlers.get("brushEnd")?.({ areas: [{ coordRange: [1_800, 1_200] }] }));
+    expect(picked).toHaveBeenCalledWith(1_200, 1_800);
+    expect(instance.dispatchAction).toHaveBeenLastCalledWith({ type: "brush", areas: [] });
+    // A click without a drag picks nothing.
+    act(() => instance.handlers.get("brushEnd")?.({ areas: [{ coordRange: [1_500, 1_500] }] }));
+    expect(picked).toHaveBeenCalledTimes(1);
   });
 
   it("resizes again when the canvas kept the size from before the resize", () => {

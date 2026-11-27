@@ -14,10 +14,11 @@ vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthentica
   can: (permission: string) => !access.guest && access.allowed && (permission === "use_dojo" || access.monitors && permission === "manage_monitors") }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/features/charts/EChart", () => ({
-  EChart: ({ accessibleDescription, onViewportChange }: { accessibleDescription: string; onViewportChange?: (a: number, b: number) => void }) =>
+  EChart: ({ accessibleDescription, rangeSelect, onRangeSelect }: { accessibleDescription: string; rangeSelect?: boolean;
+    onRangeSelect?: (a: number, b: number) => void }) =>
     <div role="img" aria-label={accessibleDescription}>
-      {onViewportChange && <button type="button" onClick={() => onViewportChange(Date.parse("2024-01-01T00:10:00Z"),
-        Date.parse("2024-01-01T00:20:00Z"))}>Zoom chart</button>}
+      {rangeSelect && onRangeSelect && <button type="button" onClick={() => onRangeSelect(Date.parse("2024-01-01T00:10:00Z"),
+        Date.parse("2024-01-01T00:20:00Z"))}>Drag across chart</button>}
     </div>,
 }));
 vi.mock("@/features/workspace/catalogue-context", () => ({
@@ -93,6 +94,8 @@ beforeEach(() => {
   vi.mocked(dojoApi.points).mockResolvedValue({ items: [{ timestamp: T0, value: 1 }], next_after: null });
   vi.mocked(dojoApi.runs).mockResolvedValue({ items: [run("r1", "Forest"), run("r2", "Baseline")], next_offset: null });
   vi.mocked(dojoApi.results).mockResolvedValue({ items: [], next_after: null });
+  vi.mocked(dojoApi.compare).mockImplementation(async (_, ids) => ({ dataset_id: "d1", labels: [label],
+    runs: ids.map(id => metrics(id, id, 0, 0)) }));
 });
 
 describe("Dojo workspace", () => {
@@ -114,9 +117,10 @@ describe("Dojo workspace", () => {
   it("opens a run linked on its own, such as a proposal's test, among its dataset's runs", async () => {
     vi.mocked(dojoApi.run).mockResolvedValue({ ...run("r2", "Baseline"), definition: {} } as never);
     const router = mount("/dojo?run=r2");
-    const row = (await screen.findByText("Baseline")).closest("tr")!;
+    const table = await screen.findByRole("table", { name: "Runs" });
+    const row = (await within(table).findByText("Baseline")).closest("tr")!;
     expect(row.getAttribute("aria-current")).toBe("true");
-    expect(screen.getByText("Forest").closest("tr")!.getAttribute("aria-current")).toBeNull();
+    expect(within(table).getByText("Forest").closest("tr")!.getAttribute("aria-current")).toBeNull();
     expect(dojoApi.run).toHaveBeenCalledWith("r2", expect.anything());
     expect(router.state.location.search).toBe("?dataset=d1&tab=runs&run=r2");
   });
@@ -134,8 +138,6 @@ describe("Dojo workspace", () => {
     mount("/dojo?dataset=d1&tab=runs");
     await screen.findByRole("heading", { name: "Pump trips", level: 1 });
     expect(document.title).toBe("Pump trips — Runs · Dojo · Aberration");
-    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
-    expect(document.title).toBe("Pump trips — Compare · Dojo · Aberration");
     fireEvent.click(screen.getByRole("tab", { name: /^Labels/ }));
     expect(document.title).toBe("Pump trips · Dojo · Aberration");
     fireEvent.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", { name: "Datasets" }));
@@ -155,10 +157,11 @@ describe("Dojo workspace", () => {
       ? { items: [run("older", "Older run")], next_offset: null }
       : { items: [run("newer", "Newer run")], next_offset: 100 });
     mount("/dojo?dataset=d1&tab=runs");
-    await screen.findByText("Newer run");
+    const table = await screen.findByRole("table", { name: "Runs" });
+    await within(table).findByText("Newer run");
     fireEvent.click(await screen.findByRole("button", { name: "Load more runs" }));
-    await screen.findByText("Older run");
-    expect(screen.getByText("Newer run")).toBeTruthy();
+    await within(table).findByText("Older run");
+    expect(within(table).getByText("Newer run")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Load more runs" })).toBeNull();
   });
 
@@ -276,12 +279,17 @@ describe("Dojo workspace", () => {
       end: new Date("2024-01-02T00:00:00").toISOString() });
   });
 
-  it("marks the zoomed range of the chart as a label", async () => {
+  it("marks a range dragged across the chart as a label", async () => {
     vi.mocked(dojoApi.createLabel).mockResolvedValue({ ...label, id: "l2" });
     mount("/dojo?dataset=d1");
     expect((await screen.findByRole("heading", { level: 1 })).textContent).toContain("Pump trips");
-    fireEvent.click(await screen.findByRole("button", { name: "Zoom chart" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use the zoomed range" }));
+    expect(screen.queryByRole("button", { name: "Drag across chart" })).toBeNull();
+    const mark = await screen.findByRole("button", { name: "Mark in the chart" });
+    fireEvent.click(mark);
+    expect(mark.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Drag across chart" }));
+    // The drag fills the form and ends the marking.
+    expect(screen.getByRole("button", { name: "Mark in the chart" }).getAttribute("aria-pressed")).toBe("false");
     fireEvent.change(screen.getByRole("textbox", { name: /Note/ }), { target: { value: " Seal leak " } });
     fireEvent.click(screen.getByRole("button", { name: "Add label" }));
     await waitFor(() => expect(dojoApi.createLabel).toHaveBeenCalledWith("d1",
@@ -379,7 +387,7 @@ describe("Dojo workspace", () => {
     vi.mocked(dojoApi.dataset).mockResolvedValue({ ...dataset, origin: "csv",
       series: dataset.series.map(item => ({ ...item, reading_id: null })) });
     mount("/dojo?dataset=d1");
-    await screen.findByRole("button", { name: "Use the zoomed range" });
+    await screen.findByRole("button", { name: "Mark in the chart" });
     expect(screen.queryByRole("region", { name: "Recorded alarms" })).toBeNull();
     expect(dojoApi.labelSuggestions).not.toHaveBeenCalled();
   });
@@ -445,7 +453,7 @@ describe("Dojo workspace", () => {
         method("pid", "Conformal PID", "conformal", 2, 1), method("nig", "Discounted Bayes", "bayesian", 2, 0,
           { failed: "ArithmeticError: no boundary", alarm_share: null, detection_rate: null,
             false_alarms_per_day: null })] });
-    mount("/dojo?dataset=d1&tab=compare");
+    mount("/dojo?dataset=d1&tab=runs");
     const table = await screen.findByRole("table", { name: "Calibration methods" });
     expect(dojoApi.calibration).toHaveBeenCalledWith("r1", expect.any(AbortSignal));
     // Most labels detected first, then fewest false alarms per day; a method that stopped goes last.
@@ -465,7 +473,7 @@ describe("Dojo workspace", () => {
   it("says how to get a comparison of calibration methods when no run has one", async () => {
     vi.mocked(dojoApi.compare).mockResolvedValue({ dataset_id: "d1", labels: [label],
       runs: [metrics("r1", "Forest", 1, 2), metrics("r2", "Baseline", 0, 0)] });
-    mount("/dojo?dataset=d1&tab=compare");
+    mount("/dojo?dataset=d1&tab=runs");
     await screen.findByText(/No finished run has compared calibration methods yet/);
     expect(dojoApi.calibration).not.toHaveBeenCalled();
   });
@@ -476,14 +484,17 @@ describe("Dojo workspace", () => {
     const comparison: Comparison = { dataset_id: "d1", labels: [label],
       runs: [metrics("r1", "Forest", 1, 2), metrics("r2", "Baseline", 0, 0)] };
     vi.mocked(dojoApi.compare).mockResolvedValue(comparison);
-    mount("/dojo?dataset=d1&tab=compare");
+    mount("/dojo?dataset=d1&tab=runs");
     const table = await screen.findByRole("table", { name: "Run metrics" });
     expect(dojoApi.compare).toHaveBeenCalledWith("d1", ["r1", "r2"], expect.any(AbortSignal));
-    expect(screen.queryByRole("checkbox", { name: "Waiting" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Compare Waiting" })).toBeNull();
+    // Five key metrics first, every metric on request.
+    expect(within(table).getAllByRole("row")).toHaveLength(6);
+    fireEvent.click(screen.getByRole("button", { name: /^All metrics/ }));
     const detected = within(table).getByRole("row", { name: /Labels detected/ });
-    expect(within(detected).getByText("1 of 1").className).toBe("dj-metric-best");
+    expect(within(detected).getByText("1 of 1").classList).toContain("dj-metric-best");
     const falseAlarms = within(table).getByRole("row", { name: /^False alarms 2 0$/ });
-    expect(within(falseAlarms).getByText("0").className).toBe("dj-metric-best");
+    expect(within(falseAlarms).getByText("0").classList).toContain("dj-metric-best");
     const outcomes = screen.getByRole("table", { name: "Label outcomes" });
     within(outcomes).getByText("Detected");
     within(outcomes).getByText("after 2 min");
@@ -491,7 +502,7 @@ describe("Dojo workspace", () => {
     expect(dojoApi.results).toHaveBeenCalledWith("r1", expect.objectContaining({ alarm: true }), expect.any(AbortSignal));
     // The scores are judged before any threshold too.
     const prAuc = within(table).getByRole("row", { name: /^PR-AUC/ });
-    expect(within(prAuc).getByText("0.420").className).toBe("dj-metric-best");
+    expect(within(prAuc).getByText("0.420").classList).toContain("dj-metric-best");
     within(table).getByRole("row", { name: /^Top score at the label Yes No$/ });
     within(table).getByRole("row", { name: /^Score persistence \(20 back\) 0.10 0.93 · follows the level$/ });
     // And without labels.
@@ -509,17 +520,17 @@ describe("Dojo workspace", () => {
     vi.mocked(dojoApi.runs).mockResolvedValue({ items: finished, next_offset: null });
     vi.mocked(dojoApi.compare).mockImplementation(async (_, ids) => ({ dataset_id: "d1", labels: [label],
       runs: ids.map(id => metrics(id, id, 1, 0)) }));
-    mount("/dojo?dataset=d1&tab=compare");
+    mount("/dojo?dataset=d1&tab=runs");
     await screen.findByRole("table", { name: "Run metrics" });
     expect(dojoApi.compare).toHaveBeenLastCalledWith("d1", ["r0", "r1", "r2"], expect.any(AbortSignal));
     for (let index = 3; index < DOJO_LIMITS.comparedRuns; index++) {
-      fireEvent.click(screen.getByRole("checkbox", { name: `Run ${index}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `Compare Run ${index}` }));
     }
     const all = finished.slice(0, DOJO_LIMITS.comparedRuns).map(item => item.id);
     await waitFor(() => expect(dojoApi.compare).toHaveBeenLastCalledWith("d1", all, expect.any(AbortSignal)));
     expect(DOJO_LIMITS.comparedRuns).toBeGreaterThan(3);
-    expect((screen.getByRole("checkbox", { name: `Run ${DOJO_LIMITS.comparedRuns}` }) as HTMLInputElement).disabled).toBe(true);
-    screen.getByText(`${DOJO_LIMITS.comparedRuns} of at most ${DOJO_LIMITS.comparedRuns} compared`);
+    expect((screen.getByRole("checkbox", { name: `Compare Run ${DOJO_LIMITS.comparedRuns}` }) as HTMLInputElement).disabled).toBe(true);
+    screen.getByText(`${DOJO_LIMITS.comparedRuns} of at most ${DOJO_LIMITS.comparedRuns} runs`);
   });
 
   it("saves a finished run as a template and opens Monitoring with its recorded readings", async () => {

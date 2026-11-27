@@ -8,6 +8,7 @@ import { LineChart, ScatterChart } from "echarts/charts";
 import {
   AriaComponent,
   AxisPointerComponent,
+  BrushComponent,
   DataZoomInsideComponent,
   DataZoomSliderComponent,
   GridComponent,
@@ -15,6 +16,7 @@ import {
   MarkAreaComponent,
   MarkLineComponent,
   MarkPointComponent,
+  ToolboxComponent,
   TooltipComponent,
 } from "echarts/components";
 import { format as echartsFormat, init, use as registerEChartsModules, type EChartsType } from "echarts/core";
@@ -35,11 +37,13 @@ registerEChartsModules([
   TooltipComponent,
   LegendScrollComponent,
   AxisPointerComponent,
+  BrushComponent,
   DataZoomInsideComponent,
   DataZoomSliderComponent,
   MarkAreaComponent,
   MarkLineComponent,
   MarkPointComponent,
+  ToolboxComponent,
   AriaComponent,
   CanvasRenderer,
 ]);
@@ -51,8 +55,13 @@ export interface EChartProps {
   onViewportChange?: (startMs: number, endMs: number) => void;
   /** Where the plot begins once the value labels are measured, for what is drawn beside the chart. */
   onGutter?: (left: number) => void;
+  /** While on, dragging across the plot picks a time range instead of panning; the option must declare a brush. */
+  rangeSelect?: boolean;
+  onRangeSelect?: (startMs: number, endMs: number) => void;
   className?: string;
 }
+
+type BrushEndPayload = { areas?: Array<{ coordRange?: unknown }> };
 
 type DataZoomPayload = {
   start?: unknown;
@@ -163,6 +172,8 @@ export function EChart({
   accessibleDescription,
   onViewportChange,
   onGutter,
+  rangeSelect = false,
+  onRangeSelect,
   className,
 }: EChartProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -171,6 +182,7 @@ export function EChart({
   const initialThemeRef = useRef(resolvedTheme);
   const viewportCallbackRef = useRef(onViewportChange);
   const gutterCallbackRef = useRef(onGutter);
+  const rangeCallbackRef = useRef(onRangeSelect);
   const axisIdsRef = useRef<string | undefined>(undefined);
   const optionRef = useRef(option);
   const gutterRef = useRef<number | undefined>(undefined);
@@ -178,7 +190,8 @@ export function EChart({
   useEffect(() => {
     viewportCallbackRef.current = onViewportChange;
     gutterCallbackRef.current = onGutter;
-  }, [onViewportChange, onGutter]);
+    rangeCallbackRef.current = onRangeSelect;
+  }, [onViewportChange, onGutter, onRangeSelect]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -197,6 +210,14 @@ export function EChart({
       if (viewport) viewportCallbackRef.current?.(...viewport);
     };
     chart.on("datazoom", handleDataZoom);
+    const handleBrushEnd = (payload: unknown) => {
+      const range = (payload as BrushEndPayload).areas?.[0]?.coordRange;
+      chart.dispatchAction({ type: "brush", areas: [] });
+      if (!Array.isArray(range) || typeof range[0] !== "number" || typeof range[1] !== "number") return;
+      const [start, end] = range[0] <= range[1] ? [range[0], range[1]] : [range[1], range[0]];
+      if (end > start) rangeCallbackRef.current?.(start, end);
+    };
+    chart.on("brushEnd", handleBrushEnd);
     // Value labels are only known once ECharts has chosen the ticks. When they no longer
     // fit the gutter, or leave it needlessly wide, the panes move to fit them.
     const fitGutter = () => {
@@ -219,6 +240,7 @@ export function EChart({
     return () => {
       resizeObserver?.disconnect();
       chart.off("datazoom", handleDataZoom);
+      chart.off("brushEnd", handleBrushEnd);
       chart.off("finished", fitGutter);
       chart.dispose();
       chartRef.current = undefined;
@@ -227,6 +249,11 @@ export function EChart({
       gutterRef.current = undefined;
     };
   }, []);
+
+  useEffect(() => {
+    chartRef.current?.dispatchAction({ type: "takeGlobalCursor", key: "brush",
+      brushOption: rangeSelect ? { brushType: "lineX", brushMode: "single" } : { brushType: false } });
+  }, [rangeSelect]);
 
   useEffect(() => {
     const chart = chartRef.current;

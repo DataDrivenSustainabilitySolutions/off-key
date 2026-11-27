@@ -72,6 +72,19 @@ describe("Dojo chart", () => {
     expect(option.grid).toHaveLength(1);
   });
 
+  it("outlines a range about to become a label and lets a drag pick one only where labels can be edited", () => {
+    const input = { colors, timeZone: "UTC", labels: [],
+      series: [{ id: "s1", name: "Voltage", unit: "V", points: [[0, 1], [60_000, 2]] as Array<[number, number]> }] };
+    type Areas = Array<{ markArea: { data: Array<[{ xAxis: number; itemStyle?: { borderType?: string } }, { xAxis: number }]> } }>;
+    const plain = datasetChartOption(input);
+    expect(plain).not.toHaveProperty("brush");
+    expect((plain.series as Areas)[0]!.markArea.data).toEqual([]);
+    const marking = datasetChartOption({ ...input, selectable: true, draft: { start: 10_000, end: 20_000 } });
+    expect(marking).toMatchObject({ brush: { xAxisIndex: 0, brushType: "lineX", brushMode: "single" } });
+    const [draft] = (marking.series as Areas)[0]!.markArea.data;
+    expect([draft![0].xAxis, draft![1].xAxis, draft![0].itemStyle?.borderType]).toEqual([10_000, 20_000, "dashed"]);
+  });
+
   it("draws alarms one after the other as one episode, and a lone alarm still with a width", () => {
     expect(alarmEpisodes([30, 10, 11, 12, 20], 1)).toEqual([[9.5, 12.5], [19.5, 20.5], [29.5, 30.5]]);
     // Without the data's cadence, the alarms' own most common gap stands in for it.

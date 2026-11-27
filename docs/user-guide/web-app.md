@@ -329,9 +329,9 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    anomalies too: name a **Label column** of 0 and 1, and each run of rows
    marked 1 becomes a label. A dataset is frozen: retention and catalogue
    edits never change it.
-2. Open a dataset. **Values and labels** shows its series; zoom the chart to a
-   known problem and choose **Use the zoomed range**, or type the window, then
-   **Add label**. Labels may touch but not overlap. For a dataset copied from
+2. Open a dataset. **Labels** shows its series; choose **Mark in the chart**
+   and drag across a known problem, or type the window, then **Add label**. The
+   range is outlined in the chart until you add it. Labels may touch but not overlap. For a dataset copied from
    recorded readings, **Recorded alarms** lists the alarms live monitors
    raised on those readings during its time span, grouped when they came less
    than ten minutes apart; **Add as label** keeps one as it is, **Adjust**
@@ -345,10 +345,13 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    method that adapts on its own detector scores. The run takes longer. A
    design that alarms on a conformal martingale has no boundary on its scores,
    so the option is off for it.
-4. **Compare** puts up to six finished runs side by side (the three newest are
-   ticked when it opens): their alarms under the values, one row per run, where
-   alarms one after the other are one red bar and labels are grey bands, how many labels each detected and how soon, and how many false
-   alarms each raised per day outside the labels. The best value of a metric is
+4. Under the runs, **Comparison** puts up to six finished runs side by side:
+   tick them in the runs table (the three newest are ticked when it opens).
+   It shows their alarms under the values, one row per run, where alarms one
+   after the other are one red bar and labels are grey bands. Five key
+   metrics come first: labels detected, median delay, false alarms per day,
+   VUS-PR and separate alarms per day. **All metrics** shows every row; point
+   at a metric's name for what it measures. The best value of a metric is
    bold. **PR-AUC**, **VUS-PR** and **AUROC** judge the scores before any
    threshold: how well they rank labelled values above the rest. VUS-PR also
    credits a score that peaks just before or after a label. With exactly one

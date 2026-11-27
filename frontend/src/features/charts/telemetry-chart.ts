@@ -2,9 +2,11 @@ import type { LineSeriesOption, ScatterSeriesOption } from "echarts/charts";
 import type {
   AriaComponentOption,
   AxisPointerComponentOption,
+  BrushComponentOption,
   DataZoomComponentOption,
   GridComponentOption,
   LegendComponentOption,
+  ToolboxComponentOption,
   TooltipComponentOption,
 } from "echarts/components";
 import { color as chartColor, type ComposeOption } from "echarts/core";
@@ -39,11 +41,13 @@ import {
 export type TelemetryChartOption = ComposeOption<
   | AriaComponentOption
   | AxisPointerComponentOption
+  | BrushComponentOption
   | DataZoomComponentOption
   | GridComponentOption
   | LegendComponentOption
   | LineSeriesOption
   | ScatterSeriesOption
+  | ToolboxComponentOption
   | TooltipComponentOption
 >;
 

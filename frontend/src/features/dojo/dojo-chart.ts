@@ -1,6 +1,7 @@
 import { color as chartColor } from "echarts/core";
 import type { TelemetryChartOption, ChartThemeColors } from "../charts/telemetry-chart";
 import { timeAxisLabelFormatter } from "../charts/time-axis";
+import { LOCALE } from "@/lib/locale";
 import type { ChartPoint } from "./model";
 
 type ChartSeries = { id: string; name: string; unit: string | null; points: ChartPoint[] };
@@ -12,19 +13,27 @@ type Input = {
   labels: ChartLabel[];
   /** One row of alarm marks per run, below the values. */
   alarms?: ChartAlarms[];
+  /** A range about to become a label, outlined over the values. */
+  draft?: { start: number; end: number } | null;
+  /** Lets a drag across the values pick a range (see EChart's rangeSelect). */
+  selectable?: boolean;
   colors: ChartThemeColors;
   timeZone: string;
 };
 
 const ALARM_ROW = 22;
+const TOOLTIP_NUMBER = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 3 });
 const ALARM_BAR = 12;
 
 /** A label is what a person marked, not what a design alarmed on, so it is a neutral band: red is kept for alarms. */
-function labelAreas(labels: ChartLabel[], colors: ChartThemeColors) {
+function labelAreas(labels: ChartLabel[], colors: ChartThemeColors, draft: Input["draft"] = null) {
+  const shade = (alpha: number) => chartColor.modifyAlpha(colors.foreground, alpha) ?? colors.foreground;
   return {
     silent: true,
-    itemStyle: { color: chartColor.modifyAlpha(colors.foreground, 0.12) ?? colors.foreground, borderWidth: 0 },
-    data: labels.map(label => [{ xAxis: label.start, name: label.note }, { xAxis: label.end }]),
+    itemStyle: { color: shade(0.12), borderWidth: 0 },
+    data: [...labels.map(label => [{ xAxis: label.start, name: label.note }, { xAxis: label.end }]),
+      ...draft ? [[{ xAxis: draft.start, itemStyle: { color: shade(0.05), borderColor: shade(0.55), borderWidth: 1,
+        borderType: "dashed" } }, { xAxis: draft.end }]] : []],
     label: { show: false },
   };
 }
@@ -61,8 +70,9 @@ export function alarmEpisodes(times: readonly number[], cadence?: number): Array
  * right, any further ones on the left. The legend names each series' unit. Alarm rows share the time axis, so a
  * mark sits under the value it belongs to.
  */
-export function datasetChartOption({ series, labels, alarms = [], colors, timeZone }: Input): TelemetryChartOption {
+export function datasetChartOption({ series, labels, alarms = [], draft = null, selectable = false, colors, timeZone }: Input): TelemetryChartOption {
   const range = extent(series, labels, alarms);
+  const band = (alpha: number) => chartColor.modifyAlpha(colors.foreground, alpha) ?? colors.foreground;
   const span = range ? range[1] - range[0] : 0;
   const palette = colors.seriesPalette ?? [colors.primary];
   const units = [...new Set(series.map(item => item.unit ?? ""))];
@@ -98,7 +108,7 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
     large: true,
     lineStyle: { width: 1.2 },
     color: palette[index % palette.length],
-    ...(index === 0 ? { markArea: labelAreas(labels, colors) } : {}),
+    ...(index === 0 ? { markArea: labelAreas(labels, colors, draft) } : {}),
   }));
   const alarmAxis = yAxis.length - 1;
   const cadence = median(series.flatMap(item => gaps(item.points.map(point => point[0]))));
@@ -128,13 +138,17 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
     grid,
     legend: { type: "scroll", top: 0, left, right, textStyle: { color: colors.mutedForeground },
       data: lines.map(line => line.name) },
-    tooltip: { trigger: "axis", axisPointer: { type: "line" } },
+    tooltip: { trigger: "axis", axisPointer: { type: "line" },
+      valueFormatter: (value: unknown) => typeof value === "number" ? TOOLTIP_NUMBER.format(value) : String(value ?? "–") },
     xAxis,
     yAxis,
     dataZoom: [
       { type: "inside", xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none" },
       { type: "slider", xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none", bottom: 12, height: 22, left, right },
     ],
+    ...(selectable ? { toolbox: { show: false }, brush: { toolbox: [], xAxisIndex: 0, brushType: "lineX", brushMode: "single", transformable: false,
+      throttleType: "debounce", throttleDelay: 0, outOfBrush: { colorAlpha: 1 },
+      brushStyle: { color: band(0.12), borderColor: band(0.4), borderWidth: 1 } } } : {}),
     series: [...lines, ...marks],
   } as TelemetryChartOption;
 }

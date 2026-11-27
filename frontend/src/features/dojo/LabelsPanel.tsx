@@ -30,7 +30,7 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   const [shown, setShown] = useState(() => dataset.series.slice(0, SHOWN_SERIES).map(item => item.id));
   const series = useMemo(() => dataset.series.filter(item => shown.includes(item.id)), [dataset.series, shown]);
   const { loaded, error: loadError, loading } = useSeriesPoints(dataset.id, series);
-  const [viewport, setViewport] = useState<[number, number] | null>(null);
+  const [marking, setMarking] = useState(false);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [note, setNote] = useState("");
@@ -48,11 +48,17 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
       .catch(reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
     return () => controller.abort();
   }, [dataset.id]);
+  const startAt = fromLocalInput(start), endAt = fromLocalInput(end);
+  const draft = useMemo(() => startAt && endAt && endAt > startAt
+    ? { start: epochMilliseconds(startAt), end: epochMilliseconds(endAt) } : null, [startAt, endAt]);
   const option = useMemo(() => datasetChartOption({
     series: series.flatMap(item => loaded[item.id] ? [{ id: item.id, name: item.name, unit: item.unit, points: loaded[item.id]!.points }] : []),
     labels: labels.map(label => ({ id: label.id, start: epochMilliseconds(label.start_at), end: epochMilliseconds(label.end_at), note: label.note })),
-    colors, timeZone,
-  }), [series, loaded, labels, colors]);
+    draft, selectable: editable, colors, timeZone,
+  }), [series, loaded, labels, draft, editable, colors]);
+  const marked = useCallback((from: number, to: number) => {
+    setStart(toLocalInput(from)); setEnd(toLocalInput(to)); setMarking(false);
+  }, []);
   const truncated = series.filter(item => loaded[item.id]?.truncated);
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true); setError("");
@@ -60,7 +66,6 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     catch (reason) { setError(getErrorMessage(reason)); return false; }
     finally { setBusy(false); }
   };
-  const startAt = fromLocalInput(start), endAt = fromLocalInput(end);
   const create = async () => {
     if (!startAt || !endAt) return;
     const added = adjusting
@@ -102,26 +107,27 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     await act(() => dojoApi.deleteLabel(dataset.id, label.id));
   };
   return <div className="dj-section">
-    {dataset.series.length > SHOWN_SERIES && <div className="dj-series-picker" role="group" aria-label="Series shown">
-      {dataset.series.map(item => <label key={item.id}><input type="checkbox" checked={shown.includes(item.id)}
-        onChange={event => setShown(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />
-        {item.name}{item.unit ? ` (${item.unit})` : ""}</label>)}
-    </div>}
+    <div className="dj-chart-bar">
+      {dataset.series.length > SHOWN_SERIES && <div className="dj-series-picker" role="group" aria-label="Series shown">
+        {dataset.series.map(item => <label key={item.id}><input type="checkbox" checked={shown.includes(item.id)}
+          onChange={event => setShown(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />
+          {item.name}{item.unit ? ` (${item.unit})` : ""}</label>)}
+      </div>}
+      {editable && <button type="button" className="dj-action" aria-pressed={marking} disabled={busy}
+        onClick={() => setMarking(on => !on)}><Tag size={15} />{marking ? "Drag across the chart…" : "Mark in the chart"}</button>}
+    </div>
     {loadError && <p className="ex-banner ex-error" role="alert">{loadError}</p>}
     {loading && <p className="dj-loading" role="status">Loading values…</p>}
     <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart"
       accessibleDescription={`Values of ${series.map(item => item.name).join(", ") || "no series"} with ${labels.length} labels`}
-      onViewportChange={(from, to) => setViewport([from, to])} />
+      rangeSelect={marking} onRangeSelect={marked} />
     {labels.length > 0 && <ChartKey entries={[{ kind: "label", label: "Label", color: colors.foreground }]} />}
     {truncated.length > 0 && <p className="dj-help">Showing the first {CHART_POINTS.toLocaleString(LOCALE)} values of{" "}
       {truncated.map(item => item.name).join(", ")}. Runs and metrics always use every value.</p>}
 
     <div className="dj-section-head dj-section-head--spaced">
       <h2>Labels <span className="dj-muted">{labels.length} of at most {DOJO_LIMITS.labels}</span></h2>
-      {editable && <button type="button" className="dj-action" disabled={!viewport || busy} onClick={() => {
-        if (!viewport) return;
-        setStart(toLocalInput(viewport[0])); setEnd(toLocalInput(viewport[1]));
-      }}><Tag size={15} />Use the zoomed range</button>}
+
     </div>
     <p className="dj-help">A label marks a known problem. Runs are scored against the labels when you compare them, so
       editing a label never needs a new run.</p>

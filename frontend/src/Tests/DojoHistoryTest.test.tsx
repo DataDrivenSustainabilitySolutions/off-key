@@ -519,7 +519,7 @@ describe("the test panel", () => {
     let result = within(await screen.findByRole("region", { name: "Test result" }));
     expect(figure(result, "Labels detected")).toBe("1 of 2");
     expect(figure(result, "Median delay")).toBe("2.5 min");
-    expect(result.getByRole("link", { name: "Compare runs in the Dojo" }).getAttribute("href")).toBe("/dojo?dataset=copy&tab=compare");
+    expect(result.getByRole("link", { name: "Compare runs in the Dojo" }).getAttribute("href")).toBe("/dojo?dataset=copy&tab=runs");
     expect(result.queryByText(/has changed since/)).toBeNull();
     const changed = { ...definition, nodes: [...definition.nodes, { ...definition.nodes[0]!, id: "other" }] };
     view.rerender(<MemoryRouter><Panel changed={changed} /></MemoryRouter>);

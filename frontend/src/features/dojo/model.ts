@@ -164,7 +164,6 @@ export const runName = (run: Pick<RunSummary, "name" | "created_at">) => run.nam
 export const DATASET_TABS = [
   { id: "values", label: "Labels" },
   { id: "runs", label: "Runs" },
-  { id: "compare", label: "Compare" },
 ] as const;
 export type DatasetTab = typeof DATASET_TABS[number]["id"];
 export const datasetTab = (value: string | null): DatasetTab =>

@@ -51,10 +51,13 @@ function outsideArea(id: string, pane: number, color: string, points: readonly C
     showSymbol: false, connectNulls: false, silent: true, lineStyle: { opacity: 0 }, emphasis: { disabled: true }, animation: false,
     tooltip: { show: false }, z: 2 };
   // The stretch of the observed line past the edge, in the same colour, so even a thin departure is found.
+  // Signed distance past the edge the departure left by, so an inside neighbour places the crossing on that edge.
   const { outside } = excursions(points.map((point, index) => {
-    const edge = sides[index] === "upper" ? point.upper : sides[index] === "lower" ? point.lower : null;
-    return { time: point.time, value: point.value,
-      margin: point.value === null ? null : edge === null ? -1 : Math.abs(point.value - edge) };
+    const own = sides[index], near = own ?? sides[index - 1] ?? sides[index + 1];
+    const margin = point.value === null || !near ? -1 : near === "upper"
+      ? point.upper === null ? null : point.value - point.upper
+      : point.lower === null ? null : point.lower - point.value;
+    return { time: point.time, value: point.value, margin: !own && margin !== null && margin >= 0 ? -1 : margin };
   }), ["outside"]);
   return [
     { ...shared, id: `outside:${id}:base`, data: base },

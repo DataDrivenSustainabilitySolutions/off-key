@@ -352,8 +352,10 @@ describe("workspace chart navigation and monitoring", () => {
       expect.objectContaining({ id: "excursion:alarm:adaptive-score:monitor" }),
       expect.objectContaining({ id: "pending-telemetry", data: [[NOW, 22]] }),
     ]));
-    expect(lastChartProps().option.series).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "adaptive-score:monitor", markLine: expect.anything() }),
+    // The one alarmed result is marked by a rule where it alarmed.
+    expect(lastChartProps().option.series).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "adaptive-score:monitor", markLine: expect.objectContaining({
+        data: [expect.objectContaining({ xAxis: NOW - 10_000 })] }) }),
     ]));
     expect(lastChartProps().option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ startValue: NOW - 15_000, endValue: NOW - 5_000 })]));
     expect(screen.getByText(/score 3, threshold 2\.5/)).toBeTruthy();

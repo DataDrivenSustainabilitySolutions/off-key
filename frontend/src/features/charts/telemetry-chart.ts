@@ -363,7 +363,8 @@ const alarmEpisodes = (series: readonly SecondaryChartSeries[]): Array<[number, 
   const spans: Array<[number, number]> = [];
   let open: [number, number] | undefined;
   for (const point of series[0]?.data ?? []) {
-    if (!point.observation) continue;
+    // A point without a result is a pause the score line breaks at: an alarm does not run across it.
+    if (!point.observation) { open = undefined; continue; }
     if (point.observation.alarmActive) {
       if (open) open[1] = point.value[0];
       else spans.push(open = [point.value[0], point.value[0]]);
@@ -753,11 +754,13 @@ export const buildMonitoringChartOption = ({
     }] : []);
     line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []), ...muted] };
     // The alarm runs through every pane as the same band, so the score and the reading line up by eye.
-    const episodes = alarmEpisodes([series]).filter(([start, end]) => end > start);
+    // A single alarmed result has no band, so its onset rule alone marks it.
+    const episodes = alarmEpisodes([series]);
+    const lasting = episodes.filter(([start, end]) => end > start);
     if (episodes.length) line.markLine = { ...dayBreakLine, data: [...(line.markLine ? dayBreaks : []),
       ...episodes.map(([start]) => ({ xAxis: start, lineStyle: { color: alarmColor, width: 1, opacity: 0.55, type: "solid" as const } }))] };
-    if (episodes.length) line.markArea = { silent: true, animation: false, label: { show: false }, z: 0,
-      itemStyle: { color: colors.alarmFill ?? "rgba(220, 38, 38, 0.12)" }, data: episodes.map(([start, end]) => [{ xAxis: start }, { xAxis: end }]) };
+    if (lasting.length) line.markArea = { silent: true, animation: false, label: { show: false }, z: 0,
+      itemStyle: { color: colors.alarmFill ?? "rgba(220, 38, 38, 0.12)" }, data: lasting.map(([start, end]) => [{ xAxis: start }, { xAxis: end }]) };
     return [line, buildThresholdSeriesOption(series, paneIndex, colors.mutedForeground),
       ...buildExcursionSeries(series, paneIndex, colors)];
   });

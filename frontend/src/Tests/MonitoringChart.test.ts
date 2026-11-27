@@ -145,7 +145,7 @@ type InspectableOption = {
     lineStyle?: { width?: number; type?: string };
     markArea?: { data: Array<[{ xAxis: number; yAxis: number }, { xAxis: number; yAxis: number }]>; itemStyle?: { color?: string }; z?: number; silent?: boolean };
     markPoint?: { data: Array<{ coord?: [number, number]; symbol?: string; tooltip?: { formatter?: () => string } }> };
-    markLine?: { data: unknown[] };
+    markLine?: { data: Array<{ xAxis?: number; yAxis?: number }> };
   }>;
 };
 
@@ -478,7 +478,8 @@ describe("telemetry ECharts option", () => {
     expect(model.secondarySeries[0]?.overflow[0]?.observation.threshold).toBeNull();
     const option = inspect(buildOption(model));
     expect(option.series[1]?.markArea).toBeUndefined();
-    expect(option.series[1]?.markLine).toBeUndefined();
+    // A single alarmed result has no band, only the rule where it alarmed.
+    expect(option.series[1]?.markLine?.data.map((rule) => rule.xAxis)).toEqual([Date.parse(timestamp)]);
     const tooltip = option.series[1]?.markPoint?.data[0]?.tooltip?.formatter?.();
     expect(tooltip).toContain("Beyond numeric range");
     expect(tooltip).toContain("Alarm threshold: unavailable");
@@ -619,6 +620,20 @@ describe("telemetry ECharts option", () => {
       [start, 0.125], [start + 2000, 1], [start + 4000, 2], [start + 6000, 3],
       [start + 23000, null], [start + 40000, 20], [start + 42000, 21],
     ]);
+  });
+
+  it("ends an alarm at a pause and still marks a single alarmed result", () => {
+    const seconds = [0, 1, 2, 3, 60, 61];
+    const at = (second: number) => new Date(Date.parse("2026-01-01T00:00:00Z") + second * 1000).toISOString();
+    const option = inspect(buildOption(buildModel({
+      telemetry: seconds.map((second) => ({ timestamp: at(second), value: second })),
+      // Alarmed on both sides of the pause, then a lone alarmed result after a quiet one.
+      evidence: [[0, 3], [1, 3], [60, 3], [61, 1]].map(([second, score]) => adaptiveEvidence("adaptive-a", at(second!), score!)),
+    })));
+    const start = Date.parse(at(0));
+    const score = option.series.find(({ id }) => id === "adaptive-score:adaptive-a")!;
+    expect(score.markArea?.data).toEqual([[{ xAxis: start }, { xAxis: start + 1000 }]]);
+    expect(score.markLine?.data.map((rule) => rule.xAxis)).toEqual([start, start + 60_000]);
   });
 
   it("connects adjacent scored observations with a clean line", () => {

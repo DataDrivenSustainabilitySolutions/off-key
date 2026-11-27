@@ -160,6 +160,10 @@ describe("forecast evidence presentation", () => {
     expect((reach.data as Array<[number, number | null]>).map(([, width]) => width)).toEqual([
       expect.closeTo(0.1), 0, expect.closeTo(0.1), null]);
     expect(find(`outside:${series.id}:line`).lineStyle).toMatchObject({ color: "amber" });
+    // The coloured stretch ends where the line crosses back over the edge: two thirds of the way from 50.2 to 50.05.
+    const crossing = (find(`outside:${series.id}:line`).data as Array<[number, number | null]>)[1]!;
+    expect(crossing[0]).toBeCloseTo(start + 925 + 1000 * 2 / 3, 3);
+    expect(crossing[1]).toBeCloseTo(50.1, 6);
     // Inside an alarm the alarm band already tells it, so the same misses get no fill of their own.
     const alarmed = buildForecastEvidence(rows.map(item => ({ ...item, alarm: true })), presentation.bindings)[0]!;
     expect(buildForecastChartSeries(alarmed, 0, 1, "blue", "amber").some(line => String(line.id).startsWith("outside:"))).toBe(false);

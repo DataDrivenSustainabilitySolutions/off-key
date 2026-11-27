@@ -210,7 +210,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByRole("tab", { name: "Evidence", exact: true }).click();
     const monitoringHistory = page.getByRole("region", { name: "Monitoring history", exact: true });
     await expect(monitoringHistory.getByRole("img", { name: /^1 displayed reading of 1 monitored input:/ })).toBeVisible();
-    await expect(monitoringHistory.getByLabel("Latest detector result", { exact: true })).toContainText(/Now .+× threshold\s*Score .+, threshold /u);
+    await expect(monitoringHistory.getByLabel("Latest detector result", { exact: true })).toContainText(/Anomaly score: now .+× threshold\s*Score .+, threshold /u);
     await monitoringHistory.getByRole("button", { name: "Zoom in", exact: true }).click();
     await expect(monitoringHistory.getByRole("button", { name: "Return to live", exact: true })).toBeVisible();
     await monitoringHistory.getByRole("button", { name: "Return to live", exact: true }).click();

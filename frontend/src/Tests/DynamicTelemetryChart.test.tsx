@@ -307,6 +307,7 @@ describe("DynamicTelemetryChart", () => {
       expect(inspectOption().series.map(({ id }) => id)).toEqual([
         "telemetry",
         "adaptive-score:service-adaptive",
+        "threshold:adaptive-score:service-adaptive",
         "history-dot:adaptive-score:service-adaptive",
       ]),
     );
@@ -488,7 +489,7 @@ describe("DynamicTelemetryChart", () => {
     expect((selector as HTMLSelectElement).value).toBe(selectedId);
     expect(screen.queryByRole("option", { name: /unavailable/u })).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
-    expect(inspectOption().series.map(({ id }) => id)).toEqual(["telemetry", selectedId, `history-dot:${selectedId}`]);
+    expect(inspectOption().series.map(({ id }) => id)).toEqual(["telemetry", selectedId, `threshold:${selectedId}`, `history-dot:${selectedId}`]);
   });
 
   it("remembers the initial primary default when polling leaves only another tracker", async () => {
@@ -626,7 +627,7 @@ describe("DynamicTelemetryChart", () => {
     showChart();
     const chart = await screen.findByRole("img");
     expect(chart.getAttribute("aria-label")).toContain("1 observations are outside the plotted range");
-    expect(screen.getByText(/Beyond numeric range.*800.*alarm active/u)).toBeTruthy();
+    expect(screen.getByText(/beyond numeric range.*800.*alarm active/iu)).toBeTruthy();
     expect(inspectOption().grid).toHaveLength(2);
   });
 

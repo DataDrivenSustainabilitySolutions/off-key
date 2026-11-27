@@ -40,13 +40,15 @@ describe("joint monitoring history", () => {
     expect(model.readings.map(reading => reading.unit)).toEqual(["°C", "%"]);
     expect(model.secondarySeries).toHaveLength(1);
     expect(model.secondarySeries[0]!.name).toBe("Joint anomaly score");
-    expect(model.secondarySeries[0]!.data.map(point => point.value)).toEqual([[Date.parse(second), 0.61]]);
+    // The score as a share of its threshold of 0.6.
+    expect(model.secondarySeries[0]!.data.map(point => point.value)).toEqual([[Date.parse(second), expect.closeTo(0.61 / 0.6)]]);
     expect(model.readings.map(reading => reading.alarmSpans)).toEqual([[[Date.parse(first), Date.parse(first)]], [[Date.parse(second), Date.parse(second)]]]);
     const option = buildMonitoringChartOption({ model, colors, timeZone: "UTC", accessibleDescription: "Joint forest", layout: "monitoring", viewport: { mode: "live" } });
     expect(option.grid).toHaveLength(3);
     expect(option.axisPointer).toMatchObject({ link: [{ xAxisIndex: "all" }] });
     expect(option.dataZoom).toMatchObject([{ xAxisIndex: [0, 1, 2] }, { xAxisIndex: [0, 1, 2] }]);
-    expect(option.series).toEqual(expect.arrayContaining([expect.objectContaining({ id: "threshold:adaptive-score:forest", lineStyle: expect.objectContaining({ type: "dashed" }) })]));
+    expect(option.series).toEqual(expect.arrayContaining([expect.objectContaining({ id: "threshold:adaptive-score:forest",
+      markLine: expect.objectContaining({ data: [{ yAxis: 1 }], lineStyle: expect.objectContaining({ type: [4, 3] }) }) })]));
   });
 
   it("retains the joint score and full input identity when a reading is hidden", () => {
@@ -105,7 +107,8 @@ describe("joint monitoring history", () => {
       return (series?.markPoint?.data ?? []).map(({ name, itemStyle }) => ({ name, itemStyle }));
     };
     expect(marks([muted])).toEqual([{ name: "Muted alarm", itemStyle: { color: colors.popover, borderColor: "#c00", borderWidth: 1 } }]);
-    expect(marks([row])).toEqual([{ name: "Alarm decision", itemStyle: { color: "#c00" } }]);
+    // A raised alarm needs no dot: the score line turns red where it holds.
+    expect(marks([row])).toEqual([]);
     // An observation without a muted alarm is built as it was before the step existed.
     expect("alarmMuted" in build().model.secondarySeries[0]!.latestObservation).toBe(false);
   });

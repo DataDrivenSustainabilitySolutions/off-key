@@ -91,9 +91,6 @@
 .mn-history-empty.is-error strong { color: hsl(var(--destructive)); }
 .mn-history-problem { margin: 8px 0 0; font-size: var(--text-caption); color: hsl(var(--destructive)); }
 .mn-history .ex-history-tools select { font-size: var(--text-caption); min-height: 32px; padding: 0 8px; }
-.mn-forecast-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; padding: 0; margin: 4px 0 0; color: var(--ex-muted); font-size: var(--text-caption); }
-.mn-forecast-legend li { display: flex; align-items: center; gap: 7px; }
-.mn-forecast-legend svg { flex-shrink: 0; }
 .mn-forecast-coverage { margin: 10px 0 0; font-size: var(--text-caption); color: var(--ex-muted); }
 .mn-forecast-coverage summary { width: fit-content; cursor: pointer; font-variant-numeric: tabular-nums; }
 .mn-forecast-coverage p { margin: 6px 0 0; max-width: 60ch; }

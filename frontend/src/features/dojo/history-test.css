@@ -138,15 +138,15 @@
   background: none;
   box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.45);
 }
-/* An alarm stands lower than a label, so one inside a label still reads as a line of its own. */
+/* An alarm stands lower than a label, so one inside a label still reads as a line of its own. Red is kept for alarms. */
 .dj-test-strip i {
   top: 35%;
   width: 1px;
-  background: hsl(var(--foreground));
+  background: hsl(var(--destructive));
 }
 
 /* Under the strip, on the same span: every stretch of time as a bar from its lowest to its highest
-   score. A stretch that alarmed is drawn in the foreground colour, as the boundary is. */
+   score. A stretch that alarmed is drawn in the alarm colour; the boundary is a dashed rule, as on every score chart. */
 .dj-test-rule {
   position: relative;
   height: 64px;
@@ -166,12 +166,13 @@
   background: hsl(var(--muted-foreground) / 0.55);
 }
 .dj-test-alarmed {
-  fill: hsl(var(--foreground));
+  fill: hsl(var(--destructive));
 }
 .dj-test-boundary {
   fill: none;
-  stroke: hsl(var(--foreground));
+  stroke: hsl(var(--foreground) / 0.8);
   stroke-width: 1px;
+  stroke-dasharray: 4 3;
   vector-effect: non-scaling-stroke;
 }
 /* What the upper and the lower edge stand for, on the side where the design is still learning. */
@@ -225,7 +226,7 @@
   width: 1px;
   border: 0;
   border-radius: 0;
-  background: hsl(var(--foreground));
+  background: hsl(var(--destructive));
 }
 .dj-test-legend .is-score::before {
   width: 4px;
@@ -233,10 +234,10 @@
   border-radius: 0;
 }
 .dj-test-legend .is-boundary::before {
-  height: 1px;
+  height: 0;
   border: 0;
+  border-top: 1px dashed hsl(var(--foreground) / 0.8);
   border-radius: 0;
-  background: hsl(var(--foreground));
 }
 
 .dj-test-figures {

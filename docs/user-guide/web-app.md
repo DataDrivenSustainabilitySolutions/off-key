@@ -345,8 +345,8 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    design that alarms on a conformal martingale has no boundary on its scores,
    so the option is off for it.
 4. **Compare** puts up to six finished runs side by side (the three newest are
-   ticked when it opens): their alarms under
-   the values, how many labels each detected and how soon, and how many false
+   ticked when it opens): their alarms under the values, one row per run, where
+   alarms one after the other are one red bar and labels are grey bands, how many labels each detected and how soon, and how many false
    alarms each raised per day outside the labels. The best value of a metric is
    bold. **PR-AUC**, **VUS-PR** and **AUROC** judge the scores before any
    threshold: how well they rank labelled values above the rest. VUS-PR also

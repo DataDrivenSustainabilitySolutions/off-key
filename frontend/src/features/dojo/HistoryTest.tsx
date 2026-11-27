@@ -16,7 +16,7 @@ import "./history-test.css";
 type Spans = NonNullable<ReturnType<typeof testSpans>>;
 
 /** The detection rule under the strip, on the same span of time: what every stretch scored, the
- * stretches that alarmed in the foreground colour, and the boundary as a line. */
+ * stretches that alarmed in the alarm colour, and the boundary as a dashed rule. */
 function RuleChart({ shape }: { shape: RuleShape }) {
   return <div className="dj-test-rule" role="img" aria-label={shape.summary} title={shape.summary}>
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">

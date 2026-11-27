@@ -30,7 +30,7 @@ import { getTelemetryExtent, normalizeTelemetry } from "./telemetry-data";
 import { getChartDomain } from "./telemetry-thresholds";
 import { useChartColors } from "./use-chart-colors";
 import { useDetectorPanes } from "./use-detector-panes";
-import { buildDetectorInputSeries } from "./detector-inputs";
+import { buildDetectorInputSeries, withoutReadingCopies } from "./detector-inputs";
 import { DetectorNotices } from "./DetectorNotices";
 import {
   buildTelemetryChartModel,
@@ -264,7 +264,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     const first = filteredData[0]?.[0], last = filteredData[filteredData.length - 1]?.[0];
     const singleMonitor = monitoringService || (historical && new Set(serviceEvidence.map(row => row.monitor_id)).size === 1);
     return singleMonitor && first !== undefined && last !== undefined
-      ? buildDetectorInputSeries(serviceEvidence, row => getEvidenceTimeForSensor(row, telemetryData.type), [first, last]) : [];
+      ? withoutReadingCopies(buildDetectorInputSeries(serviceEvidence, row => getEvidenceTimeForSensor(row, telemetryData.type), [first, last]), filteredData) : [];
   }, [monitoringService, historical, serviceEvidence, telemetryData.type, filteredData]);
   const presentation = useMemo(() => {
     const view: HistoryPreference = numeric ? preference : { mode: "raw" };
@@ -310,7 +310,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     ).length;
     const pendingCount = chartModel.pendingTelemetry.length;
     const overflowCount = chartModel.secondarySeries.reduce((count, series) => count + series.overflow.length, 0);
-    return `${displayName} telemetry chart with ${pointCount} points${staticCount ? `, ${staticCount} logarithmic static-evidence series` : ""}${adaptiveCount ? `, and ${adaptiveCount} linear adaptive score series` : ""}${pendingCount ? `, with ${pendingCount} observations awaiting anomaly scores` : ""}. Evidence panes share the telemetry time axis. ${staticCount ? "Static alarm regions indicate evidence greater than or equal to the threshold. " : ""}${adaptiveCount ? "Adaptive alarm regions indicate scores greater than the threshold. " : ""}${staticCount || adaptiveCount ? "Unshaded gaps have no evaluated evidence. " : ""}${overflowCount ? `${overflowCount} observations are outside the plotted range and represented by triangles. ` : ""}Times are shown in ${timeZone}.`;
+    return `${displayName} telemetry chart with ${pointCount} points${staticCount ? `, ${staticCount} logarithmic static-evidence series` : ""}${adaptiveCount ? `, and ${adaptiveCount} adaptive score series relative to its threshold` : ""}${pendingCount ? `, with ${pendingCount} observations awaiting anomaly scores` : ""}. Evidence panes share the telemetry time axis. ${staticCount || adaptiveCount ? "A dashed line marks each threshold. Red marks where the monitor alarmed; a stretch above the threshold without an alarm is darker grey. A gap in a line has no evaluated evidence. " : ""}${overflowCount ? `${overflowCount} observations are outside the plotted range and represented by triangles. ` : ""}Times are shown in ${timeZone}.`;
   }, [chartModel, displayName, timeZone]);
   const chartOption = useMemo(
     () =>
@@ -396,7 +396,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const hasAdaptivePane = chartModel.secondarySeries.some(
     (series) => series.pane === "adaptive",
   );
-  const paneCount = 1 + (chartModel.detectorInputs?.length ? 1 : 0) + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
+  const paneCount = 1 + (chartModel.detectorInputs?.some(series => !series.reading) ? 1 : 0) + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
   const chartHeightClass =
     paneCount >= 4
       ? "h-[842px]"

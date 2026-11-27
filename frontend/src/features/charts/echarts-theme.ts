@@ -67,8 +67,8 @@ export const resolveChartThemeColors = (
     seriesPalette: SERIES_PALETTES[resolvedTheme],
     alarmBoundary: resolvedTheme === "dark" ? "#f87171" : "#b91c1c",
     alarmFill: resolvedTheme === "dark"
-      ? "rgba(248, 113, 113, 0.14)"
-      : "rgba(185, 28, 28, 0.10)",
+      ? "rgba(248, 113, 113, 0.11)"
+      : "rgba(185, 28, 28, 0.075)",
     outsideInterval: resolvedTheme === "dark" ? "#fbbf24" : "#b45309",
   };
 };

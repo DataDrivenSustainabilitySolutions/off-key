@@ -6,6 +6,19 @@ import { alarmText, type DetectionObservation } from "./telemetry-detectors";
 type Entry = { seriesId?: unknown; seriesName?: unknown; value?: unknown;
   data?: { observation?: DetectionObservation; summary?: unknown; peak?: { count: number } } };
 
+/** The threshold beside the score, how far past it the score went, and the alarm. A crossing
+ * without an alarm says so, because the chart cannot show the rule that held it back. */
+export function observationLines(result: Pick<DetectionObservation, "value" | "threshold" | "alarmActive" | "alarmMuted">,
+  formatValue: (value: number) => string): string[] {
+  const ratio = result.value !== null && result.threshold ? result.value / result.threshold : null;
+  return [
+    `Alarm threshold: ${result.threshold === null ? "unavailable" : formatValue(result.threshold)}${ratio === null ? "" : ` · score ${formatValue(Number(ratio.toPrecision(2)))}× threshold`}`,
+    `Alarm: ${alarmText(result)}`,
+    ...(ratio !== null && ratio >= 1 && !result.alarmActive && !result.alarmMuted
+      ? ["Above the threshold, but the monitor's alarm rule did not fire here."] : []),
+  ];
+}
+
 /** Read the exact recorded inputs for a joint result, rather than nearby samples. */
 export function formatMonitoringObservationTooltip(
   params: unknown,
@@ -54,8 +67,7 @@ export function formatMonitoringObservationTooltip(
     const result = entry.data!.observation!;
     if (result.timeMs !== observation.timeMs) continue;
     lines.push(`${String(entry.seriesName)}: ${result.value === null ? result.isInfinite ? "∞" : "unavailable" : String(result.value)}`);
-    lines.push(`Alarm threshold: ${result.threshold === null ? "unavailable" : String(result.threshold)}`);
-    lines.push(`Alarm: ${alarmText(result)}`);
+    lines.push(...observationLines(result, formatValue));
   }
   // A policy that combines detectors names each one's part, so an alarm names its detector.
   for (const detector of observation.detectors ?? []) {

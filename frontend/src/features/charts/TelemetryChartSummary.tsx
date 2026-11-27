@@ -16,14 +16,18 @@ export function TelemetryChartSummary({ model, timeZone, showTelemetry = true, h
       )}
       {model.secondarySeries.map((series) => {
         const latest = series.latestObservation;
+        // Only a score drawn against its threshold is named as a share of it, in the units of its axis.
+        const ratio = series.relative && latest.value !== null && latest.threshold ? latest.value / latest.threshold : null;
         return (
           <span key={series.id}>
-            {series.name}: {latest.isInfinite || (latest.value === null && latest.logValue !== null) ? (
+            {latest.isInfinite || (latest.value === null && latest.logValue !== null) ? (
               <>
-                Beyond numeric range{latest.logValue !== null ? ` (ln: ${formatNumber(latest.logValue)})` : ""}; alarm {alarmText(latest)}
+                {series.name}: beyond numeric range{latest.logValue !== null ? ` (ln: ${formatNumber(latest.logValue)})` : ""}; alarm {alarmText(latest)}
               </>
-            ) : latest.value !== null ? formatNumber(latest.value) : "Unavailable"}
-            {latest.threshold !== null ? ` · Threshold: ${formatNumber(latest.threshold)}` : ""}
+            ) : ratio !== null ? <>{series.name}: now <strong className="font-medium text-foreground">{formatNumber(Number(ratio.toPrecision(2)))}× threshold</strong>
+              {" "}(score {formatNumber(latest.value!)}, threshold {formatNumber(latest.threshold!)})</>
+              : <>{series.name}: {latest.value !== null ? formatNumber(latest.value) : "unavailable"}
+                {latest.threshold !== null ? ` · Threshold: ${formatNumber(latest.threshold)}` : ""}</>}
           </span>
         );
       })}

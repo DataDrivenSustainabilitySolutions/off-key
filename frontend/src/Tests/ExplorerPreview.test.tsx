@@ -286,7 +286,8 @@ describe("workspace chart navigation and monitoring", () => {
     render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
     const series = (id: string) => (lastChartProps().option.series as Array<{ id?: string; data: Array<{ value: number[]; summary?: unknown }> }>)
       .find(item => item.id === id)!;
-    expect(series("adaptive-score:selected").data.map(point => point.value)).toEqual([[NOW - 9 * minute, 1], [NOW - 5 * minute, 1.5], [NOW, 1.2]]);
+    // Each score as a share of its threshold of 2.
+    expect(series("adaptive-score:selected").data.map(point => point.value)).toEqual([[NOW - 9 * minute, 0.5], [NOW - 5 * minute, 0.75], [NOW, 0.6]]);
 
     act(() => lastChartProps().onViewportChange?.(NOW - 8 * minute, NOW - 4 * minute));
     expect(useStoredRange).toHaveBeenLastCalledWith({ readingId: "temperature" }, 3_600_000,
@@ -342,22 +343,22 @@ describe("workspace chart navigation and monitoring", () => {
     expect(lastChartProps().option.grid).toHaveLength(2);
     expect(lastChartProps().option.series).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "adaptive-score:monitor", data: [
-        expect.objectContaining({ value: [NOW - 20_000, 1], observation: expect.objectContaining({ threshold: 2, sequenceNumber: 1 }) }),
-        expect.objectContaining({ value: [NOW - 10_000, 3], observation: expect.objectContaining({ threshold: 2.5, sequenceNumber: 2 }) }),
+        // Each score against the threshold it was scored with, so a changing threshold is one flat rule at 1.
+        expect.objectContaining({ value: [NOW - 20_000, 0.5], observation: expect.objectContaining({ threshold: 2, sequenceNumber: 1 }) }),
+        expect.objectContaining({ value: [NOW - 10_000, 1.2], observation: expect.objectContaining({ threshold: 2.5, sequenceNumber: 2 }) }),
       ],
-        showSymbol: false, symbol: "none",
-        markArea: expect.objectContaining({ itemStyle: expect.objectContaining({ borderWidth: 0 }), data: expect.arrayContaining([
-          // Each threshold holds until the next evaluation; the last runs to the newest reading.
-          [{ xAxis: NOW - 20_000, yAxis: 2 }, { xAxis: NOW - 10_000, yAxis: expect.any(Number) }],
-          [{ xAxis: NOW - 10_000, yAxis: 2.5 }, { xAxis: NOW, yAxis: expect.any(Number) }],
-        ]) }) }),
+        showSymbol: false, symbol: "none" }),
+      expect.objectContaining({ id: "threshold:adaptive-score:monitor", markLine: expect.objectContaining({ data: [{ yAxis: 1 }] }) }),
+      expect.objectContaining({ id: "excursion:alarm:adaptive-score:monitor" }),
       expect.objectContaining({ id: "pending-telemetry", data: [[NOW, 22]] }),
     ]));
-    expect(lastChartProps().option.series).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "adaptive-score:monitor", markLine: expect.anything() }),
+    // The one alarmed result is marked by a rule where it alarmed.
+    expect(lastChartProps().option.series).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "adaptive-score:monitor", markLine: expect.objectContaining({
+        data: [expect.objectContaining({ xAxis: NOW - 10_000 })] }) }),
     ]));
     expect(lastChartProps().option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ startValue: NOW - 15_000, endValue: NOW - 5_000 })]));
-    expect(screen.getByText(/Threshold: 2.5/)).toBeTruthy();
+    expect(screen.getByText(/score 3, threshold 2\.5/)).toBeTruthy();
     expect(screen.getByText(/1 awaiting score/)).toBeTruthy();
   });
 });

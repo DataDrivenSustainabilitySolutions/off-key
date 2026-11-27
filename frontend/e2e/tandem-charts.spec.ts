@@ -116,13 +116,15 @@ type PixelGlyph = { count: number; left: number; right: number; top: number; bot
 type CanvasReadout = {
   width: number;
   height: number;
-  tintAlpha: number;
-  tintBands: Array<{
-    left: number; right: number; top: number; bottom: number; regions: number;
-  }>;
-  orange: PixelGlyph;
+  /** Translucent red: the shading a threshold region used to put on every crossing. */
+  wash: number;
+  /** Opaque red: an alarm, an alarmed overflow marker or a red event. */
+  red: PixelGlyph;
+  /** Opaque red markers in the reading pane, such as an event's triangle. */
   topRed: PixelGlyph;
-  overflowPixels: number;
+  orange: PixelGlyph;
+  /** The reading's own line, which spans the shared time axis. */
+  reading: PixelGlyph;
 };
 
 // Inspect visible Canvas pixels only, so the same regression runs against Vite
@@ -136,88 +138,36 @@ const readCanvas = (chart: Locator): Promise<CanvasReadout> => chart.evaluate((c
   const scaleX = width / canvas.clientWidth;
   const scaleY = height / canvas.clientHeight;
   const pixels = context.getImageData(0, 0, width, height).data;
-  const rowCounts = new Uint32Array(height);
-  const histogram = new Uint32Array(256);
-  const orange = { count: 0, left: width, right: 0, top: height, bottom: 0 };
-  const tint = (offset: number) => pixels[offset + 3]! >= 18 && pixels[offset + 3]! <= 60 &&
-    pixels[offset]! > pixels[offset + 1]! + 40 && Math.abs(pixels[offset + 1]! - pixels[offset + 2]!) < 12;
-  const red = (offset: number) => pixels[offset + 3]! >= 170 &&
-    pixels[offset]! > pixels[offset + 1]! + 40 && Math.abs(pixels[offset + 1]! - pixels[offset + 2]!) < 20;
+  const glyph = () => ({ count: 0, left: width, right: 0, top: height, bottom: 0 });
+  const add = (target: ReturnType<typeof glyph>, x: number, y: number) => {
+    target.count += 1;
+    target.left = Math.min(target.left, x);
+    target.right = Math.max(target.right, x);
+    target.top = Math.min(target.top, y);
+    target.bottom = Math.max(target.bottom, y);
+  };
+  const red = glyph(), topRed = glyph(), orange = glyph(), reading = glyph();
+  let wash = 0;
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const offset = (y * width + x) * 4;
-      if (tint(offset)) {
-        rowCounts[y]! += 1;
-        histogram[pixels[offset + 3]!]! += 1;
+      const [r, g, b, a] = [pixels[offset]!, pixels[offset + 1]!, pixels[offset + 2]!, pixels[offset + 3]!];
+      if (a >= 18 && a <= 60 && r > g + 40 && Math.abs(g - b) < 12) wash += 1;
+      if (a >= 170 && r > g + 40 && Math.abs(g - b) < 20) {
+        add(red, x, y);
+        // Event markers are opaque; the translucent alarm-onset rule and the legend above the panes are not markers.
+        if (y < height / 3 && y > 40 * scaleY && a >= 200) add(topRed, x, y);
       }
-      if (pixels[offset + 3]! >= 140 && pixels[offset]! > pixels[offset + 1]! + 60 && pixels[offset + 1]! > pixels[offset + 2]! + 60) {
-        orange.count += 1;
-        orange.left = Math.min(orange.left, x);
-        orange.right = Math.max(orange.right, x);
-        orange.top = Math.min(orange.top, y);
-        orange.bottom = Math.max(orange.bottom, y);
-      }
+      if (a >= 140 && r > g + 60 && g > b + 60) add(orange, x, y);
+      // Below the legend, whose swatch shares the reading's colour.
+      if (a >= 170 && g > r + 60 && b > r + 40 && y > 40 * scaleY) add(reading, x, y);
     }
   }
-  const rows: Array<{ first: number; last: number }> = [];
-  for (let y = 0; y < height; y += 1) {
-    if (rowCounts[y]! < 4 * scaleX) continue;
-    const previous = rows[rows.length - 1];
-    if (previous && y - previous.last <= 3 * scaleY) previous.last = y;
-    else rows.push({ first: y, last: y });
-  }
-  const tintBands = rows.filter((row) => row.last - row.first >= 3 * scaleY).map((row) => {
-    const columns = new Uint32Array(width);
-    let left = width;
-    let right = 0;
-    for (let y = row.first; y <= row.last; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        if (!tint((y * width + x) * 4)) continue;
-        columns[x]! += 1;
-        left = Math.min(left, x);
-        right = Math.max(right, x);
-      }
-    }
-    const regions: Array<{ first: number; last: number }> = [];
-    for (let x = left; x <= right; x += 1) {
-      if (!columns[x]) continue;
-      const previous = regions[regions.length - 1];
-      // The overflow triangle at the last evaluation hides a few columns of the band;
-      // a reading without a score spans far more than this at every tested width.
-      if (previous && x - previous.last <= 10 * scaleX) previous.last = x;
-      else regions.push({ first: x, last: x });
-    }
-    // Each threshold holds until the next evaluation, so the band runs without a gap
-    // across readings that have no score, from the first evaluation to the last reading.
-    return { left: left / scaleX, right: right / scaleX, top: row.first / scaleY,
-      bottom: row.last / scaleY, regions: regions.length };
-  });
-  let tintAlpha = 0;
-  for (let alpha = 1; alpha < histogram.length; alpha += 1) {
-    if (histogram[alpha]! > histogram[tintAlpha]!) tintAlpha = alpha;
-  }
-  const topRed = { count: 0, left: width, right: 0, top: height, bottom: 0 };
-  let overflowPixels = 0;
-  const firstBand = tintBands[0];
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      if (!red((y * width + x) * 4)) continue;
-      if (y / scaleY < (firstBand?.top ?? height / scaleY) - 20) {
-        topRed.count += 1;
-        topRed.left = Math.min(topRed.left, x);
-        topRed.right = Math.max(topRed.right, x);
-        topRed.top = Math.min(topRed.top, y);
-        topRed.bottom = Math.max(topRed.bottom, y);
-      }
-      if (firstBand && Math.abs(x / scaleX - firstBand.right) < 6 &&
-        y / scaleY >= firstBand.top - 6 && y / scaleY <= firstBand.top + 12) overflowPixels += 1;
-    }
-  }
-  const normalize = (glyph: typeof orange) => ({ count: glyph.count,
-    left: glyph.count ? glyph.left / scaleX : 0, right: glyph.right / scaleX,
-    top: glyph.count ? glyph.top / scaleY : 0, bottom: glyph.bottom / scaleY });
-  return { width: canvas.clientWidth, height: canvas.clientHeight, tintAlpha, tintBands,
-    orange: normalize(orange), topRed: normalize(topRed), overflowPixels };
+  const normalize = (item: ReturnType<typeof glyph>) => ({ count: item.count,
+    left: item.count ? item.left / scaleX : 0, right: item.right / scaleX,
+    top: item.count ? item.top / scaleY : 0, bottom: item.bottom / scaleY });
+  return { width: canvas.clientWidth, height: canvas.clientHeight, wash,
+    red: normalize(red), topRed: normalize(topRed), orange: normalize(orange), reading: normalize(reading) };
 });
 
 test.use({ video: "off", trace: "off" });
@@ -231,7 +181,7 @@ test.describe("Tandem anomaly chart regression", () => {
 
   for (const mode of ["static", "adaptive", "mixed"] as const) {
     for (const theme of ["light", "dark"] as const) {
-      test(`${mode} alarm regions render in ${theme} at desktop and narrow widths`, async ({ page }, testInfo) => {
+      test(`${mode} evidence shows red only where the monitor alarmed, in ${theme} at desktop and narrow widths`, async ({ page }, testInfo) => {
         await installMockApi(page, mode, theme);
         await page.goto(`/details/${DEVICE_ID}`);
         const chart = page.getByTestId("telemetry-echart");
@@ -239,28 +189,24 @@ test.describe("Tandem anomaly chart regression", () => {
         await expect(chart).toBeVisible();
         await expect(chart.locator("canvas")).toHaveCount(1);
         await expect(chart).toHaveAttribute("aria-label", mode === "mixed"
-          ? /1 logarithmic static-evidence series.*1 linear adaptive score series/u
-          : mode === "static" ? /1 logarithmic static-evidence series/u : /1 linear adaptive score series/u);
+          ? /1 logarithmic static-evidence series.*1 adaptive score series relative to its threshold/u
+          : mode === "static" ? /1 logarithmic static-evidence series/u : /1 adaptive score series relative to its threshold/u);
         if (mode !== "adaptive") {
-          await expect(card.getByText(/Beyond numeric range/u)).toBeVisible();
+          await expect(card.getByText(/beyond numeric range/iu)).toBeVisible();
         }
         await expect(card.getByText(/Shaded values|unshaded gaps|threshold unavailable/iu)).toHaveCount(0);
-        await expect(chart).toHaveAttribute("aria-label", /alarm region/u);
+        await expect(chart).toHaveAttribute("aria-label", /Red marks where the monitor alarmed/u);
 
         for (const width of [1440, 390, 320]) {
           await page.setViewportSize({ width, height: width === 1440 ? 1100 : 1000 });
           await card.scrollIntoViewIfNeeded();
-          await expect.poll(async () => (await readCanvas(chart)).tintBands.length).toBe(mode === "mixed" ? 2 : 1);
+          // Each mode alarms once, on its last result: a rule marks it, and no threshold region is shaded
+          // although the scores cross their thresholds without an alarm before it.
+          await expect.poll(async () => (await readCanvas(chart)).red.count).toBeGreaterThan(10);
           const pixels = await readCanvas(chart);
-          expect(pixels.tintAlpha).toBe(theme === "light" ? 26 : 36);
-          for (const band of pixels.tintBands) {
-            expect(band.bottom - band.top).toBeGreaterThan(6);
-            expect(band.regions).toBe(1);
-            // Shared time scale: every band starts at the first evaluation. The right edge is not
-            // compared, because overflow triangles and score lines cover it by a few pixels.
-            expect(Math.abs(band.left - pixels.tintBands[0]!.left)).toBeLessThanOrEqual(2);
-          }
-          if (mode !== "adaptive") expect(pixels.overflowPixels).toBeGreaterThan(10);
+          // Antialiased edges of the red line leave a few hundred faint pixels at most; a shaded region left thousands.
+          expect(pixels.wash).toBeLessThan(400);
+          expect(pixels.red.right).toBeGreaterThan(pixels.reading.right - 12);
           const box = await chart.boundingBox();
           expect(box).not.toBeNull();
           expect(box!.width).toBeLessThanOrEqual(width);
@@ -292,8 +238,8 @@ test.describe("Tandem anomaly chart regression", () => {
     await adaptiveDetector.selectOption("adaptive-score:adaptive-z");
     await expect(adaptiveDetector.locator("option:checked")).toContainText("adaptive-z");
     const selected = await adaptiveDetector.inputValue();
-    await expect(card.getByText(/Anomaly score:\s*3/u)).toBeVisible();
-    await expect(card.getByText(/Anomaly score:\s*7/u)).toHaveCount(0);
+    await expect(card.getByText(/score 3, threshold 4/u)).toBeVisible();
+    await expect(card.getByText(/score 7/u)).toHaveCount(0);
     await zoomChart(page, card);
     await api.publish();
     await expect(card.getByText("New data available")).toBeVisible();
@@ -328,7 +274,8 @@ test.describe("Tandem anomaly chart regression", () => {
     const pixels = await readCanvas(chart);
     expect(pixels.orange.count).toBeGreaterThan(10);
     expect(pixels.topRed.count).toBeGreaterThan(10);
-    const domain = pixels.tintBands[0]!;
+    // The reading spans the shared time axis, from its first sample to its last.
+    const domain = pixels.reading;
     const span = domain.right - domain.left;
     expect(Math.abs((pixels.orange.left + pixels.orange.right) / 2 - domain.left - span / 240)).toBeLessThan(3);
     expect(Math.abs((pixels.topRed.left + pixels.topRed.right) / 2 - domain.left - span / 6)).toBeLessThan(3);

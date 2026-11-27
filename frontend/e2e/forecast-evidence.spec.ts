@@ -72,7 +72,7 @@ for (const theme of ["light", "dark"] as const) {
     const history = await openForecastMonitor(page, theme);
     await expect(history.getByRole("heading", { name: "Forecast", exact: true })).toBeVisible();
     await expect(history.getByRole("list", { name: "Chart key" }).getByRole("listitem"))
-      .toHaveText(["Observed", "Forecast", "NexCP interval"]);
+      .toHaveText(["Observed", "Forecast", "NexCP interval", "Outside interval"]);
     // No figures at rest: the share the interval held is folded away, with the count behind it.
     const coverage = history.getByRole("group").filter({ hasText: "Coverage" });
     await expect(coverage.locator("summary")).toHaveText("Coverage 94 %");

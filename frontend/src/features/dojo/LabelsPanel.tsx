@@ -6,6 +6,7 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { getErrorMessage } from "@/lib/errors";
 import type { DatasetView, LabelSuggestion, LabelView, PendingLabelView } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
+import { ChartKey } from "../charts/ChartKey";
 import { EChart } from "../charts/EChart";
 import { useChartColors } from "../charts/use-chart-colors";
 import { dojoApi } from "./api";
@@ -110,6 +111,7 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart"
       accessibleDescription={`Values of ${series.map(item => item.name).join(", ") || "no series"} with ${labels.length} labels`}
       onViewportChange={(from, to) => setViewport([from, to])} />
+    {labels.length > 0 && <ChartKey entries={[{ kind: "label", label: "Label", color: colors.foreground }]} />}
     {truncated.length > 0 && <p className="dj-help">Showing the first {CHART_POINTS.toLocaleString()} values of{" "}
       {truncated.map(item => item.name).join(", ")}. Runs and metrics always use every value.</p>}
 

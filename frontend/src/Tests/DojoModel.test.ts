@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { datasetChartOption } from "@/features/dojo/dojo-chart";
+import { alarmEpisodes, datasetChartOption } from "@/features/dojo/dojo-chart";
 import { formatDuration, formatShortDate, formatShortSpan, injectedFaults, readPages, runState, suggestBindings } from "@/features/dojo/model";
 import type { DatasetSeriesView } from "@/types/dojo.generated";
 
@@ -61,22 +61,35 @@ describe("Dojo chart", () => {
   const colors = { foreground: "#000", mutedForeground: "#666", border: "#ddd", popover: "#fff", popoverForeground: "#000",
     muted: "#eee", primary: "#3a7e72", seriesPalette: ["#111", "#222", "#333"], alarmBoundary: "#b00", alarmFill: "#b001" };
 
-  it("shades labels behind the values", () => {
+  it("shades labels behind the values in a neutral tone, keeping red for alarms", () => {
     const option = datasetChartOption({ colors, timeZone: "UTC",
       series: [{ id: "s1", name: "Voltage", unit: "V", points: [[0, 1], [60_000, 2]] }],
       labels: [{ id: "l1", start: 10_000, end: 20_000, note: "fault" }] });
-    const [line] = option.series as Array<{ name: string; markArea: { data: unknown[] } }>;
+    const [line] = option.series as Array<{ name: string; markArea: { data: unknown[]; itemStyle: { color: string } } }>;
     expect(line!.name).toBe("Voltage (V)");
     expect(line!.markArea.data).toEqual([[{ xAxis: 10_000, name: "fault" }, { xAxis: 20_000 }]]);
+    expect(line!.markArea.itemStyle.color).toBe("rgba(0,0,0,0.12)");
     expect(option.grid).toHaveLength(1);
   });
 
-  it("gives each run's alarms their own row under the values", () => {
+  it("draws alarms one after the other as one episode, and a lone alarm still with a width", () => {
+    expect(alarmEpisodes([30, 10, 11, 12, 20], 1)).toEqual([[9.5, 12.5], [19.5, 20.5], [29.5, 30.5]]);
+    // Without the data's cadence, the alarms' own most common gap stands in for it.
+    expect(alarmEpisodes([0, 2, 4, 10])).toEqual([[-1, 5], [9, 11]]);
+    expect(alarmEpisodes([])).toEqual([]);
+  });
+
+  it("gives each run's alarms their own row under the values, in the alarm colour", () => {
     const option = datasetChartOption({ colors, timeZone: "UTC", labels: [],
-      series: [{ id: "s1", name: "Voltage", unit: null, points: [[0, 1]] }],
-      alarms: [{ id: "r1", name: "Forest", times: [5, 9] }, { id: "r2", name: "Baseline", times: [] }] });
-    const marks = (option.series as Array<{ id: string; data: unknown[] }>).filter(item => item.id.startsWith("alarms:"));
-    expect(marks.map(item => item.data)).toEqual([[[5, "Forest"], [9, "Forest"]], []]);
+      series: [{ id: "s1", name: "Voltage", unit: null, points: [[0, 1], [1, 1], [2, 1]] }],
+      alarms: [{ id: "r1", name: "Forest", times: [5, 6, 9] }, { id: "r2", name: "Baseline", times: [] }] });
+    const marks = (option.series as Array<{ id: string; data: unknown[]; lineStyle: { color: string } }>)
+      .filter(item => item.id.startsWith("alarms:"));
+    expect(marks.map(item => item.data)).toEqual([
+      [[4.5, "Forest"], [6.5, "Forest"], [6.5, null], [8.5, "Forest"], [9.5, "Forest"], [9.5, null]], []]);
+    expect(marks.map(item => item.lineStyle.color)).toEqual(["#b00", "#b00"]);
+    // The row names the run, so the legend lists the values only.
+    expect((option as { legend: { data: string[] } }).legend.data).toEqual(["Voltage"]);
     expect(option.grid).toHaveLength(2);
     expect((option.yAxis as Array<{ data?: string[] }>)[1]!.data).toEqual(["Forest", "Baseline"]);
     // Both rows span the same time, so a mark sits under its value.

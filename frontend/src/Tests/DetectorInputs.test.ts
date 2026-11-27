@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { buildDetectorInputSeries, MAX_DETECTOR_INPUT_SERIES } from "@/features/charts/detector-inputs";
+import { buildDetectorInputSeries, MAX_DETECTOR_INPUT_SERIES, withoutReadingCopies } from "@/features/charts/detector-inputs";
 import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
 import { buildMonitoringChartOption, buildTelemetryChartModel, buildTelemetryChartOption, formatTelemetryTooltip } from "@/features/charts/telemetry-chart";
 import { collectTelemetryChartDetectors } from "@/features/charts/telemetry-detectors";
@@ -21,6 +21,16 @@ const colors = { foreground: "#111", mutedForeground: "#666", border: "#ddd", po
   popoverForeground: "#111", muted: "#eee", primary: "#3a7e72" };
 
 describe("detector inputs", () => {
+  it("drops an input that only repeats the reading, and keeps one that carries a forecast to draw over it", () => {
+    const reading: Array<[number, number]> = [[1, 20.5], [2, 21], [3, 21.5]];
+    const copy = { id: "copy", name: "temperature", data: [[1, 20.5], [2, 21], [4, null]] as Array<[number, number | null]> };
+    const scaled = { id: "scaled", name: "temperature_z", data: [[1, 0.1], [2, 0.2]] as Array<[number, number | null]> };
+    const forecast = { ...copy, id: "forecast", forecast: [[1, 20.4, 20.2, 20.6]] as never };
+    expect(withoutReadingCopies([copy, scaled, forecast], reading)).toEqual([scaled, { ...forecast, reading: true }]);
+    // An input that shares no time with the reading cannot be told apart from it, so it stays.
+    expect(withoutReadingCopies([{ ...copy, data: [[9, 1]] }], reading)).toHaveLength(1);
+  });
+
   it("draws one line per scored feature at each evaluated observation", () => {
     const series = buildDetectorInputSeries([row(2, flat(0.02, -0.01)), row(1, flat(0.01, -0.02))], time);
     expect(series.map(line => line.name)).toEqual(["L1_dev", "L2_dev"]);

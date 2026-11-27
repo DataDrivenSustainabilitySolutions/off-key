@@ -58,11 +58,11 @@ describe("forecast evidence presentation", () => {
   });
 
   it("uses exact signed residuals and asymmetric calibrated bounds, including intervals crossing zero", () => {
-    const [series] = buildForecastEvidence([row(1, [forecast({ lower: 49.7, upper: 50.1 })])], presentation.bindings);
+    const [series] = buildForecastEvidence([{ ...row(1, [forecast({ lower: 49.7, upper: 50.1 })]), alarm: false }], presentation.bindings);
     const options = buildForecastChartSeries(series!, 0, 1, "blue", "amber");
     const residual = options.find(line => line.id === `residual:${series!.id}`)!;
     expect(residual.data).toEqual([expect.objectContaining({ value: [start + 925, expect.closeTo(0.2), expect.closeTo(-0.3), expect.closeTo(0.1)] })]);
-    expect(residual.markPoint?.data).toHaveLength(1);
+    expect(options.find(line => line.id === `outside:residual:${series!.id}:reach`)?.data).toEqual([[start + 925, expect.closeTo(0.1)]]);
     expect(options.find(line => line.id === `forecast-band:residual:${series!.id}:width`)).toMatchObject({
       stackStrategy: "all", data: [[start + 925, expect.closeTo(0.4)]],
     });
@@ -147,18 +147,26 @@ describe("forecast evidence presentation", () => {
       .toEqual([[start + 1925, null], [start + 2925, null], [start + 3925, 50.5]]);
   });
 
-  it("marks values beyond the interval with dots in the outside colour, never as alarms", () => {
+  it("fills the gap between a value and the interval it left in the outside colour, never as an alarm", () => {
     const rows = [row(1, [forecast()], 50.2), row(2, [forecast()], 50.05), row(3, [forecast()], 49.8),
-      row(4, [forecast({ lower: null, upper: null })], 52)];
+      row(4, [forecast({ lower: null, upper: null })], 52)].map(item => ({ ...item, alarm: false }));
     const series = buildForecastEvidence(rows, presentation.bindings)[0]!;
     const chart = buildForecastChartSeries(series, 0, 1, "blue", "amber");
     const find = (id: string) => chart.find(line => line.id === id)!;
-    expect(find(`forecast:${series.id}`).markPoint!.data).toEqual([
-      { name: "Outside interval", coord: [start + 925, 50.2], itemStyle: { color: "amber" } },
-      { name: "Outside interval", coord: [start + 2925, 49.8], itemStyle: { color: "amber" } },
-    ]);
-    // A value outside the interval is a dot and nothing more: no fill reaches for the interval's edge.
-    expect(chart.some(line => String(line.id).includes("outside"))).toBe(false);
+    expect(find(`forecast:${series.id}`).markPoint).toBeUndefined();
+    // The fill is as wide as the miss, and tapers back to the edge at the value inside.
+    const reach = find(`outside:${series.id}:reach`);
+    expect(reach.areaStyle).toMatchObject({ color: "amber" });
+    expect((reach.data as Array<[number, number | null]>).map(([, width]) => width)).toEqual([
+      expect.closeTo(0.1), 0, expect.closeTo(0.1), null]);
+    expect(find(`outside:${series.id}:line`).lineStyle).toMatchObject({ color: "amber" });
+    // The coloured stretch ends where the line crosses back over the edge: two thirds of the way from 50.2 to 50.05.
+    const crossing = (find(`outside:${series.id}:line`).data as Array<[number, number | null]>)[1]!;
+    expect(crossing[0]).toBeCloseTo(start + 925 + 1000 * 2 / 3, 3);
+    expect(crossing[1]).toBeCloseTo(50.1, 6);
+    // Inside an alarm the alarm band already tells it, so the same misses get no fill of their own.
+    const alarmed = buildForecastEvidence(rows.map(item => ({ ...item, alarm: true })), presentation.bindings)[0]!;
+    expect(buildForecastChartSeries(alarmed, 0, 1, "blue", "amber").some(line => String(line.id).startsWith("outside:"))).toBe(false);
     // Values without an interval are not checked, so they count neither way.
     expect(intervalCoverage([series])).toEqual({ checked: 3, outside: 2 });
     const tooltip = formatForecastTooltip([{ seriesId: `forecast:${series.id}`, seriesName: "Frequency forecast",
